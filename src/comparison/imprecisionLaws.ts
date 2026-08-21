@@ -5,37 +5,36 @@
  * ## The degenerate table is one rule, not six
  *
  * §5.9 tabulates six family/attribute combinations and the law each collapses to. Measured at
- * the provider, all six are consequences of a single mechanism: **`DistributionData`
- * initialises every absent attribute to `null`, the provider assigns it into a `number`-typed
- * field, and JavaScript coerces `null` to 0** in arithmetic and in relational comparison. So
- * an absent parameter is not a missing parameter — it is the parameter 0, and the law follows
- * from the geometry that leaves.
+ * the provider, all six are consequences of a single mechanism: `DistributionData` initialises
+ * every absent attribute to `null`, the provider assigns it into a `number`-typed field, and
+ * JavaScript coerces `null` to 0 in arithmetic and in relational comparison. So an absent
+ * parameter is not a missing parameter — it is the parameter 0, and the law follows from the
+ * geometry that leaves.
  *
- * That reading is bit-for-bit verified against explicit controls rather than argued:
+ * Bit-for-bit verified against explicit controls:
  *
  * | document | performs, exactly | §5.9's table |
  * |---|---|---|
  * | uniform, both limits absent | `δ₀` | ✓ |
- * | uniform, `limit.upper` absent, `limit.lower="-30"` | `U(−30, 0)` | **not stated** |
- * | gaussian, `limit.upper` absent, `limit.lower="-5"` | truncated to `[−5, 0]` | **not stated** |
+ * | uniform, `limit.upper` absent, `limit.lower="-30"` | `U(−30, 0)` | not stated |
+ * | gaussian, `limit.upper` absent, `limit.lower="-5"` | truncated to `[−5, 0]` | not stated |
  * | gaussian, both limits absent | untruncated `N(0, σ)` | ✓ |
  * | gaussian, `deviation.standard` absent | `δ₀` | ✓ |
  * | triangular, both clips absent | `δ₀` (via a `null` draw — AD-47) | ✓ |
- * | triangular, `clip.upper` absent | `clamp(·, clipLower, 0)` | **not stated** |
- * | triangular, `mode` absent | `mode = 0` | **not stated** |
+ * | triangular, `clip.upper` absent | `clamp(·, clipLower, 0)` | not stated |
+ * | triangular, `mode` absent | `mode = 0` | not stated |
  * | brownian / compensating, limits absent | `δ₀` | ✓ |
  *
- * The three rows §5.9 does not state are the ones a real document is likelier to reach, and
- * every one of them is a genuine law rather than a collapse. Reading them as `δ₀` would price
- * a performance that audibly displaces notes at zero.
+ * Each row §5.9 does not state is a genuine law rather than a collapse; reading them as `δ₀`
+ * would price a performance that audibly displaces notes at zero.
  *
  * ## `null` is δ₀'s route; `NaN` is `⊥`'s (AD-47, AD-42.4)
  *
  * AD-47 settled the clip-less triangular by execution: the draw is a literal `null`, the
  * write-back coerces it (`attValue + null === attValue`), nothing stringifies it, and the
- * performed effect is exactly no imprecision. So the finite guard this module applies must NOT
- * treat an absent attribute as unusable. An UNUSABLE one is a different matter and reaches
- * `⊥`, because the renderer then really does destroy the notes:
+ * performed effect is exactly no imprecision. So this module's finite guard must NOT treat an
+ * absent attribute as unusable. An UNUSABLE one reaches `⊥`, because the renderer then really
+ * does destroy the notes:
  *
  * - `limit.lower="abc"` → `NaN` through every draw → `milliseconds.date="NaN"` → the note
  *   vanishes from the MIDI export (measured end to end).
@@ -47,40 +46,32 @@
  *   and the whole render aborts (R21's condition, reached from a different direction).
  * - `@seed` on a correlated family OR on a list → see {@link seedPoisonsSpan}.
  *
- * **These are the `⊥` routes AD-36.2 asks about, and they exist**, so this dimension's
- * pointwise density is capped like accentuation's and pedal's rather than integrated free like
- * tempo's. The cap is a `Math.min` rather than `integrateCappedAbsolute` only because the
- * density is piecewise CONSTANT here (see `imprecisionDistance.ts`).
+ * These are the `⊥` routes AD-36.2 asks about, and they exist, so this dimension's pointwise
+ * density is capped like accentuation's and pedal's rather than integrated free like tempo's.
+ * The cap is a `Math.min` rather than `integrateCappedAbsolute` only because the density is
+ * piecewise CONSTANT here (see `imprecisionDistance.ts`).
  *
  * ## Spans end on ANY entry — and the entry list is already filtered
  *
- * AD-14ii/R12's rule is in `spanEnds.ts` and is asserted at entry. AD-35.4's hazard question
- * has a fresh answer here, one level below where it was asked: `GenericMap.parseData:143-146`
- * skips a child with no `@date`, and skips a `<style>` with no `@name.ref`, BEFORE any index
- * is taken. So "any entry" means any entry the parser kept. Measured: a `<style name.ref="…">`
- * at 720 leaves every later note exactly unperturbed — the δ₀ gap §5.9 promises — while the
- * same element with the attribute removed performs bit-identically to no style at all.
- *
- * Two more entry-index consequences, both measured: two distributions at ONE date give the
- * first a zero-width span that performs nothing, and a distribution with no `@date` is not an
- * entry at all, so it neither governs nor terminates.
+ * AD-14ii/R12's rule is in `spanEnds.ts` and is asserted at entry. `GenericMap.parseData:143-146`
+ * skips a child with no `@date`, and skips a `<style>` with no `@name.ref`, BEFORE any index is
+ * taken (AD-35.4), so "any entry" means any entry the parser kept. Measured: a
+ * `<style name.ref="…">` at 720 leaves every later note exactly unperturbed — the δ₀ gap §5.9
+ * promises — while the same element with the attribute removed performs bit-identically to no
+ * style at all. Two more entry-index consequences, both measured: two distributions at ONE date
+ * give the first a zero-width span that performs nothing, and a distribution with no `@date` is
+ * not an entry at all, so it neither governs nor terminates.
  *
  * ## What this module compares (§5.9's declared-law qualification)
  *
- * The DECLARED law, and §5.9's one-sentence qualification is now three, each measured:
+ * The DECLARED law. Three measured qualifications on it, all render-path artifacts of one kind —
+ * they depend on where a note falls, not on what the document declares:
  *
  * 1. Inside a chord the renderer keeps one member on its drawn offset and re-rolls the others
  *    through a triangular `shake`, so a chord member's performed marginal depends on the MSM's
  *    simultaneity structure (§5.9, R26, AD-14vi).
- * 2. `distribution.list` is not sampled at all — `getValue(i)` is `series[i % n]` and a
- *    FRACTIONAL index interpolates between neighbours, so the performed values are not in
- *    general list members. Which index a note lands on is a function of its millisecond date
- *    and the timing basis.
- * 3. The two correlated families have no single marginal — see
- *    {@link CORRELATED_MARGINAL_NOTE}.
- *
- * All three are render-path artifacts of the same kind: they depend on where a note falls,
- * not on what the document declares.
+ * 2. `distribution.list` is not sampled at all (see `distributions.ListLaw`).
+ * 3. The two correlated families have no single marginal — see {@link CORRELATED_MARGINAL_NOTE}.
  */
 import { filterMap, withNext } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
@@ -128,9 +119,8 @@ const CORRELATED_FAMILIES: readonly string[] = [BROWNIAN, COMPENSATING];
 /**
  * The three families `@seed` destroys — see {@link seedPoisonsSpan}.
  *
- * `distribution.list` is here for a different reason from the other two and was found by the
- * registry's own inventory partition rather than by looking: `setSeed` clears `series`, and
- * for a list provider `series` IS the list.
+ * `distribution.list` is here for a different reason from the other two: `setSeed` clears
+ * `series`, and for a list provider `series` IS the list.
  */
 const SEED_POISONED_FAMILIES: readonly string[] = [BROWNIAN, COMPENSATING, LIST];
 
@@ -160,26 +150,24 @@ export type ImprecisionBottomCause =
  *
  * §5.9 says "correlated families compare marginals plus `processParameters`". Measured from
  * 20 000 INDEPENDENT chains per index — a time average over one chain measures the same thing
- * only after mixing, and its error is autocorrelation rather than sampling — **there is no
- * single marginal to compare**:
+ * only after mixing, and its error is autocorrelation rather than sampling — there is no single
+ * marginal to compare:
  *
- * - `brownianNoise` from the factory's own start is `Uniform(lower, upper)` at every index
- *   (KS 0.005–0.012 against a 0.0096 noise floor), which is also provable: a symmetric
- *   proposal with reject-if-outside satisfies detailed balance against the uniform. But the
- *   renderer never uses that start. `doHandover`'s fallback overwrites it with
- *   `Math.random()·(R/2) + lower + R/4` — **the middle half** — and the walk widens to the
- *   full range only after ~1000 indices at `stepWidth.max = 3`, or ~10 at 30.
+ * - `brownianNoise` from the factory's own start is `Uniform(lower, upper)` at every index (KS
+ *   0.005–0.012 against a 0.0096 noise floor), which is also provable: a symmetric proposal with
+ *   reject-if-outside satisfies detailed balance against the uniform. But the renderer never uses
+ *   that start — `doHandover`'s fallback overwrites it with `Math.random()·(R/2) + lower + R/4`,
+ *   the MIDDLE HALF, and the walk widens to the full range only after ~1000 indices at
+ *   `stepWidth.max = 3`, or ~10 at 30.
  * - `compensatingTriangle` starts from the same middle half and then CONTRACTS: σ settles at
  *   8.30 for `degreeOfCorrelation = 2` and 4.91 for 5, against `U(−30, 30)`'s 17.32 — and
  *   EXPANDS to 20.76 with atoms at both limits at 0.5.
  *
- * So this module declares the **index-0 law the renderer constructs**: `Uniform` over the
- * middle half of the limits, clipped where the family clips. It is exact at an index every
- * span has, it is determined by the document alone, and it is read off `doHandover` rather
- * than modelled. What the process does thereafter is `degreeOfCorrelation` and
- * `stepWidth.max`'s business, and those are `processParameters` rows precisely because A-B3
- * says the marginal does not characterize the process — a statement this measurement turns
- * from a caveat into a finding.
+ * So this module declares the INDEX-0 law the renderer constructs: `Uniform` over the middle half
+ * of the limits, clipped where the family clips. It is exact at an index every span has,
+ * determined by the document alone, and read off `doHandover` rather than modelled. What the
+ * process does thereafter is `degreeOfCorrelation` and `stepWidth.max`'s business — which is why
+ * A-B3 makes those `processParameters` rows.
  */
 export const CORRELATED_MARGINAL_NOTE =
   'correlated family: the marginal is index-dependent, so the compared law is the index-0 ' +
@@ -253,11 +241,11 @@ export function processParametersAt(
  * Read one imprecision map into its span sequence.
  *
  * Every dated entry participates in the walk, not only `distribution.*` elements: a `<style>`
- * (with `@name.ref`) or any other entry ends the previous span and opens a **gap**, which is a
- * real interval performing `δ₀` — never `⊥`. That is the sharp contrast with `asynchronyMap`,
- * where the same structural situation NaN-poisons the span (AD-33.1): there the map reads an
- * offset off the foreign element and gets `NaN`; here the map simply has no distribution for
- * the interval and applies nothing. Measured both ways.
+ * (with `@name.ref`) or any other entry ends the previous span and opens a GAP, which is a real
+ * interval performing `δ₀` — never `⊥`. The contrast with `asynchronyMap`, where the same
+ * structural situation NaN-poisons the span (AD-33.1): there the map reads an offset off the
+ * foreign element and gets `NaN`; here it has no distribution for the interval and applies
+ * nothing. Measured both ways.
  */
 export function readImprecisionSpans(
   view: OrderedMapView | null,
@@ -283,16 +271,9 @@ export function readImprecisionSpans(
   const notes: ImprecisionNote[] = [];
   const breakpoints = new Set<number>([0]);
 
-  // ANY next entry ends the span (AD-14ii/R12) — the imprecision maps and asynchronyMap are
-  // the only two with this rule, and `spanEnds.ts` is asserted above so the two cannot drift.
-  // The end is PAIRED with its entry rather than read at `index + 1`. "There is no next
-  // entry" is then a VALUE — `+Infinity` — instead of an out-of-range read that the type
-  // system had to be told about with `as (typeof xs)[number] | undefined`.
-  // Each entry with its successor, or `null` for the last — `withNext`. The span it opens
-  // then runs to `next?.ticks ?? Infinity`, which says at the point of use that the last
-  // entry runs to the end of time. The `[...xs.slice(1).map(…), Infinity]` array this
-  // replaces built that sentinel where it could not be read as one, and built a whole array
-  // to be zipped away.
+  // ANY next entry ends the span (AD-14ii/R12) — the imprecision maps and asynchronyMap are the
+  // only two with this rule, and `spanEnds.ts` is asserted above so the two cannot drift. The
+  // last entry has no successor and its span runs to `+Infinity`, i.e. to the end of time.
   for (const [entry, next] of withNext(entries)) {
     const endTicks = next?.ticks ?? Number.POSITIVE_INFINITY;
     const element: Element = entry.element;
@@ -347,12 +328,9 @@ interface DistributionReading {
  * attribute reaches the provider as `null` and coerces to 0, while an unusable one reaches it
  * as `NaN` and destroys every note in the span.
  *
- * **Deliberately not a `Result`.** That sentence is the reason. A `Result<number, …>` has one
- * failure arm, and folding two of these three into it would put the distinction AD-47 exists
- * to preserve inside the error payload — where the combinators would then treat both the same,
- * since `mapOk` and `andThen` short-circuit on any failure alike. This is a genuine three-way
- * sum and it stays one; the only thing the prelude gives it is the discriminant name, `kind`,
- * which is what makes `matchKind` applicable here as everywhere else.
+ * Deliberately not a `Result`: it has one failure arm, so folding two of these three into it
+ * would put the distinction AD-47 exists to preserve inside the error payload, where `mapOk` and
+ * `andThen` short-circuit on both alike. This is a genuine three-way sum.
  */
 type NumericReading =
   | { readonly kind: 'present'; readonly value: number }
@@ -375,8 +353,8 @@ function coerced(reading: NumericReading): number {
  * `@seed` destroys the span for THREE of the six families, which §4's exclusion list does not
  * say for any of them.
  *
- * One mechanism, two consequences. `RandomNumberProvider.setSeed:186-190` pins the sequence
- * and **clears `series`** — and `series` is not a cache:
+ * One mechanism, two consequences. `RandomNumberProvider.setSeed:186-190` pins the sequence and
+ * CLEARS `series` — and `series` is not a cache:
  *
  * - For the two CORRELATED families it holds the walk's current value.
  *   `ImprecisionMap.ts:123-145` calls `applyHandover` (which seeds it) and only THEN calls
@@ -385,14 +363,14 @@ function coerced(reading: NumericReading): number {
  *   (`createRandomNumberProvider_distributionList` assigns `series = [...list]`), so clearing
  *   it leaves `series[i % 0]` = `series[NaN]` = `undefined`.
  *
- * Measured end to end in both cases: `seed="99"` gives `milliseconds.date="NaN"` on **every**
- * note, while the same document without it performs normally. §4 lists `@seed` among the
- * exclusions as "changes no distribution law"; that holds for `uniform`, `gaussian` and
- * `triangular` and fails for the other three.
+ * Measured end to end in both cases: `seed="99"` gives `milliseconds.date="NaN"` on EVERY note,
+ * while the same document without it performs normally. §4 lists `@seed` among the exclusions as
+ * "changes no distribution law"; that holds for `uniform`, `gaussian` and `triangular` and fails
+ * for the other three.
  *
- * The reference has the identical ordering, so the correlated case is not a port divergence;
- * there `ArrayList.get(-1)` throws `IndexOutOfBoundsException` and the render dies instead of
- * emitting `NaN`. Both destroy the performance, which is what `⊥` records.
+ * Not a port divergence: the reference has the identical ordering, but there `ArrayList.get(-1)`
+ * throws `IndexOutOfBoundsException` and the render dies instead of emitting `NaN`. Both destroy
+ * the performance, which is what `⊥` records.
  */
 export function seedPoisonsSpan(family: string, hasSeed: boolean): boolean {
   return hasSeed && SEED_POISONED_FAMILIES.includes(family);
@@ -434,16 +412,14 @@ function readDistribution(
         `@${name}="${reading.raw}" parses to NaN, which reaches every draw and makes every note in the span vanish from the MIDI export (R24)`,
       );
 
-  // 2. The timing basis is the index's DENOMINATOR, and a bad one THROWS out of the render
-  //    rather than poisoning a value — `requireUsableIndex` rejects NaN and ±∞.
-  //
-  //    Two distinct bad values, and only two. Unusable text gives `NaN`. An explicit `0`
-  //    gives `±∞` (or `NaN` at date 0) and is NOT caught by the renderer's own guard, because
-  //    that guard is inside `if (millisecondsTimingBasis === null)` and only ever repairs an
-  //    ABSENT basis. A NEGATIVE basis is fine and is deliberately not here: the index goes
-  //    negative, `getValue` clamps it to 0, and every note draws `series[0]` — one draw from
-  //    the law, repeated. The marginal is unchanged, so it is the same kind of render artifact
-  //    as the basis's ordinary effect (AD-14iii) and costs nothing.
+  // 2. The timing basis is the index's DENOMINATOR, and a bad one THROWS out of the render rather
+  //    than poisoning a value — `requireUsableIndex` rejects NaN and ±∞. Two bad values, and only
+  //    two: unusable text gives `NaN`, and an explicit `0` gives `±∞` (or `NaN` at date 0) that
+  //    the renderer's own guard does not catch, since that guard sits inside
+  //    `if (millisecondsTimingBasis === null)` and repairs only an ABSENT basis. A NEGATIVE basis
+  //    is deliberately not here: the index goes negative, `getValue` clamps it to 0, every note
+  //    draws `series[0]`, and the marginal is unchanged — the same kind of render artifact as the
+  //    basis's ordinary effect (AD-14iii).
   if (basis.kind === 'unusable')
     return bottomReading(
       'unusable-timing-basis',
@@ -598,8 +574,6 @@ function bottomReading(cause: ImprecisionBottomCause, detail: string): Distribut
 
 /** The `<measurement value="…">` children, in document order — `DistributionData`'s own read. */
 function listValues(element: Element): readonly number[] {
-  // Read `@value` off each child, drop the ones that are absent or unparseable, keep the
-  // rest — `filterMap`, with the two rejections as the two `null` returns.
   return filterMap(element.getChildElements('measurement'), (child) => {
     const raw = readAttributeValue(child, 'value');
     if (raw === null) return null;
@@ -609,14 +583,13 @@ function listValues(element: Element): readonly number[] {
 }
 
 /**
- * §5.9's timing-basis derivation, which is `ImprecisionMap.ts:218-236` (`resolveTimingBasis`) verbatim.
+ * §5.9's timing-basis derivation — `ImprecisionMap.ts:218-236` (`resolveTimingBasis`) verbatim.
  *
- * Derived ONLY in the timing domain and only when the attribute is absent — from
- * `upper − lower` for uniform / gaussian / brownian, `upperClip − lowerClip` for both
- * triangles, and the list's range. Everything else, and any derivation that lands at or below
- * zero, falls back to 100.0. Because an absent limit reads as 0 (the module doc's one rule),
- * a distribution with no limits derives `0 − 0 = 0` and takes the fallback — which is why the
- * fallback catches far more documents than it looks like it should.
+ * Derived ONLY in the timing domain and only when the attribute is absent: `upper − lower` for
+ * uniform / gaussian / brownian, `upperClip − lowerClip` for both triangles, the list's range.
+ * Everything else, and any derivation at or below zero, falls back to 100.0. Since an absent
+ * limit reads as 0 (the module doc's one rule), a distribution with no limits derives `0 − 0 = 0`
+ * and takes the fallback — which catches far more documents than it looks like it should.
  */
 function deriveTimingBasis(
   family: string,
@@ -659,15 +632,15 @@ function deriveTimingBasis(
 /**
  * Whether a difference in `@milliseconds.timingBasis` is inert for this family (AD-14iii).
  *
- * For the four i.i.d. families the basis only decides WHICH pseudorandom value a note gets —
- * a per-render artifact this module refuses to model — and leaves the marginal identical, so
- * the difference is reported as inert and priced at nothing. For the two correlated families
- * it sets the step rate per unit time, which is a property of the process, so it folds into
- * `processParameters` as a numeric row. **No exclusion anywhere**, which is R13's whole point.
+ * For the four i.i.d. families the basis only decides WHICH pseudorandom value a note gets — a
+ * per-render artifact this module refuses to model — and leaves the marginal identical, so the
+ * difference is reported as inert and priced at nothing. For the two correlated families it sets
+ * the step rate per unit time, a property of the process, so it folds into `processParameters`
+ * as a numeric row. No exclusion anywhere, which is R13's point.
  *
- * The measurement behind the second half is the one in {@link CORRELATED_MARGINAL_NOTE}: the
- * correlated marginal genuinely depends on the index, so for those families the basis changes
- * which law a note draws from rather than merely which draw it receives.
+ * The measurement behind the second half is {@link CORRELATED_MARGINAL_NOTE}'s: the correlated
+ * marginal depends on the index, so there the basis changes which law a note draws from rather
+ * than merely which draw it receives.
  */
 export function timingBasisIsInert(family: string | null): boolean {
   return family === null || !CORRELATED_FAMILIES.includes(family);

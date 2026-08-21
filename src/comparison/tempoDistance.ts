@@ -2,24 +2,21 @@
  * The tempo deviation density and its integral — DESIGN.md §5.1 and §5.0's refinement grid.
  *
  * `p_tempo(t) = |g_A(t) − g_B(t)| / jnd_tempo` with `g = ln qbpm`, and
- * `d_tempo = ∫ p_tempo dt` over the comparison window in **quarters**, so the unit is
+ * `d_tempo = ∫ p_tempo dt` over the comparison window in quarters, so the unit is
  * JND·quarters — additive and length-dependent, exactly as §9.3's `distance` field says.
  *
- * **Only the row's `jnd` is consumed here, never `localDistance`.** The curve dimensions
- * integrate their curve; summing the attribute-level metric over `@bpm` and `@transition.to`
- * would double-count and lose the span the difference holds for. `localDistance` is the edit
- * path's and the step rows' (w2a's note, and §4's own "This is the attribute-level metric").
+ * Only the row's `jnd` is consumed here, never `localDistance`: summing the attribute-level
+ * metric over `@bpm` and `@transition.to` would double-count and lose the span the difference
+ * holds for. `localDistance` belongs to the edit path and the step rows (§4).
  *
- * ## The grid
- *
- * §5.0: the refinement grid is the sorted union of both documents' breakpoints for the
- * dimension, deduplicated **exactly in integer lcm-ticks**. That is why everything below is
- * in common ticks and only the measure is converted to quarters — two breakpoints that are
- * the same beat must compare equal, and float quarters would not.
+ * §5.0's refinement grid is the sorted union of both documents' breakpoints for the dimension,
+ * deduplicated exactly in integer lcm-ticks — which is why everything below is in common ticks
+ * and only the measure is converted to quarters: two breakpoints that are the same beat must
+ * compare equal, and float quarters would not.
  *
  * Transition *ends* enter the grid only where a transition is actually performed (AD-8): a
- * trailing instruction's span runs to `MAX_VALUE` and the curve reader has already collapsed
- * it to a constant, so no synthetic breakpoint is inserted at the window end.
+ * trailing instruction's span runs to `MAX_VALUE` and the curve reader has already collapsed it
+ * to a constant, so no synthetic breakpoint is inserted at the window end.
  */
 import { filterMap, pairwise } from '../prelude/index.js';
 import { comparisonRowFor } from './registry.js';
@@ -42,13 +39,10 @@ export interface TempoCell {
   /** JND·quarters contributed by this cell. */
   readonly mass: number;
   /**
-   * `p_tempo(t)` in JND per quarter, at a position in QUARTERS (AD-51.1).
-   *
-   * The integrand this cell's mass was computed from, exposed rather than recomputed: AD-19
-   * refines segment boundaries to the ROOTS of `p_D − τ_D`, and a cell-quantized edge can sit
-   * many bars from the crossing. `mass` remains the authority — the aggregation rescales the
-   * sampler's shape onto it — so a sampler that disagreed with its own integral could move a
-   * boundary but never a reported number.
+   * `p_tempo(t)` in JND per quarter, at a position in QUARTERS (AD-51.1). Exposed rather than
+   * recomputed because AD-19 refines segment boundaries to the ROOTS of `p_D − τ_D` and a
+   * cell-quantized edge can sit many bars from the crossing. `mass` stays the authority: the
+   * aggregation rescales the sampler's shape onto it.
    */
   readonly densityAt: (quarters: number) => number;
 }
@@ -86,19 +80,17 @@ export function refinementGridTicks(
 }
 
 /**
- * The graded-mesh panel boundaries of one transition, **in the transition's own
- * u-coordinate**, intersected with a cell.
+ * The graded-mesh panel boundaries of one transition, in the transition's own u-coordinate,
+ * intersected with a cell.
  *
- * This is the subtlety a later refactor would silently break, so it is stated rather than
- * implied: when the other document's breakpoint splits a transition, the cell covers only
- * part of it, and the mesh must still be graded against the **transition's** `[t0, t1]` — the
- * grading exists to track that transition's boundary layer, which sits at the transition's
- * own `u = 1`, not at the cell's edge. Grading in the cell's coordinate would put the panels
- * in the wrong place and quietly lose the accuracy the mesh was adopted for (AD-28.1).
+ * When the other document's breakpoint splits a transition, the cell covers only part of it, and
+ * the mesh must still be graded against the transition's `[t0, t1]`: the grading tracks that
+ * transition's boundary layer, which sits at the transition's own `u = 1`, not at the cell's
+ * edge. Grading in the cell's coordinate would put the panels in the wrong place and lose the
+ * accuracy the mesh was adopted for (AD-28.1).
  *
- * Exported for §5.1's cumulative-drift secondary (C13), which integrates `60/qbpm` over the
- * same cells: two meshes over one curve would be two accuracies to reason about, and the
- * second one would be nobody's measured figure.
+ * Exported for §5.1's cumulative-drift secondary (C13), which integrates `60/qbpm` over the same
+ * cells: two meshes over one curve would be two accuracies to reason about.
  */
 export function gradedBoundariesIn(
   segment: TempoSegment,
@@ -109,10 +101,9 @@ export function gradedBoundariesIn(
   const span = segment.endTicks - segment.startTicks;
   if (!Number.isFinite(span) || span <= 0) return [];
 
-  // Shared with `integrateGradedPower` (MINOR-3): the mesh AD-28.1 measured and the mesh
-  // shipped here are now the same code, so an edit to one cannot silently diverge.
-  // The two ENDS of the unit mesh are 0 and 1, i.e. the segment's own edges, which are already
-  // grid points — so the interior fractions are what this contributes, and `slice` says so.
+  // Shared with `integrateGradedPower` (MINOR-3), so an edit to one cannot silently diverge.
+  // The two ENDS of the unit mesh are 0 and 1 — the segment's own edges, already grid points —
+  // so only the interior fractions are contributed, which is what the `slice` says.
   return filterMap(gradedPanelBounds(segment.exponent).slice(1, -1), (fraction) => {
     const t = segment.startTicks + fraction * span;
     return t > cellStart && t < cellEnd ? t : null;
@@ -120,18 +111,10 @@ export function gradedBoundariesIn(
 }
 
 /**
- * Where the difference of two power segments can turn — §5.0 rule 2's `u*`, mapped from the
- * shared `u` of whichever segment the cell sits in onto the tick axis.
- *
- * Only meaningful when both sides are transitions over the *same* span; when they are not,
- * their breakpoints are already grid points and each cell sees at most one transition
- * developing against a constant, where the difference is monotone and needs no split.
- */
-/**
  * The two power segments in a canonical order — AD-33.2's symmetry repair.
  *
- * Sorted by `(exponent, Δqbpm)`, smaller first. Both keys are needed: two segments can share
- * an exponent and differ only in their span, and a total order is what makes the downstream
+ * Sorted by `(exponent, Δqbpm)`, smaller first. Both keys are needed: two segments can share an
+ * exponent and differ only in their span, and a total order is what makes the downstream
  * `Math.pow` call independent of which document was passed as `a`.
  */
 function orderPowerSegments(
@@ -144,6 +127,14 @@ function orderPowerSegments(
   return deltaA <= deltaB ? [a, b] : [b, a];
 }
 
+/**
+ * Where the difference of two power segments can turn — §5.0 rule 2's `u*`, mapped from the
+ * shared `u` of whichever segment the cell sits in onto the tick axis.
+ *
+ * Only meaningful when both sides are transitions over the *same* span; when they are not,
+ * their breakpoints are already grid points and each cell sees at most one transition
+ * developing against a constant, where the difference is monotone and needs no split.
+ */
 function criticalPointTicks(
   a: TempoSegment,
   b: TempoSegment,
@@ -155,14 +146,14 @@ function criticalPointTicks(
   const span = a.endTicks - a.startTicks;
   if (!Number.isFinite(span) || span <= 0) return [];
 
-  // CANONICAL ORDER (AD-33.2). Passing the segments in document order breaks R2's
-  // bit-exact symmetry: swapping the documents computes (p·Δ_a/(q·Δ_b))^{1/(q−p)} instead of
-  // (q·Δ_b/(p·Δ_a))^{1/(p−q)}, which are algebraically equal and NOT equal in IEEE754 —
+  // CANONICAL ORDER (AD-33.2). Passing the segments in document order breaks R2's bit-exact
+  // symmetry: swapping the documents computes (p·Δ_a/(q·Δ_b))^{1/(q−p)} instead of
+  // (q·Δ_b/(p·Δ_a))^{1/(p−q)}, algebraically equal and NOT equal in IEEE754 —
   // separately-rounded reciprocals, and Math.pow is not reciprocal-symmetric. A 400 000-set
   // sweep found 11.7 % of non-null results differing by one ulp, which moves the split point,
-  // which moves the GL-10 abscissae, which changes the reported bits. Ordering by
-  // (exponent, Δqbpm) smaller-first makes the call independent of which document is `a`;
-  // the same sweep then gives 0 asymmetric results.
+  // hence the GL-10 abscissae, hence the reported bits. Ordering by (exponent, Δqbpm)
+  // smaller-first makes the call independent of which document is `a`; the same sweep then
+  // gives 0 asymmetric results.
   const [first, second] = orderPowerSegments(a, b);
   const u = powerCriticalPoint(
     first.qbpm1 - first.qbpm0,
@@ -178,14 +169,14 @@ function criticalPointTicks(
 /**
  * `d_tempo` over the window, cell by cell.
  *
- * The per-cell integral is taken on the tick axis and divided by `ticksPerQuarter` once, at
- * the end of each cell, rather than converting the abscissa: `∫|f| dt_quarters =
- * (∫|f| dt_ticks) / ticksPerQuarter` exactly, and doing it this way keeps every abscissa an
- * integer tick so the grid's exactness survives into the quadrature.
+ * The per-cell integral is taken on the tick axis and divided by `ticksPerQuarter` once at the
+ * end of each cell rather than by converting the abscissa: `∫|f| dt_quarters =
+ * (∫|f| dt_ticks) / ticksPerQuarter` exactly, and this keeps every abscissa an integer tick so
+ * the grid's exactness survives into the quadrature.
  *
- * Cells are summed with compensation in ascending date order (R2), so the total is
- * reproducible and mirrors bit-exactly under swapping the documents — `|g_A − g_B|` is
- * symmetric pointwise, and the grid is a sorted union, which is symmetric too.
+ * Cells are summed with compensation in ascending date order (R2), so the total mirrors
+ * bit-exactly under swapping the documents — `|g_A − g_B|` is symmetric pointwise and the grid
+ * is a sorted union.
  */
 export function tempoDistance(
   a: TempoCurve,

@@ -1,28 +1,28 @@
 /**
  * Tick-grid normalization: two documents, two `@pulsesPerQuarter`, one common grid.
  *
- * DESIGN.md §5.0 ("Timeline"): dates from both documents are rescaled to
- * `lcm(ppq_A, ppq_B)` with **integer** factors, which keeps the rescaling exact in IEEE754,
- * and are then reported in quarters. This matters for the campaign's own fixtures, which
- * disagree: `telemann-grave` is 720 and `vulpius-die-helle-sonn` is 480, so a cross-document
- * comparison of the two runs on a 1440-tick grid with factors 2 and 3.
+ * DESIGN.md §5.0 ("Timeline"): dates from both documents are rescaled to `lcm(ppq_A, ppq_B)`
+ * with integer factors, which keeps the rescaling exact in IEEE754, and are then reported in
+ * quarters. The campaign's own fixtures disagree — `telemann-grave` is 720 and
+ * `vulpius-die-helle-sonn` is 480 — so a cross-document comparison runs on a 1440-tick grid with
+ * factors 2 and 3.
  *
- * Nothing here reads a rescaled value back into a document. The factors exist so that the
- * refinement grid of §5.0 can deduplicate breakpoints "exactly in integer lcm-ticks"; a
- * float-scaled date would make two breakpoints that are the same beat fail to compare equal.
+ * Nothing here reads a rescaled value back into a document. The factors exist so §5.0's
+ * refinement grid can deduplicate breakpoints "exactly in integer lcm-ticks"; a float-scaled
+ * date would make two breakpoints that are the same beat fail to compare equal.
  *
- * **`ppqSensitive` is not decided here.** §5.0 rescales a registry row's *value* by the same
- * factor only when the row is tick-valued; `*Ms` attributes never rescale. This module
- * supplies the factor and says nothing about which values earn it — that is the registry's
- * question, and the evaluators ask it.
+ * `ppqSensitive` is not decided here. §5.0 rescales a registry row's *value* by the same factor
+ * only when the row is tick-valued; `*Ms` attributes never rescale. This module supplies the
+ * factor and says nothing about which values earn it — that is the registry's question, and
+ * the evaluators ask it.
  */
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
 
 /**
- * MPM's documented default, and the value `Performance` assumes when a document declares
- * none (`Performance.ts:134`, written into the document at `:196-200` — which is one of the
- * parse-time mutations this module exists to avoid provoking).
+ * MPM's documented default, and the value `Performance` assumes when a document declares none
+ * (`Performance.ts:134`, written back into the document at `:196-200` — one of the parse-time
+ * mutations this module exists to avoid provoking).
  */
 export const DEFAULT_PPQ = 720;
 
@@ -37,10 +37,9 @@ export interface PpqReading {
   /**
    * The raw attribute text when it was present but unusable, else null.
    *
-   * Kept separate from `declared` deliberately: a document that writes
-   * `pulsesPerQuarter="lots"` did declare one, so reporting it as "no declaration" would be
-   * false, but the value cannot be used and the default stands in. See
-   * {@link normalizePpq}'s note on why this is surfaced rather than thrown.
+   * Separate from `declared`: a document writing `pulsesPerQuarter="lots"` did declare one, so
+   * reporting "no declaration" would be false, but the value cannot be used and the default
+   * stands in.
    */
   readonly unusableDeclaration: string | null;
 }
@@ -95,12 +94,10 @@ export interface PpqNormalization {
 /**
  * The common tick grid for a pair.
  *
- * The two readings are already resolved (a missing declaration has become
- * {@link DEFAULT_PPQ}), so the lcm is always well defined and the factors are always
- * integers. Equal grids give `factorA === factorB === 1`, which is the overwhelmingly common
- * case in the corpus — 279 of the 283 `pulsesPerQuarter` occurrences surveyed are 720 — and
- * the code path is deliberately not special-cased, because a factor of 1 costs nothing and
- * a branch would be one more thing to get wrong.
+ * The two readings are already resolved (a missing declaration has become {@link DEFAULT_PPQ}),
+ * so the lcm is always well defined and the factors are always integers. Equal grids give
+ * `factorA === factorB === 1`, the overwhelmingly common case in the corpus — 279 of the 283
+ * `pulsesPerQuarter` occurrences surveyed are 720 — and are not special-cased.
  */
 export function normalizePpq(a: PpqReading, b: PpqReading): PpqNormalization {
   const lcm = (a.value / greatestCommonDivisor(a.value, b.value)) * b.value;

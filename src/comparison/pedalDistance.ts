@@ -2,28 +2,23 @@
  * The pedal deviation density and its integral — DESIGN.md §5.8.
  *
  * `p_pedal(t) = min( |position_A(t) − position_B(t)| / jnd_pedal , 2·δ_row )`, integrated over
- * the window in quarters, so the unit is JND·quarters as everywhere else. The space is a
- * **gain on [0,1]**, not a logit (§5.8): 0 and 1 are the most common authored values and a
- * logit sends them to ±∞ for a quantity whose musical meaning — pedal depth as a fraction of
- * full travel — is already linear.
+ * the window in quarters, so the unit is JND·quarters as everywhere else. The space is a gain
+ * on [0,1], not a logit (§5.8): 0 and 1 are the most common authored values and a logit sends
+ * them to ±∞ for a quantity whose musical meaning — pedal depth as a fraction of full travel —
+ * is already linear.
  *
- * ## Why this density is capped where tempo's and dynamics' are not
- *
- * Tempo and dynamics integrate `|g_A − g_B|/jnd` uncapped and are metric doing so, because
- * neither can produce `⊥`. This dimension can: a non-monotone date component has no
- * `date ↦ position` function at all (§5.8/§4). Once `⊥` is reachable, §4's price for it —
- * `δ_row` from every value — forces the value-value case to be capped at `2·δ_row` as well, or
- * a `⊥` document as middle term breaks the triangle inequality outright. So the pointwise
- * density goes through §4's cap and {@link integrateCappedAbsolute} resolves the corner it
- * introduces, exactly as `integrateAbsolute` resolves the corner at a root.
+ * The density is capped where tempo's and dynamics' are not, because this dimension can produce
+ * `⊥`: a non-monotone date component has no `date ↦ position` function at all (§5.8/§4). See
+ * {@link integrateCappedAbsolute} for why a reachable `⊥` forces the value-value case through
+ * §4's cap as well.
  *
  * ## What is integrated is the ideal Bézier (§5.0 rule 3)
  *
  * `positionAt` inverts the x-component to machine precision rather than to `tForDate`'s
- * one-tick tolerance, for the reason §5.3's module note gives at length. Cells where BOTH
- * sides are live transitions are subdivided into {@link BEZIER_PAIR_SUBDIVISIONS} pieces, the
- * constant AD-31 fixed after measuring AD-30's 4 insufficient: the measurement was made on the
- * dynamics family, and it transfers because the two families are literally the same machinery —
+ * one-tick tolerance, for the reason §5.3's module note gives. Cells where BOTH sides are live
+ * transitions are subdivided into {@link BEZIER_PAIR_SUBDIVISIONS} pieces, the constant AD-31
+ * fixed after measuring AD-30's 4 insufficient. That measurement was made on the dynamics
+ * family and transfers because the two families are the same machinery —
  * `innerControlPointsXPositions` and the same smoothstep value fraction, differing only in
  * their defaults and their output range.
  */
@@ -45,13 +40,10 @@ export interface PedalCell {
   /** True where §4's cap bound this cell — a `⊥` span, or a difference past `2·δ_row`. */
   readonly capped: boolean;
   /**
-   * `p_pedal(t)` in JND per quarter, at a position in QUARTERS (AD-51.1).
-   *
-   * The integrand this cell's mass was computed from, exposed rather than recomputed: AD-19
-   * refines segment boundaries to the ROOTS of `p_D − τ_D`, and a cell-quantized edge can sit
-   * many bars from the crossing. `mass` remains the authority — the aggregation rescales the
-   * sampler's shape onto it — so a sampler that disagreed with its own integral could move a
-   * boundary but never a reported number.
+   * `p_pedal(t)` in JND per quarter, at a position in QUARTERS (AD-51.1). Exposed rather than
+   * recomputed because AD-19 refines segment boundaries to the ROOTS of `p_D − τ_D` and a
+   * cell-quantized edge can sit many bars from the crossing. `mass` stays the authority: the
+   * aggregation rescales the sampler's shape onto it.
    */
   readonly densityAt: (quarters: number) => number;
 }
@@ -69,7 +61,7 @@ export interface PedalDistance {
   readonly jnd: number;
   readonly capped: boolean;
   /**
-   * Controller mismatches, reported and **never folded into the distance** (§3, §5.8).
+   * Controller mismatches, reported and never folded into the distance (§3, §5.8).
    *
    * Two documents that pedal identically but address `sustain` against `soft` have distance 0
    * on the position curve and drive two different physical mechanisms — the same shape of
@@ -203,18 +195,17 @@ export function pedalDistance(
 }
 
 /**
- * The pedal curve as a `SampledCurve` for §1.2's decomposition, or **null** where the window
+ * The pedal curve as a `SampledCurve` for §1.2's decomposition, or null where the window
  * carries a `⊥` span.
  *
  * Null rather than a substituted number, because the decomposition takes MOMENTS: a mean and a
  * variance over the window. `⊥` has no value to contribute to either, and any stand-in — 0, the
- * neighbouring value, `δ_row` — would be a number the reader would then interpret as a pedal
- * position. §1.2's product is defined on curves; a window with a hole in it does not have one,
- * and saying so is the honest answer.
+ * neighbouring value, `δ_row` — would be a number the reader would interpret as a pedal
+ * position. §1.2's product is defined on curves, and a window with a hole in it has none.
  *
- * `T` for this dimension is the **identity** (the space is a gain), so the decomposition's
- * `level` and `gain` come out in fractions of full travel and need no unit conversion. That is
- * not true of tempo or dynamics, whose `T` is a logarithm and whose moments are in nepers.
+ * `T` for this dimension is the identity (the space is a gain), so the decomposition's `level`
+ * and `gain` come out in fractions of full travel and need no unit conversion. That is not true
+ * of tempo or dynamics, whose `T` is a logarithm and whose moments are in nepers.
  */
 export function pedalSampler(
   curve: PedalCurve,

@@ -6,14 +6,14 @@
  * > `end` is, in precedence order: the MSM score end (`windowRule: 'msm'`); an explicit
  * > `options.window` (`'explicit'`); the corpus-shared window (`'corpus'`); otherwise the
  * > max over both documents of the last dated instruction (`'pair-derived'`). The first
- * > three are **piece-derived** and carry `metricGuarantee: 'unconditional'`; the fourth
+ * > three are piece-derived and carry `metricGuarantee: 'unconditional'`; the fourth
  * > carries `'window-restricted'` and the documented prohibition on assembling such numbers
  * > into a matrix (R3).
  *
- * The fourth is not metric and R3 shows why with a three-document counterexample: for
- * `A = {60@0}`, `B = {60@0, 120@100}`, `C = {60@0, 60@200}` the three pairwise windows
- * differ and the triangle inequality reads `100·ln2 ≤ 0`. That is why the stamp exists and
- * why it has to travel with the number rather than living in prose.
+ * The fourth is not metric, and R3 shows why with a three-document counterexample: for
+ * `A = {60@0}`, `B = {60@0, 120@100}`, `C = {60@0, 60@200}` the three pairwise windows differ
+ * and the triangle inequality reads `100·ln2 ≤ 0`. Hence the stamp, and hence its travelling
+ * with the number rather than living in prose.
  *
  * `start` is 0 unless the caller supplies one, in every rule.
  */
@@ -33,11 +33,10 @@ export interface ComparisonWindow {
 }
 
 /**
- * Everything the precedence chain can consult, all optional but the pair-derived floor.
- *
- * The last-date figures are **in quarters on the common grid**, already normalized by the
- * caller — the window is a piece-level quantity and must not depend on which document
- * happened to have the finer tick grid.
+ * Everything the precedence chain can consult, all optional but the pair-derived floor. The
+ * last-date figures are in quarters on the common grid, already normalized by the caller: the
+ * window is a piece-level quantity and must not depend on which document happened to have the
+ * finer tick grid.
  */
 export interface WindowInputs {
   /** The MSM score end, when an MSM was supplied and could answer. */
@@ -58,12 +57,11 @@ function guaranteeOf(rule: WindowRule): MetricGuarantee {
 /**
  * §5.0's precedence chain.
  *
- * **An explicit window outranks the MSM** (AD-27.1, which reordered §5.0's list). W2b
- * implemented the list literally, MSM first; the conductor reversed it on report, because an
- * explicit caller choice winning is what every other option in this codebase does and a
- * silently ignored `window` is the worse surprise. When an MSM is *also* present and its end
- * differs, the facade records the score end as a note rather than dropping it — the value is
- * still information, it just does not decide the window.
+ * An explicit window outranks the MSM (AD-27.1, which reordered §5.0's list): an explicit
+ * caller choice winning is what every other option in this codebase does, and a silently
+ * ignored `window` is the worse surprise. When an MSM is *also* present and its end differs,
+ * the facade records the score end as a note rather than dropping it — the value is still
+ * information, it just does not decide the window.
  *
  * A non-finite or non-positive candidate is skipped rather than propagated: an end that is
  * not a real number would make every integral `NaN`, and the chain has a well-defined floor

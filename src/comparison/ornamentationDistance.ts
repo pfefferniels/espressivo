@@ -1,13 +1,12 @@
 /**
- * The ornamentation distance — DESIGN.md §5.6, and the event aligner's **second consumer**.
+ * The ornamentation distance — DESIGN.md §5.6, and the event aligner's second consumer.
  *
- * §5.6 makes the alignment the semantic distance, so this module's whole job is to supply the
- * two costs `eventAlignment` asks for and hand its optimum back. That the module can do so
- * without changing the aligner's interface is the point AD-37.6 built it for: articulation
- * anchors carry a composed affine modifier and ornaments carry a resolved gradient and frame,
- * and the aligner never learns the difference.
+ * §5.6 makes the alignment the semantic distance, so this module's job is to supply the two
+ * costs `eventAlignment` asks for and hand its optimum back, without changing the aligner's
+ * interface (AD-37.6): articulation anchors carry a composed affine modifier and ornaments carry
+ * a resolved gradient and frame, and the aligner never learns the difference.
  *
- * Every value priced here is a **resolved performed effect** (AD-40.2): the gradient arrives as
+ * Every value priced here is a resolved performed effect (AD-40.2): the gradient arrives as
  * `(from·scale, to·scale)` from `ornamentAtoms`, so `@scale` is never priced on its own and two
  * encodings of one performed ramp are distance 0.
  *
@@ -16,22 +15,21 @@
  * An ornament whose def carries no `<dynamicsGradient>` performs exactly what one with
  * `transition.from="0" transition.to="0"` performs, and one with no `<temporalSpread>` exactly
  * what `frame.start="0" frameLength="0"` performs — both measured through `Performance.perform`,
- * which is the test AD-43.2ii sets. A neutral parameterization reproduces absence, so absence
- * has a neutral and prices as a deviation from it rather than as `⊥`. That matters twice over:
- * `⊥` is reserved for AD-2's narrow incomparable list, and a flat `⊥` for every dropped ornament
- * makes the alignment blind to what the dropped ornament actually performs — every drop would
- * cost the same constant.
+ * AD-43.2ii's test. A neutral parameterization reproduces absence, so absence prices as a
+ * deviation from that neutral rather than as `⊥`: `⊥` is reserved for AD-2's narrow incomparable
+ * list, and a flat `⊥` per dropped ornament would cost the same constant whatever the ornament
+ * performs.
  *
- * The one genuinely incomparable case survives: two frames in different `@time.unit` domains are
- * not a large difference, they are not comparable at all, and those rows read `⊥` (AD-43.2ii
- * keeps this explicitly). So does a frame or gradient the renderer performs as NaN, which erases
- * the note — R24's condition, priced at `δ_row` since AD-1.
+ * The genuinely incomparable case survives: two frames in different `@time.unit` domains are not
+ * a large difference but not comparable at all, and those rows read `⊥` (AD-43.2ii). So does a
+ * frame or gradient the renderer performs as NaN, which erases the note — R24's condition,
+ * priced at `δ_row` since AD-1.
  *
  * ## Unmatched events price per row against neutral (AD-42.3)
  *
- * `gap(a) ≤ sub(a, b) + gap(b)` is the T-space triangle inequality anchored at neutral, which is
- * the construction that makes the alignment a metric. It holds because every gap cost here is
- * the same row-wise functional evaluated against the neutral ornament, and not a constant.
+ * `gap(a) ≤ sub(a, b) + gap(b)` is the T-space triangle inequality anchored at neutral, the
+ * construction that makes the alignment a metric. It holds because every gap cost here is the
+ * same row-wise functional evaluated against the neutral ornament, not a constant.
  */
 import { filterMap, groupBy, head, isNonEmpty } from '../prelude/index.js';
 
@@ -86,10 +84,9 @@ export interface OrnamentationDistance {
   /**
    * The optimum placed on the timeline (AD-51.2) — §5.0's atoms, in JND, before `κ`.
    *
-   * Every ornament anchor carries a real date (the window filter above drops the ones outside
-   * it), so unlike §5.5's id-anchored articulations none of these is ever an admission: the
-   * `datePositionKnown` flag on each is always true here, and it is carried anyway so that the
-   * aggregation reads one shape from both event dimensions.
+   * Every ornament anchor carries a real date (the window filter drops the ones outside it), so
+   * unlike §5.5's id-anchored articulations `datePositionKnown` is always true here. It is
+   * carried anyway so the aggregation reads one shape from both event dimensions.
    */
   readonly atoms: readonly EventAtomMass[];
 }
@@ -237,16 +234,15 @@ export function ornamentDistance(
  * The neutral counterpart of an ornament: what "no ornament here" performs.
  *
  * It adopts the atom's own frame DOMAIN, because a millisecond frame's deviation from no frame
- * is its own magnitude in milliseconds and not an incomparability — substituting the tick
- * default would price every dropped millisecond frame at `δ_row` and lose exactly the
- * content-dependence AD-42.3 restored.
+ * is its own magnitude in milliseconds and not an incomparability; substituting the tick default
+ * would price every dropped millisecond frame at `δ_row` and lose the content-dependence AD-42.3
+ * restored.
  *
- * It also KEEPS the atom's `@note.order`, which is not an oversight. That row has no performed
- * effect of its own: it orders the pool the ramp runs over, exactly as `@loop` shapes the curve
- * it opens (§4's own argument for that row), so an ornament with a neutral gradient and a
- * neutral frame performs nothing whatever its ordering says. Zeroing it here would charge a
- * dropped ornament one JND for having been ascending, on top of the ramp whose magnitude is
- * already priced — and would leave a gradient composed away under AD-44.1 paying for an
+ * It also KEEPS the atom's `@note.order`, deliberately. That row has no performed effect of its
+ * own — it orders the pool the ramp runs over, as `@loop` shapes the curve it opens — so an
+ * ornament with a neutral gradient and a neutral frame performs nothing whatever its ordering
+ * says. Zeroing it would charge a dropped ornament one JND for having been ascending on top of
+ * the ramp already priced, and leave a gradient composed away under AD-44.1 paying for an
  * ordering whose whole effect is inside the composite.
  */
 function neutralCounterpart(atom: OrnamentAtom): OrnamentAtom {
@@ -287,22 +283,6 @@ function poolKey(atom: OrnamentAtom, index: number): string {
 }
 
 /**
- * AD-44.1 — stacked gradients COMPOSE per anchor, and the composition is an endpoint sum.
- *
- * `setOrnamentDynamicsAtt` ADDS to the marker a previous ornament left, so two ramps over one
- * pool perform their sum, and a sum of ramps over a shared index is the ramp of the summed
- * endpoints. Measured: `(-20,20)` stacked with `(-10,30)` performs 70/110/150, identical to a
- * single `(-30,50)`. Direction is part of the composition and not a separate case — a
- * `descending pitch` ornament ramps over the same pool backwards, so it contributes SWAPPED
- * endpoints. Measured: ascending `(-20,20)` stacked with descending `(-10,30)` performs a flat
- * 110/110/110, which is exactly the single gradient `(10,10)`.
- *
- * Spreads stay INDIVIDUAL events (AD-44.2), so the composed gradient is carried by the group's
- * first atom and the others keep their frames under a neutral gradient. An ornament that carried
- * only a gradient therefore collapses away for free, which is what makes the two encodings of
- * one performed ramp compare equal.
- */
-/**
  * AD-45.2 — stacked frames compose too, but ONLY when `@intensity` matches.
  *
  * `TemporalSpread.apply` writes slot `i` of `n` at `(i/(n−1))^intensity·L + s` and ADDS it to any
@@ -310,7 +290,7 @@ function poolKey(atom: OrnamentAtom, index: number): string {
  * (s₁+s₂)` — another frame of the same shape. Measured: `(-22,44)` stacked with `(-100,200)`
  * performs onsets −122/0/122, exactly the single frame `(-122,244)`. With different exponents no
  * single frame reproduces the sum — measured −22/45/382 for `(-22,44)` against
- * `(0,360, intensity 3)` — and those stay individual events with the documented limitation.
+ * `(0,360, intensity 3)` — so those stay individual events.
  *
  * @returns the composed frame, or null where the group does not compose and each member keeps
  *   its own.
@@ -319,10 +299,9 @@ function composedSpread(
   spreads: readonly Valued<PerformedSpread>[],
 ): Valued<PerformedSpread> | null {
   if (spreads.some(isBottom)) return bottom('renderer-error');
-  // One pass where there were two, and the `isBottom` test is the NARROWING rather than a
-  // filter: the line above has already returned if any spread is `⊥`, so this drops nothing.
-  // It is here because `some` narrows the predicate, not the array, and there is no way to
-  // tell the type system what that early return established.
+  // The `isBottom` test NARROWS rather than filters: the line above has already returned if any
+  // spread is `⊥`, so this drops nothing. `some` narrows the predicate, not the array, and there
+  // is no way to tell the type system what that early return established.
   const frames = filterMap(spreads, (spread) => (isBottom(spread) ? null : spread.value));
   if (!isNonEmpty(frames)) return null;
   const first = head(frames);
@@ -337,16 +316,26 @@ function composedSpread(
   });
 }
 
+/**
+ * AD-44.1 — stacked gradients COMPOSE per anchor, and the composition is an endpoint sum.
+ *
+ * `setOrnamentDynamicsAtt` ADDS to the marker a previous ornament left, so two ramps over one
+ * pool perform their sum, and a sum of ramps over a shared index is the ramp of the summed
+ * endpoints. Measured: `(-20,20)` stacked with `(-10,30)` performs 70/110/150, identical to a
+ * single `(-30,50)`. Direction is part of the composition — a `descending pitch` ornament ramps
+ * over the same pool backwards and contributes SWAPPED endpoints. Measured: ascending
+ * `(-20,20)` with descending `(-10,30)` performs a flat 110/110/110, the single gradient
+ * `(10,10)`.
+ *
+ * Spreads stay INDIVIDUAL events (AD-44.2), so the composed gradient is carried by the group's
+ * first atom and the others keep their frames under a neutral gradient. An ornament carrying
+ * only a gradient therefore collapses away for free, which is what makes two encodings of one
+ * performed ramp compare equal.
+ */
 export function composeAnchors(atoms: readonly OrnamentAtom[]): readonly OrnamentAtom[] {
-  // `groups.set(key, [...(groups.get(key) ?? []), index])` REBUILT the whole bucket on every
-  // append, so a pool of m members cost O(m²) copies to assemble — and it was written by hand
-  // because `groupBy`'s key function takes only the element, where `poolKey` needs the index.
-  //
-  // It does not need a new signature: `groupBy` takes an `Iterable<A>` and `atoms.entries()` is
-  // one, so the tuple carries both. That is better than an index parameter would have been here,
-  // because the body wants the index too — to write back into `composed` — and now has it
-  // without a second lookup. Five checked reads into `atoms` and `members` go with it, and the
-  // head needs no guard at all: `groupBy` buckets are `NonEmptyArray`, so `head` is total.
+  // Grouped over `atoms.entries()` because `poolKey` needs the index and `groupBy`'s key function
+  // takes only the element; the tuple carries both, and the body wants the index too, to write
+  // back into `composed`. `groupBy` buckets are `NonEmptyArray`, so `head` below is total.
   const groups = groupBy(atoms.entries(), ([index, atom]) => poolKey(atom, index));
 
   const composed = [...atoms];
@@ -391,13 +380,8 @@ export function composeAnchors(atoms: readonly OrnamentAtom[]): readonly Ornamen
 }
 
 /**
- * What an out-of-range read into one of this module's atom lists is called.
- *
- * `ATOMS` and `POOL_MEMBERS` used to sit here too, naming the whole-list and pool-member reads
- * that {@link composeAnchors} made. Grouping over `atoms.entries()` carries each atom with its
- * index, so those five reads have no index left to be out of range — and the two names went with
- * them rather than being kept for a caller that no longer exists. The a/b pair below is a
- * different shape: those indices come from the assignment solver, not from an enumeration.
+ * What an out-of-range read into one of this module's atom lists is called. These indices come
+ * from the assignment solver rather than from an enumeration, which is why they need a name.
  */
 const ATOMS_A = 'the a-side ornament atoms';
 const ATOMS_B = 'the b-side ornament atoms';
@@ -432,9 +416,9 @@ function findingsFor(x: OrnamentAtom, y: OrnamentAtom): OrnamentFinding[] {
 /**
  * `d_ornamentation` over the window — the alignment's own optimum (§5.6/AD-7).
  *
- * The aligner is used **unchanged** from its articulation debut: the same `alignEvents`, the
- * same `AlignableEvent` shape (`dateTicks` plus an `id` pin), the same three-field cost. That is
- * the interface question AD-37.6 posed, answered by a second consumer rather than by assertion.
+ * The aligner is used unchanged from its articulation debut: the same `alignEvents`, the same
+ * `AlignableEvent` shape (`dateTicks` plus an `id` pin), the same three-field cost — AD-37.6's
+ * interface question, answered by a second consumer.
  */
 export function ornamentationDistance(
   a: OrnamentAtoms,
@@ -501,9 +485,9 @@ function cappedAnchorsOf(
         flag,
       );
     else {
-      // One of the two is non-null — a charge with neither side is not a charge — and reading
-      // the other side through `elementAt` is what retires the `as number` that used to assert
-      // it. `null` on both would now be a named `RangeError` rather than a silent `undefined`.
+      // One of the two is non-null — a charge with neither side is not a charge. Reading the
+      // other through `elementAt` makes `null` on both a named `RangeError` rather than a silent
+      // `undefined`.
       const only =
         charge.a === null ? elementAt(b, charge.b ?? -1, ATOMS_B) : elementAt(a, charge.a, ATOMS_A);
       deviationFromNeutral(only, ticksPerQuarter, jnd, flag);

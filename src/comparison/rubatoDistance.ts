@@ -1,15 +1,14 @@
 /**
  * The rubato deviation density and its integral — DESIGN.md §5.2.
  *
- * `p_rubato(t) = |δ_A(t) − δ_B(t)| / jnd_rubato`, with `δ` the displacement in **quarters**
- * and the JND likewise in quarters (1/16 by default). Integrated over the window, the unit
- * is JND·quarters, as everywhere else.
+ * `p_rubato(t) = |δ_A(t) − δ_B(t)| / jnd_rubato`, with `δ` the displacement in quarters and the
+ * JND likewise in quarters (1/16 by default). Integrated over the window, the unit is
+ * JND·quarters, as everywhere else.
  *
  * The grid carries every frame boundary the curve reader admitted, capped per §5.2/AD-10.
- * Those boundaries matter more here than in the other dimensions: `δ` has a **saw-tooth
- * discontinuity** at each one — it climbs across the frame and drops back at the wrap — so a
- * cell that straddled a boundary would have GL-10 integrating across a jump. Putting every
- * boundary in the grid is what keeps each cell smooth.
+ * Those boundaries matter more here than in the other dimensions: `δ` has a saw-tooth
+ * discontinuity at each one — it climbs across the frame and drops back at the wrap — so a cell
+ * straddling a boundary would have GL-10 integrating across a jump.
  */
 import { pairwise } from '../prelude/index.js';
 import { comparisonRowFor, localDistance } from './registry.js';
@@ -28,10 +27,8 @@ import { IDENTITY_CANONICAL_PAIR, canonicalValue, type CanonicalPair } from './d
 /**
  * Subdivision count for rubato cells — §5.0 rule 2c (AD-33.3b as refined by AD-34.1).
  *
- * 16, matching AD-31's Bézier constant. It was specified as a *fallback* for cells whose
- * frames do not align, on a table measured before the half-open probe existed; RG-3 re-measured
- * with the probe in place and found the ordering inverted, so it is now emitted **alongside**
- * the structural split rather than instead of it. See the call site for the numbers.
+ * 16, matching AD-31's Bézier constant. Emitted alongside the structural split rather than as
+ * a fallback for cells whose frames do not align; see the call site for RG-3's numbers.
  */
 const RUBATO_FALLBACK_SUBDIVISIONS = 16;
 
@@ -111,13 +108,10 @@ export interface RubatoCell {
   /** True where §4's cap bound this cell — a `⊥` interval, or a difference past `2·δ_row`. */
   readonly capped: boolean;
   /**
-   * `p_rubato(t)` in JND per quarter, at a position in QUARTERS (AD-51.1).
-   *
-   * The integrand this cell's mass was computed from, exposed rather than recomputed: AD-19
-   * refines segment boundaries to the ROOTS of `p_D − τ_D`, and a cell-quantized edge can sit
-   * many bars from the crossing. `mass` remains the authority — the aggregation rescales the
-   * sampler's shape onto it — so a sampler that disagreed with its own integral could move a
-   * boundary but never a reported number.
+   * `p_rubato(t)` in JND per quarter, at a position in QUARTERS (AD-51.1). Exposed rather than
+   * recomputed because AD-19 refines segment boundaries to the ROOTS of `p_D − τ_D` and a
+   * cell-quantized edge can sit many bars from the crossing. `mass` stays the authority: the
+   * aggregation rescales the sampler's shape onto it.
    */
   readonly densityAt: (quarters: number) => number;
 }
@@ -176,11 +170,11 @@ export function rubatoDistance(
   for (const [cellStart, cellEnd] of pairwise(grid)) {
     const lengthQuarters = (cellEnd - cellStart) / ticksPerQuarter;
 
-    // MINOR-4 gave this dimension its first `⊥` route, so AD-36.2's capped integrator is now
-    // FORCED here as it is for accentuation and pedal: an uncapped value-value integral
-    // alongside a `δ`-priced `⊥` breaks the triangle inequality the moment a `⊥` document is
-    // the middle term. The `⊥`-ness is decided at the cell's left edge, which is sound because
-    // the grid carries every poisoned interval's end (A-B1).
+    // MINOR-4 gave this dimension a `⊥` route, so AD-36.2's capped integrator is forced here as
+    // for accentuation and pedal: an uncapped value-value integral alongside a `δ`-priced `⊥`
+    // breaks the triangle inequality the moment a `⊥` document is the middle term. The `⊥`-ness
+    // is decided at the cell's left edge, sound because the grid carries every poisoned
+    // interval's end (A-B1).
     const bottomA = isRubatoBottomAt(a, cellStart);
     const bottomB = isRubatoBottomAt(b, cellStart);
     if (bottomA || bottomB) {
@@ -215,15 +209,12 @@ export function rubatoDistance(
     // §5.0 rule 2c: structural split for frame-aligned cells, fixed subdivision otherwise.
     const segmentA = rubatoSegmentAt(a, cellStart);
     const segmentB = rubatoSegmentAt(b, cellStart);
-    // AD-34.1: emit BOTH sets, not one or the other. RG-3 measured the original preference
-    // ordering — structural first, subdivision only as a fallback — and found it INVERTED
-    // once AD-33.3a's half-open probe landed: u* alone left 4 of 3906 pairs wrong by >0.1 %
-    // (worst 1.400e-3) where K=16 alone left 0 (worst 2.718e-4). Both worst cases are
-    // `intensity = 0.25`, whose x^0.25 has an infinite slope at x = 0 — a boundary layer a
-    // two-panel structural split leaves inside one GL-10 panel and a sixteen-panel mesh
-    // confines. That is the tempo graded mesh's own phenomenon, surfacing in a dimension
-    // nobody had looked for it in. Emitting both keeps rule 2c's structural claim and takes
-    // the documented residual to zero: 0 of 3906, worst 2.718e-4.
+    // AD-34.1: emit BOTH sets, not one or the other. With AD-33.3a's half-open probe in place,
+    // RG-3 measured u* alone leaving 4 of 3906 pairs wrong by >0.1 % (worst 1.400e-3) where
+    // K=16 alone left 0 (worst 2.718e-4). Both worst cases are `intensity = 0.25`, whose x^0.25
+    // has an infinite slope at x = 0 — a boundary layer a two-panel structural split leaves
+    // inside one GL-10 panel and a sixteen-panel mesh confines. Emitting both keeps rule 2c's
+    // structural claim and takes the residual to 0 of 3906, worst 2.718e-4.
     const splitPoints: number[] = [];
     if (segmentA !== null && segmentB !== null) {
       splitPoints.push(...rubatoCriticalPointTicks(segmentA, segmentB, cellStart, cellEnd));

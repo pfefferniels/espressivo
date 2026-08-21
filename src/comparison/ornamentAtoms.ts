@@ -2,92 +2,83 @@
  * Ornament atoms and their RESOLVED PERFORMED EFFECT — DESIGN.md §5.6, as ruled by AD-40,
  * AD-42 and AD-43.
  *
- * The named principle for this wave (AD-40.2, generalizing AD-37.3): **price the resolved
- * performed effect, never the attribute tuple.** `<ornament>@scale` multiplies both endpoints
- * of the `<dynamicsGradient>` before anything is performed, so the compared object is the pair
- * `(from·scale, to·scale)` and `@scale` is not independently priced — two encodings of one
- * performed ramp (`from="-20" scale="1"` against `from="-10" scale="2"`) are the same
- * performance and must compare equal.
+ * AD-40.2, generalizing AD-37.3: price the resolved performed effect, never the attribute tuple.
+ * `<ornament>@scale` multiplies both endpoints of the `<dynamicsGradient>` before anything is
+ * performed, so the compared object is the pair `(from·scale, to·scale)` — two encodings of one
+ * performed ramp (`from="-20" scale="1"` against `from="-10" scale="2"`) must compare equal.
  *
- * Everything below was measured through `Performance.perform`, not read off the map classes.
- * AD-43.1 tightened the standard after a map-level probe produced a false no-op claim: "the
- * renderer determines it" means the PIPELINE, and every fact in this file is pinned by a
- * differential test that performs two documents and compares the notes.
+ * Every fact below was measured through `Performance.perform` rather than read off the map
+ * classes, and is pinned by a differential test that performs two documents and compares the
+ * notes (AD-43.1, after a map-level probe produced a false no-op claim).
  *
  * ## `@scale` defaults to 0 and gates HALF the ornament (AD-40.1)
  *
  * `OrnamentData.ts:121` initialises `scale = 0.0`, and `DynamicsGradient.apply` multiplies both
- * endpoints by it — so an `<ornament>` with no `@scale` performs **no dynamics at all** while
- * its `<temporalSpread>` applies in full. **Contrast §5.4**, where `accentuationPattern@scale`
- * is MANDATORY: absent, the whole instruction is skipped. Same attribute name, two sections,
- * two dispositions.
+ * endpoints by it — so an `<ornament>` with no `@scale` performs no dynamics at all while its
+ * `<temporalSpread>` applies in full. Contrast §5.4, where `accentuationPattern@scale` is
+ * MANDATORY: absent, the whole instruction is skipped. Same attribute name, two dispositions.
  *
  * ## `@transition.to` defaults to `@transition.from`, NOT to 0
  *
  * `DynamicsGradient.ts:25`: `if (att2 === null) this.transitionTo = this.transitionFrom`. A def
  * carrying only `transition.from="-20"` performs a FLAT ramp — measured 80/80/80 on three notes
- * at velocity 100, where a `-20 → 0` reading predicts 80/90/100. This is the common encoding
- * rather than a corner: `generateXML:86` omits `transition.to` whenever it equals
- * `transition.from`, so every round-tripped flat gradient is spelled this way.
+ * at velocity 100, where a `-20 → 0` reading predicts 80/90/100. The common encoding rather than
+ * a corner: `generateXML:86` omits `transition.to` whenever it equals `transition.from`.
  *
  * ## The ramp distributes over the POOL, not over score time (AD-40.3)
  *
  * The pool is the notes at the ornament's own date, or the notes an explicit `@note.order` id
  * list names — measured, an id list reaches notes at OTHER dates and orders the ramp by the
  * list, while the note sharing the ornament's date is left alone unless the list names it. A
- * **single-note pool performs `transition.to`** (`DynamicsGradient.ts:47-49`'s `else if`),
- * measured at 120 from a −20 → +20 gradient on velocity 100.
+ * single-note pool performs `transition.to` (`DynamicsGradient.ts:47-49`'s `else if`), measured
+ * at 120 from a −20 → +20 gradient on velocity 100.
  *
  * {@link OrnamentAtom.poolBound} is therefore an UPPER BOUND and not a size: an id naming no
- * note contributes nothing (measured — a list of one ghost id performs nothing at all), so a
- * list of length L gives a performed pool of size ≤ L. At L = 1 the conclusion survives both
- * worlds — pool 1 performs `transition.to` alone, pool 0 performs nothing — so
- * `@transition.from` is not performed either way and is not priced. At L > 1 and for every
+ * note contributes nothing (measured), so a list of length L gives a performed pool of size ≤ L.
+ * At L = 1 the conclusion survives both worlds — pool 1 performs `transition.to` alone, pool 0
+ * performs nothing — so `@transition.from` is not priced either way. At L > 1 and for every
  * date-pooled ornament the size needs an MSM, and both endpoints are priced, which is the
  * conservative direction.
  *
  * ## An `<ornament>` is v2- or v3-SHAPED, and the shape decides which engine runs
  *
- * `isV3Ornament` fires on a `<note>` pool, on `@noteid`, on the mere PRESENCE of
- * `@repetitions` (any value, the schema default `0` included), or on the v3 `note.order`
- * grammar `[ … ]` / `|: … :|`. A v3-shaped ornament leaves the v2 transformer path entirely for
+ * `isV3Ornament` fires on a `<note>` pool, on `@noteid`, on the mere PRESENCE of `@repetitions`
+ * (any value, the schema default `0` included), or on the v3 `note.order` grammar `[ … ]` /
+ * `|: … :|`. A v3-shaped ornament leaves the v2 transformer path entirely for
  * `ornamentInstantiation`, and one with no `@note.order` at all is SKIPPED — measured, adding
- * `repetitions="0"` to an ornament takes it from 80/100/120 to 100/100/100. An attribute that
- * reads as a no-op deletes the whole effect, so the shape is carried on the atom and a skipped
- * ornament yields no atom at all.
+ * `repetitions="0"` takes an ornament from 80/100/120 to 100/100/100. So the shape is carried on
+ * the atom, and a skipped ornament yields no atom at all.
  *
  * ## The frame: four cells, one of them dead
  *
  * `TemporalSpread` has two incompatible readings and `apply` reads only the v2 fields, so a
- * v3-sourced spread on a v2-shaped ornament leaves them at their `0.0` initialisers and
- * **spreads nothing** — the renderer says so itself ("a v3 temporalSpread carries no v2 frame,
- * so it will spread nothing"). Measured through the pipeline:
+ * v3-sourced spread on a v2-shaped ornament leaves them at their `0.0` initialisers and spreads
+ * nothing — the renderer says so itself ("a v3 temporalSpread carries no v2 frame, so it will
+ * spread nothing"). Measured through the pipeline:
  *
  * | ornament shape | spread source | performed frame                                     |
  * | -------------- | ------------- | --------------------------------------------------- |
  * | v2             | v2            | the v2 numbers — date.perf −22/0/22 for −22.0/44.0   |
- * | v2             | v3            | **NONE** — date.perf 0/0/0 for the same numbers      |
+ * | v2             | v3            | NONE — date.perf 0/0/0 for the same numbers          |
  * | v3             | v2            | the v2 numbers, honoured (slots at 0/90/180/270/360) |
  * | v3             | v3            | the v3 values, `%` resolved against the principal    |
  *
- * The dead cell is modelled as the NEUTRAL frame rather than as a special value, because that
- * is what it performs: a spread of `frame.start=0 frameLength=0` and an absent
- * `<temporalSpread>` were measured to perform identically (AD-43.2ii's own test), and so does
- * this. §5.6's three-unit-case paragraph therefore describes v3-SHAPED ornaments, where `%` is
- * genuinely resolved and genuinely comparable; on a v2-shaped ornament a `%` frame is not a
- * unit question because nothing is performed.
+ * The dead cell is modelled as the NEUTRAL frame rather than as a special value, because that is
+ * what it performs: a spread of `frame.start=0 frameLength=0` and an absent `<temporalSpread>`
+ * were measured to perform identically (AD-43.2ii). §5.6's three-unit-case paragraph therefore
+ * describes v3-SHAPED ornaments; on a v2-shaped one a `%` frame is no unit question at all,
+ * because nothing is performed.
  *
  * ## An unresolvable value is `⊥`, not a skip, where the renderer POISONS
  *
  * AD-42.4 requires a finite guard on every numeric read and routes unusable values to
  * skip-and-report. Measured, the renderer does not skip for two of them: `scale="abc"` makes
- * `ornament.dynamics` NaN and the fold writes **velocity NaN** onto every note in the pool, and
- * a v2 `frameLength="abc"` writes **date.perf NaN** — R24's exact condition, the one AD-1 and
- * AD-33.1 price at `⊥` because the note vanishes from the MIDI export. Those two take `⊥`
- * (`renderer-error`) and the rest take the renderer's own fallback: `parseOrnamentRepetitions`
- * logs and returns 0, and `readV3FrameValue` logs and applies the v3 default. Reported either
- * way; flagged for ratification because it departs from AD-42.4's wording on the two cases
- * where the ruling's route would price a note-destroying document at zero.
+ * `ornament.dynamics` NaN and the fold writes velocity NaN onto every note in the pool, and a v2
+ * `frameLength="abc"` writes date.perf NaN — R24's condition, which AD-1 and AD-33.1 price at
+ * `⊥` because the note vanishes from the MIDI export. Those two take `⊥` (`renderer-error`) and
+ * the rest take the renderer's own fallback: `parseOrnamentRepetitions` logs and returns 0,
+ * `readV3FrameValue` logs and applies the v3 default. A departure from AD-42.4's wording on the
+ * two cases where its route would price a note-destroying document at zero.
  *
  * ## The style is carried, and a failed switch behaves differently per SCOPE
  *
@@ -96,29 +87,20 @@
  * header that assignment never runs and the guarded global lookup fires only while `style` is
  * still null. `Part.parseData:113-118` creates a header for every part and `Dated.addMap:94-97`
  * binds the local slot to it, so part-local maps always take the first branch and maps in
- * `<global>` always take the second. Two measured consequences, both through the pipeline:
+ * `<global>` always take the second — AD-35.4's hazard class in a fifth shape. Two measured
+ * consequences, both reproduced here:
  *
  * - a `<style>` naming a style that does not exist SKIPS every later ornament in a part-local
  *   map and changes nothing in a global one;
- * - in a global map every `<style>` after the first successful one is IGNORED OUTRIGHT, valid
- *   or not — switching S → T leaves T's ornaments performing S.
- *
- * AD-35.4's hazard class in a fifth shape: a failed lookup assigns over the carried value, but
- * only when the local header exists. Both branches are reproduced here.
+ * - in a global map every `<style>` after the first successful one is IGNORED OUTRIGHT, valid or
+ *   not — switching S → T leaves T's ornaments performing S.
  *
  * ## An ornament before the map's first `<style>` is skipped entirely
  *
  * The style is tracked *while walking*, so an ornament with no style in scope cannot resolve
- * its def and performs nothing — §5.4's disposition, and the **opposite of §5.5's**, where an
+ * its def and performs nothing — §5.4's disposition, and the opposite of §5.5's, where an
  * atom's inline modifiers survive an unresolvable name. An ornament naming an unknown def
  * likewise performs nothing.
- *
- * ## Attribution
- *
- * The module's shape, the aligner reuse and the `@scale` resolution are adopted from the
- * predecessor's draft (AD-42.2) and kept. The gradient default, the frame's four cells, the
- * shape gate, the pool bound, the finite guards and the two style-carrying branches replace
- * what that draft and 404fd57 had.
  */
 import { elementAtOrNull } from '../prelude/seq.js';
 import type { Element } from '../xml/XomTypes.js';
@@ -216,10 +198,9 @@ export interface OrnamentAtoms {
 }
 
 /**
- * The v3 value grammar, transliterated from `TemporalValue.ts` because the comparison zone
- * may not import it (§9.7). `tests/comparison/ornamentation.test.ts` differential-tests this
- * against the real `parseTemporalValueLenient` over a shared corpus, which is what licenses
- * the copy — the same discipline §5.4's `accentuationAt` transliteration is held to.
+ * The v3 value grammar, transliterated from `TemporalValue.ts` because the comparison zone may
+ * not import it (§9.7). `tests/comparison/ornamentation.test.ts` differential-tests it against
+ * the real `parseTemporalValueLenient` over a shared corpus, which is what licenses the copy.
  */
 const SUFFIXED = /^(-?[0-9]+(?:\.[0-9]+)?)(ms|%|ticks)$/;
 const UNSUFFIXED = /^-?[0-9]+(?:\.[0-9]+)?$/;
@@ -236,8 +217,8 @@ export function parseFrameValue(
   const suffixed = SUFFIXED.exec(text);
   if (suffixed !== null) {
     // Both groups are mandatory in the pattern, so a match has both — but a capture read is a
-    // `string | undefined` whatever the pattern says. The defaults reach the same answers the
-    // old reads did: `Number('')` is 0, and no key of the suffix table is the empty string.
+    // `string | undefined` whatever the pattern says. The defaults are inert: `Number('')` is 0,
+    // and no key of the suffix table is the empty string.
     const [, digits = '', suffix = ''] = suffixed;
     return { value: Number(digits), domain: DOMAIN_BY_SUFFIX[suffix] ?? null };
   }
@@ -268,7 +249,7 @@ function legacyFallbackDomain(spread: Element): FrameDomain {
     case 'relative':
       return 'relative';
     // Absent, and anything unrecognised, mean ticks. `null` is spelled out so that "the
-    // attribute is missing" reads as a decision rather than as the bottom of a fallthrough.
+    // attribute is missing" reads as a decision rather than the bottom of a fallthrough.
     case null:
     default:
       return 'ticks';
@@ -300,14 +281,12 @@ function classifyNoteOrder(
 /**
  * `isV3Ornament`'s gate, minus the one clause this layer cannot reach.
  *
- * The renderer tests `od.notes.length > 0` on the PARSED pool, and `OrnamentNote.fromXml`
- * drops a `<note>` it cannot use — a pool of only-unusable notes therefore does not fire the
- * gate there while it does here. The comparison zone may not import `OrnamentNote`, so the
- * divergence is stated rather than hidden; it needs a pool whose every note is malformed,
- * which no corpus document has.
+ * The renderer tests `od.notes.length > 0` on the PARSED pool, and `OrnamentNote.fromXml` drops
+ * a `<note>` it cannot use, so a pool of only-unusable notes does not fire the gate there while
+ * it does here. The comparison zone may not import `OrnamentNote`; the divergence needs a pool
+ * whose every note is malformed, which no corpus document has.
  */
 function shapeOf(element: Element, noteOrderKind: NoteOrderKind | null): OrnamentShape {
-  // `size()` is the question being asked; `toArray().length` copied the snapshot to ask it.
   if (element.getChildElements('note').size() > 0) return 'v3';
   if (readAttributeValue(element, 'noteid') !== null) return 'v3';
   if (readAttributeValue(element, 'repetitions') !== null) return 'v3';
@@ -415,9 +394,8 @@ function collapseSpread(
 /**
  * Read one scope's ornaments, resolved to what they perform.
  *
- * @param scope which slot the map lives in. It is not decoration: the style-carrying rule
- *   differs between the two, and a global map ignores every `<style>` after its first
- *   successful one.
+ * @param scope which slot the map lives in — the style-carrying rule differs between the two,
+ *   and a global map ignores every `<style>` after its first successful one.
  */
 export function readOrnamentAtoms(
   view: OrderedMapView | null,
@@ -548,12 +526,12 @@ export function readOrnamentAtoms(
           'R24’s condition, so the gradient reads ⊥ (AD-1/AD-33.1) rather than being skipped.',
       });
 
-    // A pool of exactly one collapses BOTH families, and collapsing them here is what makes
-    // the comparison an encoding-invariant one (AD-40.2). `DynamicsGradient.apply` hands a lone
-    // chord `transitionTo·scale` and never looks at `transitionFrom`, so the performed ramp is
-    // flat at `to`; `TemporalSpread.apply` places a lone chord at `frameStart + frameLength`
-    // outside its loop, so the performed frame is a rigid shift by the far edge and `@intensity`
-    // is inert. Both are pinned against the renderer.
+    // A pool of exactly one collapses BOTH families, which is what makes the comparison
+    // encoding-invariant (AD-40.2). `DynamicsGradient.apply` hands a lone chord
+    // `transitionTo·scale` and never looks at `transitionFrom`, so the performed ramp is flat at
+    // `to`; `TemporalSpread.apply` places a lone chord at `frameStart + frameLength` outside its
+    // loop, so the performed frame is a rigid shift by the far edge and `@intensity` is inert.
+    // Both are pinned against the renderer.
     const single = order?.poolBound === 1;
     const gradient = collapseGradient(gradientOf(def, scale), single);
     const spread = collapseSpread(spreadOf(def, shape), single);

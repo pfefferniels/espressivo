@@ -5,9 +5,7 @@
  * instruction sequences and two functions — `represent`, which maps a STATE (a whole instruction
  * list) to the dimension's density representation `Φ`, and `norm`, which is the weighted `L¹`
  * integral `‖·‖₁` the semantic level already uses — and gets back the argmin over monotone
- * alignments together with the script's two totals. That is `aggregate.ts`'s shape and
- * `eventAlignment.ts`'s: an algorithm over an interface can be gated on its own, and it cannot
- * leave a cross-module change half-written.
+ * alignments together with the script's two totals.
  *
  * ## Pricing is SEQUENTIAL, and the DP cell is what makes that affordable (AD-5, §6.2)
  *
@@ -17,25 +15,23 @@
  *
  *     S(i, j) = b[0..j) ++ a[i..n)
  *
- * — the prefix already converted to B's, the suffix still A's — so `S(0,0) = A`, `S(n,m) = B`,
- * and each of the three moves steps from one such state to another. Every transition price is
- * therefore a function of the cell and the move alone, which is what keeps a state-dependent
- * cost inside an ordinary `O(nm)` recurrence. `Φ` is memoized per cell, so the whole fill costs
- * `(n+1)(m+1)` representations and `~3nm` norms rather than `6nm` representations.
+ * — the prefix already converted to B's, the suffix still A's — so `S(0,0) = A`, `S(n,m) = B`, and
+ * each move steps from one such state to another. Every transition price is therefore a function
+ * of the cell and the move alone, which keeps a state-dependent cost inside an ordinary `O(nm)`
+ * recurrence. `Φ` is memoized per cell: `(n+1)(m+1)` representations and `~3nm` norms.
  *
- * Two theorems follow from the telescoping form and the `L¹` triangle inequality, and both are
- * pinned rather than asserted: `scriptCost ≥ ‖Φ(B) − Φ(A)‖₁ = d_curve`, and therefore
- * `reworking = scriptCost − d_curve ≥ 0`. Revision 1 priced each op against the ORIGINAL A and
- * had neither: §6.2's own counterexample (a legal no-op restatement whose deletion is free
- * against A and real once the substitution has landed) makes `reworking` NEGATIVE under that
- * reading, by a factor of two. It is pinned here as a test rather than quoted as prose.
+ * Two theorems follow from the telescoping form and the `L¹` triangle inequality, both pinned
+ * rather than asserted: `scriptCost ≥ ‖Φ(B) − Φ(A)‖₁ = d_curve`, and therefore
+ * `reworking = scriptCost − d_curve ≥ 0`. Pricing each op against the ORIGINAL A has neither —
+ * §6.2's counterexample, a legal no-op restatement whose deletion is free against A and real
+ * once the substitution has landed, makes `reworking` NEGATIVE by a factor of two.
  *
- * ## Two orders, two totals, and why they are genuinely different numbers (§6.1, §6.3)
+ * ## Two orders, two totals (§6.1, §6.3)
  *
- * The DP walks its path in ALIGNMENT order; §6.1 delivers the script in APPLICATION (date)
- * order, because a reader following along in the score walks it that way. Those are not the
- * same order — a delete at bar 40 can precede an insert at bar 3 along the DP path — and a
- * sequential price depends on the order, so the two totals are two numbers:
+ * The DP walks its path in ALIGNMENT order; §6.1 delivers the script in APPLICATION (date) order,
+ * because a reader following along in the score walks it that way. Those are not the same order —
+ * a delete at bar 40 can precede an insert at bar 3 along the DP path — and a sequential price
+ * depends on the order, so the two totals are two numbers:
  *
  * - `scriptCost` is the DP's own path total, the quantity the recurrence minimized;
  * - `replayedDelta` is what the SAME op set costs applied in the delivered date order (§6.3).
@@ -55,10 +51,6 @@
  * remedy is not a cleverer precedence but computing the script ONCE in a canonical orientation
  * and inverting it ({@link invertSteps}); the precedence keeps its determinism role and
  * mirroring becomes true by construction (AD-21, AD-25.4).
- *
- * `fragment` and `consolidate` (A-Q5) are NOT in this move set. They land after the plain
- * script is green, which is the order the campaign ruled: a presentation move priced under the
- * same semantics is worth having only once the semantics are pinned.
  */
 
 import { filterMap, zipWith } from '../prelude/index.js';
@@ -74,26 +66,24 @@ export interface EditableInstruction {
 /**
  * A dimension's `Φ` and `‖·‖₁`, supplied by the caller.
  *
- * `represent` must be a pure function of the state's CONTENT: the DP memoizes it per cell and
- * the replay calls it again on states the fill already saw, so a representation that depended
- * on call order would make `scriptCost` and `replayedDelta` incomparable.
+ * `represent` must be a pure function of the state's CONTENT: the DP memoizes it per cell and the
+ * replay calls it again on states the fill already saw, so a representation depending on call
+ * order would make `scriptCost` and `replayedDelta` incomparable.
  *
- * `norm` must be a metric on representations — non-negative, symmetric, and satisfying the
- * triangle inequality — because that is exactly what makes `scriptCost ≥ d` a theorem rather
- * than a hope. Every shipped instance is one of §5's own `d_k` integrals, which the W2/W3
- * metric suites already pin.
+ * `norm` must be a metric on representations — non-negative, symmetric, triangle inequality —
+ * since that is what makes `scriptCost ≥ d` a theorem. Every shipped instance is one of §5's own
+ * `d_k` integrals, which the metric suites already pin.
  */
 export interface EditPricing<I extends EditableInstruction, S> {
   readonly represent: (state: readonly I[]) => S;
   /**
    * `‖x − y‖₁`, with the two STATES beside their representations.
    *
-   * The states are passed because a caller may localize an EXACT computation with them and for
-   * no other reason: two states of one transition differ by a single instruction, so the two
-   * curves are identical outside a bounded interval, and a caller that can establish that
-   * interval structurally may integrate over it instead of over the window. `norm` remains one
-   * metric on representations either way — the states are evidence, never a second argument the
-   * answer depends on.
+   * The states are passed only so a caller may localize an EXACT computation: two states of one
+   * transition differ by a single instruction, so the curves are identical outside a bounded
+   * interval, and a caller that can establish that interval structurally may integrate over it
+   * instead of over the window. `norm` remains one metric on representations either way — the
+   * states are evidence, never a second argument the answer depends on.
    */
   readonly norm: (x: S, y: S, previous: readonly I[], next: readonly I[]) => number;
 }
@@ -103,10 +93,10 @@ export type EditMove = 'substitute' | 'delete' | 'insert' | 'fragment' | 'consol
 /**
  * How many instructions a `fragment` or `consolidate` may span [convention].
  *
- * The DP gains `O(nm·k)` transitions for a span bound of `k`, so this is a cost knob as well as
- * a semantic one. Four covers the case §6.2 names — "consolidating five steps into one
- * transition" is four steps plus the survivor — and a longer run is expressible as a move
- * followed by plain ops at a price the DP compares against.
+ * The DP gains `O(nm·k)` transitions for a span bound of `k`, so this is a cost knob as well as a
+ * semantic one. Four covers the case §6.2 names — "consolidating five steps into one transition"
+ * is four steps plus the survivor — and a longer run is expressible as a move followed by plain
+ * ops, at a price the DP compares against.
  */
 export const MAX_MOVE_SPAN = 4;
 
@@ -118,11 +108,9 @@ export interface EditStep<I extends EditableInstruction> {
   /** The FIRST B-side instruction the move produces; null where it produces none. */
   readonly b: I | null;
   /**
-   * Every instruction the move consumes on each side, in sequence order.
-   *
-   * A plain op has at most one of each; a `consolidate` has several `aItems` and one `bItems`,
-   * a `fragment` the reverse. An op that said "consolidate" without saying HOW MANY would not
-   * be actionable, which is why the counts travel rather than being derivable from the dates.
+   * Every instruction the move consumes on each side, in sequence order. A plain op has at most
+   * one of each; a `consolidate` has several `aItems` and one `bItems`, a `fragment` the reverse.
+   * The counts travel because they are not derivable from the dates.
    */
   readonly aItems: readonly I[];
   readonly bItems: readonly I[];
@@ -152,10 +140,8 @@ export interface EditScriptResult<I extends EditableInstruction> {
   readonly topByCost: readonly number[];
   readonly opCounts: EditOpCounts;
   /**
-   * `norm(Φ(state after the last op), Φ(B))`, which §6.3's verification requires to be 0.
-   *
-   * Exposed rather than merely asserted: a caller can see that the replay really reached B,
-   * and a future move kind that failed to is visible instead of silently absorbed.
+   * `norm(Φ(state after the last op), Φ(B))`, which §6.3's verification requires to be 0. Exposed
+   * rather than asserted, so a future move kind that failed to reach B is visible.
    */
   readonly replayResidual: number;
 }
@@ -169,20 +155,17 @@ export interface EditOpCounts {
   readonly free: number;
 }
 
-/** Knobs the search takes. */
 export interface EditScriptSearch {
   /**
    * Whether `fragment` and `consolidate` are in the move set (A-Q5, §6.1's `moves`).
    *
-   * They land AFTER the plain script because that is the order A-Q5 rules and because they are
-   * only meaningful under it: a move is emitted where treating a group as ONE edit is strictly
-   * cheaper than any sequence of plain ops, and "strictly cheaper" is a claim the plain pricing
-   * has to be in place to make. The op kind is therefore a statement about the PRICE — these
-   * instructions are best read as one gesture — and not a claim about what the author did.
+   * A move is emitted only where treating a group as ONE edit is strictly cheaper than any
+   * sequence of plain ops, so the op kind is a statement about the PRICE — these instructions are
+   * best read as one gesture — and not a claim about what the author did.
    *
    * By the `L¹` triangle inequality a move is never dearer than the plain decomposition it
-   * replaces, so enabling them can only lower `scriptCost`, never raise it: the script moves
-   * TOWARD the lower bound as its vocabulary grows, and `reworking` shrinks with it.
+   * replaces, so enabling them can only lower `scriptCost`: the script moves TOWARD the lower
+   * bound as its vocabulary grows, and `reworking` shrinks with it.
    */
   readonly moves?: boolean;
 }
@@ -230,9 +213,9 @@ interface DeliverableStep<I extends EditableInstruction> {
  *
  * Date first (§6.1's application order), then §6.4's tie-breaks reduced to what is available
  * inside one (part, map) script: the move rank, then the source indices. Two ops of one script
- * cannot tie on all of these — a move consumes at least one indexed instruction and no two
- * moves consume the same one — so the order is total by construction rather than by an argument
- * that the earlier keys separate everything (the W3 MAJOR-6 lesson).
+ * cannot tie on all of these — a move consumes at least one indexed instruction and no two moves
+ * consume the same one — so the order is total by construction rather than by an argument that
+ * the earlier keys separate everything (W3 MAJOR-6).
  */
 function compareDelivery<I extends EditableInstruction>(
   x: DeliverableStep<I>,
@@ -255,31 +238,27 @@ function compareDelivery<I extends EditableInstruction>(
  * `S(i, j) = b[0..j) ++ a[i..n)`, in the order a curve reader would see it.
  *
  * Sorted by date, with a surviving A instruction placed BEFORE a co-dated B one and ties inside
- * one side keeping that side's own order. The side preference is renderer-derived rather than
- * arbitrary: `datedView.orderedEntries` reproduces `GenericMap.parseData`'s backwards insertion
- * scan, which finds the last position whose date is `<=` the new one, so an element added to a
- * map lands AFTER the children already sitting at its date. A state is A's map with some of B's
+ * one side keeping that side's own order. The side preference is renderer-derived:
+ * `datedView.orderedEntries` reproduces `GenericMap.parseData`'s backwards insertion scan, which
+ * finds the last position whose date is `<=` the new one, so an element added to a map lands
+ * AFTER the children already sitting at its date. A state is A's map with some of B's
  * instructions added to it, so B's sit after A's survivors — and since a co-dated predecessor
  * governs a zero-width span, that decides which of the two performs.
  *
- * It matters where both sides coexist at one date. The DP fill reaches that, and **so does the
- * replay** — this paragraph used to claim otherwise (W4 MAJOR-8), on the argument that the
- * delivered order is date-then-move-rank with `delete` outranking `insert`, so at a shared date
- * A's instruction is gone before B's arrives. That holds for one instruction per side and fails
- * as soon as a date carries two: the DP substitutes one and DELETES the other, and the survivor
- * is still there when the insertion lands. Measured over 4000 random pairs, **668** come out
- * with a different `replayedDelta` under the reversed rule — one in six, not a corner.
- * `stateFromFlags` below carries the same comparator for the same reason, and
- * `editScript.test.ts` pins the smallest of those 668.
+ * It matters wherever both sides coexist at one date, which the DP fill reaches and so does the
+ * replay (W4 MAJOR-8): the delivered order puts `delete` before `insert` at a shared date, so A's
+ * instruction is gone before B's arrives — but only for one instruction per side. With two at a
+ * date the DP substitutes one and DELETES the other, and the survivor is still there when the
+ * insertion lands. Measured over 4000 random pairs, 668 come out with a different `replayedDelta`
+ * under the reversed rule; `editScript.test.ts` pins the smallest of them, and `stateFromFlags`
+ * below carries the same comparator for the same reason.
  *
- * At `(n, m)` no A instruction survives at all, so the final state is `b`'s own records in `b`'s
- * own order and `Φ(S(n,m))` is `Φ(B)` bit for bit — which is what makes §6.3's replay residual
- * an exact 0. That part was true and remains true.
+ * At `(n, m)` no A instruction survives, so the final state is `b`'s own records in `b`'s own
+ * order and `Φ(S(n,m))` is `Φ(B)` bit for bit — which makes §6.3's replay residual an exact 0.
  *
- * Exported so the ordering rule can be pinned where it is directly visible. Through the DP it is
- * observable only statistically — reversing the side preference moves some scripts on a random
- * family and none on any single hand-built pair, which is the situation RG-2 and the `K = 4` pin
- * met: when a property stops being observable at one layer, the evidence goes down a layer.
+ * Exported so the ordering rule can be pinned directly: through the DP it is observable only
+ * statistically, since reversing the side preference moves some scripts on a random family and
+ * none on any single hand-built pair.
  */
 export function editStateAt<I extends EditableInstruction>(
   a: readonly I[],
@@ -313,9 +292,8 @@ const B_SEQUENCE = 'the B instruction sequence';
 /**
  * The state order, shared by {@link editStateAt} and {@link stateFromFlags}.
  *
- * The two functions have to agree — `editStateAt`'s doc explains why the B side wins an equal
- * date, and `stateFromFlags` "carries the same comparator for the same reason". One comparator
- * is how that stops being a claim a future edit can falsify in one place and not the other.
+ * The two have to agree on which side wins an equal date ({@link editStateAt}'s doc says why),
+ * and one comparator is what keeps that from being falsifiable in one place and not the other.
  */
 function inStateOrder<I extends EditableInstruction>(
   x: TaggedInstruction<I>,
@@ -383,9 +361,8 @@ export function editScript<I extends EditableInstruction, S>(
   const m = b.length;
   const width = m + 1;
 
-  // Φ per cell, computed once. The fill reads each of them from three transitions and the
-  // replay reads two of them again, so memoizing here is the difference between (n+1)(m+1)
-  // representations and six per cell.
+  // Φ per cell, computed once: the fill reads each from three transitions and the replay reads
+  // two again, so this is the difference between (n+1)(m+1) representations and six per cell.
   const representations: (S | undefined)[] = new Array<S | undefined>((n + 1) * width);
   const phi = (i: number, j: number): S => {
     const slot = i * width + j;
@@ -403,8 +380,7 @@ export function editScript<I extends EditableInstruction, S>(
   const moves = search.moves === true;
 
   // The three tables are read at computed strides all through the recurrence and the traceback,
-  // which is the one shape `indexing.ts` exists for: the arithmetic IS the algorithm, and a
-  // stride bug should be a `RangeError` naming the table rather than an `undefined` that
+  // so a stride bug should be a `RangeError` naming the table rather than an `undefined` that
   // arrives in a published cost.
   const costAt = (row: number, column: number): number =>
     numberAt(cost, row * width + column, "the edit DP's cost table");
@@ -586,12 +562,9 @@ export function editScript<I extends EditableInstruction, S>(
   const replayCosts: number[] = [];
   let replayed = 0;
   for (const step of ordered) {
-    // A step consumes a contiguous run of `a` and produces a contiguous run of `b`, so
-    // marking one is a range fill, not a walk — `fill(true, start, end)` says which span in
-    // one line where the loop said it in three. The two agree on every write that matters:
-    // `stateFromFlags` only ever reads `removedA[index]` for `index < a.length`, so a write
-    // past the end (which `fill` clamps away and the loop would have made by extending the
-    // array) was dead in both spellings.
+    // A step consumes a contiguous run of `a` and produces a contiguous run of `b`, so marking
+    // one is a range fill. `stateFromFlags` only ever reads `removedA[index]` for
+    // `index < a.length`, so the write past the end that `fill` clamps away is dead anyway.
     const fromA = step.indexA ?? 0;
     const fromB = step.indexB ?? 0;
     removedA.fill(true, fromA, fromA + step.aItems.length);
@@ -608,9 +581,7 @@ export function editScript<I extends EditableInstruction, S>(
   const replayResidual = pricing.norm(state, phi(n, m), instructions, editStateAt(a, b, n, m));
 
   // Cost rank: descending, ties by the delivered order, so the ranking is a permutation of the
-  // delivery indices and never depends on the sort's own stability. Decorated with the delivery
-  // index before sorting rather than sorting indices and looking their costs back up — the two
-  // keys then travel together and the comparator reads as the rule it states.
+  // delivery indices and never depends on the sort's own stability.
   const ranking = rankByCostDescending(replayCosts);
   const ranks = invertPermutation(ranking);
 
@@ -664,14 +635,13 @@ function countOps<I extends EditableInstruction>(steps: readonly EditStep<I>[]):
 /**
  * The script for the other direction, by inversion rather than by a second DP run (§6.4).
  *
- * `insert ↔ delete`, `a ↔ b`, `indexA ↔ indexB`; `substitute` is its own inverse. The costs
- * are unchanged, which is the point: `‖Φ(M_i) − Φ(M_{i−1})‖₁` is symmetric, so the reversed
- * script's steps cost what the forward ones do, and a caller who inverts gets bit-identical
- * numbers instead of a second traceback's arbitrary choice among ties.
+ * `insert ↔ delete`, `a ↔ b`, `indexA ↔ indexB`; `substitute` is its own inverse. The costs are
+ * unchanged, which is the point: `‖Φ(M_i) − Φ(M_{i−1})‖₁` is symmetric, so a caller who inverts
+ * gets bit-identical numbers instead of a second traceback's arbitrary choice among ties.
  *
- * The delivered order is recomputed, because the date key is `dateA ?? dateB` and the two
- * sides have swapped: an insert delivered at its B date becomes a delete delivered at that
- * same date, now read off the A slot.
+ * The delivered order is recomputed, because the date key is `dateA ?? dateB` and the two sides
+ * have swapped: an insert delivered at its B date becomes a delete at that same date, now read
+ * off the A slot.
  */
 export function invertSteps<I extends EditableInstruction>(
   steps: readonly EditStep<I>[],
@@ -711,9 +681,7 @@ export function invertSteps<I extends EditableInstruction>(
  * The delivery indices in cost-descending order, ties by delivery index.
  *
  * Shared by the forward path and {@link invertSteps} so the two cannot disagree about what
- * `costRank` means, which is the same argument {@link inStateOrder} makes for the state order.
- * Sorting DECORATED pairs rather than bare indices is what keeps the comparator a statement of
- * the rule instead of two look-ups into a sequence it does not own.
+ * `costRank` means — the same argument {@link inStateOrder} makes for the state order.
  */
 function rankByCostDescending(costs: readonly number[]): readonly number[] {
   return costs

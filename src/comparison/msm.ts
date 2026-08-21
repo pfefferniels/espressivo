@@ -1,26 +1,22 @@
 /**
  * What the comparison reads from an optional MSM — the score behind the two performances.
  *
- * §9.2 makes `msm` **part of the metric, not a report-only side input** (A11): it moves the
- * window (§5.0's `'msm'` rule), the measure mapping (C3) and the beat grid the accentuation
- * phase is anchored to (AD-12). So this module is small and its boundaries are stated rather
- * than assumed.
+ * §9.2 makes `msm` part of the metric, not a report-only side input (A11): it moves the window
+ * (§5.0's `'msm'` rule), the measure mapping (C3) and the beat grid the accentuation phase is
+ * anchored to (AD-12).
  *
  * ## What it reads, and what it deliberately does not
  *
  * The score end, the global `<timeSignatureMap>`, and the measure grid that follows from the
- * two. The note-level facts stay in `expression/msmFacts.ts`, which already reads them and is
- * reused here rather than reimplemented — that module exists for the same layering reason this
- * one does, and two readers of one format is how they drift.
+ * two. The note-level facts stay in `expression/msmFacts.ts` and are reused rather than
+ * reimplemented; two readers of one format is how they drift.
  *
- * **AD-12's forward-only `timeSignatureMap` walk is NOT implemented in full**, and the shortfall
- * is reported rather than hidden. `accentuationDistance` takes ONE {@link BeatGrid}, so a meter
- * that changes mid-piece would need the evaluator to take a grid FUNCTION and to add a
- * breakpoint at every change — a cut-1 module extension, outside this wave. A map with exactly
- * one time signature is therefore exact (the renderer's forward walk never advances either),
- * and a map with several uses the first and earns an `estimate-degradation` note naming the
- * limitation. Using the first is strictly better than the 4/4-at-0 default it replaces, and
- * saying so is what keeps it from being mistaken for the ruled behaviour.
+ * AD-12's forward-only `timeSignatureMap` walk is NOT implemented in full.
+ * `accentuationDistance` takes ONE {@link BeatGrid}, so a meter that changes mid-piece would
+ * need the evaluator to take a grid FUNCTION and to add a breakpoint at every change. A map
+ * with exactly one time signature is therefore exact (the renderer's forward walk never
+ * advances either); a map with several uses the first and earns an `estimate-degradation` note
+ * naming the limitation.
  *
  * ## Ticks are converted once, here
  *
@@ -143,16 +139,8 @@ function readTimeSignatures(root: Element, ppq: number): readonly TimeSignatureE
   const map = dated?.getFirstChildElement('timeSignatureMap') ?? null;
   if (map === null) return [];
 
-  // Read each child, drop the ones the guard rejects, keep the rest — `filterMap`, with the
-  // `continue` as the `null` return. `date / ppq` still runs only for entries that survive the
-  // guard, because it is inside the same branch it was in.
-  //
-  // The spread is what makes the sort below legal: `filterMap` returns `readonly T[]`, which has
-  // no `.sort`, and `[...f()].sort(cmp)` is this tree's idiom for that (~35 sites). It also
-  // costs nothing that the old spelling did not — `entries.sort` sorted in place only because
-  // the array was already a fresh local one.
-  // Date only: two `<timeSignature>` entries at one date keep document order, which is what
-  // the renderer's own forward walk sees. One document, so no orientation leaks (W3 MINOR-7).
+  // Sorted on date only: two `<timeSignature>` entries at one date keep document order, which is
+  // what the renderer's own forward walk sees. One document, so no orientation leaks (W3 MINOR-7).
   return [
     ...filterMap(map.getChildElements('timeSignature'), (element) => {
       const date = readNumericAttributeValue(element, 'date');
@@ -194,34 +182,21 @@ function measureGrid(
   const measures: MeasureEntry[] = [];
   let number = 1;
 
-  // The neighbour is PAIRED with its own instruction rather than read at `index + 1`. "There is
-  // no next one" is then a value — `null` — instead of an out-of-range read that the type system
-  // had to be told about with `as … | undefined`.
-  // `withNext` IS this pair of lines: every entry with its successor, and `null` for the
-  // last. The `[...xs.slice(1), null]` array and the zip that consumed it were one shape
-  // spelled out, and it is the shape `pairwise` cannot serve — `pairwise` drops the last
-  // entry, and the last instruction is a span too.
+  // `withNext`, not `pairwise`: the last entry is a span too, running to `endQuarters`.
   for (const [entry, next] of withNext(entries)) {
     const until = Math.min(next?.startQuarters ?? endQuarters, endQuarters);
     const length = measureLengthQuarters(entry);
     if (!(length > 0)) continue;
-    // `first + k · length`, and NOT a `start += length` accumulator.
+    // `first + k · length`, and NOT a `start += length` accumulator: repeated addition of a
+    // non-representable length compounds its rounding error once per bar. Every power-of-two
+    // denominator — 4/4, 6/8, 7/8, 3/2 — gives a length that IS representable, so the corpus
+    // never showed it; 5/6 gives 3.3333333333333335, and measured, the accumulated and
+    // multiplied grids part company by 1.1e-13 by bar 57 and never reconverge.
+    // `measurePositionAt` divides the drifted `startQuarters` into the reported `beat`, and
+    // measure numbers and beats are published report fields, so the drift is observable output.
     //
-    // Repeated addition of a non-representable length compounds its rounding error once per
-    // bar. Every power-of-two denominator — 4/4, 6/8, 7/8, 3/2 — gives a length that IS
-    // representable, so the corpus never showed it; 5/6 gives 3.3333333333333335, and measured,
-    // the accumulated and multiplied grids part company by 1.1e-13 by bar 57 and never
-    // reconverge. `measurePositionAt` then divides the drifted `startQuarters` into the
-    // reported `beat`, and measure numbers and beats are published report fields, so the drift
-    // is observable output rather than an internal detail.
-    //
-    // The sibling computation in `rubatoCurve.ts` already multiplies
-    // (`raw.dateTicks + k * frameLengthTicks`); this is the same arithmetic written the same
-    // way. Nothing is reassociated: `start` was never a running SUM of different quantities,
-    // only the same `length` added k times, and `k · length` is that product computed once.
-    //
-    // `!(start < until)` and not `start >= until`, so a NaN `start` ends the walk exactly as
-    // the old continuation test did rather than running forever.
+    // `!(start < until)` and not `start >= until`, so a NaN `start` ends the walk rather than
+    // running forever.
     for (let k = 0; ; k += 1) {
       const start = entry.startQuarters + k * length;
       if (!(start < until)) break;
@@ -249,29 +224,14 @@ export function measurePositionAt(
   quarters: number,
 ): MeasurePosition | null {
   if (measures.length === 0) return null;
-  // **`upperBoundBy` is the considered-and-rejected alternative, and this is the one place in
-  // the module where I would take it back if someone rules on the `NaN`.** The scan is "the last
-  // measure that starts at or before `quarters`", i.e. `upperBoundBy(measures, m =>
-  // m.startQuarters, quarters) - 1`, and unlike this module's other scans it is over an array
-  // that can be LONG: `measureGrid` builds one entry per bar up to `MAX_MEASURES` (100 000), and
-  // `measurePositionAt` is called twice per §9.3 op and twice per §7.3 segment. That product is a
-  // real quadratic, not a notional one.
-  //
-  // What stops it is the `NaN` answer, and the direction is unusual: today a `NaN` `quarters`
-  // never fires `startQuarters > quarters`, so the loop runs to the end and reports
-  // `{ number: <the last bar in the score>, beat: NaN }` — a bar number for a position that
-  // falls in no bar. Under the bound the answer is `null`, which is what this function's own
-  // docstring promises for exactly that case, and both call sites (`compare.measureRange`,
-  // `diff`'s `measureA`/`measureB`) already handle `null`. So the bound is arguably the CORRECT
-  // reading and the scan is the defect.
-  //
-  // That makes it a ruling about what a report says, not a loop shape, and this pass does not
-  // make those. Reachability was traced far enough to be suggestive and not far enough to be
-  // proof: `diff`'s `dateA` is `step.a.dateTicks / ticksPerQuarter` where `editInstructionsOf`
-  // has already dropped non-finite dates and `ticksPerQuarter` is a positive LCM, so `NaN`
-  // cannot arrive there; `compare`'s `segment.startQuarters` comes from the aggregate cell grid,
-  // which was not traced to its sources. Show that second path finite — or rule that `null` is
-  // the wanted answer — and this becomes a one-line change with a real win behind it.
+  // A linear scan rather than `upperBoundBy`, which would be the natural shape and is cheaper:
+  // `measureGrid` builds one entry per bar up to `MAX_MEASURES` (100 000) and this is called
+  // twice per §9.3 op and twice per §7.3 segment, so the product is a real quadratic. What holds
+  // it here is the `NaN` answer. A `NaN` `quarters` never fires `startQuarters > quarters`, so
+  // the scan runs to the end and reports `{ number: <last bar in the score>, beat: NaN }` — a bar
+  // number for a position in no bar. The bound would answer `null`, which is what the docstring
+  // above promises and what both call sites (`compare.measureRange`, `diff`'s
+  // `measureA`/`measureB`) already handle. Changing it is a ruling about what a report says.
   let found: MeasureEntry | null = null;
   for (const measure of measures) {
     if (measure.startQuarters > quarters) break;

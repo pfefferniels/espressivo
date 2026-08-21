@@ -2,27 +2,19 @@
  * comparison/DESIGN.md §4's registry, as data — the L0 layer of the comparison module.
  *
  * It reuses the `ScaleSpace` vocabulary of `src/expression/transforms.ts` and the *shape* of
- * that module's `RegistryRow`, and it deliberately does **not** extend `REGISTRY_ROWS`
- * (§4/A-Q9: a read requirement must not widen the write licence). The two tables answer
- * different questions. Expression's asks "may this attribute be rewritten, and through which
- * closed form"; this one asks "what quantity does this attribute contribute to a performance,
- * in what unit, and how large is a difference in it". Three of expression's columns —
- * `inCenterPopulation`, `p5r`, the `s`-domain — are exaggeration concepts with no comparison
- * meaning (survey-code §2.2), and four columns here have no expression counterpart: `unit`,
- * `jnd`, `delta` and `plausibleRange`.
+ * that module's `RegistryRow`, and deliberately does not extend `REGISTRY_ROWS` (§4/A-Q9: a
+ * read requirement must not widen the write licence). Expression's table asks "may this
+ * attribute be rewritten, and through which closed form"; this one asks "what quantity does this
+ * attribute contribute to a performance, in what unit, and how large is a difference in it".
+ * Three of expression's columns — `inCenterPopulation`, `p5r`, the `s`-domain — are exaggeration
+ * concepts with no comparison meaning (survey-code §2.2), and four here have no expression
+ * counterpart: `unit`, `jnd`, `delta` and `plausibleRange`.
  *
- * **What a row is not.** It is not a distance. The curve dimensions (§5.1–§5.3, §5.7) price
- * the *resolved curve* — `|ln qbpm_A − ln qbpm_B|`, `|δ_A − δ_B|` — and most rows here are
- * inputs to that curve rather than independently metered quantities. A row's own
- * {@link localDistance} is what the §6 edit path prices an attribute-level substitution with,
- * and what the step dimensions integrate. Which rows carry the curve is stated per row.
- *
- * **Coverage is by wave.** `COMPARISON_DIMENSIONS` is the complete eleven of §3 from the
- * first commit, because §3's stability contract turns on the exported list being the whole
- * vocabulary; rows exist for the four dimensions W2 evaluated (tempo, rubato, dynamics,
- * asynchrony) plus the two W3a cut 1 brings (accentuation, pedal). {@link comparisonRowsOf}
- * therefore still returns an empty list for the remaining five, and the registry test names
- * them explicitly so each cut shrinks that list rather than discovering it.
+ * A row is not a distance. The curve dimensions (§5.1–§5.3, §5.7) price the *resolved curve* —
+ * `|ln qbpm_A − ln qbpm_B|`, `|δ_A − δ_B|` — and most rows here are inputs to that curve. A
+ * row's own {@link localDistance} is what the §6 edit path prices an attribute-level
+ * substitution with, and what the step dimensions integrate; which rows carry the curve is
+ * stated per row.
  */
 import {
   ARTICULATION_MAP,
@@ -56,18 +48,16 @@ import {
 /**
  * DESIGN §3/§9.1: the eleven contributing comparison dimensions.
  *
- * The semantic unit is the **map domain**, not the exaggeration knob — a curve already
- * integrates what expression splits into level and shape (§3), which is why this list is
- * eleven where `EXPRESSION_DIMENSIONS` is fifteen.
+ * The semantic unit is the map domain, not the exaggeration knob — a curve already integrates
+ * what expression splits into level and shape (§3), which is why this list is eleven where
+ * `EXPRESSION_DIMENSIONS` is fifteen.
  *
  * Frozen for the reason `EXPRESSION_DIMENSIONS` is (§9.1, A25): the ESM re-export hands a
- * consumer the same object the option validator reads, so unfrozen, a `push` from outside
- * would widen this package's notion of a legal dimension process-wide. `as const` stops that
- * at compile time only.
- *
- * Widening this list is **additive in the list and breaking for consumers** (§3, AD-22):
- * `D = Σ ω_k d_k` gains a term, so every previously reported distance changes. What the
- * export buys is that the change is mechanically enumerable — no consumer hard-codes eleven.
+ * consumer the same object the option validator reads, so unfrozen, a `push` from outside would
+ * widen this package's notion of a legal dimension process-wide; `as const` stops that at
+ * compile time only. Widening the list is breaking for consumers (§3, AD-22) — `D = Σ ω_k d_k`
+ * gains a term, so every previously reported distance changes — but mechanically enumerable, so
+ * no consumer hard-codes eleven.
  */
 export const COMPARISON_DIMENSIONS = Object.freeze([
   'tempo',
@@ -86,13 +76,12 @@ export const COMPARISON_DIMENSIONS = Object.freeze([
 export type ComparisonDimension = (typeof COMPARISON_DIMENSIONS)[number];
 
 /**
- * DESIGN §3's correspondence to the fifteen expression dimensions, as a frozen data table so
- * the §1.3 cross-module test enumerates it rather than hard-coding it (A25).
- *
- * Every expression dimension appears exactly once, and the containments are the design's:
- * `tempo ⊇ {tempo, tempoShape}` because one curve carries both the level and the transition
- * shape; `ornamentation ⊇ {ornamentSpread, ornamentSpacing, ornamentDynamics}` because the
- * alignment DP prices all three at once (§5.6); `pedal ⊇ pedalShape`.
+ * DESIGN §3's correspondence to the fifteen expression dimensions, as a frozen data table so the
+ * §1.3 cross-module test enumerates it rather than hard-coding it (A25). Every expression
+ * dimension appears exactly once, and the containments are the design's: `tempo ⊇ {tempo,
+ * tempoShape}` because one curve carries level and transition shape; `ornamentation ⊇
+ * {ornamentSpread, ornamentSpacing, ornamentDynamics}` because the alignment DP prices all three
+ * at once (§5.6); `pedal ⊇ pedalShape`.
  */
 export const EXPRESSION_DIMENSION_CORRESPONDENCE: Readonly<
   Record<ComparisonDimension, readonly ExpressionDimension[]>
@@ -111,16 +100,15 @@ export const EXPRESSION_DIMENSION_CORRESPONDENCE: Readonly<
 });
 
 /**
- * The unit of `|T(x) − T(y)|` — i.e. of the row's {@link ComparisonRegistryRow.jnd}, not of
- * its raw attribute value. The distinction is the one trap in this table: a tempo row's
- * `jnd` is in **nepers** while its `plausibleRange` is in quarter-bpm, because the JND lives
- * in `T`-space and plausibility is a statement about the value the document actually wrote.
+ * The unit of `|T(x) − T(y)|` — of the row's {@link ComparisonRegistryRow.jnd}, not of its raw
+ * attribute value. That is the one trap in this table: a tempo row's `jnd` is in nepers while
+ * its `plausibleRange` is in quarter-bpm, because the JND lives in `T`-space and plausibility is
+ * a statement about the value the document wrote.
  *
- * Every log-family space (`log-around-1`, `logit`, both boundary powers) reports `'nepers'`:
- * `T` is a natural logarithm in all of them — of a value, of an odds ratio, of a distance to
- * a bound — and AD-26.1 fixes natural log as the internal convention with an explicit unit
- * tag on every reported log quantity. A gain space's `T` is the identity, so its unit is the
- * attribute's own.
+ * Every log-family space (`log-around-1`, `logit`, both boundary powers) reports `'nepers'`: `T`
+ * is a natural logarithm in all of them — of a value, of an odds ratio, of a distance to a
+ * bound — and AD-26.1 fixes natural log as the internal convention. A gain space's `T` is the
+ * identity, so its unit is the attribute's own.
  */
 export type ComparisonUnit =
   | 'nepers'
@@ -137,12 +125,11 @@ export type ComparisonUnit =
  * How the row participates in the comparison (§4).
  *
  * `curve-level` and `curve-shape` are inputs to a continuous curve — the level in the curve's
- * own unit, the shape dimensionless — and their differences are priced by integrating the
- * curve, not by summing the rows. `step` is a piecewise-constant curve integrated exactly.
- * `event`, `distribution` and `process` arrive with W3's remaining dimensions. `inert` is an
- * attribute the renderer provably ignores (R9b: zero density, reported when the documents
- * differ). `structural` is read, consequential, and deliberately **never folded into a
- * distance** (§3) — a mechanism switch or an encoding mismatch, reported as a finding.
+ * own unit, the shape dimensionless — priced by integrating the curve, not by summing the rows.
+ * `step` is a piecewise-constant curve integrated exactly. `inert` is an attribute the renderer
+ * provably ignores (R9b: zero density, reported when the documents differ). `structural` is
+ * read, consequential, and never folded into a distance (§3) — a mechanism switch or an encoding
+ * mismatch, reported as a finding.
  */
 export type ComparisonRole =
   | 'curve-level'
@@ -155,10 +142,9 @@ export type ComparisonRole =
   | 'structural';
 
 /**
- * Whether the row is always read, or only under a condition on its own element (§4, AD-11,
- * R9). The conditional form names the element the rule is evaluated on and states the rule in
- * prose, because the evaluators that apply it live per dimension and a predicate here could
- * not see the map position an AD-8 rule needs.
+ * Whether the row is always read, or only under a condition on its own element (§4, AD-11, R9).
+ * The conditional form names the element and states the rule in prose, because a predicate here
+ * could not see the map position an AD-8 rule needs.
  */
 export type ComparisonLiveness = 'always' | { readonly element: string; readonly rule: string };
 
@@ -175,20 +161,20 @@ export interface ComparisonSite {
 /**
  * DESIGN §4's row.
  *
- * `element` is the **instruction** element the row is named for, and it is what enters
+ * `element` is the instruction element the row is named for and what enters
  * {@link ComparisonRegistryRow.key}; `sites` is every physical place the value may be written,
- * which for the families that carry the same attribute on a def as on an instruction is two
- * entries with one key. Where a def carries a *differently named* attribute for the same
- * quantity — `<tempoDef value>` against `<tempo bpm>` — that is its own row, as in expression.
+ * which for a family carrying one attribute on both a def and an instruction is two entries with
+ * one key. Where a def carries a *differently named* attribute for the same quantity —
+ * `<tempoDef value>` against `<tempo bpm>` — that is its own row, as in expression.
  */
 export interface ComparisonRegistryRow {
   /**
    * `${dimension}/${element}@${attribute}` — the public row key (§4, A1).
    *
    * Written out per row rather than derived, and first, because writing it is what type-checks
-   * it: the field is the closed {@link ComparisonJndKey} union, so a row naming a key that is
-   * not in the vocabulary fails to compile. That the key agrees with the three fields below is
-   * the one part a type cannot state, and the registry test pins it for every row.
+   * it: the field is the closed {@link ComparisonJndKey} union, so a row naming a key outside
+   * the vocabulary fails to compile. That the key agrees with the three fields below is the one
+   * part a type cannot state, and the registry test pins it for every row.
    */
   readonly key: ComparisonJndKey;
   readonly dimension: ComparisonDimension;
@@ -198,11 +184,11 @@ export interface ComparisonRegistryRow {
   readonly sites: readonly ComparisonSite[];
   readonly space: ScaleSpace;
   /**
-   * Whether a **resolved** value is comparable at all (§4, survey-code §2.2).
+   * Whether a *resolved* value is comparable at all (§4, survey-code §2.2).
    *
    * Resolved is the load-bearing word: def inheritance (§5.0's `styleScope` route) and any
    * renderer clamp the dimension section names — §5.2's `lateStart`/`earlyEnd` floor and cap,
-   * for one — are applied *before* this predicate runs, so a document the renderer repairs
+   * for one — are applied before this predicate runs, so a document the renderer repairs
    * compares as what the renderer performs. A value that still fails has no comparable
    * quantity: the row reads `⊥` and is priced by {@link localDistance}, never repaired.
    */
@@ -224,29 +210,23 @@ export interface ComparisonRegistryRow {
 
 // --- §7.1 constants ----------------------------------------------------------------------
 //
-// Every value here is a default the caller may override through `options.jnd` (§9.2), and
-// every one carries its tag. Two are [literature] after AD-27.6 (tempo, asynchrony); the
-// rest ship [convention] with survey-lit §4.0's partial support named in the row that uses
-// them, never promoted to a citation it does not have.
+// Defaults the caller may override through `options.jnd` (§9.2), each carrying its tag. Two are
+// [literature] after AD-27.6 (tempo, asynchrony); the rest ship [convention].
 
 /**
- * Tempo, in nepers: `ln(1.025)` ≈ 0.0247 — a 2.5 % tempo change, **[literature]** (AD-27.6).
+ * Tempo, in nepers: `ln(1.025)` ≈ 0.0247 — a 2.5 % tempo change, [literature] (AD-27.6).
  *
  * Friberg, A. & Sundberg, J. (1995), "Time discrimination in a monotonic, isochronous
  * sequence", *JASA* 98(5), 2524–2531, DOI 10.1121/1.413218: "The absolute jnd was found to be
  * approximately constant at 6 ms for tone interonset intervals shorter than about 240 ms and
- * the relative jnd constant at **2.5 % of the tone interonsets above 240 ms**. Subjects'
- * musical training did not affect these values."
+ * the relative jnd constant at 2.5 % of the tone interonsets above 240 ms. Subjects' musical
+ * training did not affect these values."
  *
- * Two things make it the right constant for this row rather than a borrowed one. The
- * regime — a *relative* threshold above 240 ms — is exactly the tempo region of musical
- * IOIs, and a relative threshold is a statement about a ratio, which is what makes the
- * logarithm the space and not merely a convenient one. And the threshold is
- * training-independent, so a looser value cannot be excused by appeal to a lay audience.
- *
- * It supersedes revision 2's `ln(1.05)` [convention]. The other regime of the same finding —
- * the **6 ms absolute floor below ~240 ms IOI** — is carried as a note obligation on the
- * ms-domain rows rather than as machinery: see the asynchrony row, and §7.1.
+ * The regime fits this row: a *relative* threshold above 240 ms is the tempo region of musical
+ * IOIs, and a relative threshold is a statement about a ratio, which is what makes the logarithm
+ * the space rather than merely a convenient one. The finding's other regime — the 6 ms absolute
+ * floor below ~240 ms IOI — is a note obligation on the ms-domain rows rather than machinery:
+ * see the asynchrony row, and §7.1.
  */
 export const TEMPO_JND_NEPERS = Math.log(1.025);
 
@@ -254,35 +234,34 @@ export const TEMPO_JND_NEPERS = Math.log(1.025);
  * Dynamics, in nepers: `ln(1.10)` — a 10 % velocity change [convention], and staying that way
  * (AD-27.6).
  *
- * **No musically-validated dynamics JND was found, and none is invented here.** The classic
- * psychoacoustic reference is Jesteadt, Wier & Green (1977), *JASA* 61(1), 169–177 — the
- * citation is verified but its numeric threshold could not be read at source, so no dB figure
- * is asserted. Repp (1995) reports *positional variation* in the detectability of intensity
- * increments rather than a single threshold, and survey-lit L6 records four loudness
- * conventions coexisting in the literature with no shared scale.
+ * No musically-validated dynamics JND was found, and none is invented here. The classic
+ * psychoacoustic reference is Jesteadt, Wier & Green (1977), *JASA* 61(1), 169–177 — verified
+ * as a citation, but its numeric threshold could not be read at source, so no dB figure is
+ * asserted. Repp (1995) reports *positional variation* in the detectability of intensity
+ * increments rather than a single threshold, and survey-lit L6 records four loudness conventions
+ * coexisting with no shared scale.
  *
- * The honest alternative, named so it is a choice and not an oversight: **derive this unit
- * from the corpus** — the observed per-attribute spread — and stamp the derived constant into
- * the report, which is the opt-in corpus-normalization path §8 already provides. Until a
- * caller asks for it, 10 % is a declared choice. The log space itself has independent
- * support: partitura's performance codec defines its loudness field as
+ * The alternative, shared by every [convention] JND here, is to derive the unit from the
+ * corpus's own per-attribute spread and stamp the derived constant into the report — §8's opt-in
+ * normalization path. Until a caller asks for it, 10 % is a declared choice. The log space has
+ * independent support: partitura's performance codec defines its loudness field as
  * `log(velocity / mean velocity)` (Cancino-Chacón et al. 2022).
  */
 export const DYNAMICS_JND_NEPERS = Math.log(1.1);
 
 /**
- * Asynchrony, in milliseconds: 30 ms, **[literature]** (AD-26.2, confirmed by AD-27.6).
+ * Asynchrony, in milliseconds: 30 ms, [literature] (AD-26.2, confirmed by AD-27.6).
  *
  * Three verified anchors bracket the band, and the row takes the middle one:
  *
- * - **15–20 ms** — Hirsh (1959): the separation required to report correctly *which* of two
- *   sounds preceded the other, "independent of the kinds of sounds used". A temporal-order
- *   threshold, i.e. the floor of what is discriminable at all.
- * - **30 ms** — Goebl, Flossmann & Widmer (2010), used as "the typical perceptual threshold"
- *   in the one corpus study that recovers a *musicological* category (earlier rubato) from
- *   asynchrony. Adopting their value makes this module's output directly comparable to theirs.
- * - **35 ms** — Nakamura, Yoshii & Katayose (2017): the window within which onsets are
- *   clustered as one chord, i.e. the field's operational "simultaneous".
+ * - 15–20 ms — Hirsh (1959): the separation required to report correctly *which* of two sounds
+ *   preceded the other, "independent of the kinds of sounds used". A temporal-order threshold,
+ *   i.e. the floor of what is discriminable at all.
+ * - 30 ms — Goebl, Flossmann & Widmer (2010), used as "the typical perceptual threshold" in the
+ *   one corpus study that recovers a *musicological* category (earlier rubato) from asynchrony.
+ *   Adopting their value makes this module's output directly comparable to theirs.
+ * - 35 ms — Nakamura, Yoshii & Katayose (2017): the window within which onsets are clustered as
+ *   one chord, i.e. the field's operational "simultaneous".
  *
  * For scale: typical melody lead is ~30 ms and bass anticipation ≥ 70 ms, so this unit puts
  * melody lead at ~1 JND and dislocation at 2–3 JND.
@@ -292,44 +271,36 @@ export const ASYNCHRONY_JND_MS = 30;
 /**
  * Rubato displacement, in quarters: a sixty-fourth note [convention], §7.1's `~1/16 quarter`.
  *
- * It is the JND of the rubato **curve** — `|δ_A − δ_B|` in quarters — and the only row in
- * this wave whose value is a duration in the same unit is `@frameLength`, which reuses it for
- * that reason and for no stronger one.
+ * The JND of the rubato curve, `|δ_A − δ_B|` in quarters. `@frameLength` reuses it because it is
+ * the one other row whose value is a duration in that unit, and for no stronger reason.
  */
 export const RUBATO_DISPLACEMENT_JND_QUARTERS = 1 / 16;
 
 /**
  * The JND of a row for which no literature and no convention exists yet: 1, i.e. the row is
- * reported **unnormalized, in its own `T`-space unit** [convention].
+ * reported unnormalized, in its own `T`-space unit [convention].
  *
- * The alternative would be to invent a perceptual constant for transition-shape
- * discrimination, and there is none to invent honestly — no study in survey-lit measures the
- * discriminability of a Bézier `@curvature` or a `@meanTempoAt`. A JND of 1 makes
- * `d_row = |T(x) − T(y)|` exactly, which is a magnitude a reader can interpret (one neper of
- * log-odds) rather than a false precision. Every row using it says so in its notes, and
- * §7.1's [PENDING-LIT] slot covers all of them.
+ * No study in survey-lit measures the discriminability of a Bézier `@curvature` or a
+ * `@meanTempoAt`, so there is no perceptual constant for transition shape to use. A JND of 1
+ * makes `d_row = |T(x) − T(y)|` exactly, a magnitude a reader can interpret (one neper of
+ * log-odds) rather than a false precision. Every row using it says so in its notes, and §7.1's
+ * [PENDING-LIT] slot covers all of them.
  *
- * These rows are shape knobs and gates: none of them carries its dimension's curve, so this
- * constant never enters a §5 density. It is read by the §6 edit path's per-attribute
- * `deltaJnd` and by nothing else in this wave.
+ * These rows are shape knobs and gates: none carries its dimension's curve, so this constant
+ * never enters a §5 density. It is read by the §6 edit path's per-attribute `deltaJnd`.
  */
 export const UNNORMALIZED_JND = 1;
 
 /**
- * MIDI velocity: **3** units [convention] — §7.1's `velocity` row, and there is only one.
+ * MIDI velocity: 3 units [convention] — §7.1's `velocity` row, and there is only one.
  *
- * Named for the quantity rather than for a dimension because §7.1 states a single velocity JND
- * and three dimensions draw on it: §5.4's per-beat accentuation contribution
+ * Named for the quantity rather than a dimension because §7.1 states one velocity JND and three
+ * dimensions draw on it: §5.4's per-beat accentuation contribution
  * `scale · getAccentuationAt(beat)` (added straight onto a note's velocity), and §5.5's
- * `@absoluteVelocityChange` and `@absoluteVelocity`. Accentuation is the dimension whose curve
- * is already in the unit its JND is stated in — `T` is the identity, no logarithm is involved.
- * Three velocity units out of 127 is ~2.4 % of the full range.
- *
- * [convention] and not [literature], for the reason {@link DYNAMICS_JND_NEPERS} spells out at
- * length: survey-lit L6 records four coexisting loudness conventions with no shared scale, and
- * no study measures the discriminability of a metrical accent as such. The honest alternative
- * is the same one — derive it from the corpus's own per-attribute spread, which §8's opt-in
- * normalization path already provides.
+ * `@absoluteVelocityChange` and `@absoluteVelocity`. Accentuation's curve is already in the unit
+ * its JND is stated in — `T` is the identity. Three velocity units out of 127 is ~2.4 % of the
+ * full range. [convention] for {@link DYNAMICS_JND_NEPERS}'s reason; no study measures the
+ * discriminability of a metrical accent as such.
  */
 export const VELOCITY_JND = 3;
 
@@ -337,45 +308,41 @@ export const VELOCITY_JND = 3;
  * Note duration as a RATIO: `ln(1.10)` — a 10 % change in a note's sounding length
  * [convention].
  *
- * Not the tempo constant, and the difference is the point. Friberg & Sundberg 1995's verified
- * 2.5 % is a threshold on *inter-onset intervals*, whose deviations accumulate across a
- * sequence and are judged against the beat the listener is tracking. A single note's sounding
- * length carries no such reference: legato and staccato are heard as categories, not as a
- * scale, and borrowing the IOI threshold would report a duration difference as three times more
- * salient than the evidence supports. 10 % is a declared choice with the corpus-derivation path
- * (§8) named, exactly as {@link DYNAMICS_JND_NEPERS} is.
+ * Not the tempo constant. Friberg & Sundberg 1995's 2.5 % is a threshold on *inter-onset
+ * intervals*, whose deviations accumulate across a sequence and are judged against the beat the
+ * listener is tracking. A single note's sounding length carries no such reference — legato and
+ * staccato are heard as categories, not as a scale — so borrowing the IOI threshold would report
+ * a duration difference as three times more salient than the evidence supports. A declared
+ * choice, as {@link DYNAMICS_JND_NEPERS} is.
  */
 export const ARTICULATION_DURATION_JND_NEPERS = Math.log(1.1);
 
 /**
- * Pedal position, in fractions of full travel: **0.1** [convention].
+ * Pedal position, in fractions of full travel: 0.1 [convention].
  *
  * The space is a gain on [0,1] (§5.8), so the JND is a plain fraction of pedal travel and the
- * choice is a calibration rather than a measurement. It is fixed at a tenth because that makes
- * the **extreme authored difference price at exactly `δ_row`**: canonical pedal maps are exact
- * `0.0`/`1.0` (expression's §7.14 records the same fact from the write side), so full-down
- * against full-up is `1.0 / 0.1 = 10` JND — the same price §4 puts on an incomparable value.
- * Pedal can therefore never dominate `D = Σ ω_k d_k` on the strength of its own scale, and the
- * one number a reader is most likely to check by hand has an interpretable value.
+ * choice is a calibration rather than a measurement. A tenth makes the extreme authored
+ * difference price at exactly `δ_row`: canonical pedal maps are exact `0.0`/`1.0` (expression's
+ * §7.14 records the same from the write side), so full-down against full-up is `1.0 / 0.1 = 10`
+ * JND — the price §4 puts on an incomparable value. Pedal can therefore never dominate
+ * `D = Σ ω_k d_k` on the strength of its own scale.
  *
- * **Performability floor, stated because this is the row it bears on.** The rendered value is
+ * Performability floor, stated because this is the row it bears on: the rendered value is
  * `Math.round(position · 127)` (`Msm.ts:1441`), so a position difference below `1/127` of
- * travel — 0.079 JND here — is not performed at all. It is not machinery: no clamp or snap is
- * applied, because the *defined* object is the ideal curve (§5.0 rule 3) and quantization
- * belongs to the §6.3 replay. It is an obligation on the docs, as the ms-domain floor is on the
- * asynchrony row.
+ * travel — 0.079 JND here — is not performed at all. No clamp or snap is applied, because the
+ * *defined* object is the ideal curve (§5.0 rule 3) and quantization belongs to the §6.3 replay;
+ * it is an obligation on the docs, as the ms-domain floor is on the asynchrony row.
  *
- * No literature was found for pedal-depth discrimination and none is invented; corpus
- * derivation is the named honest alternative.
+ * No literature was found for pedal-depth discrimination; see {@link DYNAMICS_JND_NEPERS}.
  */
 export const PEDAL_POSITION_JND_RATIO = 0.1;
 
 /**
  * `δ_row`, the metric cap, in JND units: 10 [convention] (§4, §7.1, AD-2).
  *
- * "An incomparable value counts as ten JNDs, and no single instant counts as more than
- * twenty." Not caller-overridable in v1 of the module (AD-25.7). No row in this wave departs
- * from the default; the column exists because §4 gives it per row.
+ * "An incomparable value counts as ten JNDs, and no single instant counts as more than twenty."
+ * Not caller-overridable in v1 (AD-25.7). No row departs from the default; the column exists
+ * because §4 gives it per row.
  */
 export const DEFAULT_DELTA_JND = 10;
 
@@ -395,8 +362,7 @@ const PLAUSIBLE_POSITION: readonly [number, number] = [0, 1];
 
 // --- Value domains (§4's `valueDomain` column) -------------------------------------------
 //
-// Named rather than inlined, as in expression's registry, so that two rows claiming the same
-// domain provably use the same predicate.
+// Named rather than inlined, so two rows claiming the same domain use the same predicate.
 
 /** `ℝ` — a signed offset with no enforced bound. Non-finite is still out. */
 const anyFinite = (x: number): boolean => Number.isFinite(x);
@@ -415,9 +381,9 @@ const trimTail = (x: number): boolean => Number.isFinite(x) && x > 0 && x <= 1;
 /**
  * `{0,1}` — a boolean read by an evaluator, carried as its numeric encoding.
  *
- * `@loop` and `@subNoteDynamics` are booleans, and §4's row shape has no column for that:
- * a boolean has no scale space, no unit and no JND. They have rows anyway because AD-10 and
- * §5.3 require it — see their notes — and the encoding is the one a gain space can carry.
+ * `@loop` and `@subNoteDynamics` are booleans, and §4's row shape has no column for that: a
+ * boolean has no scale space, no unit and no JND. They have rows anyway because AD-10 and §5.3
+ * require it — see their notes — and this is the encoding a gain space can carry.
  */
 const boolean01 = (x: number): boolean => x === 0 || x === 1;
 
@@ -438,17 +404,13 @@ const defSite = (container: string, element: string): ComparisonSite => ({
 /**
  * §9.1's closed row-key vocabulary: `` `${dimension}/${element}@${attribute}` ``.
  *
- * **Why the dimension is in the key** (§4, AD-22, A1). Expression's own `element@attribute`
- * pair is documented as *not* unique — `<distribution.uniform>` appears identically in three
- * maps and therefore three dimensions, and across the live registry `transition.to` occurs
- * three times, `curvature`, `protraction`, `intensity` and `value` twice each. Qualifying by
- * dimension is what makes `options.jnd` and `options.plausibleRange` (AD-25.8) addressable at
- * all, and typing them against this union is what makes a misspelling a compile error rather
- * than a silent no-op — the failure mode `ExaggerateOptions.factors` exists to prevent.
- *
- * W2's four dimensions plus W3a cut 1's two. Each further cut extends the tuple; the registry
- * test pins that it stays in exact correspondence with {@link COMPARISON_REGISTRY_ROWS} in both
- * directions.
+ * The dimension is in the key (§4, AD-22, A1) because `element@attribute` alone is *not* unique:
+ * `<distribution.uniform>` appears identically in three maps, and across the live registry
+ * `transition.to` occurs three times, `curvature`, `protraction`, `intensity` and `value` twice
+ * each. Qualifying by dimension is what makes `options.jnd` and `options.plausibleRange`
+ * (AD-25.8) addressable, and typing them against this union makes a misspelling a compile error
+ * rather than a silent no-op. The registry test pins the tuple in exact correspondence with
+ * {@link COMPARISON_REGISTRY_ROWS} in both directions.
  */
 export const COMPARISON_JND_KEYS = Object.freeze([
   'tempo/tempo@bpm',
@@ -582,12 +544,12 @@ export type ComparisonJndKey = (typeof COMPARISON_JND_KEYS)[number];
 
 // --- §5.1 tempo --------------------------------------------------------------------------
 //
-// The curve is `g(t) = ln(qbpm(t))`, `qbpm = bpm · beatLength · 4`, and the dimension's
-// density is `|g_A − g_B| / jnd_tempo` — ONE integral over four rows' worth of inputs. The
-// level space is `log-around-1`, i.e. the bare logarithm, and not `log-around-center` as
-// expression has it: the center is a property of one performance (§7.1's geometric mean over
-// that document's population), so two documents bring two centers and a centered `T` would
-// not be symmetric under swapping them. It cancels in every difference anyway (§4).
+// The curve is `g(t) = ln(qbpm(t))`, `qbpm = bpm · beatLength · 4`, and the dimension's density
+// is `|g_A − g_B| / jnd_tempo` — ONE integral over four rows' worth of inputs. The level space is
+// `log-around-1`, the bare logarithm, and not expression's `log-around-center`: the center is a
+// property of one performance (§7.1's geometric mean over that document's population), so two
+// documents bring two centers and a centered `T` would not be symmetric under swapping them. It
+// cancels in every difference anyway (§4).
 
 const TEMPO_LOG: ScaleSpace = { kind: 'log-around-1' };
 
@@ -1017,9 +979,8 @@ const DYNAMICS_ROWS: readonly ComparisonRegistryRow[] = [
 //
 // The curve is `c(t) = scale · patternDef.getAccentuationAt(beat(t))` in velocity units, with
 // the beat phase anchored at the TIME SIGNATURE and never at the instruction (AD-12/R8). Two
-// of the rows below are booleans, for AD-10's reason: each of them changes the performed curve,
-// and filing such a flag as a structural finding is exactly the error that made two documents
-// differing only in `rubato@loop` score `d_rubato = 0`.
+// of the rows below are booleans, for AD-10's reason: each changes the performed curve, and a
+// flag filed as a structural finding scores 0 for two documents that differ only in it.
 
 const ACCENTUATION_ROWS: readonly ComparisonRegistryRow[] = [
   {
@@ -1221,8 +1182,8 @@ const ACCENTUATION_ROWS: readonly ComparisonRegistryRow[] = [
 // the referenced def FIRST and the inline modifiers on top of the def's result, and the
 // LIVENESS rule differs between them: on an inline `<articulation>` exactly one duration lever
 // fires, while on an `<articulationDef>` they compose. Both halves executed on a 100-tick note:
-// `relativeDuration="0.5" absoluteDurationChange="10"` performs **110** inline (the factor
-// inert) and **60** on a def (0.5 then +10).
+// `relativeDuration="0.5" absoluteDurationChange="10"` performs 110 inline (the factor inert)
+// and 60 on a def (0.5 then +10).
 
 /**
  * §5.5/AD-11i/R4: the inline duration precedence, as a liveness rule keyed on the ELEMENT.
@@ -1520,11 +1481,9 @@ const ARTICULATION_ROWS: readonly ComparisonRegistryRow[] = [
 // --- §5.6 ornamentation ------------------------------------------------------------------
 //
 // EVENT rows, priced through §5.6's alignment DP. The compared object is the RESOLVED
-// PERFORMED EFFECT and never the attribute tuple (AD-40.2, which names the principle AD-37.3
-// established for §5.5): `@scale` multiplies the gradient's two endpoints, so `(from·scale,
-// to·scale)` is what is compared and `@scale` is not independently priced. Two encodings of one
-// performed ramp — `from="-20" scale="1"` against `from="-10" scale="2"` — are the same
-// performance and compare equal.
+// PERFORMED EFFECT and never the attribute tuple (AD-40.2, generalizing AD-37.3): `@scale`
+// multiplies the gradient's two endpoints, so `(from·scale, to·scale)` is what is compared and
+// `@scale` is not independently priced. See `ornamentAtoms.ts` for the resolution.
 
 const ORNAMENT_ROWS: readonly ComparisonRegistryRow[] = [
   {
@@ -1818,13 +1777,11 @@ const ASYNCHRONY_ROWS: readonly ComparisonRegistryRow[] = [
  * §5.8/AD-35: the render guard is `movementIndex < size() - 1` over ENTRIES, so what makes an
  * instruction inert is being the map's last ENTRY — not being its last movement.
  *
- * Stated as its own rule rather than reusing {@link trailingTransitionRule}, because the two
- * are different mechanisms with different outcomes and §5.8's contrast paragraph exists to keep
- * a reader from taking one for a typo of the other. A trailing `<tempo>` or `<dynamics>` still
- * has a span and performs flat at its own value; a trailing `<movement>` has no span at all.
- * And under AD-35 the guard is conditional in a way neither of those is: put any entry after
- * the last `<movement>` — a trailing `<style>` — and the movement renders after all, with
- * `getEndDate = Number.MAX_VALUE`.
+ * Its own rule rather than a reuse of {@link trailingTransitionRule}: a trailing `<tempo>` or
+ * `<dynamics>` still has a span and performs flat at its own value, while a trailing
+ * `<movement>` has no span at all. And under AD-35 the guard is conditional in a way neither of
+ * those is: put any entry after the last `<movement>` — a trailing `<style>` — and the movement
+ * renders after all, with `getEndDate = Number.MAX_VALUE`.
  */
 const movementEntryIndexRule: ComparisonLiveness = {
   element: 'movement',
@@ -1950,10 +1907,10 @@ const PEDAL_ROWS: readonly ComparisonRegistryRow[] = [
 // scale space is `gain-ordered` on both sides, because every one of these attributes is a
 // WIDTH in the domain's own unit and none of them is a ratio or a bounded shape parameter.
 //
-// **These rows do not sum to the distance.** Like tempo's four, they are inputs to one
-// object — here the LAW a span declares — and the dimension's density is `W₁(law_A, law_B)`
-// divided by the row JND (§5.9, AD-14v). What the rows carry is the unit, the JND, the
-// liveness the evaluator must honour, and §7.2's per-attribute breakdown for the report.
+// These rows do not sum to the distance. Like tempo's four, they are inputs to one object —
+// here the LAW a span declares — and the dimension's density is `W₁(law_A, law_B)` divided by
+// the row JND (§5.9, AD-14v). What the rows carry is the unit, the JND, the liveness the
+// evaluator must honour, and §7.2's per-attribute breakdown for the report.
 //
 // The two `process` rows are the exception and are priced on their own, per §5.9's
 // `processParameters` component and A-B3: `stepWidth.max` and `degreeOfCorrelation` do not
@@ -2009,21 +1966,15 @@ const nonZeroFinite = (value: number): boolean => Number.isFinite(value) && valu
 /**
  * One element's rows across all three domains.
  *
- * A factory per element rather than one table-driven `flatMap`, and the reason is the KEY's
- * compile-time check. Iterating a union-typed table lets TypeScript form
- * `${dimension}/${anyElement}@${anyAttribute}` — the cross product — and demand keys for
- * combinations no element has. Generic in `element` and `attribute`, each call instantiates
- * the template with that element's own literals.
+ * A factory per element rather than one table-driven `flatMap`, for the KEY's compile-time
+ * check: iterating a union-typed table lets TypeScript form
+ * `${dimension}/${anyElement}@${anyAttribute}` and demand keys for combinations no element has.
+ * The return type is left to inference so the check happens where the results are ASSIGNED to
+ * {@link IMPRECISION_ROWS}, which has the literals; a typo in one attribute name is then a
+ * compile error.
  *
- * The return type is deliberately left to inference and the check happens where the results
- * are ASSIGNED to {@link IMPRECISION_ROWS}: a generic body is checked against its constraint
- * (`string`), where the template proves nothing, while the call site has the literals. A typo
- * in one attribute name is then a compile error, which is negative-controlled — misspelling
- * `stepWidth.max` really does fail `tsc`, and that is the whole point of a closed vocabulary
- * (§4, A1).
- *
- * The `note` is where the renderer study lands. Every rule in one was executed — see
- * `imprecisionLaws.ts` and its tests — and the ones a reader is likeliest to get backwards are
+ * The `note` is where the renderer study lands. Every rule in one was executed (see
+ * `imprecisionLaws.ts` and its tests), and the ones a reader is likeliest to get backwards are
  * the ABSENT cases, because an absent attribute here is not a missing parameter but the
  * parameter 0.
  */
@@ -2040,18 +1991,17 @@ const imprecisionRowsFor = <Element extends string, Attribute extends string>(
       attribute,
       sites: [instructionSite(domain.map, element)],
       space: { kind: 'gain-ordered' } as const,
-      // Finite, and for `degreeOfCorrelation` also non-zero — the row states its own ⊥
-      // condition rather than leaving it to the reader alone. A zero divisor makes the
-      // compensating step ±∞ and NaNs every draw after the first (measured), which is
-      // exactly §4's "no comparable quantity". `stepWidth.max = 0` is NOT the same case and
-      // stays legal: it freezes the walk at its start value, a correlation of 1.
+      // Finite, and for `degreeOfCorrelation` also non-zero: a zero divisor makes the
+      // compensating step ±∞ and NaNs every draw after the first (measured), §4's "no comparable
+      // quantity". `stepWidth.max = 0` is NOT the same case and stays legal — it freezes the
+      // walk at its start value, a correlation of 1.
       valueDomain: attribute === 'degreeOfCorrelation' ? nonZeroFinite : Number.isFinite,
       unit: domain.unit,
       jnd: domain.jnd,
       delta: DEFAULT_DELTA_JND,
       // §5.0 names exactly four [convention] plausibility bands and imprecision is not among
-      // them. A fifth is not invented here: the honest band would come from a corpus of
-      // authored imprecision widths, and cut 1 declined the same invitation for `beatLength`.
+      // them. A fifth is not invented here: the band would have to come from a corpus of
+      // authored imprecision widths.
       plausibleRange: null,
       role,
       liveness: { element, rule: note },
@@ -2138,14 +2088,13 @@ const IMPRECISION_ROWS: readonly ComparisonRegistryRow[] = [
   ),
   // `@milliseconds.timingBasis` on the four I.I.D. elements — role `inert`, per AD-14iii.
   //
-  // Filed as rows rather than left absent for R14's reason: the inertness is a FINDING and
-  // should be stated, not inferred from a gap in the table. And it is inert in a precise sense
-  // that the detune pair's is not — the renderer really does read this attribute, but it
-  // selects an INDEX into the pseudorandom sequence, and for these four families the marginal
-  // at every index is the same law. So the render genuinely differs while the compared object
-  // does not, which is pinned as a test rather than asserted. On the two CORRELATED elements
-  // the same attribute is a `process` row instead, because there the marginal really does
-  // depend on the index (see their notes) — the two dispositions sit in one table on purpose.
+  // Filed as rows rather than left absent for R14's reason: the inertness is a FINDING, to be
+  // stated rather than inferred from a gap in the table. And it is inert in a precise sense the
+  // detune pair's is not — the renderer really does read this attribute, but it selects an INDEX
+  // into the pseudorandom sequence, and for these four families the marginal at every index is
+  // the same law. The render genuinely differs while the compared object does not, which is
+  // pinned as a test. On the two CORRELATED elements the same attribute is a `process` row
+  // instead, because there the marginal does depend on the index (see their notes).
   ...imprecisionRowsFor(
     'distribution.uniform',
     [['milliseconds.timingBasis', 'inert']],
@@ -2189,11 +2138,11 @@ const IMPRECISION_ROWS: readonly ComparisonRegistryRow[] = [
 /**
  * DESIGN §5's live attributes for the dimensions evaluated so far, in §5's own order.
  *
- * There is no `@controller` row and there deliberately will not be one: §4's metric is on
- * numbers and the value is a NAME, so a mismatch is reported through the structural channel
- * (`pedalDistance.controllerFindings`) exactly as §5.8 asks. The name matters — `Msm.ts:1445`
- * maps only `sustain` and `soft`, and every other name falls through to controller number 0,
- * which is BANK SELECT rather than a pedal — but none of that is a distance.
+ * There is no `@controller` row: §4's metric is on numbers and the value is a NAME, so a
+ * mismatch is reported through the structural channel (`pedalDistance.controllerFindings`) as
+ * §5.8 asks. The name matters — `Msm.ts:1445` maps only `sustain` and `soft`, and every other
+ * name falls through to controller number 0, which is BANK SELECT rather than a pedal — but
+ * none of that is a distance.
  */
 export const COMPARISON_REGISTRY_ROWS: readonly ComparisonRegistryRow[] = Object.freeze([
   ...TEMPO_ROWS,
@@ -2217,11 +2166,8 @@ const ROWS_BY_DIMENSION = new Map<ComparisonDimension, readonly ComparisonRegist
 );
 
 /**
- * Every row of one dimension, in registry order.
- *
- * **Empty for the five dimensions W3's remaining cuts bring** — articulation, ornamentation
- * and the three imprecision domains — which is a coverage statement and not a defect (see the
- * module note). A caller must not read emptiness as "this dimension has no comparable content".
+ * Every row of one dimension, in registry order. An empty list is a coverage statement, never
+ * "this dimension has no comparable content".
  */
 export function comparisonRowsOf(dimension: ComparisonDimension): readonly ComparisonRegistryRow[] {
   return ROWS_BY_DIMENSION.get(dimension) ?? [];
@@ -2244,7 +2190,7 @@ export function comparisonRowFor(key: ComparisonJndKey): ComparisonRegistryRow {
  * §9.2's `options.jnd` — a partial override of the registry's defaults, keyed by row.
  *
  * Partial because a caller who has a better constant for one attribute has not thereby stated
- * one for the other seventy-four; the defaults stay the documented reference (§7.1).
+ * one for the rest; the defaults stay the documented reference (§7.1).
  */
 export type JndOverrides = Partial<Record<ComparisonJndKey, number>>;
 
@@ -2295,24 +2241,21 @@ export interface LocalDistance {
  *     d_row(x, y) = min( |T(x) − T(y)| / jnd_row , 2·δ_row )
  *     d_row(x, ⊥) = δ_row        d_row(⊥, ⊥) = 0
  *
- * Four things fall out of the one cap: truncation of a metric is a metric, so the axioms
- * survive; `T`'s infinite boundary values become finite without a separate clamp constant;
- * "no comparable value" gets a metric-safe price instead of a hole in the domain; and the
- * density stays total, so R4's decomposition is untouched.
+ * Four things fall out of the one cap: truncation of a metric is a metric; `T`'s infinite
+ * boundary values become finite without a separate clamp constant; "no comparable value" gets a
+ * metric-safe price instead of a hole in the domain; and the density stays total, so R4's
+ * decomposition is untouched.
  *
- * **This is the attribute-level metric**, which is the §6 edit path's and the step rows'. The
- * curve dimensions integrate their curve instead and use only the row's `jnd` — pricing a
- * tempo difference by summing this function over `@bpm` and `@transition.to` would double the
- * count and lose the span it holds for.
+ * This is the attribute-level metric, the §6 edit path's and the step rows'. The curve
+ * dimensions integrate their curve instead and use only the row's `jnd` — pricing a tempo
+ * difference by summing this function over `@bpm` and `@transition.to` would double the count
+ * and lose the span it holds for.
  *
  * `d(x, x)` is exactly 0 for every in-domain `x`, including the values where `T` is infinite:
  * the identity is checked before the subtraction, so `∞ − ∞ = NaN` never arises. Callers pass
- * values that have already met {@link ComparisonRegistryRow.valueDomain}; a value that has
- * not is `⊥`, not an argument.
- *
- * `⊥` arrives as the `Bottom` of `values.ts` rather than as `null`, because §5.0's totality
- * rule makes it a *value* that has to survive to the density layer with its cause attached —
- * `null` would be an absence, which is the one thing it is not.
+ * values that have already met {@link ComparisonRegistryRow.valueDomain}; one that has not is
+ * `⊥`, not an argument — and it arrives as `values.ts`'s `Bottom` rather than `null`, because
+ * §5.0's totality rule makes it a *value* that survives to the density layer with its cause.
  */
 export function localDistance(
   row: ComparisonRegistryRow,
@@ -2323,14 +2266,14 @@ export function localDistance(
 }
 
 /**
- * §4's capped local metric with §7.4's per-document canonicalization applied **in T-space**.
+ * §4's capped local metric with §7.4's per-document canonicalization applied in T-space.
  *
  * `'level'` and `'level-gain'` are transforms of `T(x)`, not of `x` — a log space's level is a
- * multiplicative factor and its canonicalization is a subtraction only after the logarithm —
- * so the shift and the scale land here, between `forwardInSpace` and the cap, and nowhere else.
- * A caller that canonicalized the raw VALUE instead would be right for `gain` (where `T` is the
+ * multiplicative factor and its canonicalization is a subtraction only after the logarithm — so
+ * the shift and the scale land here, between `forwardInSpace` and the cap, and nowhere else. A
+ * caller canonicalizing the raw VALUE instead would be right for `gain` (where `T` is the
  * identity, and where every row that reaches this function today lives) and silently wrong for
- * every log row, which is exactly the class of error §7.4's own table exists to warn about.
+ * every log row, which is the class of error §7.4's own table warns about.
  *
  * `⊥` is untouched by any mode: it has no value to shift, and §4 prices it at `δ_row` from
  * everything regardless of what the other side became.

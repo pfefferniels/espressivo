@@ -3,19 +3,15 @@
  *
  * Nothing here knows what a performance is. The input is a symmetric distance matrix in the
  * row-major `N²` layout §8 pins, plus the LABELS every tie is broken on (AD-25.2), and the
- * output is plain data. That is `aggregate.ts`'s shape and `editScript.ts`'s: an algorithm over
- * an interface can be gated on its own.
+ * output is plain data.
  *
  * ## Honest about a non-Euclidean input
  *
  * `D` here is an `L¹`-type sum and is generally NOT Euclidean, so `B = −½ J D⁽²⁾ J` has negative
- * eigenvalues. Three things are therefore reported ALWAYS, and the third is the one the
- * literature keeps asking for:
- *
- * - the full eigenvalue spectrum, not the retained part;
- * - explained variance over `Σ|λ|`, never over `Σλ⁺` — the latter flatters the result by
- *   pretending the negative mass is not there;
- * - `negativeEigenvalueMass = Σ|λ⁻| / Σ|λ|`, the explicit "how non-Euclidean is this?" figure.
+ * eigenvalues. Three things are therefore reported ALWAYS: the full spectrum rather than the
+ * retained part; explained variance over `Σ|λ|` and never over `Σλ⁺`, which would flatter the
+ * result by pretending the negative mass is not there; and
+ * `negativeEigenvalueMass = Σ|λ⁻| / Σ|λ|`, the explicit "how non-Euclidean is this?" figure.
  *
  * ## Determinism, and the exact limit of it (AD-67.1)
  *
@@ -24,40 +20,33 @@
  * positive, ties by lowest LABEL — because without it two runs produce mirror-image plots and
  * §10's P-C6 would be false for a reason that has nothing to do with the metric.
  *
- * Two runs of the SAME matrix are byte-identical, and always were. The guarantee that needed
- * narrowing is the one about two runs of a PERMUTED matrix, which is P-C6's corpus clause, and
- * it now reads:
+ * Two runs of the SAME matrix are byte-identical. P-C6's corpus clause, about two runs of a
+ * PERMUTED matrix, reads:
  *
- * > Permuting the corpus relabels the embedding **when the retained eigenvalues are distinct**.
+ * > Permuting the corpus relabels the embedding WHEN the retained eigenvalues are distinct.
  * > Where two of them coincide the eigenspace has no canonical basis and no sign rule can make
  * > one — the coordinates are then one arbitrary orthonormal choice among infinitely many, and
  * > `degenerate` says so.
  *
- * The narrowing is forced, not conceded. Jacobi's rotation sequence depends on the matrix's
- * storage order, so a permuted corpus produces eigenvalues and components that agree in exact
- * arithmetic and differ in the last ulp. Every tie rule here therefore compares with a RELATIVE
- * epsilon before falling back to the label ({@link TIE_EPSILON}): an exact `===` never reaches
- * its label branch on float noise, which made the published order follow the noise instead —
- * W4 CAPITAL-3. That repairs the near-tie. It cannot repair the exact tie, because there the
- * arbitrariness is in the mathematics rather than in the arithmetic: a corpus with a repeated
- * eigenvalue (three documents each listed twice gives `λ = [9, 9, ~0, ~0, 0, ~0]`) has a
- * two-dimensional eigenspace, and every rotation within it is as valid as every other.
- * Canonicalising that block is deep numerics for a rare and DETECTABLE case, so this module
- * detects it and reports it instead — honesty as data, which is the campaign's pattern.
+ * Jacobi's rotation sequence depends on the matrix's storage order, so a permuted corpus
+ * produces eigenvalues and components that agree in exact arithmetic and differ in the last ulp.
+ * Every tie rule here therefore compares with a RELATIVE epsilon before falling back to the label
+ * ({@link TIE_EPSILON}): an exact `===` never reaches its label branch on float noise, which made
+ * the published order follow the noise instead (W4 CAPITAL-3). That repairs the near-tie, not the
+ * exact tie, where the arbitrariness is in the mathematics: a corpus with a repeated eigenvalue
+ * (three documents each listed twice gives `λ = [9, 9, ~0, ~0, 0, ~0]`) has a two-dimensional
+ * eigenspace, and every rotation within it is as valid as every other. Canonicalising that block
+ * is deep numerics for a rare and DETECTABLE case, so this module detects and reports it instead.
  *
  * ## What the narrowed contract costs the reader (W4 MINOR-R1)
  *
- * Four published fields are NOT bit-reproducible under relabelling, and a reader should be told
- * rather than left to discover it: `coordinates`, `eigenvalues`, `explainedVariance` and
- * `negativeEigenvalueMass`. Permuting the corpus reruns Jacobi's rotations in a different
- * sequence, so each comes back agreeing to roughly the working precision and not to the bit.
- *
- * The ORDER and the ORIENTATION are exact — the seriation, the sign anchor, and which axis is
- * which — because those are discrete choices and the tie rules above make them functions of the
- * corpus. It is the magnitudes that drift, and one instance is worth naming because it is
- * material rather than noise-around-zero: at `n = 6`, `negativeEigenvalueMass` moves in the 15th
- * significant figure of a value of **0.048**. Comparing these four across two runs of a
- * differently-ordered corpus needs a tolerance; comparing the seriation or the signs does not.
+ * Four published fields are NOT bit-reproducible under relabelling — `coordinates`,
+ * `eigenvalues`, `explainedVariance`, `negativeEigenvalueMass` — since a permuted corpus reruns
+ * Jacobi's rotations in a different sequence. The ORDER and the ORIENTATION are exact (the
+ * seriation, the sign anchor, which axis is which), because those are discrete choices the tie
+ * rules above make functions of the corpus; the magnitudes drift materially rather than around
+ * zero: at `n = 6`, `negativeEigenvalueMass` moves in the 15th significant figure of 0.048.
+ * Comparing those four across differently-ordered runs needs a tolerance.
  */
 
 import { pairwise } from '../prelude/index.js';
@@ -74,10 +63,8 @@ export interface SquareMatrix {
  * One read from a flat `N²` buffer.
  *
  * Every matrix here is a flat `readonly number[]` addressed by computed indices, and one Jacobi
- * sweep does thirty such reads: the index arithmetic IS the algorithm, so there is no named
- * algorithm to replace it with. {@link elementAt} carries the reasoning; this is its name in
- * this file, so that a stride bug reads as a `RangeError` naming the buffer rather than as a
- * `NaN` that reaches a published eigenvalue.
+ * sweep does thirty such reads, so a stride bug should read as a `RangeError` naming the buffer
+ * rather than as a `NaN` that reaches a published eigenvalue.
  */
 function cell(values: readonly number[], index: number): number {
   return elementAt(values, index, 'a flat N² matrix buffer');
@@ -89,9 +76,8 @@ export interface Embedding {
   /**
    * The FULL spectrum, descending — not only the retained axes.
    *
-   * Like `coordinates`, `explainedVariance` and `negativeEigenvalueMass`, these values agree to
-   * working precision and NOT to the bit across a permuted corpus (MINOR-R1) — see the module
-   * header. Their ORDER is exact; their magnitudes drift in the last figures.
+   * Like `coordinates`, `explainedVariance` and `negativeEigenvalueMass`, these agree to working
+   * precision and NOT to the bit across a permuted corpus (MINOR-R1). Their ORDER is exact.
    */
   readonly eigenvalues: readonly number[];
   /**
@@ -107,18 +93,16 @@ export interface Embedding {
    * True when the eigenbasis is NOT unique, so `coordinates` are one arbitrary choice among
    * infinitely many and permuting the corpus need not relabel them (AD-67.1).
    *
-   * Two causes, and the wider one is why this field exists at all:
+   * Two causes:
    *
    * - `Σ|λ| = 0` — one document listed twice, or a corpus of equals. `explainedVariance` is
-   *   all-null exactly here (A3b), which is the narrower condition and is unchanged.
+   *   all-null exactly here (A3b), which is the narrower condition.
    * - A REPEATED eigenvalue at or across the retained cut, where at least one of the pair
    *   carries material variance. That eigenspace has dimension ≥ 2 and no canonical basis.
    *
-   * The first implies the second (all eigenvalues are then 0, which is as repeated as a
-   * spectrum gets), so this is a widening of the old flag and not a change of meaning:
-   * `DESIGN.md`'s stated invariant is the implication `Σ|λ| = 0 ⇒ degenerate`, which still
-   * holds. A consumer plotting `coordinates` should read this as "the axes are real, their
-   * orientation is not".
+   * The first implies the second, so `DESIGN.md`'s invariant `Σ|λ| = 0 ⇒ degenerate` holds. A
+   * consumer plotting `coordinates` should read this as "the axes are real, their orientation is
+   * not".
    */
   readonly degenerate: boolean;
   /**
@@ -130,10 +114,9 @@ export interface Embedding {
    * simplices, which are exactly Euclidean: `0` at `k = 5, 6, 8, 10` and `6.1e-17`, `2.3e-17`,
    * `5.8e-17`, `4.7e-17` at `k = 3, 4, 7, 12` (W4 MINOR-11).
    *
-   * Deliberately NOT clamped. A threshold would have to be chosen, it would hide genuine
-   * small-but-real non-Euclideanness — which is precisely what this field exists to report —
-   * and `1e-17` is unmistakably noise to any reader who sees it. Read the figure against the
-   * spectrum, which is published in full beside it.
+   * Deliberately NOT clamped: a threshold would have to be chosen and would hide genuine
+   * small-but-real non-Euclideanness, which is what this field exists to report. Read the figure
+   * against the spectrum, published in full beside it.
    */
   readonly negativeEigenvalueMass: number;
   readonly axes: number;
@@ -143,18 +126,16 @@ export interface Embedding {
  * The RELATIVE band inside which two quantities count as tied, so the label rule is reached
  * (AD-67.1) [convention].
  *
- * It has to sit above the arithmetic and below anything meaningful, and there is a wide gap to
- * sit in. Above: a permuted corpus runs Jacobi's rotations in a different sequence, and the
- * measured disagreement between two permutations is at the last ulp — `jacobiEigen`'s own
- * residuals are `|VΛVᵀ−A| ≤ 1.18e-11` and `|VᵀV−I| ≤ 3.78e-15`, so `1e-9` clears the noise by
- * orders. Below: two performances whose first MDS coordinates differ by one part in `10⁹` are
- * the same point on any plot anyone will draw, and the label rule orders them — which is a
- * defined answer where the float noise was not.
+ * It has to sit above the arithmetic and below anything meaningful, and the gap is wide. Above:
+ * `jacobiEigen`'s own residuals are `|VΛVᵀ−A| ≤ 1.18e-11` and `|VᵀV−I| ≤ 3.78e-15`, so `1e-9`
+ * clears the permutation noise by orders. Below: two performances whose first MDS coordinates
+ * differ by one part in `10⁹` are the same point on any plot anyone will draw, and the label rule
+ * orders them.
  *
- * An epsilon comparison is not transitive, so this does not make the order a total order in
- * theory. It does in practice and the residue is bounded: for a chain to resolve differently
- * two coordinates must straddle the band's own edge, which needs a corpus constructed to do it.
- * The EXACT tie is the case that genuinely cannot be fixed here, and `degenerate` reports it.
+ * An epsilon comparison is not transitive, so this is not a total order in theory. The residue is
+ * bounded: for a chain to resolve differently two coordinates must straddle the band's own edge,
+ * which needs a corpus constructed to do it. The EXACT tie cannot be fixed here at all, and
+ * `degenerate` reports it.
  */
 const TIE_EPSILON = 1e-9;
 
@@ -168,8 +149,7 @@ const JACOBI_MAX_SWEEPS = 100;
  * The symmetric eigenproblem by CYCLIC Jacobi, in a fixed sweep order.
  *
  * Returns eigenvalues and eigenvectors as columns of `vectors` (`vectors[i*n + j]` is component
- * `i` of eigenvector `j`), unsorted. ~60 lines and no dependency, which is what §5 of
- * survey-algo promises; quadratic convergence makes the sweep count small in practice.
+ * `i` of eigenvector `j`), unsorted. Quadratic convergence keeps the sweep count small.
  */
 export function jacobiEigen(matrix: SquareMatrix): {
   readonly values: readonly number[];
@@ -180,13 +160,11 @@ export function jacobiEigen(matrix: SquareMatrix): {
   const v = new Array<number>(n * n).fill(0);
   for (let i = 0; i < n; ++i) v[i * n + i] = 1;
 
-  // `Math.hypot(...a)` spreads `n²` arguments, and V8's measured argument limit is 105741 — so
-  // this throws `RangeError` at `n ≥ 326` (W4 MINOR-13). `DEFAULT_MAX_ITEMS = 256` needs 65536,
-  // which is 1.61× headroom, but the ceiling is C17's and a future raise would land here rather
-  // than anywhere it could be predicted from. Accumulated instead, which has no argument limit
-  // and is the same number: `Math.hypot`'s scaling protects against overflow in the SQUARES, and
-  // these are distance-matrix entries whose squares cannot overflow a double at any `n` this
-  // module accepts.
+  // Accumulated rather than `Math.hypot(...a)`, which spreads `n²` arguments against V8's
+  // measured limit of 105741 and so throws `RangeError` at `n ≥ 326` (W4 MINOR-13);
+  // `DEFAULT_MAX_ITEMS = 256` needs 65536, only 1.61× headroom under a ceiling C17 may raise.
+  // Same number: `Math.hypot`'s scaling guards overflow in the SQUARES, and these are
+  // distance-matrix entries whose squares cannot overflow a double at any `n` this module takes.
   let sumOfSquares = 0;
   for (const value of a) sumOfSquares += value * value;
   const norm = Math.sqrt(sumOfSquares);
@@ -292,12 +270,10 @@ export function classicalMds(
 
   const { values, vectors } = jacobiEigen(doubleCentered(distances));
 
-  // Descending by eigenvalue, ties by the eigenvector's own label key, so the ORDER of two
-  // equal eigenvalues is a function of the corpus rather than of Jacobi's rotation history.
-  // The tie test is RELATIVE (AD-67.1): under a permutation two eigenvalues that are equal in
-  // exact arithmetic differ in the last ulp, and an exact `||` never reaches the key at all —
-  // which is the same defect as `signOf`'s, one level up, and it is what put the whole
-  // eigenvalue ORDER at the mercy of the rotation history.
+  // Descending by eigenvalue, ties by the eigenvector's own label key, so the ORDER of two equal
+  // eigenvalues is a function of the corpus rather than of Jacobi's rotation history. The tie
+  // test is RELATIVE (AD-67.1): under a permutation two eigenvalues equal in exact arithmetic
+  // differ in the last ulp, and an exact `||` never reaches the key at all.
   const spectralScale = values.reduce((peak, value) => Math.max(peak, Math.abs(value)), 0);
   const order = Array.from({ length: n }, (_unused, index) => index).sort((x, y) =>
     tied(cell(values, x), cell(values, y), spectralScale)
@@ -307,27 +283,24 @@ export function classicalMds(
 
   const total = values.reduce((sum, value) => sum + Math.abs(value), 0);
   const negative = values.reduce((sum, value) => sum + (value < 0 ? -value : 0), 0);
-  // A3b's condition, which governs `explainedVariance` and `negativeEigenvalueMass`. It is the
-  // NARROWER of the two degeneracies and it is deliberately not the flag any more.
+  // A3b's condition, which governs `explainedVariance` and `negativeEigenvalueMass` — the
+  // NARROWER of the two degeneracies, and deliberately not the `degenerate` flag.
   const zeroSpectrum = total === 0;
 
   const coordinates = new Array<number>(n * width).fill(0);
   const explainedVariance: (number | null)[] = [];
   for (let axis = 0; axis < width; ++axis) {
-    // `-1` is this loop's "no axis left", and reading it off the miss is the same test the
-    // explicit bounds comparison used to spell: `width` may exceed `order.length`, and the two
-    // guards below are what turn that into an all-zero column rather than a dropped one.
+    // `-1` is "no axis left": `width` may exceed `order.length`, and the two guards below turn
+    // that into an all-zero column rather than a dropped one.
     const column = order[axis] ?? -1;
     const eigenvalue = column < 0 ? 0 : cell(values, column);
-    // `λ_j / Σ|λ|` — SIGNED, which is the documented formula and was not what shipped (W4
-    // MAJOR-2). An `Math.abs` here credits a NEGATIVE axis with positive variance, and a
-    // negative axis is the one thing this module exists to be honest about: it is an imaginary
-    // direction, its `coordinates` are all zero because the retention test is `eigenvalue > 0`,
-    // and reporting it at `+1.8 %` says the opposite of what it means. Measured on the vendored
-    // corpus at `embeddingAxes: 9 = n−1` (legal): axes 7 and 8 have eigenvalues `−145738.84`
-    // and `−567987.33`, empty coordinates, and were reported at `+0.004664811652368655` and
-    // `+0.018180149719632315` — 2.28 % of the variance credited to two axes that are not there.
-    // The sign is the whole signal, so the shares now sum to at most 1 and can go below it.
+    // `λ_j / Σ|λ|` — SIGNED (W4 MAJOR-2). An `Math.abs` here credits a NEGATIVE axis with
+    // positive variance: it is an imaginary direction, its `coordinates` are all zero because
+    // the retention test is `eigenvalue > 0`, and reporting it at `+1.8 %` says the opposite of
+    // what it means. Measured on the vendored corpus at `embeddingAxes: 9 = n−1` (legal): axes 7
+    // and 8 have eigenvalues `−145738.84` and `−567987.33`, empty coordinates, and were reported
+    // at `+0.004664811652368655` and `+0.018180149719632315` — 2.28 % of the variance credited to
+    // two axes that are not there. The shares therefore sum to at most 1 and can go below it.
     explainedVariance.push(zeroSpectrum ? null : eigenvalue / total);
     if (column < 0 || !(eigenvalue > 0)) continue;
     const sign = signOf(vectors, n, column, labels);
@@ -355,19 +328,16 @@ export function classicalMds(
  * positions `0 … width`, INCLUSIVE of the first dropped one, because a degeneracy straddling
  * the cut makes the last retained eigenvector just as arbitrary as one wholly inside.
  *
- * At least one of the pair must carry MATERIAL variance, and that qualification is what keeps
- * the flag informative rather than universal. Every real corpus has a tail of near-zero
- * eigenvalues that are all mutually tied at this epsilon; their eigenvectors are indeed
- * arbitrary, but the coordinates they produce are `√λ·v` with `λ` at the noise floor, i.e.
- * below the resolution of any plot. Flagging those would make `degenerate` true for every
- * corpus asked for `axes = N−1` and tell a reader nothing. So the flag answers the question a
- * reader actually has: is an axis I can SEE arbitrarily oriented?
+ * At least one of the pair must carry MATERIAL variance, which is what keeps the flag
+ * informative rather than universal. Every real corpus has a tail of near-zero eigenvalues all
+ * mutually tied at this epsilon; their eigenvectors are indeed arbitrary, but the coordinates
+ * they produce are `√λ·v` with `λ` at the noise floor, below the resolution of any plot. So the
+ * flag answers the question a reader has: is an axis I can SEE arbitrarily oriented?
  */
 function hasRepeatedAxis(descending: readonly number[], width: number): boolean {
   const scale = descending.reduce((peak, value) => Math.max(peak, Math.abs(value)), 0);
   if (scale === 0) return false;
-  // Adjacent pairs over the retained prefix, INCLUSIVE of the first dropped axis — hence the
-  // `+ 1`, which is the same slice the index loop expressed as `axis < min(width, length − 1)`.
+  // Adjacent pairs over the retained prefix, INCLUSIVE of the first dropped axis — hence `+ 1`.
   const retained = descending.slice(0, Math.min(width, descending.length - 1) + 1);
   for (const [here, next] of pairwise(retained)) {
     if (!tied(here, next, scale)) continue;
@@ -390,17 +360,14 @@ function signOf(
   column: number,
   labels: readonly string[],
 ): number {
-  // Two passes, and the two-pass form is the repair (W4 CAPITAL-3). The single-pass version
-  // compared each magnitude against the RUNNING best with `===`, so two components equal in
-  // exact arithmetic but one ulp apart under a permuted Jacobi never reached the label branch —
-  // and the sign followed the noise, mirroring whole plots. Measured on the vendored corpus
-  // before this: `A-tel` anchored at `+634.1636783061936` under four item orders and
+  // Two passes (W4 CAPITAL-3). Comparing each magnitude against the RUNNING best with `===` left
+  // two components equal in exact arithmetic but one ulp apart under a permuted Jacobi never
+  // reaching the label branch, so the sign followed the noise and mirrored whole plots: measured
+  // on the vendored corpus, `A-tel` anchored at `+634.1636783061936` under four item orders and
   // `−634.1636783061933` under two others. A threshold fixed by the peak is a function of the
-  // vector alone, so the candidate SET is the same under every permutation and the label picks
-  // from it.
+  // vector alone, so the candidate SET is the same under every permutation.
   let peak = 0;
   for (let i = 0; i < n; ++i) peak = Math.max(peak, Math.abs(cell(vectors, i * n + column)));
-  // No largest component to point at: `+1` is a choice, not a computation.
   if (peak === 0) return 1;
 
   const threshold = peak * (1 - TIE_EPSILON);
@@ -450,9 +417,9 @@ function lower(labels: readonly string[], i: number, j: number): boolean {
 /**
  * §8's seriation: order by the first MDS coordinate, ties by label.
  *
- * The cheap version survey-algo recommends. Optimal leaf ordering is `O(N³)` and affordable at
- * `N ≤ 256`, but the first coordinate is deterministic, free once the MDS is computed, and good
- * enough for a distance heatmap — which is what the ordering is for.
+ * Optimal leaf ordering is `O(N³)` and affordable at `N ≤ 256`, but the first coordinate is
+ * deterministic, free once the MDS is computed, and good enough for the distance heatmap the
+ * ordering is for.
  */
 export function seriationOrder(embedding: Embedding, labels: readonly string[]): readonly number[] {
   const n = embedding.axes === 0 ? labels.length : embedding.coordinates.length / embedding.axes;
@@ -462,28 +429,19 @@ export function seriationOrder(embedding: Embedding, labels: readonly string[]):
   const first = (item: number) => cell(embedding.coordinates, item * embedding.axes);
   const scale = order.reduce((peak, item) => Math.max(peak, Math.abs(first(item))), 0);
 
-  // Sorted by LABEL first, then by coordinate. Both halves of that are the repair
-  // (W4 CAPITAL-3). The comparison is relative — an exact `||` never reached the label branch,
-  // because a permuted Jacobi puts two equal coordinates one ulp apart and the published order
-  // then followed the noise: measured at 7 distinct seriations over 20 permutations of one
-  // six-item corpus, with `A-tel-1`'s own coordinate taking 16 distinct values, all
-  // `≈ −45.2370019107607`. And an epsilon comparison is not transitive, so `sort`'s pivot
-  // choices can still see a chain of near-ties; seeding it with the LABEL order rather than the
-  // caller's index order makes even that outcome a function of the corpus rather than of how
-  // the items were listed. `Array.prototype.sort` is stable, so the seed survives every
-  // comparison that returns 0.
-  // TOTAL at both sorts — `lower(...) ? -1 : 1` answers 1 in both directions for equal labels,
-  // which is not a comparator and reintroduces the caller's order through the back door
-  // (MINOR-R5). The index fallback settles genuinely equal labels.
-  // The double sort is a KEEP, and `stableSortBy` is the alternative it was weighed against —
-  // recorded because "two `.sort` calls on one array" is exactly the shape a survey flags. There
-  // is nothing to extract: `order` is built three lines up and belongs to nobody, so no caller's
-  // array is mutated and a copy-then-sort helper would prevent no mistake. `Array.prototype.sort`
-  // is stable by specification (ES2019), which is precisely what makes the seed sort load-bearing
-  // rather than redundant, and the comment above spends a paragraph on why. `stableSortBy` was
-  // written for the prelude, shipped, found to have zero call sites tree-wide, and deleted
-  // (`prelude/seq.ts`'s header lists it among the four deliberately-absent shapes); this site is
-  // one of the ~35 that looked like a customer and is not.
+  // Sorted by LABEL first, then by coordinate, with a RELATIVE comparison (W4 CAPITAL-3). An
+  // exact `||` never reached the label branch, because a permuted Jacobi puts two equal
+  // coordinates one ulp apart and the published order then followed the noise: measured at 7
+  // distinct seriations over 20 permutations of one six-item corpus, with `A-tel-1`'s own
+  // coordinate taking 16 distinct values, all `≈ −45.2370019107607`. An epsilon comparison is not
+  // transitive, so `sort`'s pivot choices can still see a chain of near-ties; seeding it with the
+  // LABEL order rather than the caller's index order makes even that outcome a function of the
+  // corpus. `Array.prototype.sort` is stable (ES2019), so the seed survives every comparison that
+  // returns 0.
+  //
+  // `byLabel` must be TOTAL at both sorts: `lower(...) ? -1 : 1` answers 1 in both directions for
+  // equal labels, which is not a comparator and reintroduces the caller's order through the back
+  // door (MINOR-R5). The index fallback settles genuinely equal labels.
   const byLabel = (x: number, y: number) =>
     lower(labels, x, y) ? -1 : lower(labels, y, x) ? 1 : x - y;
   order.sort(byLabel);

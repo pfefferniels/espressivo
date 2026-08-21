@@ -1,25 +1,19 @@
 /**
- * C13's cumulative drift: what the two tempo curves do to the CLOCK.
+ * C13's cumulative drift: what the two tempo curves do to the clock.
  *
- * `d_tempo` is a statement about the tempo curve, and A-Q3's whole argument for comparing the
- * curve rather than the millisecond map is that cumulative time integrates every earlier
- * difference — two performances that agree everywhere except one held note diverge in seconds
- * for the rest of the piece, and a millisecond metric reports that as a difference at every
- * subsequent moment. The drift is nevertheless the quantity a listener notices and a scholar
- * quotes ("this roll runs forty seconds long"), so it ships as a SECONDARY, plainly labelled,
- * and it is not a distance: it enters no `d_k`, no `D` and no table cell.
+ * A-Q3 compares the curve rather than the millisecond map because cumulative time integrates
+ * every earlier difference — two performances agreeing everywhere but one held note diverge in
+ * seconds for the rest of the piece. The drift is still the quantity a listener notices, so it
+ * ships as a labelled SECONDARY and is not a distance: it enters no `d_k`, no `D`, no table cell.
  *
- * Seconds are `∫ 60 / qbpm(t) dt` over the window in quarters, integrated on the tempo
- * dimension's own refinement grid with the same graded mesh the distance uses (AD-28.1) — two
- * meshes over one curve would be two accuracies to reason about, and the second one would be
- * nobody's measured figure.
+ * Seconds are `∫ 60 / qbpm(t) dt` over the window in quarters, on the tempo dimension's own
+ * refinement grid with the graded mesh the distance uses (AD-28.1), so one curve has one
+ * accuracy to reason about.
  *
- * **This is the exact integral of the DEFINED curve, not a reproduction of the renderer's own
- * Simpson accumulation.** §5.1 reproduces the renderer's absolute-time quirk — its
- * non-monotone millisecond map at a skipped instruction — in the drift secondary and nowhere
- * else, and doing that faithfully means running the renderer's own accumulator, which the
- * comparison layer may not import (§9.7's zone). The divergence is confined to documents that
- * trip that quirk and is reported here rather than left for a reader to discover.
+ * This integrates the DEFINED curve exactly rather than reproducing the renderer's Simpson
+ * accumulation: §5.1's non-monotone millisecond map at a skipped instruction would need the
+ * renderer's own accumulator, which §9.7 keeps out of the comparison layer. The divergence is
+ * confined to documents that trip that quirk.
  */
 import { pairwise } from '../prelude/index.js';
 import { CompensatedSum, bisectSignChange, gaussLegendre10 } from './quadrature.js';
@@ -59,9 +53,8 @@ export function cumulativeDrift(
       60 / quarterBpmAt(curve, ticks);
 
     // The stationary point of the two clocks' difference is where their INTEGRANDS cross, so
-    // the extremum inside a cell is bracketed there rather than sampled for. Outside such a
-    // point the difference is monotone in the cell and its extremes are the two edges, which
-    // the loop visits anyway.
+    // the extremum inside a cell is bracketed there rather than sampled for. Without such a
+    // point the difference is monotone and its extremes are the edges the loop visits anyway.
     const crossing = bisectSignChange(
       (ticks) => secondsPerQuarter(a)(ticks) - secondsPerQuarter(b)(ticks),
       cellStart,

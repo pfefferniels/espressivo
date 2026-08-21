@@ -1,10 +1,10 @@
 /**
  * The rubato displacement curve — DESIGN.md §5.2.
  *
- * The compared object is the **displacement** `δ(t) = warp(t) − t`, in quarters, not the
- * warped date itself. Neutral is `δ ≡ 0`, which is what an absent map, an unwarped gap and
- * an identity window all perform, so the dimension is total over the window without special
- * cases at its edges.
+ * The compared object is the displacement `δ(t) = warp(t) − t`, in quarters, not the warped
+ * date itself. Neutral is `δ ≡ 0`, which is what an absent map, an unwarped gap and an identity
+ * window all perform, so the dimension is total over the window without special cases at its
+ * edges.
  *
  * Within one frame of length `L` starting at the instruction's date `t₀`, with
  * `τ = (t − t₀) mod L` (`RubatoMap.computeRubatoTransformation:166-173`):
@@ -13,33 +13,31 @@
  *
  * ## Four renderer behaviours, each of which changes the curve
  *
- * 1. **`@loop` gates the cycle** (AD-10). `RubatoData.loop` defaults to **false**
+ * 1. `@loop` gates the cycle (AD-10). `RubatoData.loop` defaults to false
  *    (`RubatoData.ts:37`) and `renderRubatoToMap` breaks out of the span at the first frame
  *    boundary when it is off (`RubatoMap.ts:199-203`). The `mod` in the formula *is* the
- *    repetition `@loop` controls, so with the flag off the warp applies on `[t₀, t₀ + L)`
- *    and `δ ≡ 0` across the rest of the span. The repo's own fixtures carry
- *    `<rubato frameLength="720.0" lateStart="0.25" earlyEnd="0.75"/>` with **no** `@loop`,
- *    which a cyclic reading would warp across its whole span.
- * 2. **A skipped instruction leaves a neutral gap that still has a breakpoint** (AD-16,
- *    R23). `getRubatoDataOf` returns null when neither the element nor a referenced
- *    `rubatoDef` supplies `@frameLength` — "without a frame there is nothing to warp" — but
- *    `getEndDate` scans for the next `<rubato>` regardless of validity, so the skipped
- *    element still ends the preceding span and opens an unwarped gap.
- * 3. **Clamps run before evaluation** (`RubatoMap.ts:136-141`): `lateStart` floored at 0,
- *    `earlyEnd` capped at 1, and an inverted or empty window reset to the full frame
- *    `(0, 1)`. Applying them afterwards would compare inverted warps the renderer never
- *    performs.
- * 4. **The neutral parametrization is special-cased** (AD-21, M18). When
+ *    repetition `@loop` controls, so with the flag off the warp applies on `[t₀, t₀ + L)` and
+ *    `δ ≡ 0` across the rest of the span. The repo's own fixtures carry
+ *    `<rubato frameLength="720.0" lateStart="0.25" earlyEnd="0.75"/>` with no `@loop`, which a
+ *    cyclic reading would warp across its whole span.
+ * 2. A skipped instruction leaves a neutral gap that still has a breakpoint (AD-16, R23).
+ *    `getRubatoDataOf` returns null when neither the element nor a referenced `rubatoDef`
+ *    supplies `@frameLength` — "without a frame there is nothing to warp" — but `getEndDate`
+ *    scans for the next `<rubato>` regardless of validity, so the skipped element still ends
+ *    the preceding span and opens an unwarped gap.
+ * 3. Clamps run before evaluation (`RubatoMap.ts:136-141`): `lateStart` floored at 0,
+ *    `earlyEnd` capped at 1, and an inverted or empty window reset to the full frame `(0, 1)`.
+ *    Applying them afterwards would compare inverted warps the renderer never performs.
+ * 4. The neutral parametrization is special-cased (AD-21, M18). When
  *    `intensity === 1 && lateStart === 0 && earlyEnd === 1` the evaluator returns exactly 0
- *    without arithmetic: `L·(τ/L) − τ` does **not** round-trip for all integer pairs —
- *    `(22, 15)` gives `−1.78e−15`, `(25, 7)` gives `+8.88e−16` — so a fixture that happened
- *    to pick such a pair would fail an "exactly 0" assertion for a reason that has nothing
- *    to do with rubato.
+ *    without arithmetic: `L·(τ/L) − τ` does not round-trip for all integer pairs — `(22, 15)`
+ *    gives `−1.78e−15`, `(25, 7)` gives `+8.88e−16` — so a fixture that happened to pick such
+ *    a pair would fail an "exactly 0" assertion for a reason unrelated to rubato.
  *
- * Defaults for absent `@intensity` / `@lateStart` / `@earlyEnd` with no def are
- * `RubatoData`'s own initializers **1.0 / 0.0 / 1.0** — the identity warp.
- * `@frameLength` is tick-valued and therefore ppq-sensitive; `@intensity` and the window
- * bounds are dimensionless and are not rescaled.
+ * Defaults for absent `@intensity` / `@lateStart` / `@earlyEnd` with no def are `RubatoData`'s
+ * own initializers 1.0 / 0.0 / 1.0 — the identity warp. `@frameLength` is tick-valued and
+ * therefore ppq-sensitive; `@intensity` and the window bounds are dimensionless and are not
+ * rescaled.
  */
 import { filterMap, withNext } from '../prelude/index.js';
 import { optionAt } from '../prelude/seq.js';
@@ -56,13 +54,11 @@ import { coveringSegmentAt } from './segments.js';
 /**
  * The `<rubatoDef name="…">` a `<rubato name.ref="…">` inherits from, or null.
  *
- * Style resolution goes through `styleScope.findStyleDef`, which §5.0 requires: a part
- * header declaring `styleDef name="A"` hides the global `"A"` entirely, defs and all, and a
- * direct header scan gets that wrong in a way that changes a rendered warp.
- *
- * The def element is then read RAW. Constructing `RubatoDef` would add
- * `intensity`/`lateStart`/`earlyEnd` to the document and respell present values
- * (`"1.0"` → `"1"`) — `RubatoDef.ts:41-73` — which R1 forbids.
+ * Style resolution goes through `styleScope.findStyleDef`, which §5.0 requires: a part header
+ * declaring `styleDef name="A"` hides the global `"A"` entirely, defs and all, and a direct
+ * header scan gets that wrong in a way that changes a rendered warp. The def element is then
+ * read RAW — constructing `RubatoDef` would add `intensity`/`lateStart`/`earlyEnd` to the
+ * document and respell present values (`"1.0"` → `"1"`, `RubatoDef.ts:41-73`), which R1 forbids.
  */
 function findRubatoDef(
   nameRef: string | null,
@@ -83,13 +79,13 @@ function findRubatoDef(
  * The per-instruction frame-boundary budget (AD-10 / R25), a [convention] slot §5.2 leaves
  * unfilled.
  *
- * `frameLength="1"` is legal and would put 1.7 M boundaries in the grid for one instruction
- * on one part, and R10's budget is expressed in *instructions*, which does not bound this at
- * all. 1024 is chosen because it clears every musically plausible frame — a 200-quarter
- * piece warped on a sixteenth-note frame needs 800 — while cutting the pathological case by
- * three orders of magnitude. When it bites, a `grid-truncated` note is emitted: the warp is
- * still evaluated correctly everywhere, only the *grid* stops subdividing, so the effect is
- * quadrature resolution rather than a wrong curve.
+ * `frameLength="1"` is legal and would put 1.7 M boundaries in the grid for one instruction on
+ * one part, and R10's budget is expressed in *instructions*, which does not bound this at all.
+ * 1024 clears every musically plausible frame — a 200-quarter piece warped on a sixteenth-note
+ * frame needs 800 — while cutting the pathological case by three orders of magnitude. When it
+ * bites, a `grid-truncated` note is emitted: the warp is still evaluated correctly everywhere
+ * and only the grid stops subdividing, so the effect is quadrature resolution rather than a
+ * wrong curve.
  */
 export const RUBATO_FRAME_BOUNDARY_CAP = 1024;
 
@@ -109,10 +105,10 @@ export interface RubatoSegment {
    * The end of the `⊥` interval this segment opens at its own start, or null where it opens
    * none (MINOR-4).
    *
-   * A warp the renderer computes as `NaN` erases every note it touches, and WHERE it touches
-   * is the render loop's guard: the whole span under `@loop` or an unusable `@frameLength`,
-   * the first frame otherwise. Modelled as an interval rather than as a segment kind because
-   * it is a sub-interval of the span, exactly as the `@loop`-off warp itself is.
+   * A warp the renderer computes as `NaN` erases every note it touches, and WHERE it touches is
+   * the render loop's guard: the whole span under `@loop` or an unusable `@frameLength`, the
+   * first frame otherwise. An interval rather than a segment kind, because it is a sub-interval
+   * of the span exactly as the `@loop`-off warp is.
    */
   readonly poisonedEndTicks: number | null;
 }
@@ -137,32 +133,23 @@ export function neutralRubatoCurve(): RubatoCurve {
 /**
  * `RubatoMap.ts:136-141`'s boundary handling, applied before the curve is evaluated.
  *
- * The final rule is the one that matters most: an inverted or empty window is reset to the
- * **full frame**, not to something near it, so `earlyEnd < lateStart` performs as no warp at
- * all rather than as a backwards one.
+ * The last rule matters most: an inverted or empty window is reset to the full frame, not to
+ * something near it, so `earlyEnd < lateStart` performs as no warp at all rather than as a
+ * backwards one.
  */
 function clampWindow(lateStart: number, earlyEnd: number): { lateStart: number; earlyEnd: number } {
   let low = lateStart;
   let high = earlyEnd;
-  // `NaN` fails all three comparisons and SURVIVES, exactly as it does in the renderer
-  // (`RubatoMap.ts:136-141`). Repairing it to 0/1 was this module's first reading and it is a
-  // divergence: the renderer carries the NaN into `computeRubatoTransformation`, which then
-  // writes `date.perf="NaN"` and the note vanishes from the MIDI export (MINOR-4, R24).
+  // `NaN` fails all three comparisons and SURVIVES, exactly as in the renderer
+  // (`RubatoMap.ts:136-141`), which carries it into `computeRubatoTransformation`, writes
+  // `date.perf="NaN"` and drops the note from the MIDI export (MINOR-4, R24). Repairing it to
+  // 0/1 here would be a divergence.
   if (low < 0) low = 0;
   if (high > 1) high = 1;
   if (low >= high) return { lateStart: 0, earlyEnd: 1 };
   return { lateStart: low, earlyEnd: high };
 }
 
-/**
- * Read one `<rubato>`, inheriting from its `rubatoDef` where the element is silent.
- *
- * The def is read **raw**: constructing `RubatoDef` would add `intensity`/`lateStart`/
- * `earlyEnd` to the document and respell present values (`"1.0"` → `"1"`), which R1 forbids
- * and which is the founding observation of the expression module's D-A discipline.
- *
- * Returns null exactly where `getRubatoDataOf` does — no `@frameLength` from either source.
- */
 type RawRubato =
   | {
       readonly poisoned?: undefined;
@@ -179,6 +166,10 @@ type RawRubato =
       readonly frameLength?: number;
     };
 
+/**
+ * Read one `<rubato>`, inheriting from its `rubatoDef` where the element is silent. Returns
+ * null exactly where `getRubatoDataOf` does — no `@frameLength` from either source.
+ */
 function readRawRubato(
   element: Element,
   styleName: string | null,
@@ -195,9 +186,8 @@ function readRawRubato(
   // `getRubatoDataOf` tests the attribute's PRESENCE, not its usability:
   // `if (att !== null) rd.x = parseFloat(att.getValue()); else if (def) rd.x = def.getX();`
   // So a present-but-unusable value keeps its `NaN` and the def is NEVER consulted for it
-  // (MINOR-4, confirmed at source and through `performMsm`). Reading it as "unusable, so
-  // inherit" was this module's first version and it silently performed the def's warp where
-  // the renderer performs none at all.
+  // (MINOR-4, confirmed at source and through `performMsm`). An "unusable, so inherit" reading
+  // would silently perform the def's warp where the renderer performs none at all.
   const resolved = (name: string): { present: boolean; value: number } => {
     const own = readAttributeValue(element, name);
     if (own !== null) return { present: true, value: parseFloat(own) };
@@ -259,10 +249,7 @@ export function readRubatoSegments(
 
   if (view === null) return neutralRubatoCurve();
 
-  // Read each entry, skip what is not a dated `<rubato>`, keep the rest — `filterMap`, with
-  // the two `continue`s as the two `null` returns. The element type is inferred from the
-  // returned object literal, which is why the eight-line annotation the accumulator needed
-  // is gone; the one field a reader would not guess keeps its comment.
+  // Read each entry, skipping what is not a dated `<rubato>`.
   const raws = filterMap(view.entries, (entry, index) => {
     if (entry.element.getLocalName() !== 'rubato') return null;
     if (!Number.isFinite(entry.date)) return null;
@@ -284,15 +271,8 @@ export function readRubatoSegments(
   const breakpoints = new Set<number>([0]);
 
   // getEndDate scans for the next <rubato> regardless of whether it parses, so a skipped
-  // instruction still ends this span.
-  // The end is PAIRED with its entry rather than read at `index + 1`. "There is no next
-  // entry" is then a VALUE — `+Infinity` — instead of an out-of-range read that the type
-  // system had to be told about with `as (typeof xs)[number] | undefined`.
-  // Each entry with its successor, or `null` for the last — `withNext`. The span it opens
-  // then runs to `next?.dateTicks ?? Infinity`, which says at the point of use that the last
-  // entry runs to the end of time. The `[...xs.slice(1).map(…), Infinity]` array this
-  // replaces built that sentinel where it could not be read as one, and built a whole array
-  // to be zipped away.
+  // instruction still ends this span. `withNext` pairs each entry with its successor, or `null`
+  // for the last, whose span then runs to `Infinity` at the point of use.
   for (const [raw, next] of withNext(raws)) {
     const endTicks = next?.dateTicks ?? Number.POSITIVE_INFINITY;
     const parsed = readRawRubato(
@@ -403,16 +383,16 @@ export function readRubatoSegments(
 /**
  * The segment governing `ticks`, right-continuous, or null where nothing warps.
  *
- * Called once per Gauss-Legendre node, so the linear scan this replaces made one dimension's
- * integral quadratic in the size of the map it integrates. {@link coveringSegmentAt} carries the
- * proof that the bound answers identically here — including at `NaN` and `Infinity`.
+ * Called once per Gauss-Legendre node, where a linear scan would make one dimension's integral
+ * quadratic in the size of the map it integrates. {@link coveringSegmentAt} carries the proof
+ * that the bound answers identically here — including at `NaN` and `Infinity`.
  */
 export function rubatoSegmentAt(curve: RubatoCurve, ticks: number): RubatoSegment | null {
   return coveringSegmentAt(curve.segments, ticks);
 }
 
 /**
- * `δ(t)` in **common ticks** — the displacement the renderer applies at `t`.
+ * `δ(t)` in common ticks — the displacement the renderer applies at `t`.
  *
  * Zero outside every segment, zero on the neutral parametrization (exactly, by the M18
  * guard), and zero past the first frame when `@loop` is off.
@@ -447,9 +427,6 @@ export function displacementQuartersAt(
 export function rubatoBottomSpans(
   curve: RubatoCurve,
 ): readonly { readonly startTicks: number; readonly endTicks: number }[] {
-  // One pass, and the `as number` goes with the two-pass spelling: the `=== null` test that
-  // used to be a `filter` the type system could not follow now narrows `poisonedEndTicks` in
-  // the branch that reads it.
   return filterMap(curve.segments, (segment) =>
     segment.poisonedEndTicks === null
       ? null

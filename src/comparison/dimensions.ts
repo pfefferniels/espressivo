@@ -2,9 +2,9 @@
  * The eleven dimensions behind ONE interface — §3's table as a function.
  *
  * Everything above this file works on `DimensionEvaluation`s and never on a `TempoCurve` or an
- * `OrnamentAtom`. That is what lets §7's aggregation, §9's report shapes and the profile export
- * be written once instead of eleven times, and it is why the three genuinely different SHAPES
- * §3 names — curve, event, distribution — are the three functions here rather than eleven.
+ * `OrnamentAtom`, so §7's aggregation, §9's report shapes and the profile export are written
+ * once instead of eleven times. The three genuinely different SHAPES §3 names — curve, event,
+ * distribution — are the three functions here.
  *
  * ## What a dimension has to answer
  *
@@ -16,21 +16,19 @@
  *
  * ## Where the maps come from, and the one place this file departs from AD-3
  *
- * §5.0 evaluates per part. `Performance.renderParts` iterates over the **MSM's** parts and
- * calls `resolvePartMaps(mpmPart, globalMaps)`, whose first line is
- * `if (mpmPart === null) return globalMaps` — so an MSM part with no MPM counterpart inherits
- * the GLOBAL maps wholesale, and does NOT fall back to the neutral curve. Measured end to end
- * through `performMsm`: an MPM with a global `dynamicsMap` at volume 40 and a part 1 shadowing
- * it at 110, against an MSM with parts 1 and 2, performs part 1's notes at velocity 110 and
- * part 2's at **40** — not at the neutral 100.
+ * §5.0 evaluates per part. `Performance.renderParts` iterates over the MSM's parts and calls
+ * `resolvePartMaps(mpmPart, globalMaps)`, whose first line is `if (mpmPart === null) return
+ * globalMaps` — so an MSM part with no MPM counterpart inherits the GLOBAL maps wholesale, and
+ * does NOT fall back to the neutral curve. Measured end to end through `performMsm`: an MPM with
+ * a global `dynamicsMap` at volume 40 and a part 1 shadowing it at 110, against an MSM with
+ * parts 1 and 2, performs part 1's notes at velocity 110 and part 2's at 40 — not at the
+ * neutral 100.
  *
- * AD-3 says an unmatched part "compares against the neutral curve (R6 applied to parts)". R6 is
- * being applied one level too early: an absent MAP is the neutral curve, and what a part with
- * no counterpart has is not an absent map but the GLOBAL one. So the caller substitutes the
- * other document's global scope for a missing part, which degenerates to AD-3's rule exactly
- * when the global map is absent too. The reading is renderer-sourced and pipeline-measured and
- * is reported for ratification; the difference is not small (|ln(100/40)| = 9.6 JND sustained
- * over the whole part).
+ * AD-3 says an unmatched part "compares against the neutral curve (R6 applied to parts)", which
+ * applies R6 one level too early: an absent MAP is the neutral curve, and what a part with no
+ * counterpart has is not an absent map but the GLOBAL one. So the caller substitutes the other
+ * document's global scope for a missing part, degenerating to AD-3's rule exactly when the global
+ * map is absent too. The difference is not small: |ln(100/40)| = 9.6 JND over the whole part.
  */
 import { filterMap, head, isNonEmpty, last } from '../prelude/index.js';
 import { pairwise } from '../prelude/index.js';
@@ -121,13 +119,11 @@ export interface RawNote {
 /**
  * One cell of a dimension's density, in QUARTERS — `aggregate.ts`'s shape.
  *
- * `densityAt` is NULLABLE and every dimension this wave ships supplies one: AD-51.1's ruled
- * extension had each `*Distance` module hand back the integrand it already evaluates, so AD-19's
- * segment boundaries root-refine exactly rather than falling back to cell resolution. The null
- * stays legal for the reason AD-51.1 gives — it is the graceful path for a future dimension that
- * genuinely has no pointwise density — and `ComparisonReport.cellQuantizedDimensions` is the
- * field that names such a dimension when it appears. Empty on every document the engine can
- * currently produce, which is what makes it a measurement rather than a promise.
+ * `densityAt` is NULLABLE, though every dimension supplies one: AD-51.1 has each `*Distance`
+ * module hand back the integrand it already evaluates, so AD-19's segment boundaries root-refine
+ * exactly rather than falling back to cell resolution. The null is AD-51.1's path for a future
+ * dimension with no pointwise density; `ComparisonReport.cellQuantizedDimensions` names one when
+ * it appears, and is empty on every document the engine can produce today.
  */
 export interface EvaluationCell {
   readonly startQuarters: number;
@@ -154,11 +150,9 @@ export interface DimensionEvaluation {
   readonly valueA: ((quarters: number) => number) | null;
   readonly valueB: ((quarters: number) => number) | null;
   /**
-   * The pair's refinement grid over this scope, in QUARTERS.
-   *
-   * Carried so that a caller merging several part scopes can take §1.2's moments over the
-   * disjoint union of their curves rather than over one of them — the parts really are several
-   * curves, and a mean of a concatenation needs each piece's own partition.
+   * The pair's refinement grid over this scope, in QUARTERS — carried so that a caller merging
+   * several part scopes can take §1.2's moments over the disjoint union of their curves, since a
+   * mean of a concatenation needs each piece's own partition.
    */
   readonly pairGridQuarters: readonly number[];
   readonly unit: ComparisonUnit;
@@ -230,10 +224,6 @@ function coveredLength(
   startTicks: number,
   endTicks: number,
 ): number {
-  // Clip and drop in one pass. The two-pass form built a record for every interval and then
-  // threw away the ones the clip had emptied, so `Math.max`/`Math.min` ran for intervals that
-  // contribute nothing. The surviving set and their pre-sort order are unchanged, so the
-  // `total +=` sequence below is the same double in the same order.
   const clipped = [
     ...filterMap(intervals, (interval) => {
       const low = Math.max(interval.startTicks, startTicks);
@@ -266,8 +256,6 @@ function documentGrid(
 
 /** `∫ g dt / L` over a grid, in the grid's own abscissa. */
 function meanOverGrid(g: SampledCurve, grid: readonly number[]): number | null {
-  // The grid's own span, or 0 where it is too short to have one — `decomposition.gridSpan` and
-  // `compare.integrateOverGrid` state the same fact the same way.
   const length = isNonEmpty(grid) ? last(grid) - head(grid) : 0;
   if (!(length > 0)) return null;
   const total = new CompensatedSum();
@@ -288,11 +276,9 @@ interface CurvePlan<C> {
   readonly container: string;
   readonly jndKey: ComparisonJndKey;
   /**
-   * Read a VIEW rather than a side, so §6's edit states go through the same reader.
-   *
-   * `resolution` is the fallback for a view whose entries carry none — i.e. every ordinary
-   * single-document view. A mixed edit view carries one per entry and this argument is then
-   * never consulted (`document.ts`'s `resolutionAt`).
+   * Read a VIEW rather than a side, so §6's edit states go through the same reader. `resolution`
+   * is the fallback for a view whose entries carry none — every ordinary single-document view; a
+   * mixed edit view carries one per entry and never consults it (`document.ts`'s `resolutionAt`).
    */
   readonly readView: (
     view: OrderedMapView | null,
@@ -544,9 +530,8 @@ export function evaluateDimension(
       return evaluateArticulation(a, b, settings);
     case 'ornamentation':
       return evaluateOrnamentation(a, b, settings);
-    // The three imprecision dimensions, named rather than defaulted. A twelfth comparison
-    // dimension would otherwise be routed silently down the imprecision path — which is what
-    // a widening `default` buys you, and it is not worth the three lines it saves.
+    // The three imprecision dimensions are named rather than defaulted: a widening `default`
+    // would route a twelfth comparison dimension silently down the imprecision path.
     case 'imprecisionTiming':
     case 'imprecisionDynamics':
     case 'imprecisionDuration':
@@ -557,16 +542,14 @@ export function evaluateDimension(
 /**
  * §6's script for one dimension over one (part, map) scope — all eleven of them.
  *
- * ## Two decisions this makes, both stated rather than buried
+ * Pricing is RAW, never canonicalized: §7.4's invariance modes rescale a curve by that
+ * DOCUMENT's own moments, and an intermediate edit state is not a document — its moments move as
+ * the script is applied, so a canonicalized `norm` would not be a fixed metric and
+ * `scriptCost ≥ d_curve` would stop being AD-5's theorem. The identity pair is used throughout,
+ * and the `dCurve` reported beside a script is the identity one.
  *
- * **Pricing is RAW, never canonicalized.** §7.4's invariance modes rescale a curve by that
- * DOCUMENT's own moments, and an intermediate edit state is not a document — its moments move
- * as the script is applied, so a canonicalized `norm` would not be a fixed metric and
- * `scriptCost ≥ d_curve` would stop being the theorem AD-5 makes it. The identity pair is
- * therefore used throughout, and the `dCurve` reported beside a script is the identity one.
- *
- * **Both sides use the SAME `jnd`**, the row's resolved value, so `norm` is one function of the
- * pair. A per-side JND would make the telescoping sum meaningless.
+ * Both sides use the SAME `jnd`, the row's resolved value, so `norm` is one function of the
+ * pair; a per-side JND would make the telescoping sum meaningless.
  */
 export function editScriptForDimension(
   dimension: ComparisonDimension,
@@ -592,9 +575,6 @@ export function editScriptForDimension(
       return stateEditScript(articulationEditPlan(a, settings), a, b, settings, options);
     case 'ornamentation':
       return stateEditScript(ornamentationEditPlan(a, b, settings), a, b, settings, options);
-    // The three imprecision dimensions, named rather than defaulted. A twelfth comparison
-    // dimension would otherwise be routed silently down the imprecision path — which is what
-    // a widening `default` buys you, and it is not worth the three lines it saves.
     case 'imprecisionTiming':
     case 'imprecisionDynamics':
     case 'imprecisionDuration':
@@ -608,9 +588,9 @@ export interface EditScriptOptions {
    * Integrate each transition over the interval it can change rather than over the window.
    *
    * On by default and EXACT — `editState.affectedTicks` states the argument and the suite pins
-   * the two forms bit-equal over the vendored corpus and the adversarial family. The `false`
-   * mode is what that pin compares against, and it is the reason the flag exists: an
-   * optimization whose reference has been deleted cannot be checked again.
+   * the two forms bit-equal over the vendored corpus and the adversarial family. The `false` mode
+   * is what that pin compares against: an optimization whose reference has been deleted cannot be
+   * checked again.
    */
   readonly localize?: boolean;
   /** A-Q5's `fragment`/`consolidate` moves; off unless the caller asks (§6.1's `moves`). */
@@ -629,8 +609,7 @@ export interface DimensionEditScript {
  *
  * `represent` reads ONE state — the reader the semantic level already uses, over the edit view —
  * and `norm` is that dimension's own `d_k` over a window. The curve dimensions fill this in from
- * their `CurvePlan`; the event and distribution ones fill it in directly, and none of them needs
- * a second reading of a map.
+ * their `CurvePlan`, the event and distribution ones directly.
  */
 interface EditPlan<S> {
   readonly dimension: ComparisonDimension;
@@ -640,29 +619,26 @@ interface EditPlan<S> {
   /**
    * Whether a transition may be integrated over `affectedTicks`' interval instead of the window.
    *
-   * A predicate on the two ENDPOINT readings, because where it holds at all the answer can be a
+   * A predicate on the two ENDPOINT readings, since where it holds at all the answer can be a
    * property of the documents rather than of the dimension. Three dimensions answer `false`
    * unconditionally, each for its own reason:
    *
-   * - `pedal` never localizes — `getPreviousPosition` scans BACKWARDS over entry indices for an
-   *   inherited `@transition.to` (PARITY P2, AD-35.4's hazard class), so a movement can depend
-   *   on an instruction before it and the left bound does not hold.
-   * - `articulation` never localizes either, per AD-60.2. The id-anchored-atom argument was the
-   *   first reason and it is not the binding one: AD-37.1's default step function is
-   *   RETROACTIVE — its value on `[0, firstSwitchDate)` is the first switch's default — so
-   *   editing a `<style>` reaches arbitrarily far LEFT, and its value after an interval is
-   *   governed by the last switch at or before it, which the interval's right bound (the next
-   *   unchanged INSTRUCTION, not the next unchanged SWITCH) need not contain. Hazard instance
-   *   #7, and the first that fails in BOTH directions. Forcing it on was measured at
-   *   `scriptCost = 506.9999999999999` against `d_articulation = 2583`, a 5.09× violation of
-   *   `scriptCost ≥ d`, which is what any future attempt has to face.
-   * - `ornamentation` never localizes — its map SCOPE is a whole-map property (AD-60.3) that a
-   *   mixed state does not have.
+   * - `pedal`: `getPreviousPosition` scans BACKWARDS over entry indices for an inherited
+   *   `@transition.to` (PARITY P2, AD-35.4's hazard class), so a movement can depend on an
+   *   instruction before it and the left bound does not hold.
+   * - `articulation`, per AD-60.2: AD-37.1's default step function is RETROACTIVE — its value on
+   *   `[0, firstSwitchDate)` is the first switch's default — so editing a `<style>` reaches
+   *   arbitrarily far LEFT, and its value after an interval is governed by the last switch at or
+   *   before it, which the interval's right bound (the next unchanged INSTRUCTION, not the next
+   *   unchanged SWITCH) need not contain. Hazard instance #7, the first that fails in BOTH
+   *   directions; forcing it on measured `scriptCost = 506.9999999999999` against
+   *   `d_articulation = 2583`, a 5.09× violation of `scriptCost ≥ d`.
+   * - `ornamentation`: its map SCOPE is a whole-map property (AD-60.3) that a mixed state does
+   *   not have.
    *
-   * Where it does apply the argument is the same as for a curve and one step stronger: outside
-   * the interval the two states' atoms are IDENTICAL, a monotone alignment matches identical
-   * atoms at cost 0, and the global optimum therefore decomposes into that matching plus the
-   * optimum over the interval.
+   * Where it does apply the argument is the curve's, one step stronger: outside the interval the
+   * two states' atoms are IDENTICAL, a monotone alignment matches identical atoms at cost 0, and
+   * the global optimum decomposes into that matching plus the optimum over the interval.
    */
   readonly localize: (a: S, b: S) => boolean;
 }
@@ -676,8 +652,7 @@ function stateEditScript<S>(
 ): DimensionEditScript {
   const viewA = viewOf(a, plan.container);
   const viewB = viewOf(b, plan.container);
-  // The view's `element` is its map, which no reader consults; it exists so an edit view is a
-  // complete `OrderedMapView` rather than a lookalike. Either document's map will do, and a
+  // The view's `element` is its map, which no reader consults; either document's will do, and a
   // state with no instruction at all reads as the absent map it performs like.
   const fallback = viewA?.element ?? viewB?.element ?? null;
 
@@ -749,11 +724,10 @@ function curveEditScript<C>(
 /**
  * §5.5's TWO components in one script (AD-55.1).
  *
- * `d_articulation` is the alignment optimum PLUS the `@defaultArticulation` step function, and
- * both are read off the same map: the atoms from its `<articulation>` elements, the steps from
- * its `<style>` switches. So one sequential script over the map's entries prices both, and
- * `directDistance` is the whole `d_articulation` rather than half of it — which is also why the
- * `<style>` switches have to be in the sequence.
+ * `d_articulation` is the alignment optimum PLUS the `@defaultArticulation` step function, both
+ * read off the same map: the atoms from its `<articulation>` elements, the steps from its
+ * `<style>` switches. One sequential script over the map's entries prices both — which is also
+ * why the `<style>` switches have to be in the sequence.
  */
 function articulationEditPlan(
   a: ScopeSide,
@@ -788,19 +762,11 @@ function articulationEditPlan(
       ).distance +
       defaultArticulationDistance(x.steps, y.steps, window, settings.ticksPerQuarter, settings.jnd)
         .distance,
-    // NEVER, and the reason is measured rather than argued. `affectedTicks` bounds an interval
-    // on the assumption that nothing outside it can change, and AD-37.1's default step function
-    // breaks that assumption in BOTH directions: its value on `[0, firstSwitchDate)` is the
-    // FIRST switch's default, so editing a `<style>` reaches arbitrarily far LEFT, and its value
-    // after the interval is governed by the last switch at or before it, which the interval's
-    // right bound (the next unchanged INSTRUCTION, not the next unchanged SWITCH) need not
-    // contain. Measured on Telemann part 1: localized, `scriptCost` came out 108.89 against a
-    // `directDistance` of 926.67 — the theorem `scriptCost ≥ d` violated, which is how the
-    // hazard announced itself. Removing the step component from the norm and re-running restored
-    // `scriptCost = directDistance` exactly on all three parts (46.67 / 23.33 / 5.00), which is
-    // what identifies the step function rather than the alignment as the cause: the ALIGNMENT
-    // half localizes soundly, and the third hazard-class instance in this cut is a reading that
-    // depends on an instruction outside its own span.
+    // NEVER; `EditPlan.localize` carries the reason. Measured on Telemann part 1: localized,
+    // `scriptCost` came out 108.89 against a `directDistance` of 926.67, violating
+    // `scriptCost ≥ d`. Removing the step component from the norm restored
+    // `scriptCost = directDistance` exactly on all three parts (46.67 / 23.33 / 5.00), which
+    // identifies the step function rather than the alignment as the cause.
     localize: () => false,
   };
 }
@@ -809,13 +775,11 @@ function articulationEditPlan(
  * §5.6's atoms, with the map SCOPE decided so that both endpoints stay exact.
  *
  * `OrnamentationMap.apply` branches on whether a local header exists (AD-44's defect 8: in a
- * global map every `<style>` after the first successful one is ignored outright), so the scope
- * is a property of the MAP rather than of an entry — and a state holding instructions from both
- * documents has no single one. A state carrying any A instruction takes A's scope and a state
+ * global map every `<style>` after the first successful one is ignored outright), so the scope is
+ * a property of the MAP rather than of an entry — and a state holding instructions from both
+ * documents has no single one. A state carrying any A instruction takes A's scope and one
  * carrying none takes B's, which makes `S(0,0)` exactly `A` and `S(n,m)` exactly `B`; the mixed
- * states in between take A's, stated here rather than left to whichever branch happened to run.
- * `replayResidual` is the field that would show a document where this mattered, since a state
- * read under the wrong scope cannot reach `B`.
+ * states take A's. `replayResidual` would show a document where this mattered.
  */
 function ornamentationEditPlan(
   a: ScopeSide,
@@ -1037,13 +1001,12 @@ function pedalPlan(settings: DimensionSettings): CurvePlan<PedalCurve> {
 }
 
 /**
- * §5.8's structural channel for `@controller`, which AD-36.3 named and nothing emitted.
+ * §5.8's structural channel for `@controller` (AD-36.3).
  *
  * The attribute is excluded from the metric because it says WHICH controller carries the curve
  * and not what the curve does — the reader's spans are deliberately flat across controllers
- * (AD-13/R9). But two documents driving `sustain` and `soft` do perform differently, and until
- * this note existed `PedalCurve.controllers` was computed and read by nothing, so the exclusion's
- * stated channel did not fire. AD-55.1's obligation is what surfaced it.
+ * (AD-13/R9). But two documents driving `sustain` and `soft` do perform differently, so the
+ * exclusion is reported here rather than left silent.
  *
  * Silent for the ordinary document: a map that drives only `sustain` is the default and saying
  * so on every report would bury the case that matters.
@@ -1075,12 +1038,12 @@ function controllerNotes(
 // --- the event dimensions ---------------------------------------------------
 
 /**
- * The two event dimensions share everything but their reader and their findings, and the shared
- * part is where AD-7's `κ` and §9.3's `events` block come from.
+ * The two event dimensions share everything but their reader and their findings; the shared part
+ * is where AD-7's `κ` and §9.3's `events` block come from.
  *
  * `continuous` is articulation's default step function (AD-55.1) and is empty for ornamentation:
  * a dimension can carry BOTH an atomic and an absolutely continuous part, which is what §5.0's
- * measure already says and what `d_k = alignment optimum + step mass` needs here.
+ * measure says and what `d_k = alignment optimum + step mass` needs here.
  */
 function eventEvaluation(
   dimension: ComparisonDimension,
@@ -1127,10 +1090,8 @@ function eventEvaluation(
     },
     bottomLengthQuarters: 0,
     // §9.3's `cappedCells` counts CELLS for a curve dimension and ANCHORS here — the unit the
-    // dimension's density is carried in either way (AD-54.2). Articulation now has both parts,
-    // so it reports both counts added: the field is a count of CAP EVENTS, and a reader who
-    // needs to know which component capped has the `capped` note's dimension and the two
-    // components' own shapes.
+    // dimension's density is carried in either way (AD-54.2). Articulation has both parts, so it
+    // reports both counts added: the field is a count of CAP EVENTS.
     cappedCells: result.cappedAnchors + continuous.cappedCells,
     rowDistances,
     notes,
@@ -1345,12 +1306,11 @@ function evaluateImprecision(
       densityAt: cell.densityAt,
     })),
     atoms: [],
-    // A law has a location but not a curve: the signed descriptor is the μ-weighted mean of
-    // `ℓ_A − ℓ_B`, which the decomposition already computes, and there is no pointwise signed
-    // density to profile — §9.3's `valueA`/`valueB` are null for the distribution dimensions.
+    // A law has a location but not a curve: there is no pointwise signed density to profile, so
+    // §9.3's `valueA`/`valueB` are null for the distribution dimensions.
     signedAt: null,
-    // A law has a location rather than a curve, and the μ-weighted mean of `ℓ_A − ℓ_B` is the
-    // same quantity a curve dimension's signed mean is — the decomposition already has it.
+    // The μ-weighted mean of `ℓ_A − ℓ_B` is the quantity a curve dimension's signed mean is, and
+    // the decomposition already computes it.
     meanSigned: result.decomposition.locationSigned,
     valueA: null,
     valueB: null,
@@ -1392,11 +1352,10 @@ function processKey(domain: ImprecisionDomain): ComparisonJndKey {
 /**
  * §5.9's `W₂` decomposition in §1.2's shape.
  *
- * `shape` is `√(2(1 − ρ))` here, as it is for the curve dimensions, rather than the
- * `√∫2σ_Aσ_B(1−ρ)dμ` term the imprecision module accumulates: §9.3 declares one meaning for
- * the field across every dimension, and a field that meant two things would be the kind of
- * quiet unit mismatch §1.2 spends a paragraph on. The module's own term is recoverable from
- * `l2Squared` and the other three.
+ * `shape` is `√(2(1 − ρ))` here, as for the curve dimensions, rather than the `√∫2σ_Aσ_B(1−ρ)dμ`
+ * term the imprecision module accumulates: §9.3 declares one meaning for the field across every
+ * dimension, and a field that meant two things would be a quiet unit mismatch. The module's own
+ * term is recoverable from `l2Squared` and the other three.
  */
 function imprecisionDecomposition(
   decomposition: ImprecisionDecomposition,
@@ -1431,8 +1390,8 @@ export function containerOf(dimension: ComparisonDimension): string {
       return ARTICULATION_MAP;
     case 'ornamentation':
       return ORNAMENTATION_MAP;
-    // As above: the three imprecision dimensions are the remainder, and IMPRECISION_DOMAINS is
-    // keyed by exactly them, so naming them here also makes that index total.
+    // Named rather than defaulted, as in `evaluateDimension`; `IMPRECISION_DOMAINS` is keyed by
+    // exactly these three, so naming them here also makes that index total.
     case 'imprecisionTiming':
     case 'imprecisionDynamics':
     case 'imprecisionDuration':

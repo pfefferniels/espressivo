@@ -4,33 +4,29 @@
  *
  * ## Maps shadow wholesale; style defs do not
  *
- * §5.0 (AD-16 / R22) is explicit that these are different rules and that conflating them is
- * a bug with audible consequences:
+ * §5.0 (AD-16 / R22) keeps these apart; conflating them is a bug with audible consequences:
  *
- * - **Maps.** `Performance.resolvePartMaps:603-632` is `dated.getMap(TYPE) ?? global`, per
- *   type. A part-local `tempoMap` replaces the global one **entirely**, including for dates
- *   it does not cover, and an **empty** `<dynamicsMap/>` is non-null and therefore shadows
- *   too. A part with no MPM counterpart inherits the global set wholesale.
- * - **Style defs.** `GenericMap.getStyle:506-514` falls back local → global **per style
- *   name**, so a part header declaring `styleDef name="A"` hides the global `"A"` entirely,
- *   defs and all, with no per-def merge, while leaving the global `"B"` visible.
+ * - Maps. `Performance.resolvePartMaps:603-632` is `dated.getMap(TYPE) ?? global`, per type. A
+ *   part-local `tempoMap` replaces the global one entirely, including for dates it does not
+ *   cover, and an empty `<dynamicsMap/>` is non-null and therefore shadows too. A part with no
+ *   MPM counterpart inherits the global set wholesale.
+ * - Style defs. `GenericMap.getStyle:506-514` falls back local → global per style name, so a
+ *   part header declaring `styleDef name="A"` hides the global `"A"` entirely, defs and all,
+ *   with no per-def merge, while leaving the global `"B"` visible.
  *
- * Only the first rule is implemented here. The second is `styleScope`'s and must stay
- * `styleScope`'s — §5.0 says resolution "**must** go through `styleScope`, never through a
- * direct header scan" — so this module carries the environments a level resolution needs
- * and never resolves one itself.
+ * Only the first rule is implemented here. The second is `styleScope`'s and must stay so —
+ * §5.0 says resolution "must go through `styleScope`, never through a direct header scan" — so
+ * this module carries the environments a level resolution needs and never resolves one itself.
  *
  * ## Which parts exist at all
  *
- * `Part.parseData:90-105` **throws** when `@number`, `@midi.channel` or `@midi.port` is
- * missing or empty, `Part.createPart` turns that into null, and `Performance.parseData:213-219`
- * `continue`s past it. Such a `<part>` is therefore never performed. Reporting its content
- * as a difference would charge a document for material the renderer discards, which §5.0
- * rules out in the neighbouring case in so many words — a global-vs-part-local encoding
- * difference with identical resolved curves "is distance 0 plus a structural note — which
- * is correct: it is not performed". So a non-renderable part is excluded from matching and
- * flagged; it is not compared against neutral, because comparing it against neutral would
- * charge exactly the content the renderer drops.
+ * `Part.parseData:90-105` throws when `@number`, `@midi.channel` or `@midi.port` is missing or
+ * empty, `Part.createPart` turns that into null, and `Performance.parseData:213-219` `continue`s
+ * past it. Such a `<part>` is never performed, and charging a document for material the renderer
+ * discards is what §5.0 rules out in the neighbouring case: a global-vs-part-local encoding
+ * difference with identical resolved curves "is distance 0 plus a structural note — which is
+ * correct: it is not performed". A non-renderable part is therefore excluded from matching and
+ * flagged, not compared against neutral.
  */
 import { filterMap, partitionWith } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
@@ -42,8 +38,8 @@ import type { MpmEnvironment, PerformanceView } from '../expression/mpmTree.js';
  * it.
  *
  * `maps` is already resolved — part-local first, global second, wholesale. Every downstream
- * reader takes the map from here and never repeats the fallback, which is what keeps the
- * empty-map-shadows rule true in one place instead of at each call site.
+ * reader takes the map from here and never repeats the fallback, which keeps the
+ * empty-map-shadows rule in one place instead of at each call site.
  */
 export interface ComparisonScope {
   readonly scope: 'global' | 'part';
@@ -86,15 +82,14 @@ function isRenderablePart(element: Element): boolean {
 /**
  * Part-over-global map resolution, wholesale.
  *
- * The union of both environments' map names rather than the renderer's fixed twelve fields:
- * on those twelve this is exactly `resolvePartMaps`, and on a map name the model does not
- * define — the surveyed corpus has a `gestureMap` — it keeps the element visible for
- * reporting instead of silently dropping it. `spanEndRuleOf` is what later decides that such
- * a map has no law to apply.
+ * The union of both environments' map names rather than the renderer's fixed twelve fields: on
+ * those twelve this is exactly `resolvePartMaps`, and on a map name the model does not define —
+ * the surveyed corpus has a `gestureMap` — it keeps the element visible for reporting.
+ * `spanEndRuleOf` later decides that such a map has no law to apply.
  *
  * `part.maps.has(name)` rather than a truthiness test on the element: that *is* the
- * empty-map-shadows rule, since an empty `<dynamicsMap/>` is a perfectly good element and
- * must win over the global one.
+ * empty-map-shadows rule, since an empty `<dynamicsMap/>` is a good element and must win over
+ * the global one.
  */
 export function resolveScopeMaps(
   part: MpmEnvironment,
@@ -110,9 +105,9 @@ export function resolveScopeMaps(
  * The scopes one performance is evaluated over.
  *
  * §5.0: *"Documents that are global-only on both sides evaluate once, not per part."* That
- * decision needs both documents, so it is not taken here — this returns the global scope
- * **and** every part scope, and {@link matchScopes} is where a pair with no parts on either
- * side collapses to the single global evaluation.
+ * decision needs both documents, so it is not taken here — this returns the global scope and
+ * every part scope, and {@link matchScopes} is where a pair with no parts on either side
+ * collapses to the single global evaluation.
  */
 export function readScopes(performance: PerformanceView): readonly ComparisonScope[] {
   const global: ComparisonScope = {
@@ -144,10 +139,10 @@ export function readScopes(performance: PerformanceView): readonly ComparisonSco
 /**
  * One row of §9.3's `parts` array: a matched pair, or one side against neutral.
  *
- * `matched` false with a non-null `numberA` and null `numberB` is "A has this part and B
- * does not", which R6 compares against the neutral curve and reports as a structural note.
- * It is not an error and not an exclusion — a pair-dependent part set would break R3 the
- * same way a pair-dependent dimension set would.
+ * `matched` false with a non-null `numberA` and null `numberB` is "A has this part and B does
+ * not", which R6 compares against the neutral curve and reports as a structural note — not an
+ * error and not an exclusion, since a pair-dependent part set would break R3 the same way a
+ * pair-dependent dimension set would.
  */
 export interface ScopePairing {
   readonly scope: 'global' | 'part';
@@ -195,10 +190,8 @@ export function matchScopes(
   ];
 
   // The renderable parts of one side, split into the ones a `@number` can match and the ones it
-  // cannot. Both blocks below used to re-filter the whole list — `number !== null` for the map,
-  // `number === null` for the tail — so nothing but a reader's care kept the two predicates
-  // complementary. `partitionWith` makes that structural, and it preserves document order in
-  // each half, which is what the tail block depends on.
+  // cannot. `partitionWith` makes the two halves complementary by construction and preserves
+  // document order in each, which is what the tail block depends on.
   const renderableParts = (scopes: readonly ComparisonScope[]) =>
     partitionWith(
       scopes.filter((scope) => scope.scope === 'part' && scope.renderable),
@@ -207,11 +200,9 @@ export function matchScopes(
   const partsA = renderableParts(a);
   const partsB = renderableParts(b);
 
-  // `filterMap`, so the `=== null` test narrows `scope.number` where the entry is built —
-  // the two-pass `.filter().map()` needed `as number` to say what the filter had proved.
-  // `partitionWith`'s predicate is not a type guard, so `yes` still declares `number | null`
-  // and this test is what turns it into a key; it can no longer fire, and that is the point —
-  // the alternative is an `as number` asserting what the split already established.
+  // `partitionWith`'s predicate is not a type guard, so `yes` still declares `number | null`;
+  // the `=== null` test narrows it where the entry is built. It cannot fire — the alternative is
+  // an `as number` asserting what the split already established.
   const numbered = (scopes: readonly ComparisonScope[]) =>
     new Map(
       filterMap(scopes, (scope) =>

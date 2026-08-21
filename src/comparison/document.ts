@@ -1,35 +1,32 @@
 /**
  * The pair reader: two MPM texts in, one normalized plain-data view of both out.
  *
- * This is W2b, and it is deliberately the *whole* boundary between "a document" and "a
- * comparison". Nothing above it re-reads XML; nothing in it evaluates a curve. What it
- * produces is the substrate DESIGN.md §5.0 assumes exists — a common tick grid, matched
- * scopes, resolved maps, ordered instruction views, a window with its two stamps, and the
- * §5.0 comparability evidence — and the evaluators of W2c walk that.
+ * The whole boundary between "a document" and "a comparison": nothing above it re-reads XML,
+ * nothing in it evaluates a curve. It produces the substrate DESIGN.md §5.0 assumes exists — a
+ * common tick grid, matched scopes, resolved maps, ordered instruction views, a window with its
+ * two stamps, and the §5.0 comparability evidence.
  *
  * ## Reading discipline (R1)
  *
- * The parse is `expression/mpmDocument`'s raw `Builder` (`parseMpmRoot`), reused rather
- * than reimplemented, because `new Mpm(text)` **rewrites the document in its own
- * constructor**: `rubatoDef` gains `intensity`/`lateStart`/`earlyEnd` and has present
- * values respelled, `accentuationPatternDef` gains `length="4"` and has its children
- * reordered, `GenericMap.parseData` ends in an unconditional `sortXml()`, and
- * `Dated.addMap`/`Header.addStyleType` delete duplicates. R1 forbids mutating an input, and
- * a reader that provoked those edits could not honestly report what the document says.
+ * The parse is `expression/mpmDocument`'s raw `Builder` (`parseMpmRoot`), because `new
+ * Mpm(text)` rewrites the document in its own constructor: `rubatoDef` gains
+ * `intensity`/`lateStart`/`earlyEnd` and has present values respelled,
+ * `accentuationPatternDef` gains `length="4"` and has its children reordered,
+ * `GenericMap.parseData` ends in an unconditional `sortXml()`, and
+ * `Dated.addMap`/`Header.addStyleType` delete duplicates. R1 forbids mutating an input, and a
+ * reader that provoked those edits could not honestly report what the document says.
  *
  * Navigation is `expression/mpmTree` (which reproduces `Header`/`Dated`'s descendant-axis,
- * last-one-wins discovery without repairing anything) and ordering is
- * `expression/datedView` (which reproduces `GenericMap.parseData`'s insertion loop
- * *including* its NaN-to-front behaviour, and the positional `<style>` scope the renderer
- * actually uses rather than the public date-based lookup).
+ * last-one-wins discovery without repairing anything) and ordering is `expression/datedView`
+ * (which reproduces `GenericMap.parseData`'s insertion loop including its NaN-to-front
+ * behaviour, and the positional `<style>` scope the renderer actually uses rather than the
+ * public date-based lookup).
  *
  * ## What this layer does not do
  *
- * No curve evaluation, no densities, no registry. Span-end rules are exported as **data**
- * (`spanEnds.ts`) for the evaluators to apply; `⊥` markers are produced and carried but
- * never priced; levels are resolved to the renderer's number and tagged, but no `T` is
- * applied to them. The module also touches no `src/api` file and defines no dimension
- * vocabulary, both of which belong to sibling wave items.
+ * No curve evaluation, no densities, no registry. Span-end rules are exported as data
+ * (`spanEnds.ts`) for the evaluators to apply; `⊥` markers are produced and carried but never
+ * priced; levels are resolved to the renderer's number and tagged, but no `T` is applied.
  */
 import { head, isNonEmpty } from '../prelude/index.js';
 import { elementAt } from '../prelude/seq.js';
@@ -65,16 +62,15 @@ export type PerformanceSelector = string | number;
 /**
  * One map, ordered the way the renderer reads it, with its span law attached.
  *
- * `entries` is `datedView`'s date-stable view, **not** document order: `GenericMap.parseData`
- * indexes by a backwards insertion scan and then rewrites the document to match, so the
- * renderer sees this order and a comparison that used document order would integrate the
- * wrong curve over the wrong interval. The view is computed in memory and the tree is left
- * exactly as parsed.
+ * `entries` is `datedView`'s date-stable view, NOT document order: `GenericMap.parseData`
+ * indexes by a backwards insertion scan and then rewrites the document to match, so the renderer
+ * sees this order and a comparison using document order would integrate the wrong curve over the
+ * wrong interval. The view is computed in memory and the tree is left exactly as parsed.
  *
- * `styleNames[i]` is the style in scope at view position `i` by the **positional** rule
- * (`GenericMap.findStyleSwitchAt`), which is what `TempoMap`/`DynamicsMap` call — not the
- * public `getStyleAt(date)`. The two disagree whenever an instruction precedes a `<style>`
- * at the same date, and the disagreement changes a rendered value rather than a lookup path.
+ * `styleNames[i]` is the style in scope at view position `i` by the POSITIONAL rule
+ * (`GenericMap.findStyleSwitchAt`), which is what `TempoMap`/`DynamicsMap` call — not the public
+ * `getStyleAt(date)`. The two disagree whenever an instruction precedes a `<style>` at the same
+ * date, and the disagreement changes a rendered value rather than a lookup path.
  */
 export interface OrderedMapView {
   readonly mapName: string;
@@ -88,17 +84,15 @@ export interface OrderedMapView {
    * Per-entry resolution, for a view whose entries come from TWO documents (§6's edit states).
    *
    * ABSENT on every view `readScopeMapViews` builds, where one document's tick grid and one
-   * style environment govern the whole map and the reader's own arguments say so. §6's edit
-   * path is the one caller that needs otherwise: an intermediate state is A's map with some of
-   * B's instructions in it, and each instruction has to keep the resolution it PERFORMS —
-   * AD-40.2's named principle, and also what makes §6.3's replay reach B exactly rather than
-   * reaching "B's instructions read through A's styleDefs".
+   * style environment govern the whole map and the reader's own arguments say so. §6's edit path
+   * is the one caller that needs otherwise: an intermediate state is A's map with some of B's
+   * instructions in it, and each instruction keeps the resolution it PERFORMS (AD-40.2; see
+   * `editState.ts`).
    *
-   * Two things vary per entry and nothing else does: the tick `scaleFactor` onto the common
-   * grid (the documents may declare different `@pulsesPerQuarter`, and tick-VALUED attributes
-   * such as `@frameLength` are scaled with it, not only dates) and the pair of environments a
-   * symbolic level or a `@name.ref` resolves against. `styleNames` is already per entry, so the
-   * style in scope needs no second channel.
+   * Two things vary per entry and nothing else does: the tick `scaleFactor` onto the common grid
+   * (the documents may declare different `@pulsesPerQuarter`, and tick-VALUED attributes such as
+   * `@frameLength` are scaled with it, not only dates) and the pair of environments a symbolic
+   * level or a `@name.ref` resolves against. `styleNames` is already per entry.
    */
   readonly entryResolutions?: readonly EntryResolution[];
 }
@@ -209,10 +203,8 @@ export interface ReadComparisonPairOptions {
 /**
  * Pick one `<performance>`, with §9.4's three failure modes kept distinct.
  *
- * A single-performance document needs no selector — that is the overwhelmingly common case
- * and demanding one would make every ordinary call ceremonial. Two or more without a
- * selector is ambiguous and throws, which is the strictness §9.2 keeps when it otherwise
- * relaxes `b`.
+ * A single-performance document needs no selector; two or more without one is ambiguous and
+ * throws, which is the strictness §9.2 keeps when it otherwise relaxes `b`.
  */
 function selectPerformance(
   performances: readonly PerformanceView[],
@@ -232,9 +224,8 @@ function selectPerformance(
   if (typeof selector === 'number') {
     if (!Number.isInteger(selector) || selector < 0)
       throw new PerformanceSelectorInvalidError(role, selector);
-    // The bounds test stays where it is because it is the DOMAIN error a caller asked for —
-    // "performance 7 of a document with 3" is a named exception carrying the candidates, not an
-    // internal `RangeError`. `elementAt` then reads what that test has already established.
+    // Bounds tested here because "performance 7 of a document with 3" is a DOMAIN error carrying
+    // the candidates, not `elementAt`'s internal `RangeError`.
     if (selector >= performances.length)
       throw new PerformanceSelectionNotFoundError(role, selector, candidates);
     return elementAt(performances, selector, 'the document performance list');
@@ -254,9 +245,6 @@ export function readScopeMapViews(scope: ComparisonScope): ReadonlyMap<string, O
       mapName,
       element,
       entries,
-      // One forward pass, where this was `entries.map((_, i) => styleNameAt(entries, i))` —
-      // the per-index backwards scan run once per index, i.e. quadratic in the map's length
-      // with an XML `getLocalName()` as the constant. Same array, same values.
       styleNames: styleNamesOf(entries),
       spanEndRule: spanEndRuleOf(mapName),
     });
@@ -310,14 +298,10 @@ function readDocument(
 /**
  * Read and normalize a pair.
  *
- * `b` defaults to `a` (§9.2, C16): the campaign's own fixtures — Telemann, Vulpius, Albert
- * — are the only real multi-performance documents in existence, and the pairwise entry
- * point would otherwise be stricter than its corpus sibling for exactly the case those
- * fixtures are built on. The ambiguity error still fires when a selector is missing, so the
- * strictness that matters survives.
- *
- * The parse order is `a` then `b`, so the first failure reported is the earliest one
- * (§9.4).
+ * `b` defaults to `a` (§9.2, C16), so that comparing two performances inside one document is
+ * not stricter here than in the corpus entry point; the ambiguity error still fires when a
+ * selector is missing. The parse order is `a` then `b`, so the first failure reported is the
+ * earliest one (§9.4).
  */
 export function readComparisonPair(options: ReadComparisonPairOptions): ComparisonPair {
   const rootA = typeof options.a === 'string' ? parseMpmRoot(options.a) : options.a;

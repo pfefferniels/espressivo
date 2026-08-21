@@ -1,37 +1,32 @@
 /**
  * AD-27.8's scape: the aggregate difference at every position AND every timescale at once.
  *
- * survey-lit's §6.0 verdict promoted this from a stretch goal to a committed deliverable because
- * it is central to the field's practice — Sapp's timescape is how a musicologist SEES that two
- * readings agree bar by bar and diverge over the phrase, or the reverse. The object is a
- * triangle: one cell per (start, size) sub-window, `B(B+1)/2` of them for `B` bins.
+ * Sapp's timescape is how a musicologist sees that two readings agree bar by bar and diverge
+ * over the phrase, or the reverse. The object is a triangle: one cell per (start, size)
+ * sub-window, `B(B+1)/2` of them for `B` bins.
  *
  * ## Prefix sums, and a binning that conserves mass to the last ulp
  *
  * `p_D` is a MEASURE, so its mass over `[a, b)` is additive in the interval: bin the window
- * once, take running totals, and every cell is one subtraction. That is `O(B)` work for `O(B²)`
- * cells — but the reason to write it this way is not the arithmetic. A reader of a scape
- * compares a phrase-length cell against the bars beneath it, so a triangle whose rows do not add
- * up is unreadable in exactly the way it is read.
+ * once, take running totals, and every cell is one subtraction — `O(B)` work for `O(B²)` cells.
+ * A reader compares a phrase-length cell against the bars beneath it, so a triangle whose rows
+ * do not add up is unreadable in exactly the way it is read.
  *
- * The binning is therefore NOT `aggregate.massIn` per bin, and the difference was measured
- * rather than assumed: that function apportions a partly-covered cell by integrating the
- * dimension's own sampler over the overlap, and GL-10 over two halves is not GL-10 over the
- * whole, so the binned total came out **0.05 % below `aggregate.distance`** on the Telemann pair
- * at 8 bins — and by a different amount at every other bin count, which is what identifies
- * quadrature rather than an edge convention. Here each density CELL is apportioned across the
- * bins it touches and the shares are then RESCALED to the cell's own `mass`, which is the
- * authority (`aggregate.ts`'s own shape-versus-scale rule, one level further out). The bins of
- * one cell then sum to that cell, the bins of one dimension to `d_k`, and the whole triangle's
- * top cell to `D`.
+ * The binning is therefore NOT `aggregate.massIn` per bin, and the difference was measured:
+ * that function apportions a partly-covered cell by integrating the dimension's own sampler
+ * over the overlap, and GL-10 over two halves is not GL-10 over the whole, so the binned total
+ * came out 0.05 % below `aggregate.distance` on the Telemann pair at 8 bins — and by a
+ * different amount at every other bin count, which is what identifies quadrature rather than an
+ * edge convention. Here each density CELL is apportioned across the bins it touches and the
+ * shares are then RESCALED to the cell's own `mass`, which is the authority (`aggregate.ts`'s
+ * shape-versus-scale rule). The bins of one cell then sum to that cell, the bins of one
+ * dimension to `d_k`, and the triangle's top cell to `D`.
  *
- * "Conserves" here means to the last ULP, not bit-for-bit, and the distinction is the honest one
- * (W4 MINOR-12): the sums are floating-point additions in a different association from the one
- * that produced `D`, so at `bins = 1` the top cell reads `2526.4921488423447` against a `D` of
- * `2526.4921488423442`. Measured across the bin counts the tests cover, the worst relative gap
- * is `5.4e-16` — one or two ulps — and every cell equals the sum of the unit cells beneath it to
- * `2.22e-16`. That is conservation in every sense a reader of a triangle needs, and it is not
- * the word "exactly", which this paragraph used to claim.
+ * "Conserves" means to the last ULP, not bit-for-bit (W4 MINOR-12): the sums are
+ * floating-point additions in a different association from the one that produced `D`, so at
+ * `bins = 1` the top cell reads `2526.4921488423447` against a `D` of `2526.4921488423442`.
+ * Measured across the bin counts the tests cover, the worst relative gap is `5.4e-16` — one or
+ * two ulps — and every cell equals the sum of the unit cells beneath it to `2.22e-16`.
  *
  * ## Layout
  *
@@ -41,8 +36,6 @@
  *     index(s, start) = (s − 1)·B − (s − 1)(s − 2)/2 + start
  *
  * and the very last entry is the whole window — which is `D` itself, and is pinned as such.
- * Written out because a triangular packing that a consumer has to reverse-engineer is a
- * different kind of defect from a wrong number.
  */
 import { pairwise, scanl, zipWith } from '../prelude/index.js';
 
@@ -93,9 +86,8 @@ export function scapeOf(
     bin === count ? endQuarters : startQuarters + bin * width,
   );
 
-  // Accumulated bin-vector by bin-vector rather than cell by cell: the two are the same
-  // additions in the same dimension order, and zipping says that the two vectors are the same
-  // length instead of trusting two loop bounds to agree.
+  // Accumulated bin-vector by bin-vector rather than cell by cell: zipping says the two vectors
+  // are the same length instead of trusting two loop bounds to agree.
   let perBin: readonly number[] = new Array<number>(count).fill(0);
   for (const dimension of COMPARISON_DIMENSIONS) {
     const density = byDimension.get(dimension);
@@ -105,9 +97,8 @@ export function scapeOf(
     perBin = zipWith(perBin, binnedMass(density, edges), (sum, mass) => sum + weight * mass);
   }
 
-  // Running totals: `prefix[i]` is the mass in `[start, edges[i])`. `scanl` is the shape —
-  // seed first, one state per bin — so `prefix` has `count + 1` entries by construction rather
-  // than by an off-by-one the reader has to check.
+  // Running totals: `prefix[i]` is the mass in `[start, edges[i])`. `scanl` seeds first and
+  // yields one state per bin, so `prefix` has `count + 1` entries by construction.
   const running = new CompensatedSum();
   const prefix = scanl(perBin, 0, (_unused, mass) => {
     running.add(mass);
@@ -142,15 +133,14 @@ function binnedMass(density: DimensionDensity, edges: readonly number[]): readon
   if (count <= 0) return bins;
 
   // The one accumulating write, named. `bins[bin] += x` is a READ as well as a write, so under
-  // `noUncheckedIndexedAccess` it needs the same answer every other read here needs — and the
-  // alternative, rebuilding the vector with `zipWith` per cell, would allocate one array per
-  // density cell on a path that has thousands of them.
+  // `noUncheckedIndexedAccess` it needs the same checked access every other read here needs;
+  // rebuilding the vector with `zipWith` per cell would allocate one array per density cell on
+  // a path that has thousands of them.
   const addTo = (bin: number, mass: number): void => {
     bins[bin] = numberAt(bins, bin, BINS) + mass;
   };
 
-  // `pairwise(edges)` IS the bin list: bin `i` is `[edges[i], edges[i+1])`, which is the fact the
-  // two indexed reads used to spell out.
+  // `pairwise(edges)` IS the bin list: bin `i` is `[edges[i], edges[i+1])`.
   const spans = pairwise(edges);
 
   for (const cell of density.cells) {
@@ -162,8 +152,6 @@ function binnedMass(density: DimensionDensity, edges: readonly number[]): readon
       const sampler = cell.densityAt;
       return sampler === null ? high - low : Math.abs(gaussLegendre10(sampler, low, high));
     });
-    // Adding the skipped bins' exact zeros changes no double, so this is the same total the
-    // `continue`-guarded accumulation produced.
     const total = shares.reduce((sum, share) => sum + share, 0);
     if (total <= 0) continue;
     for (const [bin, share] of shares.entries())
@@ -197,32 +185,23 @@ function binnedMass(density: DimensionDensity, edges: readonly number[]): readon
 /**
  * The bin a point belongs to: half-open, with the LAST bin closed at the window end.
  *
- * **`partitionPoint` is the considered-and-rejected alternative**, and it is named here because
- * it is the obvious one and it is nearly right. `edges` is non-decreasing and line 203 has
- * already bracketed `quarters` inside it, so
+ * `partitionPoint` is the considered-and-rejected alternative: `edges` is non-decreasing and
+ * the bracket test below has already confined `quarters` inside it, so
  * `Math.min(count - 1, partitionPoint(count, i => numberAt(edges, i + 1, EDGES) <= quarters))`
  * reproduces every finite case exactly, including the last-bin-closed rule that
  * `bin === count - 1` encodes.
  *
- * It differs at `NaN`, and not harmlessly. The bracket test on line 203 does NOT reject a `NaN`
- * — `NaN < low` and `NaN > high` are both false — so a `NaN` position reaches the scan, where
- * every `quarters < high` fails and the `bin === count - 1` arm puts its mass in the LAST bin.
- * Under the bound, `edges[i + 1] <= NaN` fails at every `i`, the answer is 0, and the same mass
- * lands in the FIRST bin. A scape is a published picture of where mass sits in time; silently
- * moving a bin's worth of it from one end of the window to the other is not a loop-shape change.
- * Which of the two is *right* is a question about line 203's bracket, not about this scan, and
- * it belongs to whoever rules on that.
- *
- * What did change is the allocation. `edges.slice(1).entries()` copied the edge array on every
- * call — once per atom, from `binnedMass` — and then allocated a two-element tuple per step on
- * top of it. `findIndex` is the same walk with neither, and the same answer: the first edge
- * index past 0 that `quarters` falls short of, whose bin is one less; no such edge means the
- * closed last bin, which is what `-1` maps to.
+ * It differs at `NaN`, and not harmlessly. The bracket test does NOT reject a `NaN` — `NaN < low`
+ * and `NaN > high` are both false — so a `NaN` position reaches the scan, where every
+ * `quarters < high` fails and the `bin === count - 1` arm puts its mass in the LAST bin. Under
+ * the bound, `edges[i + 1] <= NaN` fails at every `i`, the answer is 0, and the same mass lands
+ * in the FIRST bin. A scape is a published picture of where mass sits in time, so moving a bin's
+ * worth of it from one end of the window to the other is not a loop-shape change. Which of the
+ * two is *right* is a question about the bracket, not about this scan.
  */
 function binOf(edges: readonly number[], quarters: number): number {
   const count = edges.length - 1;
-  // A grid with no bins has no bin to name. The old spelling reached the same answer through
-  // `undefined` comparisons that are false either way; this states it.
+  // A grid with no bins has no bin to name.
   if (count <= 0) return -1;
   if (quarters < numberAt(edges, 0, EDGES) || quarters > numberAt(edges, count, EDGES)) return -1;
   // Edge `i` for `i >= 1` is bin `i - 1`'s upper end.

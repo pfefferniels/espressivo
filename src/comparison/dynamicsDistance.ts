@@ -5,16 +5,14 @@
  * window in quarters, so the unit is JND·quarters as everywhere else.
  *
  * Structurally the same as `tempoDistance`: sorted-union grid in integer lcm-ticks,
- * compensated summation in date order, only the row's `jnd` consumed. What differs is the
- * cell integration. Tempo needs AD-28.1's graded mesh because `u^e` has a boundary layer
- * whose width depends on `e`; the Bézier has no such parameter-dependent layer — it is a
- * fixed-degree polynomial reparametrized by a monotone cubic — so plain GL-10 per cell,
- * with the absolute value resolved at crossings, is the right rule for it.
+ * compensated summation in date order, only the row's `jnd` consumed. The cell rule differs.
+ * Tempo needs AD-28.1's graded mesh because `u^e` has a boundary layer whose width depends on
+ * `e`; the Bézier — a fixed-degree polynomial reparametrized by a monotone cubic — has no such
+ * layer, so plain GL-10 per cell with the absolute value resolved at crossings is its rule.
  *
- * **The curve integrated here is the ideal one** (§5.0 rule 3): `volumeAt` inverts the
- * x-component to machine precision rather than to `tForDate`'s one-tick tolerance. That is
- * what makes GL-10 meaningful — against the renderer's staircase it would be integrating a
- * function with thousands of jump discontinuities.
+ * The curve integrated here is the IDEAL one (§5.0 rule 3): `volumeAt` inverts the x-component
+ * to machine precision rather than to `tForDate`'s one-tick tolerance. That is what makes GL-10
+ * meaningful — against the renderer's staircase it would integrate thousands of jumps.
  */
 import { pairwise } from '../prelude/index.js';
 import { comparisonRowFor } from './registry.js';
@@ -24,18 +22,18 @@ import type { ComparisonWindow } from './window.js';
 import { IDENTITY_CANONICAL_PAIR, canonicalValue, type CanonicalPair } from './decomposition.js';
 
 /**
- * The subdivision count for a cell where BOTH sides are live Bézier transitions —
- * **16**, per AD-31, which supersedes AD-30's 4.
+ * The subdivision count for a cell where BOTH sides are live Bézier transitions — 16, per
+ * AD-31, which supersedes AD-30's 4.
  *
- * Fixed and equal: deterministic and structure-blind, in the graded mesh's spirit. There is
- * no closed-form critical point for a Bézier pair the way there is for power-vs-power tempo
- * (§5.0 rule 2), so completeness is bought by subdividing rather than by solving, and
- * `integrateAbsolute` resolves one crossing per sub-interval.
+ * Fixed and equal, in the graded mesh's spirit: there is no closed-form critical point for a
+ * Bézier pair the way there is for power-vs-power tempo (§5.0 rule 2), so completeness is
+ * bought by subdividing rather than by solving, and `integrateAbsolute` resolves one crossing
+ * per sub-interval.
  *
- * **16 rather than 4 because 4 was measured insufficient.** AD-30 set 4 on the argument that
- * the smoothstep's bounded curvature makes three crossings inside one quarter-cell
- * impossible. That argument lives in `t`; the clustering lives in `x`, after the monotone
- * reparametrization, and strong protraction pushes crossings together there. On an ordinary
+ * 16 rather than 4 because 4 was measured insufficient. AD-30 set 4 on the argument that the
+ * smoothstep's bounded curvature makes three crossings inside one quarter-cell impossible; that
+ * argument lives in `t`, while the clustering lives in `x`, after the monotone
+ * reparametrization, where strong protraction pushes crossings together. On an ordinary
  * non-degenerate pair — `40→80` at `curvature 0.9, protraction 0.9` against `38→84` at
  * `curvature 0, protraction 0.9`, control points in range and `x(t)` monotone — the log
  * difference crosses at `x = 0.598, 0.914, 0.984`, the last two 0.07 apart and inside one
@@ -45,14 +43,11 @@ import { IDENTITY_CANONICAL_PAIR, canonicalValue, type CanonicalPair } from './d
  * |---|---|
  * | 1, 2, 4 | 6.5·10⁻² |
  * | 8 | 4.8·10⁻² |
- * | **16** | **2.7·10⁻⁸** |
+ * | 16 | 2.7·10⁻⁸ |
  *
- * The cost is confined to cells where both sides are transitions; every constant-vs-anything
- * cell is untouched.
- *
- * **Exported for §5.8.** `<movement>` runs the same machinery — the same
+ * Exported for §5.8: `<movement>` runs the same machinery — the same
  * `innerControlPointsXPositions`, the same smoothstep value fraction — differing only in its
- * defaults and its output range, so the measurement above transfers to the pedal curve and
+ * defaults and its output range, so the measurement transfers to the pedal curve and
  * `pedalDistance` uses this constant rather than a second one that could drift from it.
  */
 export const BEZIER_PAIR_SUBDIVISIONS = 16;
@@ -103,20 +98,13 @@ export function dynamicsGridTicks(
 /**
  * `d_dynamics` over the window, cell by cell.
  *
- * **Bézier-pair cells are subdivided** (AD-30). Two Bézier segments over one span can cross
- * more than once, and `integrateAbsolute` resolves only one crossing per sub-interval, so a
- * single-interval reading integrates such a cell slightly LOW — the absolute value is
- * evaluated with the wrong sign over part of it. Unlike the power-vs-power tempo family
- * there is no closed-form critical point to split on, so the ruling buys completeness by
- * fixed subdivision instead: any cell where BOTH sides are live transitions is cut into
- * {@link BEZIER_PAIR_SUBDIVISIONS} equal pieces before integration. Cost is confined to
- * those cells; every constant-vs-anything cell is untouched.
- *
- * The count is {@link BEZIER_PAIR_SUBDIVISIONS}, whose doc carries the measurement that set
- * it. Residual risk: a pair crossing three or more times inside a SIXTEENTH of a cell would
- * still be under-resolved. That is not argued away here — the same style of argument is what
- * AD-30 got wrong — it is simply far outside anything the measured sweep produced, and the
- * quadrature-level test pins the sweep so a future change to the constant has to face it.
+ * Cells where BOTH sides are live Bézier transitions are cut into
+ * {@link BEZIER_PAIR_SUBDIVISIONS} equal pieces first (AD-30): two Béziers over one span can
+ * cross more than once and `integrateAbsolute` resolves only one crossing per sub-interval, so
+ * a single-interval reading integrates such a cell slightly LOW. Every constant-vs-anything
+ * cell is untouched. Residual risk: a pair crossing three or more times inside a SIXTEENTH of a
+ * cell would still be under-resolved — far outside anything the measured sweep produced, and
+ * the quadrature-level test pins the sweep so a future change to the constant has to face it.
  */
 export function dynamicsDistance(
   a: DynamicsCurve,

@@ -3,36 +3,34 @@
  *
  * ## The defined object is the IDEAL Bézier, not the renderer's approximation of it
  *
- * §5.0 rule 3 / R20 is the reason this module does not call `bezier.ts`'s `tForDate`.
- * That function inverts the curve's x-component by bisection and **stops at a one-tick
- * tolerance in the date domain** (`bezier.ts:57-78`), so the renderer's `date ↦ volume` is
- * a staircase with thousands of treads across a long transition, and no smooth quadrature
- * rule can converge against it. The *defined* comparison object is the smooth ideal Bézier;
- * `tForDate` is the renderer's approximation of that object and belongs to the §6.3 replay,
- * where the divergence is bounded by `|Δvolume| ≤ |v′(t)| · 1 tick / |x′(t)|`.
+ * §5.0 rule 3 / R20 is the reason this module does not call `bezier.ts`'s `tForDate`. That
+ * function inverts the curve's x-component by bisection and stops at a ONE-TICK tolerance in the
+ * date domain (`bezier.ts:57-78`), so the renderer's `date ↦ volume` is a staircase with
+ * thousands of treads across a long transition and no smooth quadrature rule can converge
+ * against it. The DEFINED comparison object is the smooth ideal Bézier; `tForDate` is the
+ * renderer's approximation of it and belongs to the §6.3 replay, where the divergence is bounded
+ * by `|Δvolume| ≤ |v′(t)| · 1 tick / |x′(t)|`.
  *
- * So {@link idealCurveParameter} inverts the same cubic to machine precision instead. It is
- * the same polynomial, the same control points, and the same monotonicity — only the
- * stopping rule differs, and that difference is the whole point.
+ * {@link idealCurveParameter} therefore inverts the same cubic to machine precision: the same
+ * polynomial, control points and monotonicity, differing only in the stopping rule.
  *
  * ## What the renderer does that a reader would not guess
  *
- * - **Trailing transitions are inert** (AD-8), exactly as in tempo:
- *   `DynamicsMap.getEndDate:187-193` has the same `MAX_VALUE` shape, so a trailing
- *   `volume=40 transition.to=100` performs a flat 40. `all_maps.mpm` ends with
- *   `volume="80" transition.to="110"` and its reference rendering shows velocities around
- *   80, not a crescendo.
- * - **`@curvature` and `@protraction` are read only in the transition branch**
- *   (`DynamicsMap.ts:170-181`), default **0.0**, and are clamped to `[0,1]` and `[−1,1]`
- *   on the way in. `<movement>` defaults to 0.4 instead (§5.8/AD-13), which is why the
- *   shared Bézier machinery must not share a default.
- * - **The neutral is velocity 100**, before the first instruction and for a wholly absent
- *   map (AD-9ii, `DynamicsMap.ts:251-253`) — not a left extension of the first instruction.
- * - **`@subNoteDynamics` switches the rendering mechanism** and is a *structural finding*,
- *   never a curve difference: on a sub-note span every note is pinned to velocity 100 and
- *   the shape becomes a CC 7 channel-volume curve. Two documents identical but for the flag
- *   are distance 0 on the date axis while driving two different MIDI mechanisms. It is
- *   inert on a map's last instruction, by the same `size()-1` guard as the trailing rule.
+ * - Trailing transitions are inert (AD-8), exactly as in tempo: `DynamicsMap.getEndDate:187-193`
+ *   has the same `MAX_VALUE` shape, so a trailing `volume=40 transition.to=100` performs a flat
+ *   40. `all_maps.mpm` ends with `volume="80" transition.to="110"` and its reference rendering
+ *   shows velocities around 80, not a crescendo.
+ * - `@curvature` and `@protraction` are read only in the transition branch
+ *   (`DynamicsMap.ts:170-181`), default 0.0, and are clamped to `[0,1]` and `[−1,1]` on the way
+ *   in. `<movement>` defaults to 0.4 instead (§5.8/AD-13), which is why the shared Bézier
+ *   machinery must not share a default.
+ * - The neutral is velocity 100, before the first instruction and for a wholly absent map
+ *   (AD-9ii, `DynamicsMap.ts:251-253`) — not a left extension of the first instruction.
+ * - `@subNoteDynamics` switches the rendering MECHANISM and is a structural finding, never a
+ *   curve difference: on a sub-note span every note is pinned to velocity 100 and the shape
+ *   becomes a CC 7 channel-volume curve. Two documents identical but for the flag are distance 0
+ *   on the date axis while driving two different MIDI mechanisms. It is inert on a map's last
+ *   instruction, by the same `size()-1` guard as the trailing rule.
  */
 import {
   elementAtOrNull,
@@ -107,14 +105,14 @@ export function neutralDynamicsCurve(): DynamicsCurve {
 }
 
 /**
- * `DynamicsMap.clampCurvature` / `clampProtraction`, applied on the way in — **including what
- * they do to a value that is not a number** (MINOR-4).
+ * `DynamicsMap.clampCurvature` / `clampProtraction`, applied on the way in — including what they
+ * do to a value that is not a number (MINOR-4).
  *
  * The clamps are two comparisons, `value < 0` and `value > 1`, and `NaN` fails both — so an
  * unusable `@curvature` reaches the curve as `NaN` rather than as the 0.0 an absent one gets.
- * Repairing it to 0 was this module's first reading and it is a divergence: it produces a
- * smoothstep ramp where the renderer performs something else entirely (see
- * {@link readDynamicsSegments}). ABSENT is still 0.0, which is `DynamicsData`'s own initializer.
+ * Repairing it to 0 would give a smoothstep ramp where the renderer performs something else
+ * entirely (see {@link readDynamicsSegments}). ABSENT is still 0.0, `DynamicsData`'s own
+ * initializer.
  */
 function shapeParameter(element: Element, name: string, low: number, high: number): number {
   if (readAttributeValue(element, name) === null) return 0;
@@ -124,25 +122,22 @@ function shapeParameter(element: Element, name: string, low: number, high: numbe
 }
 
 /**
- * Invert the Bézier's x-component to **machine precision** — the ideal curve of §5.0 rule 3.
+ * Invert the Bézier's x-component to MACHINE PRECISION — the ideal curve of §5.0 rule 3.
  *
- * `x(t) = ((u·t + v)·t + 3x₁)·t` with `u = 3x₁ − 3x₂ + 1`, `v = −6x₁ + 3x₂`, which is the
- * same Horner form `bezier.ts` uses and is monotone on `[0,1]` for control points in range.
- * Fifty bisections take the bracket below `2⁻⁵⁰`, which is past double precision — a fixed
- * count rather than a tolerance loop, for the determinism reason `bisectSignChange` gives.
+ * `x(t) = ((u·t + v)·t + 3x₁)·t` with `u = 3x₁ − 3x₂ + 1`, `v = −6x₁ + 3x₂`, the same Horner
+ * form `bezier.ts` uses, monotone on `[0,1]` for control points in range. Fifty bisections take
+ * the bracket below `2⁻⁵⁰`, past double precision — a fixed count rather than a tolerance loop,
+ * for the determinism reason `bisectSignChange` gives. Contrast `tForDate`, which stops as soon
+ * as x is within ONE TICK of the target: on a 4-bar transition at 720 ppq that is a tolerance of
+ * 1 part in 11 520.
  *
- * Contrast `tForDate`, which stops as soon as x is within **one tick** of the target. On a
- * 4-bar transition at 720 ppq that is a tolerance of 1 part in 11 520, and the resulting
- * staircase is what rule 3 forbids integrating against.
- *
- * **One conditioning limit, measured and bounded.** At `curvature = 1` — an admissible
- * boundary value — the control points are `(1, 0)`, so `x(t) = 4t³ − 6t² + 3t` and
- * `x′(t) = 3(2t − 1)²`, which **vanishes at `t = 0.5`**. `x` is still matched to machine
- * precision there, but the inverse is flat, so a cube-root loss leaves `t` good to only
- * ~1e−5 and the value fraction carries that into ~6e−4 volume units at the midpoint. More
- * iterations do not help; the inverse is genuinely stationary. In JND terms it is ~2e−5,
- * far below the metric's resolution, so it is documented and pinned as a bound rather than
- * chased. Every interior curvature is exact to 1e−9.
+ * One conditioning limit, measured and bounded. At `curvature = 1` — an admissible boundary
+ * value — the control points are `(1, 0)`, so `x(t) = 4t³ − 6t² + 3t` and `x′(t) = 3(2t − 1)²`,
+ * which vanishes at `t = 0.5`. `x` is still matched to machine precision there, but the inverse
+ * is flat, so a cube-root loss leaves `t` good to only ~1e−5 and the value fraction carries that
+ * into ~6e−4 volume units at the midpoint. More iterations do not help; the inverse is genuinely
+ * stationary. In JND terms that is ~2e−5, far below the metric's resolution. Every interior
+ * curvature is exact to 1e−9.
  */
 export function idealCurveParameter(x1: number, x2: number, xTarget: number): number {
   if (xTarget <= 0) return 0;
@@ -186,16 +181,15 @@ interface RawDynamics {
  * next `<dynamics>`), so a `<style>` between two instructions is transparent — unlike
  * `asynchronyMap`, where it is not.
  *
- * **A `<dynamics>` with no `@volume` is a SKIP, not a no-op** (AD-33.4, correcting this
- * module's first version). `getDynamicsDataOf` rejects it (`DynamicsMap.ts:162-163`), but
- * `getEndDate:187-193` scans for the next element *named* `dynamics` regardless of whether it
- * parses, so the volume-less element still ends the previous span; `renderDynamicsToMap` then
- * `continue`s past it and the next valid instruction's inner loop pins every note in the gap
- * to `velocity="100.0"` (`DynamicsMap.ts:251-253`). Same shape as tempo's AD-9i, same
- * constant, a different mechanism. Reading it as "the previous span continues" was wrong by
- * `|ln 60 − ln 100| = 0.511` nepers — 5.36 JND — held across the whole gap.
+ * A `<dynamics>` with no `@volume` is a SKIP, not a no-op (AD-33.4). `getDynamicsDataOf` rejects
+ * it (`DynamicsMap.ts:162-163`), but `getEndDate:187-193` scans for the next element NAMED
+ * `dynamics` regardless of whether it parses, so the volume-less element still ends the previous
+ * span; `renderDynamicsToMap` then `continue`s past it and the next valid instruction's inner
+ * loop pins every note in the gap to `velocity="100.0"` (`DynamicsMap.ts:251-253`). Same shape as
+ * tempo's AD-9i, same constant, a different mechanism. Reading it as "the previous span
+ * continues" costs `|ln 60 − ln 100| = 0.511` nepers — 5.36 JND — held across the whole gap.
  *
- * An unresolvable *level* is still not a skip: R8 makes it the renderer's 100.0.
+ * An unresolvable LEVEL is still not a skip: R8 makes it the renderer's 100.0.
  */
 export function readDynamicsSegments(
   view: OrderedMapView | null,
@@ -207,10 +201,6 @@ export function readDynamicsSegments(
 
   if (view === null) return neutralDynamicsCurve();
 
-  // Read each entry, skip what is not a dated `<dynamics>`, keep the rest — `filterMap`, with
-  // the two skipping `continue`s as `null` returns. The THIRD `continue` was not a skip at
-  // all: it pushed a volume-less entry and then jumped to the next one, which is the ordinary
-  // early `return` of a function that has produced its answer.
   const raws: readonly RawDynamics[] = filterMap(view.entries, (entry, index) => {
     const element: Element = entry.element;
     if (element.getLocalName() !== 'dynamics') return null;
@@ -273,9 +263,8 @@ export function readDynamicsSegments(
   const notes: DynamicsCurveNote[] = [];
 
   // Every VALID instruction with its position in `raws`, ascending — the tempo reader's
-  // structure, for the same reason. The tail-slice look-ahead it replaces was quadratic in time
-  // and in allocation; see `tempoCurve.readTempoSegments` for the measurement, including why the
-  // obvious `raws.find((c, at) => at > index && …)` repair is three times SLOWER than the slice.
+  // structure, so that the skip look-ahead below is a bounded search rather than a tail slice
+  // per instruction; `tempoCurve.readTempoSegments` carries the measurement.
   const valid = filterMap(raws, (raw, at) =>
     raw.volume === null ? null : { at, dateTicks: raw.dateTicks },
   );
@@ -291,13 +280,7 @@ export function readDynamicsSegments(
       volume: NEUTRAL_VELOCITY,
     });
 
-  // The neighbour is PAIRED with its own instruction rather than read at `index + 1`. "There is
-  // no next one" is then a value — `null` — instead of an out-of-range read that the type system
-  // had to be told about with `as … | undefined`.
-  // `withNext` IS this pair of lines: every entry with its successor, and `null` for the
-  // last. The `[...xs.slice(1), null]` array and the zip that consumed it were one shape
-  // spelled out, and it is the shape `pairwise` cannot serve — `pairwise` drops the last
-  // entry, and the last instruction is a span too.
+  // `withNext`, not `pairwise`: the last instruction is a span too, running to `+Infinity`.
   const paired = withNext(raws);
   // The index survives only as a BOUND in the look-ahead predicate below, never as a read.
   for (const [index, [raw, next]] of paired.entries()) {
@@ -329,21 +312,18 @@ export function readDynamicsSegments(
     const isTransition =
       raw.transitionTo !== null && raw.transitionTo !== raw.volume && !isTrailing;
 
-    // No redundant null re-test: TypeScript narrows `transitionTo` through the `isTransition`
-    // const, and `no-unnecessary-condition` deletes the belt-and-braces check.
     if (isTransition && !Number.isFinite(raw.curvature + raw.protraction)) {
       // MINOR-4, measured through `performMsm`: an unusable `@curvature`/`@protraction` makes
       // the inner control points `NaN`, and `tForDate` starts at `t = 0.5` and loops only
       // `while (Math.abs(diffX) >= 1.0)` — which `NaN` fails — so `t` stays exactly 0.5. The
       // value fraction there is `(3 − 2t)t² = 0.5` for EVERY shape, so the span performs the
       // arithmetic midpoint of its two endpoints as a CONSTANT. Executed: 40 → 120 with
-      // `curvature="abc"` performs 40, 80, 80, 80 on notes at 0/720/1440/2160.
+      // `curvature="abc"` performs 40, 80, 80, 80 on notes at 0/720/1440/2160 — a definite,
+      // audible constant rather than the `velocity="NaN"` MINOR-4 predicted.
       //
-      // The verifier's MINOR-4 predicted `velocity="NaN"` here and the measurement refutes it;
-      // the renderer performs a perfectly definite, audible constant. The two exact endpoints
-      // (`getTForDate` short-circuits `t = 0` and `t = 1`) are single points of measure zero and
-      // are not modelled — an integral does not see them, and a breakpoint for each would put
-      // two zero-width cells in every grid.
+      // The two exact endpoints (`getTForDate` short-circuits `t = 0` and `t = 1`) are single
+      // points of measure zero and are not modelled: an integral does not see them, and a
+      // breakpoint for each would put two zero-width cells in every grid.
       segments.push({
         kind: 'constant',
         startTicks: raw.dateTicks,
@@ -418,11 +398,10 @@ export function readDynamicsSegments(
 /**
  * The segment governing `ticks`, right-continuous (A-B1).
  *
- * **A SCAN, deliberately** — the same three reasons `tempoCurve.segmentAt` gives, in the same
- * shape: the `!Number.isFinite(endTicks)` arm, the `?? last(curve.segments)` fallback, and skip
- * gaps that nest. The accentuation, rubato and pedal siblings share `segments.ts`'s
- * `coveringSegmentAt`; these two do not, and the reason is recorded rather than left as an
- * omission for someone to "finish".
+ * A SCAN, deliberately — the same three reasons `tempoCurve.segmentAt` gives, in the same shape:
+ * the `!Number.isFinite(endTicks)` arm, the `?? last(curve.segments)` fallback, and skip gaps
+ * that nest. The accentuation, rubato and pedal siblings share `segments.ts`'s
+ * `coveringSegmentAt`; these two do not.
  */
 export function dynamicsSegmentAt(curve: DynamicsCurve, ticks: number): DynamicsSegment | null {
   let found: DynamicsSegment | null = null;

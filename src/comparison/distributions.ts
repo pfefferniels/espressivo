@@ -1,51 +1,46 @@
 /**
- * The distribution mathematics of DESIGN.md §5.9: the LAWS an imprecision span declares,
- * their CDFs and quantiles, and the two distances — `W₁` (the headline density's pointwise
- * value) and `W₂` with §1.2's location / spread / shape decomposition (the interpretive
- * table).
+ * The distribution mathematics of DESIGN.md §5.9: the LAWS an imprecision span declares, their
+ * CDFs and quantiles, and the two distances — `W₁` (the headline density's pointwise value) and
+ * `W₂` with §1.2's location / spread / shape decomposition (the interpretive table).
  *
  * Everything here is deterministic and analytic; nothing samples. §2's rule is that no PRNG
- * touches any comparison path — the render draws numbers, this module compares the law they
- * are drawn from.
+ * touches any comparison path — the render draws numbers, this module compares the law they are
+ * drawn from.
  *
  * ## The vocabulary is the renderer's own construction, not a textbook's
  *
- * Each law below is what `RandomNumberProvider` builds, read off its source rather than
- * matched to a named family. Two consequences shape the vocabulary:
+ * Each law below is what `RandomNumberProvider` builds, read off its source rather than matched
+ * to a named family. Two consequences shape the vocabulary:
  *
- * - **Clipping is its own operation.** `nextDouble` composes it —
- *   `this.clip(this.triangularDistribution(…))` — so {@link ClippedLaw} wraps a base law
- *   rather than being folded into the triangular's parameters. The same wrapper then serves
- *   the compensating triangle and the correlated families' start value, which clip the same
- *   way, and clipping's atoms at the two bounds fall out of one implementation.
- * - **The triangular is a two-branch inverse-CDF construction, not the textbook triangular.**
+ * - Clipping is its own operation: `nextDouble` composes it
+ *   (`this.clip(this.triangularDistribution(…))`), so {@link ClippedLaw} wraps a base law rather
+ *   than folding into the triangular's parameters. The same wrapper serves the compensating
+ *   triangle and the correlated families' start value.
+ * - The triangular is a two-branch inverse-CDF construction, not the textbook triangular.
  *   `triangularDistribution` computes `lo + √(u·s·a)` below the mode fraction and
  *   `hi − √((1−u)·s·b)` above it, with `s = hi − lo`, `a = mode − lo`, `b = hi − mode`. For
- *   `lo ≤ mode ≤ hi` that is the textbook law. For a mode OUTSIDE the limits it is not: the
- *   branch fraction `a/s` leaves `[0, 1]`, one branch never runs, and the support reaches
- *   past the limit that no longer bounds it. Measured, `limit.lower="-30" limit.upper="30"
- *   mode="99"` draws values up to 30 (clipped from ~58), which a textbook triangular cannot
- *   produce. {@link triangularQuantile} therefore implements the renderer's formula and gets
- *   both geometries right by construction.
+ *   `lo ≤ mode ≤ hi` that is the textbook law; for a mode OUTSIDE the limits the branch fraction
+ *   `a/s` leaves `[0, 1]`, one branch never runs, and the support reaches past the limit that no
+ *   longer bounds it. Measured, `limit.lower="-30" limit.upper="30" mode="99"` draws values up to
+ *   30 (clipped from ~58), which a textbook triangular cannot produce.
  *
- * ## Accuracy, per family and honestly (§5.9, M13a)
+ * ## Accuracy, per family (§5.9, M13a)
  *
- * `W₁ = ∫|F_A − F_B| dx` is **exact** for the polynomial-CDF families (delta / uniform /
- * triangular / clipped / list): between two structural breakpoints the difference of two
- * CDFs is a quadratic, GL-10 is exact to degree 19, and the absolute value is resolved at
- * the crossings rather than integrated through. Completeness of the crossing search is
- * bought the way §5.0's rules 2b/2c buy it — by emitting BOTH a structural split (the
- * quadratic's vertex, {@link quadraticVertex}) and a fixed subdivision, per AD-34.1, since
- * a quadratic can cross twice inside one piece with equal endpoint signs.
+ * `W₁ = ∫|F_A − F_B| dx` is EXACT for the polynomial-CDF families (delta / uniform / triangular
+ * / clipped / list): between two structural breakpoints the difference of two CDFs is a
+ * quadratic, GL-10 is exact to degree 19, and the absolute value is resolved at the crossings
+ * rather than integrated through. Completeness of the crossing search is bought the way §5.0's
+ * rules 2b/2c buy it — by emitting BOTH a structural split (the quadratic's vertex,
+ * {@link quadraticVertex}) and a fixed subdivision, per AD-34.1, since a quadratic can cross
+ * twice inside one piece with equal endpoint signs.
  *
- * Any pair involving a Gaussian integrates at the **special-function ε** instead: `Φ` is not
- * a polynomial. {@link standardNormalCdf} is a convergent all-positive series below `z = 2`
- * and a continued fraction above it. It is deliberately not the Abramowitz–Stegun 7.1.26
- * rational, whose `7.5·10⁻⁸` misses §5.0's own claim for this family by five orders — and
- * deliberately not a hard-coded Chebyshev table either, because a table's correctness rests
- * on forty transcribed digits while a series' rests on an argument.
+ * Any pair involving a Gaussian integrates at the special-function ε instead: `Φ` is not a
+ * polynomial. {@link standardNormalCdf} is a convergent all-positive series below `z = 2` and a
+ * continued fraction above it — deliberately not the Abramowitz–Stegun 7.1.26 rational, whose
+ * `7.5·10⁻⁸` misses §5.0's own claim for this family by five orders, and not a Chebyshev table,
+ * whose correctness would rest on forty transcribed digits rather than on an argument.
  *
- * **The measured figures, which are what §9.3's `imprecision` family carries** (against an
+ * The measured figures, which are what §9.3's `imprecision` family carries (against an
  * independent composite GL-10 quadrature of the density, sharing no coefficient with the
  * implementation):
  *
@@ -60,30 +55,20 @@
  * | `ρ` against `7√2/10` / `√(3/π)` | bit-exact / 1.1·10⁻¹⁵ |
  * | §1.2's closing identity | 4.1·10⁻¹⁴ relative |
  *
- * Three of those rows were corrected in the W3 fix wave and the corrections are the point of
- * reporting them. `Φ`'s left-tail relative figure was published as 4.9·10⁻¹⁴, measured on a
- * 0.01 grid that steps over the peak: it sits just under {@link ERFC_CONTINUED_FRACTION_LIMIT},
- * where `1 − erfSeries` still cancels about two digits (MINOR-2). `Φ⁻¹`'s right tail was
- * 1.12·10⁻⁹ — Acklam's raw accuracy, because the Halley residual `Φ(x) − p` cancels completely
- * as `p → 1` and the round trip that pinned it is exactly 0 there (MAJOR-3). And `W₁`'s
- * 3.6·10⁻¹⁶ was a RELATIVE figure that two near-identical laws falsify by eleven orders; the
- * quantity that is machine-precise is the error against the laws' support scale (MAJOR-2,
- * AD-55.3). `compare.ts`'s `EPSILON_FIGURES` carries the last of these and says so.
+ * Three of those rows replace superseded figures a blind pin had let stand: `Φ`'s left tail was
+ * published as 4.9·10⁻¹⁴ (MINOR-2, {@link ERFC_CONTINUED_FRACTION_LIMIT}) and `Φ⁻¹`'s right tail
+ * as 1.12·10⁻⁹ (MAJOR-3, {@link standardNormalQuantile}). `W₁`'s 3.6·10⁻¹⁶ was a RELATIVE figure
+ * that two near-identical laws falsify by eleven orders; the machine-precise quantity is the
+ * error against the laws' support scale (MAJOR-2, AD-55.3), which `compare.ts`'s
+ * `EPSILON_FIGURES` carries. §5.0's record quotes "Acklam at `|err| < 1.15·10⁻⁹`" here; the
+ * numbers above supersede it by six orders.
  *
- * §5.0's record quotes "Acklam at `|err| < 1.15·10⁻⁹`" for this family; the numbers above
- * supersede it by six orders, and the reason to report them rather than the claim is
- * AD-28.2's — the requirement is JND-scale exactness and everything here is hygiene far
- * above it.
- *
- * `W₂` and its decomposition integrate in the **quantile** domain, where the triangular's
- * `√` and the Gaussian's `Φ⁻¹` are not polynomials, so those are quadrature in every case;
- * the panels are breakpoint-aware and the Gaussian's tails are refined geometrically. The
- * two ρ constants §5.9 names — `7√2/10` for uniform-vs-symmetric-triangular and `√(3/π)`
- * for uniform-vs-Gaussian — are re-derived in the tests and pinned as the references this
- * quadrature must reproduce. They are deliberately NOT implemented as fast paths: one code
- * path cannot disagree with itself, and a closed form that licenses the general machinery is
- * worth more than one that bypasses it (the same argument that makes `quadrature.ts`
- * re-derive its GL-10 table in a test rather than at run time).
+ * `W₂` and its decomposition integrate in the QUANTILE domain, where the triangular's `√` and
+ * the Gaussian's `Φ⁻¹` are not polynomials, so those are quadrature in every case; the panels
+ * are breakpoint-aware and the Gaussian's tails are refined geometrically. The two ρ constants
+ * §5.9 names — `7√2/10` for uniform-vs-symmetric-triangular and `√(3/π)` for uniform-vs-Gaussian
+ * — are re-derived in the tests and pinned as the references this quadrature must reproduce.
+ * They are deliberately NOT implemented as fast paths: one code path cannot disagree with itself.
  */
 import { head, isNonEmpty, last, pairwise, type NonEmptyArray } from '../prelude/index.js';
 
@@ -125,17 +110,15 @@ export interface TriangularLaw {
  *
  *     L = (1 − q^N)·TruncNormal(0, σ; lo, hi) + q^N·N(0, σ),  N = 10000, q = P(outside)
  *
- * `nextDouble` redraws until `withinLimits`, breaking after attempt 10001 and **accepting
- * that draw unconditionally**; the probability of reaching the break is `q^10000`, and the
- * escaped draw is an unconditioned normal. Measured directly rather than inferred from the
- * loop: with `σ = 10` and limits `±0.001` the escape fires on 46.4 % of draws against a
- * predicted `q^10000 = 45.0 %`, and at `±0.005` on 2.05 % against 1.85 %.
+ * `nextDouble` redraws until `withinLimits`, breaking after attempt 10001 and accepting that
+ * draw unconditionally; the probability of reaching the break is `q^10000`, and the escaped draw
+ * is an unconditioned normal. Measured directly rather than inferred from the loop: with
+ * `σ = 10` and limits `±0.001` the escape fires on 46.4 % of draws against a predicted
+ * `q^10000 = 45.0 %`, and at `±0.005` on 2.05 % against 1.85 %.
  *
- * `lower === upper` is not a corner to guard but the mixture's own answer: `q = 1`,
- * the weight is 1, and the law is the plain `N(0, σ)` the renderer really performs — which
- * is also what ABSENT limits give, since an absent limit reads as 0 (see `imprecisionLaws`).
- * Revision 1 of §5.9 would have compared a document performing full Gaussian noise against
- * one performing none at distance 0.
+ * `lower === upper` is not a corner to guard but the mixture's own answer: `q = 1`, the weight
+ * is 1, and the law is the plain `N(0, σ)` the renderer really performs — which is also what
+ * ABSENT limits give, since an absent limit reads as 0 (see `imprecisionLaws`).
  */
 export interface GaussianLaw {
   readonly kind: 'gaussian';
@@ -144,11 +127,11 @@ export interface GaussianLaw {
   readonly lower: number;
   readonly upper: number;
   /**
-   * The normal's mean. Always 0 as a document declares it — the renderer multiplies a
-   * STANDARD deviate by σ and never adds an offset — and non-zero only after §7.4's `'level'`
-   * invariance has shifted the law. It is a field rather than a wrapper so that every law in
-   * this module folds under an affine map ({@link affineLaw}) instead of accumulating one.
-   * The limits stay ABSOLUTE, so a shifted law's truncation window moves with it.
+   * The normal's mean. Always 0 as a document declares it — the renderer multiplies a STANDARD
+   * deviate by σ and never adds an offset — and non-zero only after §7.4's `'level'` invariance
+   * has shifted the law. A field rather than a wrapper so that every law folds under an affine
+   * map ({@link affineLaw}). The limits stay ABSOLUTE, so a shifted law's truncation window
+   * moves with it.
    */
   readonly center: number;
 }
@@ -156,23 +139,15 @@ export interface GaussianLaw {
 /**
  * `distribution.list` — the empirical law of the `<measurement>` values, as a multiset.
  *
- * The renderer's own use of the list is a deterministic cycle with interpolation
- * (`getValue(i)` is `series[i % n]`, and a fractional index interpolates between neighbours),
- * so the values a given render performs are not in general list members at all. Which index
- * a note lands on is a function of its millisecond date and the timing basis — a render-path
- * artifact this module refuses to model, exactly as §5.9 refuses to model the chord shake.
- * The DECLARED law is the empirical one.
+ * The renderer's own use of the list is a deterministic cycle with interpolation (`getValue(i)`
+ * is `series[i % n]`, a fractional index interpolating between neighbours), so the values a given
+ * render performs are not in general list members. Which index a note lands on is a function of
+ * its millisecond date and the timing basis — a render-path artifact this module refuses to
+ * model, as §5.9 refuses to model the chord shake. The DECLARED law is the empirical one.
  */
 export interface ListLaw {
   readonly kind: 'list';
-  /**
-   * Non-empty, ascending. Duplicates are meaningful — this is a multiset.
-   *
-   * Non-emptiness is carried by the TYPE rather than by this sentence: {@link supportOf} and
-   * {@link quantile} both read the first and last entry, and {@link listLaw} is the only
-   * constructor, so the invariant is establishable once at the boundary instead of asserted at
-   * each reader.
-   */
+  /** Non-empty (established once, in {@link listLaw}) and ascending; duplicates are meaningful. */
   readonly values: NonEmptyArray<number>;
 }
 
@@ -182,10 +157,8 @@ export type BaseLaw = DeltaLaw | UniformLaw | TriangularLaw | GaussianLaw | List
  * `clamp(X, lower, upper)` — the renderer's `clip`, as a law.
  *
  * Clamping is not truncation: it moves the out-of-range mass ONTO the bounds instead of
- * conditioning it away, so the result carries an atom at each bound whose weight is the tail
- * it swallowed. `distribution.triangular` and `distribution.correlated.compensatingTriangle`
- * are both `clip(base)` in the source, and the correlated families' start value is clipped
- * the same way, so one wrapper covers all three.
+ * conditioning it away, so the result carries an atom at each bound whose weight is the tail it
+ * swallowed.
  */
 export interface ClippedLaw {
   readonly kind: 'clipped';
@@ -232,16 +205,14 @@ export function uniformLaw(lower: number, upper: number): DeltaLaw | UniformLaw 
 /**
  * The renderer's triangular, or null where its construction has no CDF at all.
  *
- * **Null for `lower > upper`**, and this is the pedal precedent (§5.8, AD-35) rather than a
- * fussy domain check: with the limits inverted the two branches of the inverse-CDF formula
- * run in opposite directions, so `u ↦ x(u)` is not monotone and there is no distribution
- * function to integrate. Measured at `limit.lower="30" limit.upper="-30" mode="0"`: the
- * branches produce `[30, 72)` and `(−60, −30]`, and the "quantile" jumps DOWN by 132 at
- * `u = 0.5`. The caller reads `⊥` for such a span, exactly as a non-monotone pedal date
- * component reads `⊥`.
+ * Null for `lower > upper`, the pedal precedent (§5.8, AD-35) rather than a fussy domain check:
+ * with the limits inverted the two branches of the inverse-CDF formula run in opposite
+ * directions, so `u ↦ x(u)` is not monotone and there is no distribution function to integrate.
+ * Measured at `limit.lower="30" limit.upper="-30" mode="0"`: the branches produce `[30, 72)` and
+ * `(−60, −30]`, and the "quantile" jumps DOWN by 132 at `u = 0.5`. The caller reads `⊥`.
  *
- * `lower === upper` is the renderer's own short-circuit (`if (upperLimit === lowerLimit)
- * return upperLimit`), i.e. a point mass.
+ * `lower === upper` is the renderer's own short-circuit (`if (upperLimit === lowerLimit) return
+ * upperLimit`), i.e. a point mass.
  */
 export function triangularLaw(
   lower: number,
@@ -271,8 +242,6 @@ export function gaussianLaw(
 /** The empirical law of `values`; null for an empty list, which the renderer cannot draw. */
 export function listLaw(values: readonly number[]): DeltaLaw | ListLaw | null {
   const sorted = [...values].sort((a, b) => a - b);
-  // The emptiness test and the non-emptiness the rest of the module relies on are the same
-  // fact, so it is established once, here, in the form the type can carry.
   if (!isNonEmpty(sorted)) return null;
   const lo = head(sorted);
   const hi = last(sorted);
@@ -302,16 +271,14 @@ export function clippedLaw(base: BaseLaw, lower: number, upper: number): Impreci
  * `scale·X + shift` as another law of the same vocabulary — §7.4's invariance modes, applied
  * to a distribution.
  *
- * Every kind FOLDS; nothing is wrapped. That is the reason {@link GaussianLaw} carries a
- * `center` at all: with a wrapper, an invariance-transformed law would be a different SHAPE of
- * object from the one the reader produced, and every consumer — `W₁`'s breakpoints, `W₂`'s
- * quantile panels, `lawsEqual`'s identity fast path — would need a case for it. Folding keeps
- * one vocabulary, so `d(A, A) = 0` stays exact after canonicalization, which is what P-C3's
- * metric guarantee under an invariance mode actually needs.
+ * Every kind FOLDS; nothing is wrapped — the reason {@link GaussianLaw} carries a `center`. A
+ * wrapper would make a transformed law a different SHAPE from the one the reader produced, and
+ * every consumer would need a case for it; folding keeps one vocabulary, so `d(A, A) = 0` stays
+ * exact after canonicalization, which is what P-C3 needs.
  *
- * `scale` must be positive: a negative one reflects the law, which is not what either mode
- * asks for, and `0` collapses it to a point mass that the caller means as a degenerate case
- * rather than a canonicalization. AD-20's `σ = 0` rule handles that one a level up.
+ * `scale` must be positive: a negative one reflects the law, which is not what either mode asks
+ * for, and `0` collapses it to a point mass the caller means as a degenerate case rather than a
+ * canonicalization. AD-20's `σ = 0` rule handles that one a level up.
  */
 export function affineLaw(law: ImprecisionLaw, scale: number, shift: number): ImprecisionLaw {
   if (!(scale > 0) || !Number.isFinite(scale) || !Number.isFinite(shift))
@@ -337,9 +304,8 @@ export function affineLaw(law: ImprecisionLaw, scale: number, shift: number): Im
     case 'list':
       return listLaw(law.values.map(map)) ?? DELTA_ZERO;
     case 'clipped':
-      // The cast is safe by construction and the switch above is the proof: every BASE kind
-      // maps to a base kind, so the recursive call on `law.base` cannot return a `ClippedLaw`.
-      // TypeScript cannot see that through the recursion.
+      // Every BASE kind above maps to a base kind, so the recursive call on `law.base` cannot
+      // return a `ClippedLaw` — which TypeScript cannot see through the recursion.
       return clippedLaw(
         affineLaw(law.base, scale, shift) as BaseLaw,
         map(law.lower),
@@ -363,9 +329,9 @@ export function supportOf(law: ImprecisionLaw): readonly [number, number] {
     }
     case 'gaussian': {
       // The truncated component lives inside the limits and the escaped one does not, so the
-      // hull is the union — but only where the escape carries weight. A pure truncated normal
-      // has support exactly `[lower, upper]`, and saying so keeps the quadrature off twelve
-      // sigmas of provably empty axis.
+      // hull is their union — but only where the escape carries weight. A pure truncated normal
+      // has support exactly `[lower, upper]`, which keeps the quadrature off twelve sigmas of
+      // provably empty axis.
       if (gaussianEscapeWeight(law) <= 0) return [law.lower, law.upper];
       const tail = GAUSSIAN_TAIL_SIGMAS * law.sigma;
       return [Math.min(law.center - tail, law.lower), Math.max(law.center + tail, law.upper)];
@@ -382,19 +348,17 @@ export function supportOf(law: ImprecisionLaw): readonly [number, number] {
 /**
  * Where the two branches of the renderer's triangular actually reach.
  *
- * For a mode inside the limits this is `[lower, upper]`. For a mode outside them one branch
- * is unreachable and the other overshoots — `lower + √(s·b)` above, `upper − √(s·a)` below —
- * which is why the support is computed rather than assumed.
+ * For a mode inside the limits this is `[lower, upper]`. For a mode outside them one branch is
+ * unreachable and the other overshoots — `lower + √(s·b)` above, `upper − √(s·a)` below — which
+ * is why the support is computed rather than assumed.
  *
- * **The branch fraction is CLAMPED into `[0, 1]`** (W3 CAPITAL-3), and the clamp is the whole
- * repair. `fraction = (mode − lower)/scale` is the `u` at which the sampler switches branches,
- * so for `mode > upper` it exceeds 1 and the rising branch runs all the way to `u = 1`: the
- * supremum is `lower + √(scale·belowMode)`, not the mode. Unclamped, `T(0, 1, 1000)` claimed a
- * hull reaching 1000 where the renderer's own sampler reaches 31.62, and the true endpoint —
- * where the integrand kinks — never entered {@link cdfBreakpoints}, so GL-10 straddled it and
- * `W₁` came out 1.07 % wrong. The CDF was right all along (`Math.min`/`Math.max` clamp it), which
- * is why only the quadrature saw it. A mode outside the limits is not malformed input: §5.9's
- * rewritten `triangularCdf` exists precisely because the renderer admits it.
+ * The branch fraction is CLAMPED into `[0, 1]` (W3 CAPITAL-3). `fraction = (mode − lower)/scale`
+ * is the `u` at which the sampler switches branches, so for `mode > upper` it exceeds 1 and the
+ * rising branch runs all the way to `u = 1`: the supremum is `lower + √(scale·belowMode)`, not
+ * the mode. Unclamped, `T(0, 1, 1000)` claimed a hull reaching 1000 where the renderer's own
+ * sampler reaches 31.62, and the true endpoint — where the integrand kinks — never entered
+ * {@link cdfBreakpoints}, so GL-10 straddled it and `W₁` came out 1.07 % wrong. The CDF was right
+ * all along (`Math.min`/`Math.max` clamp it), which is why only the quadrature saw it.
  */
 function triangularSupport(law: TriangularLaw): readonly [number, number] {
   const scale = law.upper - law.lower;
@@ -417,10 +381,9 @@ const INVERSE_SQRT_PI = 0.5641895835477563;
  *
  * MEASURED, not chosen: `1 − erf(z)` loses one significant digit for every decade `erfc(z)`
  * falls below 1, so at `z = 4.88` — `Φ(−6.9)`, an ordinary place for a truncated Gaussian's
- * normalizer to be evaluated — the subtraction leaves 4 digits of a number worth 2.6·10⁻¹²
- * and the relative error is 5·10⁻⁴. The first draft of this file failed its own tail test
- * there. Above this threshold the continued fraction computes `erfc` DIRECTLY and never
- * forms the difference.
+ * normalizer to be evaluated — the subtraction leaves 4 digits of a number worth 2.6·10⁻¹² and
+ * the relative error is 5·10⁻⁴. Above this threshold the continued fraction computes `erfc`
+ * DIRECTLY and never forms the difference.
  */
 const ERFC_CONTINUED_FRACTION_LIMIT = 2;
 
@@ -429,12 +392,11 @@ const ERFC_CONTINUED_FRACTION_LIMIT = 2;
  *
  *     erf(z) = (2/√π)·z·e^{−z²}·Σ_{n≥0} (2z²)ⁿ / (1·3·5···(2n+1))
  *
- * **Every term is positive**, which is the whole reason for this form rather than the
- * Maclaurin series: the alternating one loses all its significant digits to cancellation by
- * `z ≈ 3`, while this one only ever adds. There is no table to get wrong and no region
- * boundary to fall through — the accuracy claim is a statement about a convergent sum, which
- * a test can check against an independent quadrature of the density rather than against
- * another copy of the same constants.
+ * Every term is positive, which is the reason for this form rather than the Maclaurin series:
+ * the alternating one loses all its significant digits to cancellation by `z ≈ 3`, while this
+ * one only ever adds. The accuracy claim is then a statement about a convergent sum, which a
+ * test can check against an independent quadrature of the density rather than against another
+ * copy of the same constants.
  */
 function erfSeries(z: number): number {
   const twoSquare = 2 * z * z;
@@ -510,25 +472,22 @@ export function standardNormalCdf(x: number): number {
  * Halley step against {@link standardNormalCdf}, which takes it to the CDF's own accuracy.
  *
  * The refinement is what makes the pair self-consistent: `Φ(Φ⁻¹(p)) = p` to ~1e−16 is the
- * property the quantile integrals actually depend on, and it is pinned as a round trip rather
- * than as a coefficient comparison.
+ * property the quantile integrals depend on, and it is pinned as a round trip rather than as a
+ * coefficient comparison.
  *
- * **In the right tail that round trip is blind, and the residual is formed complementarily**
- * (W3 MAJOR-3, see the step itself). `|Φ(Q(p)) − p| / p` is exactly 0 for every `p > 1 − 1e-13`
- * whatever `Q` returned, because `Φ` there is 1 to sixteen digits — so the pin could not see
- * that the correction had degenerated to noise and Acklam's raw 1.15·10⁻⁹ was surviving. Both
- * tails now measure ≤ 1.2·10⁻¹⁵ relative against `mpmath` at 60 dps out to `1 − 10⁻¹⁵`, and the
- * round trip is additionally stated on `1 − p`, which is the quantity that carries information
- * there.
+ * In the right tail that round trip is blind — `|Φ(Q(p)) − p| / p` is exactly 0 for every
+ * `p > 1 − 1e-13` whatever `Q` returned — so the residual is formed complementarily instead (W3
+ * MAJOR-3, at the step itself). Both tails now measure ≤ 1.2·10⁻¹⁵ relative against `mpmath` at
+ * 60 dps out to `1 − 10⁻¹⁵`, and the round trip is additionally stated on `1 − p`, the quantity
+ * that carries information there.
  */
 export function standardNormalQuantile(p: number): number {
   if (p <= 0) return Number.NEGATIVE_INFINITY;
   if (p >= 1) return Number.POSITIVE_INFINITY;
 
-  // Acklam's coefficients, destructured rather than indexed. The arity is the point: the
-  // central numerator is degree 5 in `r` and its denominator degree 4, the tail numerator
-  // degree 5 in `q` and its denominator degree 3, and naming each coefficient is what makes a
-  // transcription that dropped one fail to compile instead of evaluating `undefined * q`.
+  // Acklam's coefficients, named rather than indexed so that a transcription which dropped one
+  // fails to compile instead of evaluating `undefined * q`. The central numerator is degree 5 in
+  // `r` and its denominator degree 4; the tail numerator degree 5 in `q`, its denominator 3.
   const [a0, a1, a2, a3, a4, a5] = [
     -3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2, 1.38357751867269e2,
     -3.066479806614716e1, 2.506628277459239,
@@ -565,7 +524,7 @@ export function standardNormalQuantile(p: number): number {
       ((((d0 * q + d1) * q + d2) * q + d3) * q + 1);
   }
 
-  // One Halley step on f(x) = Φ(x) − p. Skipped where the density underflows, since the
+  // One Halley step on f(x) = Φ(x) − p, skipped where the density underflows, since the
   // correction is then 0/0 rather than small.
   //
   // The residual is formed COMPLEMENTARILY for `x > 0` (W3 MAJOR-3). `Φ(x) − p` cancels
@@ -691,8 +650,7 @@ export function quantile(law: ImprecisionLaw, u: number): number {
       const n = law.values.length;
       const index = Math.min(n - 1, Math.max(0, Math.ceil(u * n) - 1));
       // `index` is clamped into `[0, n − 1]` on a list the type says is non-empty, so the read
-      // hits. The fallback is what the upper clamp already means rather than an assertion: for
-      // `index === n − 1` the two spellings name the same element.
+      // hits; the fallback names the same element the upper clamp already means.
       return law.values[index] ?? last(law.values);
     }
     case 'clipped':
@@ -793,12 +751,11 @@ const W1_PIECE_SUBDIVISIONS = 16;
  * The vertex of the quadratic through three equally spaced samples, or null when they are
  * collinear.
  *
- * For the polynomial families `F_A − F_B` really IS a quadratic between structural
- * breakpoints, so this is not a heuristic there: fitting three points determines it exactly,
- * and splitting at the vertex leaves two monotone branches on which `bisectSignChange` is
- * complete. §5.0's rule 2 buys the same completeness for tempo from a closed-form critical
- * point; here the closed form is a three-point fit because the coefficients depend on which
- * pieces of which two CDFs meet, and enumerating those is a worse kind of exact.
+ * For the polynomial families `F_A − F_B` really IS a quadratic between structural breakpoints,
+ * so this is not a heuristic there: fitting three points determines it exactly, and splitting at
+ * the vertex leaves two monotone branches on which `bisectSignChange` is complete. §5.0's rule 2
+ * buys the same completeness for tempo from a closed-form critical point; here the closed form
+ * is a three-point fit, since the coefficients depend on which pieces of which two CDFs meet.
  */
 export function quadraticVertex(f: (x: number) => number, a: number, b: number): number | null {
   const mid = (a + b) / 2;
@@ -967,10 +924,9 @@ export function wasserstein2Decomposition(a: ImprecisionLaw, b: ImprecisionLaw):
 /**
  * AD-32's floor, restated for the quantile domain.
  *
- * `decomposition.ts` carries the same constant for curves and for the same reason: a law with
- * no spread integrates to a variance of ~1e−31 rather than to 0, so `σ === 0` has to be
- * recognized structurally or §1.2's degenerate convention never fires and `ρ` is reported for
- * a point mass.
+ * `decomposition.ts` carries the same constant for curves, for the same reason: a law with no
+ * spread integrates to a variance of ~1e−31 rather than to 0, so `σ === 0` has to be recognized
+ * structurally or §1.2's degenerate convention never fires and `ρ` is reported for a point mass.
  */
 export const SPREAD_NOISE_FLOOR = 1e-12;
 
@@ -981,24 +937,22 @@ function quantilePanels(a: ImprecisionLaw, b: ImprecisionLaw): readonly number[]
   );
   const points = new Set<number>([0, 1, ...structural]);
 
-  // BOTH end panels are refined geometrically, always — and "always" is measured rather than
-  // cautious. A Gaussian's quantile is unbounded at `u → 0, 1`, which is the obvious case;
-  // the triangular's is not unbounded but its DERIVATIVE is (`Q = lo + √(u·s·a)` has infinite
-  // slope at 0), and a uniform mesh reported σ for `T(−30, 30, 0)` as 12.24716 against the
-  // closed form 30/√6 = 12.24745 — a relative 2.4·10⁻⁵ that put ρ(uniform, triangular)
-  // 6.7·10⁻⁶ off §5.9's `7√2/10`. Twelve decades matches the ±12σ support hull the CDF side
-  // uses, and costs nothing on the families with no singularity to resolve: GL-10 is exact on
-  // their quantiles for any panelling at all.
+  // BOTH end panels are refined geometrically, always. A Gaussian's quantile is unbounded at
+  // `u → 0, 1`; the triangular's is not, but its DERIVATIVE is (`Q = lo + √(u·s·a)` has infinite
+  // slope at 0), and a uniform mesh reported σ for `T(−30, 30, 0)` as 12.24716 against the closed
+  // form 30/√6 = 12.24745 — a relative 2.4·10⁻⁵ that put ρ(uniform, triangular) 6.7·10⁻⁶ off
+  // §5.9's `7√2/10`. Twelve decades matches the ±12σ support hull the CDF side uses, and costs
+  // nothing on the families with no singularity: GL-10 is exact on their quantiles for any
+  // panelling at all.
   for (let decade = 1; decade <= QUANTILE_TAIL_DECADES; ++decade) {
     points.add(Math.pow(10, -decade));
     points.add(1 - Math.pow(10, -decade));
   }
 
-  // 0 and 1 bracket the axis by construction — `points` is seeded with them, every structural
-  // breakpoint was filtered to the open interval at the top, and twelve decades of `10^-k` and
-  // `1 − 10^-k` are interior for every `k ≥ 1`. Spelling the two ends out instead of sorting
-  // them in with the rest is what makes the closing endpoint below a `last` on a sequence the
-  // type knows is non-empty, rather than an index that could miss.
+  // 0 and 1 bracket the axis by construction: every structural breakpoint was filtered to the
+  // open interval, and twelve decades of `10^-k` and `1 − 10^-k` are interior for every `k ≥ 1`.
+  // Spelling the two ends out makes the closing endpoint below a `last` on a sequence the type
+  // knows is non-empty.
   const sorted: NonEmptyArray<number> = [
     0,
     ...[...points].filter((u) => u > 0 && u < 1).sort((x, y) => x - y),

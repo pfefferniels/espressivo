@@ -1,27 +1,22 @@
 /**
  * C6's plausibility channel — the Hofmann-roll defence, as data.
  *
- * §5.0 names four `plausibleRange` bands and §4 carries them on the rows. Nothing consumed
- * them until now, which was right for W2 and is the gap this closes: a value outside its band
- * is REPORTED and the distance is left exactly as it was. The example the design is built
- * around is a 1927 Hofmann roll whose `<tempo>` writes `@beatLength` in TICKS rather than as a
- * fraction of a whole note, which makes the resolved quarter-BPM absurd while every number in
- * the report stays finite and plausible-looking. A note is what turns that into something a
- * scholar can see.
+ * §5.0 names four `plausibleRange` bands and §4 carries them on the rows. A value outside its
+ * band is REPORTED and the distance is left exactly as it was. The design is built around a 1927
+ * Hofmann roll whose `<tempo>` writes `@beatLength` in TICKS rather than as a fraction of a
+ * whole note, which makes the resolved quarter-BPM absurd while every number in the report stays
+ * finite and plausible-looking.
  *
- * ## It is a document walk, not an evaluator hook
+ * A document walk, not an evaluator hook: the pass reads the registry (`sites`,
+ * `plausibleRange`) and walks the ordered map views the document layer already produced. Nothing
+ * about it is dimension-specific, and it produces the site reference §9.3 wants (container,
+ * date, index among the map's entries, `xml:id`) as a by-product.
  *
- * The pass reads the registry — `sites`, `plausibleRange` — and walks the ordered map views the
- * document layer already produced. Nothing about it is dimension-specific, which is why it is
- * ~60 lines rather than eleven hooks, and it produces the site reference §9.3 wants (container,
- * date, index among the map's entries, `xml:id`) as a by-product of walking.
- *
- * **Only INSTRUCTION sites are walked**, and the reason is C6's own word "resolved": a
- * `<*Def>`'s value is performed only where an instruction references it, so reporting every def
- * in a style collection would flag values no performance ever reaches. A def-carried value that
- * IS performed is not reported by this pass — a stated limitation, not an oversight, and the
- * band it would have tripped is the same band the referencing instruction's own attributes are
- * checked against.
+ * Only instruction sites are walked, for C6's own word "resolved": a `<*Def>`'s value is
+ * performed only where an instruction references it, so reporting every def in a style
+ * collection would flag values no performance ever reaches. A def-carried value that IS
+ * performed goes unreported here — a stated limitation, and the band it would have tripped is
+ * the same band the referencing instruction's own attributes are checked against.
  */
 import { readAttributeValue, readNumericAttributeValue } from '../expression/attributes.js';
 import { readScopeMapViews, type ComparisonDocument } from './document.js';

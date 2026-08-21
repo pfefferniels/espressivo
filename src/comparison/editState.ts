@@ -1,40 +1,32 @@
 /**
  * §6's edit states as MAP VIEWS, so every reader prices them unchanged.
  *
- * `editScript.ts` knows how to search over instruction lists and nothing about what an
- * instruction is; the eleven readers know how to turn one map into what it performs and nothing
- * about edit states. This module is the joint: an edit state is a list of instructions drawn
- * from two documents, and {@link editView} presents that list as the `OrderedMapView` a reader
- * already takes. No reader gains a case for the edit path, and no `Φ` in §6.2 is a second
- * reading of a map beside §5's.
+ * `editScript.ts` searches over instruction lists and knows nothing about what an instruction
+ * is; the eleven readers turn a map into what it performs and know nothing about edit states.
+ * This module is the joint: {@link editView} presents a list of instructions drawn from two
+ * documents as the `OrderedMapView` a reader already takes.
  *
  * ## Resolution travels with the instruction (AD-40.2)
  *
  * Each instruction keeps the `scaleFactor` and the two environments of the DOCUMENT it came
- * from, carried on the view as `entryResolutions`. This is the campaign's own principle —
- * "price the resolved performed effect, never the attribute tuple" — and it is what makes
- * §6.3's replay exact: the state after the last op is `b`'s instructions with `b`'s resolutions,
- * i.e. `B` itself, rather than "B's instructions read through A's styleDefs", which would leave
- * `replayedDelta` describing a document neither side wrote.
+ * from, carried on the view as `entryResolutions`. That is what makes §6.3's replay exact: the
+ * state after the last op is `b`'s instructions with `b`'s resolutions, i.e. `B` itself, rather
+ * than "B's instructions read through A's styleDefs".
  *
- * The consequence, stated rather than discovered later: **deleting a `<style>` switch does not
- * re-resolve the instructions after it.** A mixed map has no well-defined style scope — A's
- * style names need not exist in B's header at all — and the script is scoped to one (part, map)
- * by §6.1 while `styleDef`s live in the header, outside it. So a script cannot express a
- * styleDef edit, and the reading that makes its endpoints exactly `A` and `B` is the one where
- * each instruction performs what it performs in its own document. Where two documents differ
- * ONLY in a styleDef, the difference is still priced — the two `<tempo>` elements may be
- * identical while their resolved levels are not, so the substitution costs real money — it is
- * merely attributed to the instruction rather than to the header.
+ * The consequence: deleting a `<style>` switch does not re-resolve the instructions after it. A
+ * mixed map has no well-defined style scope — A's style names need not exist in B's header at
+ * all — and §6.1 scopes the script to one (part, map) while `styleDef`s live in the header,
+ * outside it. Where two documents differ ONLY in a styleDef the difference is still priced: the
+ * two `<tempo>` elements may be identical while their resolved levels are not, so the
+ * substitution costs real money, attributed to the instruction rather than to the header.
  *
  * ## Every dated entry is an instruction, `<style>` included
  *
- * §6.1 takes "both instruction sequences date-ordered by the `datedView` rules", and that view
+ * §6.1 takes both instruction sequences date-ordered by the `datedView` rules, and that view
  * carries `<style>` switches (those with a `@name.ref`; `GenericMap.parseData` drops the rest
- * before indexing). Including them is not a formality: under the ANY-ENTRY span rule that
- * `asynchronyMap` and the three `imprecisionMap`s follow (AD-29, AD-14ii), a `<style>` ENDS a
- * span, so a state that dropped it would not perform what its document performs and `S(0,0)`
- * would not be `A`.
+ * before indexing). Under the ANY-ENTRY span rule that `asynchronyMap` and the three
+ * `imprecisionMap`s follow (AD-29, AD-14ii), a `<style>` ENDS a span, so a state that dropped
+ * it would not perform what its document performs and `S(0,0)` would not be `A`.
  */
 import { optionAt } from '../prelude/seq.js';
 import type { Element } from '../xml/XomTypes.js';
@@ -79,9 +71,8 @@ export function editInstructionsOf(
   if (view === null) return [];
   const instructions: EditInstruction[] = [];
   for (const [index, entry] of view.entries.entries()) {
-    // A `NaN` date has no place on the timeline; `datedView` sorts such entries to the front
-    // and every reader skips them, so an edit state that carried one would price a difference
-    // no renderer performs.
+    // A `NaN` date has no place on the timeline; `datedView` sorts such entries to the front and
+    // every reader skips them, so carrying one would price a difference no renderer performs.
     if (!Number.isFinite(entry.date)) continue;
     instructions.push({
       side,
@@ -128,21 +119,20 @@ export function editView(
  * their curves agree except near it, and integrating over the whole window computes zeros. The
  * bound is STRUCTURAL rather than sampled:
  *
- * - **Left.** Everything strictly before the last unchanged instruction preceding the change is
+ * - Left: everything strictly before the last unchanged instruction preceding the change is
  *   governed by instructions both states share, with unchanged neighbours. The span OPENING at
  *   that instruction is not safe — its end date moves with the change, and under AD-8 its
  *   trailing-ness can flip — so the bound is that instruction's own date, not the change's.
- * - **Right.** The first unchanged instruction strictly AFTER the change opens a span whose
- *   value, whose end, and whose trailing-ness are all decided by instructions at or after it,
- *   none of which moved. That holds for the skip gaps too: a gap runs to the next VALID
- *   instruction, and which one that is depends only on what follows.
+ * - Right: the first unchanged instruction strictly AFTER the change opens a span whose value,
+ *   end and trailing-ness are decided by instructions at or after it, none of which moved. That
+ *   holds for skip gaps too: a gap runs to the next VALID instruction, which depends only on
+ *   what follows.
  *
- * The claim is not argued into place — {@link editScriptForDimension} ships an unlocalized mode
- * and the suite pins the two forms EQUAL over the vendored corpus and the adversarial family,
- * which is the only form of evidence this campaign has found survives contact (AD-30/AD-31).
- * The one dimension it is NOT applied to is `pedal`, whose `getPreviousPosition` scans BACKWARDS
- * over entry indices for an inherited `@transition.to` (PARITY P2, AD-35.4's hazard class), so a
- * movement really can depend on an instruction before it.
+ * {@link editScriptForDimension} ships an unlocalized mode and the suite pins the two forms
+ * EQUAL over the vendored corpus and the adversarial family (AD-30/AD-31). The one dimension it
+ * is NOT applied to is `pedal`, whose `getPreviousPosition` scans BACKWARDS over entry indices
+ * for an inherited `@transition.to` (PARITY P2, AD-35.4's hazard class), so a movement really
+ * can depend on an instruction before it.
  */
 export function affectedTicks(
   previous: readonly EditInstruction[],

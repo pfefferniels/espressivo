@@ -1,7 +1,7 @@
 /**
  * The pedal (movement) curve — DESIGN.md §5.8, as amended by AD-35.
  *
- * The compared object is the **controller position on [0,1]** as a function of score time:
+ * The compared object is the controller position on [0,1] as a function of score time:
  * `position(t)`, in `ratio` units, evaluated on the ideal Bézier (§5.0 rule 3) exactly as
  * §5.3's dynamics curve is. `<movement>` and `<dynamics>` share `bezier.ts` and share nothing
  * else — different defaults, different span rules, different neutral, different failure modes.
@@ -9,29 +9,25 @@
  * ## The timeline is emitted events, and an emitted event HOLDS
  *
  * `renderMovementToMap` does not annotate notes; it builds a `positionMap` of `<position>`
- * elements and `Msm.parsePositionMap:1422-1454` turns **every** one of them into a MIDI control
- * change — no thinning, no reset, nothing else. A control change persists until the next one on
- * the same controller, so the performed position at `t` is the value of the last event at or
- * before `t`. Three consequences, and none of them is a modelling choice:
+ * elements and `Msm.parsePositionMap:1422-1454` turns every one into a MIDI control change — no
+ * thinning, no reset. A control change persists until the next one on the same controller, so
+ * the performed position at `t` is the value of the last event at or before `t`. Three
+ * consequences:
  *
- * - **Before the first event the pedal is up** (`0`), because no controller value has been sent
- *   and the MIDI default for CC 64/67 is 0. That is also why R6's neutral for an absent
+ * - Before the first event the pedal is up (`0`), because no controller value has been sent and
+ *   the MIDI default for CC 64/67 is 0. That is also why R6's neutral for an absent
  *   `movementMap` is 0 rather than a left extension of the first movement.
- * - **After the last rendered span the last emitted value HOLDS to the end of the window.** It
- *   is not released, and modelling the tail as 0 would claim a pedal lift the performance never
- *   makes. The held value is the last span's `@transition.to` (or its `@position`, on a
- *   constant movement).
- * - **A skipped movement leaves a hold, not a gap.** `getEndDate:153-159` scans for the next
- *   element named `movement` whether or not that movement parses, so the previous span still
- *   ends there while nothing new is emitted — the previous value simply persists across the
- *   interval. Executed: a constant `position="1.0"` at 0, an unreadable movement at 360 and a
- *   transition at 720 emit events at 0 and then not again until 720, so the pedal sits at 1.0
- *   across the whole gap.
+ * - After the last rendered span the last emitted value HOLDS to the end of the window — its
+ *   `@transition.to`, or its `@position` on a constant movement. Modelling the tail as 0 would
+ *   claim a pedal lift the performance never makes.
+ * - A skipped movement leaves a hold, not a gap. `getEndDate:153-159` scans for the next element
+ *   named `movement` whether or not that movement parses, so the previous span still ends there
+ *   while nothing new is emitted. Executed: a constant `position="1.0"` at 0, an unreadable
+ *   movement at 360 and a transition at 720 emit events at 0 and then not again until 720.
  *
- * §5.8 states none of this; it is the reading this module implements and it is reported for
- * ratification rather than assumed. What §5.8 does state — the flat span structure, the last
- * movement's exclusion, curvature's 0.4 default, the `j > 0` inheritance — is implemented
- * verbatim below with its citations.
+ * §5.8 states none of the above; it is this module's reading. What §5.8 does state — the flat
+ * span structure, the last movement's exclusion, curvature's 0.4 default, the `j > 0`
+ * inheritance — is implemented verbatim below with its citations.
  *
  * ## The exclusion is by ENTRY INDEX, and a trailing `<style>` resurrects a movement (AD-35)
  *
@@ -43,38 +39,36 @@
  *   if (movementMap !== null && movementIndex < this.size() - 1 && md.startDate >= 0) { ... }
  * ```
  *
- * `size()` counts **every entry**, `<style>` switches included, so the guard excludes the last
- * ENTRY and not the last movement. Put any entry after the last `<movement>` — a trailing
- * `<style>`, which is ordinary in a map that switches style at the end of a section — and the
- * last movement is inside the guard and renders, with `getEndDate` returning
+ * `size()` counts every entry, `<style>` switches included, so the guard excludes the last ENTRY
+ * and not the last movement. Put any entry after the last `<movement>` — a trailing `<style>` —
+ * and the last movement is inside the guard and renders, with `getEndDate` returning
  * `Number.MAX_VALUE` because there is no next movement to find. Measured on two movements
- * `1.0 → 0.0` at 0 and `0.5 → 0.0` at 720: **17 events over [0, 720]** without the trailing
- * style, **26 events over [0, 1.798·10³⁰⁸]** with it. A LEADING `<style>`, or one between the
- * two movements, changes nothing — only an entry after the last movement moves the guard.
+ * `1.0 → 0.0` at 0 and `0.5 → 0.0` at 720: 17 events over [0, 720] without the trailing style,
+ * 26 events over [0, 1.798·10³⁰⁸] with it. A LEADING `<style>`, or one between the two
+ * movements, changes nothing.
  *
- * AD-35 rules all three readings: (a) the exclusion is by entry index, renderer-exact;
- * (b) the resurrected span is a **real performed transition**, naturally bounded by the
- * comparison window since every integral runs over `[start, end]`; (c) §5.8's contrast
- * paragraph gains a third state — the span exists AND is unbounded. Over any real window the
- * resurrected transition sits at `u ≈ 10⁻³⁰⁵`, i.e. flat at `@position`, which is AD-25.9's
- * trailing-tempo behaviour arrived at by a different route.
+ * AD-35 rules all three readings: (a) the exclusion is by entry index, renderer-exact; (b) the
+ * resurrected span is a real performed transition, bounded by the comparison window since every
+ * integral runs over `[start, end]`; (c) §5.8's contrast paragraph gains a third state — the
+ * span exists AND is unbounded. Over any real window the resurrected transition sits at
+ * `u ≈ 10⁻³⁰⁵`, i.e. flat at `@position`, which is AD-25.9's trailing-tempo behaviour by a
+ * different route.
  *
  * ## `⊥` here is the non-monotone date component (§4)
  *
- * `<movement>` has **no clamps** — `MovementData:50-54` parses `@curvature`/`@protraction` and
- * uses them, where `DynamicsMap.ts:170-181` clamps to `[0,1]` and `[−1,1]`. Out of those
- * ranges the inner control points leave the unit square, `x(t)` stops being monotone, and the
- * sampler emits events whose **dates go backwards**: there is no `date ↦ position` function to
- * compare, so §4's rule applies unchanged — a resolved value outside `valueDomain` reads `⊥`,
- * and here it takes the span with it. This is a floor on the damage rather than an exact
- * account: a non-monotone `x` can also place events outside the span entirely, which the ⊥
- * span does not model.
+ * `<movement>` has no clamps — `MovementData:50-54` parses `@curvature`/`@protraction` and uses
+ * them, where `DynamicsMap.ts:170-181` clamps to `[0,1]` and `[−1,1]`. Out of those ranges the
+ * inner control points leave the unit square, `x(t)` stops being monotone, and the sampler emits
+ * events whose dates go backwards: there is no `date ↦ position` function to compare, so §4's
+ * rule takes the span with it. A floor on the damage rather than an exact account — a
+ * non-monotone `x` can also place events outside the span entirely, which the ⊥ span does not
+ * model.
  *
- * Position values are a different case: `EventMaker.createControlChange:530-544` **clamps**
- * the controller value into 0..127, so a `@position` outside [0,1] is performed at the bound
- * and compares as what is performed (§4's "resolved" — the renderer's repair happens before
- * the domain test). Since the smoothstep's value fraction stays in [0,1], clamping the two
- * endpoints clamps the whole curve.
+ * Position values are a different case: `EventMaker.createControlChange:530-544` clamps the
+ * controller value into 0..127, so a `@position` outside [0,1] is performed at the bound and
+ * compares as what is performed (§4's "resolved" — the renderer's repair happens before the
+ * domain test). The smoothstep's value fraction stays in [0,1], so clamping the two endpoints
+ * clamps the whole curve.
  */
 import {
   elementAtOrNull,
@@ -99,7 +93,7 @@ import { entryTicksAt, type OrderedMapView } from './document.js';
 /** No controller event has been sent yet: the pedal is up (MIDI's CC default). */
 export const PEDAL_NEUTRAL_POSITION = 0;
 
-/** `data/movement.ts` — **0.4**, and deliberately not `<dynamics>`'s 0.0 (§5.8/AD-13). */
+/** `data/movement.ts` — 0.4, and deliberately not `<dynamics>`'s 0.0 (§5.8/AD-13). */
 export const DEFAULT_MOVEMENT_CURVATURE = 0.4;
 /** `data/movement.ts`. */
 export const DEFAULT_MOVEMENT_PROTRACTION = 0;
@@ -204,25 +198,20 @@ interface RawMovement {
 /**
  * `MovementMap.getPreviousPosition:143-151`, transliterated — including the `j > 0` bound.
  *
- * The loop starts at `index − 1` and stops **before entry 0**, so a movement inheriting from
- * the very first entry of the map gets 0 instead of that entry's `@transition.to`. The port
- * keeps this deliberately (PARITY.md P2) and it is observable: with `1.0 → 0.25` at entry 0
- * and a position-less movement at 360, the pedal drops to 0 at 360; put any `<style>` in
- * front so the same movement sits at entry 1, and it starts from 0.25 instead. Both were
- * executed.
- *
- * This is a second instance of AD-35.4's hazard class — a rule stated over ENTRIES that reads
- * as if it were about movements — and it is the reason the reader below walks entry indices
- * rather than a filtered movement list.
+ * The loop starts at `index − 1` and stops before entry 0, so a movement inheriting from the
+ * very first entry of the map gets 0 instead of that entry's `@transition.to`. The port keeps
+ * this deliberately (PARITY.md P2) and it is observable: with `1.0 → 0.25` at entry 0 and a
+ * position-less movement at 360, the pedal drops to 0 at 360; put any `<style>` in front so the
+ * same movement sits at entry 1, and it starts from 0.25 instead. Both executed. A second
+ * instance of AD-35.4's hazard class — a rule stated over ENTRIES that reads as if it were about
+ * movements — and the reason the reader below walks entry indices, not a filtered movement list.
  *
  * @returns the inherited position, or null where the predecessor carries no `@transition.to`,
  *   which makes `getMovementDataOf` log and return null and drops the movement entirely.
  */
 function inheritedPosition(entries: OrderedMapView['entries'], index: number): number | null {
-  // Entries `1 … index-1`, latest first — the `j > 0` bound is the rule's own (entry 0 has no
-  // predecessor to inherit from), and the slice says it where the loop bound only implied it.
-  // `findLast` IS the backwards walk, and it drops the `.reverse()` copy the loop needed: the
-  // slice already isolates the range, so nothing here ever mutated the view's own array.
+  // Entries `1 … index-1`, latest first. The `j > 0` bound is the rule's own: entry 0 has no
+  // predecessor to inherit from.
   const previous = findLast(
     entries.slice(1, index),
     (entry) => entry.element.getLocalName() === 'movement',
@@ -236,12 +225,10 @@ function inheritedPosition(entries: OrderedMapView['entries'], index: number): n
  * The positions of the entries named `movement`, ascending — `getEndDate:153-159`'s look-ahead
  * for the whole map, computed once.
  *
- * That scan runs **once per movement**, unconditionally, so spelling it `entries.slice(index +
- * 1).find(...)` made the reader quadratic in time and in allocation together. Nor is the obvious
- * repair a repair: `findIndex((entry, at) => at > index && …)` removes the copy but pays a JS
- * predicate call for every entry it skips over, and measured on the isolated shape at 16 000
- * entries that is 529 ms against the tail-slice's 167 ms — a memcpy of element references is far
- * cheaper per element than a call. One `filterMap` and a binary search is 0.07 ms.
+ * The scan runs once per movement, unconditionally, so a per-movement `entries.slice(index +
+ * 1).find(…)` makes the reader quadratic in time and allocation, and the `findIndex` that
+ * removes the copy is slower still — the same trade `tempoCurve`'s `valid` list makes, with the
+ * measured figures recorded there.
  */
 function movementPositions(entries: OrderedMapView['entries']): readonly number[] {
   return filterMap(entries, (entry, index) =>
@@ -268,14 +255,13 @@ function endTicksOf(
  * Build the performed pedal curve of one scope.
  *
  * Span ends follow the same-local-name rule (`getEndDate:153-159` tests for `movement`), so a
- * `<style>` between two movements is transparent to the span — while a `<style>` **after** the
- * last movement is not transparent to the render guard, which is AD-35's whole subject.
+ * `<style>` between two movements is transparent to the span — while a `<style>` after the last
+ * movement is not transparent to the render guard, which is AD-35's whole subject.
  *
- * Spans are **flat, not per-controller** (AD-13/R9): the scan has no `@controller` test, so a
- * `soft` movement ends a `sustain` span. Executed — a sustain transition at 0 and a soft
- * movement at 360 stop the sustain events at 360. Revision 1's per-controller curves computed
- * a sustain gesture the renderer never performs whenever two pedals interleave, which is the
- * natural encoding.
+ * Spans are flat, not per-controller (AD-13/R9): the scan has no `@controller` test, so a `soft`
+ * movement ends a `sustain` span. Executed — a sustain transition at 0 and a soft movement at
+ * 360 stop the sustain events at 360. Per-controller curves, the natural encoding, would compute
+ * a sustain gesture the renderer never performs whenever two pedals interleave.
  */
 export function readMovementSegments(view: OrderedMapView | null, scaleFactor: number): PedalCurve {
   assertSpanEndRule(MOVEMENT_MAP, 'same-local-name');
@@ -402,14 +388,14 @@ function readNumericOr(element: Element, name: string, fallback: number): number
 /**
  * Turn the rendered movements into a total timeline: lead-in, spans, holds.
  *
- * The hold is what makes the dimension total over the window without a special case at either
- * edge (§5.0). Its value is the *end* value of the span before it — `@transition.to` on a
- * transition, `@position` on a constant movement, and `⊥` after a `⊥` span, because the events
- * that span emitted are the ones whose dates cannot be trusted.
+ * The hold makes the dimension total over the window without a special case at either edge
+ * (§5.0). Its value is the *end* value of the span before it — `@transition.to` on a transition,
+ * `@position` on a constant movement, and `⊥` after a `⊥` span, whose emitted events are the
+ * ones whose dates cannot be trusted.
  */
 function assembleTimeline(
-  // NON-EMPTY, which is the caller's own guard promoted to the signature: the lead-in below
-  // reads the first movement three times, and every one of those reads is now total.
+  // NON-EMPTY, the caller's own guard promoted to the signature: the lead-in below reads the
+  // first movement three times, and every one of those reads is then total.
   raws: NonEmptyArray<RawMovement>,
   notes: PedalCurveNote[],
   controllers: readonly string[],
@@ -427,13 +413,9 @@ function assembleTimeline(
       shape: valued({ kind: 'constant', position: PEDAL_NEUTRAL_POSITION }),
     });
 
-  // The neighbour is PAIRED with its own movement rather than read at `index + 1`. "There is
-  // no next one" is then a value — `null` — instead of an out-of-range read that the type
-  // system had to be told about with `as RawMovement | undefined`.
-  // `withNext` IS this pair of lines: every entry with its successor, and `null` for the
-  // last. The `[...xs.slice(1), null]` array and the zip that consumed it were one shape
-  // spelled out, and it is the shape `pairwise` cannot serve — `pairwise` drops the last
-  // entry, and the last instruction is a span too.
+  // Each movement with its successor, `null` for the last — so "there is no next one" is a
+  // value rather than an out-of-range read. `pairwise` cannot serve: it drops the last entry,
+  // and the last movement is a span too.
   for (const [raw, next] of withNext(raws)) {
     breakpoints.add(raw.dateTicks);
     const shape = shapeOf(raw, notes);
@@ -552,10 +534,9 @@ function endValueOf(shape: Valued<PedalShape>): Valued<PedalShape> {
 /**
  * The segment governing `ticks`, right-continuous (A-B1), or null where none does.
  *
- * The scan this replaces took the LAST covering segment where accentuation and rubato take the
- * first; on a timeline whose spans and holds abut, those are the same segment, and
- * {@link coveringSegmentAt} carries that argument along with the `NaN`/`Infinity` cases. Called
- * once per Gauss-Legendre node, which is what made the scan quadratic in the map's size.
+ * A scan here would take the LAST covering segment where accentuation and rubato take the first;
+ * on a timeline whose spans and holds abut those are the same segment, and
+ * {@link coveringSegmentAt} carries that argument with the `NaN`/`Infinity` cases.
  */
 export function pedalSegmentAt(curve: PedalCurve, ticks: number): PedalSegment | null {
   return coveringSegmentAt(curve.segments, ticks);
@@ -564,13 +545,12 @@ export function pedalSegmentAt(curve: PedalCurve, ticks: number): PedalSegment |
 /**
  * `position(t)` on [0,1] — the ideal curve, or `⊥`.
  *
- * The Bézier is inverted by {@link idealCurveParameter} rather than by `bezier.ts`'s
- * `tForDate`, for §5.0 rule 3's reason: `tForDate` stops within one tick of the target, which
- * makes the renderer's `date ↦ position` a staircase no smooth quadrature converges against.
- * On a **resurrected** span the span width is `Number.MAX_VALUE` and `x` is ~1e-305 for every
- * real date, so the inversion returns ~0 and the value is `@position` to within 1e-30 — the
- * flat reading AD-35(b) describes, arrived at by evaluating the transition rather than by
- * special-casing it.
+ * The Bézier is inverted by {@link idealCurveParameter} rather than by `bezier.ts`'s `tForDate`,
+ * per §5.0 rule 3: `tForDate` stops within one tick of the target, making the renderer's
+ * `date ↦ position` a staircase no smooth quadrature converges against. On a resurrected span the
+ * width is `Number.MAX_VALUE` and `x` is ~1e-305 for every real date, so the inversion returns
+ * ~0 and the value is `@position` to within 1e-30 — AD-35(b)'s flat reading, arrived at by
+ * evaluating the transition rather than special-casing it.
  */
 export function positionAt(curve: PedalCurve, ticks: number): Valued<number> {
   const segment = pedalSegmentAt(curve, ticks);
