@@ -84,7 +84,28 @@ for (const environment of [performance.getGlobal(), ...performance.getAllParts()
 }
 ```
 
-Two things that walk will teach you, both worth knowing before you design around them.
+**`getAllMaps()` is kind-erased**, so that walk holds `GenericMap` and cannot reach
+`getTempoDataOf`. Narrow with `mapOfKind`, which is `getMapOfKind`'s other door — same checked
+test, but applied to a map you already hold rather than looked up by name:
+
+```ts
+import { mapOfKind, TEMPO_MAP } from 'espressivo';
+
+for (const [name, map] of environment?.getDated()?.getAllMaps() ?? []) {
+  const tempo = mapOfKind(map, TEMPO_MAP); // TempoMap | null
+  if (tempo !== null) tempo.getTempoDataOf(0);
+}
+```
+
+`map instanceof TempoMap` is equivalent — `mapOfKind` is that same test behind a `MapKind` key
+— so use whichever reads better; the point is that both are checked, and neither is a cast.
+
+The one case where the class test decides nothing: the five `imprecisionMap.*` kinds all parse
+to `ImprecisionMap`, so neither `mapOfKind` nor `instanceof` can tell timing from tuning. Their
+domain is the map's **name**, not its class — which the walk above already hands you as the key
+of `getAllMaps()`, and which `getType()` answers for a map you hold on its own.
+
+Three things that walk will teach you, all worth knowing before you design around them.
 
 **A map contains `<style>` switches as well as instructions.** They are dated entries like any
 other and they show up in `getAllElements()`. Filter on `getLocalName()`; do not assume every
@@ -129,10 +150,19 @@ you can read a field that isn't there. Narrow on `kind` and the compiler does th
 over its values (`isConstantDynamics`), not a structural fact, because the sub-note sampler
 draws a Bézier for constant spans too, and it just comes out flat.
 
-To chart it, sample:
+To chart it, sample. Note the first line: **the last instruction of a map has an `endDate` of
+`Number.MAX_VALUE`**, so every consumer drawing one needs a finite window of its own choosing.
+A quarter note or a bar are both defensible; what matters is that you pick one rather than
+letting `MAX_VALUE` into the arithmetic, where it turns the whole span into a single pixel.
 
 ```ts
-const end = tempo.endDate === Number.MAX_VALUE ? tempo.startDate + oneBar : tempo.endDate;
+/** A drawable end for a span that runs to the end of time. */
+const spanEnd = (instruction: { startDate: number; endDate: number }, fallbackTicks: number) =>
+  instruction.endDate === Number.MAX_VALUE
+    ? instruction.startDate + fallbackTicks
+    : instruction.endDate;
+
+const end = spanEnd(tempo, performance.getPulsesPerQuarter());
 const points = Array.from({ length: 100 }, (_, k) => {
   const date = tempo.startDate + ((end - tempo.startDate) * k) / 99;
   return [date, tempoAt(tempo, date)] as const;
@@ -161,6 +191,12 @@ the tempo never leaves `@bpm`. This repository's own `all_maps.mpm` ends with
 `bpm="120" transition.to="90"` and performs a flat 120 — reading it as a ritardando would
 invent the most audible gesture in the file. `<dynamics>` behaves identically. `tempoAt` and
 `dynamicsAt` already account for this; a `lerp(from, to, u)` of your own would not.
+
+This reaches further than the curve. **Label a chart's endpoints with what the instruction
+performs there, not with `@transition.to` as written** — `tempoAt(tempo, end)` rather than
+`tempo.transitionTo`. On an inert trailing transition the attribute says 90 and the performance
+says 120, and a label reading the attribute announces a ritardando the listener will never
+hear. The two agree everywhere else, so this costs nothing to get right.
 
 **2. A skipped instruction is not a gap in the previous one.** `getTempoDataOf` returns null
 when `@bpm` or `@beatLength` is absent, and the renderer then times the following notes at
@@ -202,6 +238,15 @@ right only at 720 ppq in a `/4` metre. And the next instruction bounds the span 
 length or loop.
 
 ## What this is not
+
+**Not free for a browser bundle.** The object model is a connected graph of classes — a map
+reaches its styles, which reach their defs — so importing one entry point pulls in far more
+than the four facade functions do. A real migration measured **~384 kB → ~408 kB gzip** when it
+moved from a plain-data reader to this API. That is the honest price of reading through the
+renderer's own code instead of a parallel implementation of it, and for that consumer it was
+not a close call: the same change fixed a whole instruction type that had been silently
+returning nothing. But if your consumer only ever converts and renders, stay on `src/api/**`,
+which is much smaller.
 
 **Not a plain-data boundary.** These types hold live XOM `Element`s and are outside RULE F1 —
 `structuredClone` will not carry a `Performance` to a worker. The resolved records (`Tempo`,

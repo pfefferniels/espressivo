@@ -19,9 +19,11 @@ import {
   DYNAMICS_MAP,
   METRICAL_ACCENTUATION_MAP,
   TEMPO_MAP,
+  TempoMap,
   dynamicsAt,
   innerControlPointsXPositions,
   isConstantDynamics,
+  mapOfKind,
   tempoAt,
   type Dynamics,
   type GenericMap,
@@ -145,6 +147,45 @@ describe('the MPM object model is reachable and nameable from the package root',
     expect(innerControlPointsXPositions(0.5, 0.2)).toEqual([0.6, 0.6]);
   });
 
+  it('narrows a kind-erased walk with mapOfKind, the door getAllMaps needs', () => {
+    // `getAllMaps()` is keyed by name and typed `GenericMap`, so a walk cannot reach
+    // `getTempoDataOf` without narrowing. This is the pattern `docs/reading.md` shows, and the
+    // reason `mapOfKind` is exported at all.
+    const performance = performanceOf(allMaps);
+    const found: string[] = [];
+
+    for (const environment of [performance.getGlobal(), ...performance.getAllParts()]) {
+      for (const [, map] of environment?.getDated()?.getAllMaps() ?? []) {
+        const tempoMap = mapOfKind(map, TEMPO_MAP);
+        if (tempoMap === null) continue;
+        found.push(tempoMap.getType());
+        // Narrowed for real: the accessor exists and answers.
+        expect(tempoMap.getTempoDataOf(0)?.bpm).toBe(120);
+        expect(map instanceof TempoMap).toBe(true); // the doc's "equivalent" claim
+      }
+    }
+
+    expect(found).toEqual(['tempoMap']);
+  });
+
+  it('distinguishes the imprecision domains by NAME, which no class test can do', () => {
+    // All five `imprecisionMap.*` kinds parse to one `ImprecisionMap` class, so `mapOfKind` and
+    // `instanceof` are both blind to the domain. The key of `getAllMaps()` — equivalently
+    // `getType()` — is what carries it, which is the correction this guide makes explicit.
+    const performance = performanceOf(allMaps);
+    const imprecision = [...(performance.getAllParts()[0]?.getDated()?.getAllMaps() ?? [])].filter(
+      ([name]) => name.startsWith('imprecisionMap'),
+    );
+
+    expect(imprecision.map(([name]) => name)).toEqual([
+      'imprecisionMap.timing',
+      'imprecisionMap.dynamics',
+    ]);
+    // Two domains, one class — so the name is the only discriminator.
+    expect(new Set(imprecision.map(([, map]) => map.constructor.name)).size).toBe(1);
+    for (const [name, map] of imprecision) expect(map.getType()).toBe(name);
+  });
+
   it('resolves an accentuationPattern’s def, length and all, in one call', () => {
     const performance = performanceOf(allMaps);
     const accentuation = mapInScope(performance, 0, METRICAL_ACCENTUATION_MAP);
@@ -174,6 +215,15 @@ describe('the renderer behaviours a hand-rolled reader gets wrong (docs/reading.
     expect(trailing?.endDate).toBe(Number.MAX_VALUE);
     for (const date of [2880, 3600, 5760, 100_000])
       expect(tempoAt(trailing!, date)).toBeCloseTo(120, 9);
+
+    // The consequence for a UI, and why `docs/reading.md` tells a chart to label its endpoints
+    // with what the instruction PERFORMS rather than with `@transition.to` as written: on this
+    // instruction the attribute says 90 and the performance says 120, so a label reading the
+    // attribute announces a ritardando the listener never hears.
+    if (trailing?.kind !== 'transitioning') throw new Error('fixture lost its trailing arm');
+    expect(trailing.transitionTo).toBe(90);
+    expect(tempoAt(trailing, 5760)).toBeCloseTo(120, 9);
+    expect(tempoAt(trailing, 5760)).not.toBeCloseTo(trailing.transitionTo, 9);
   });
 
   it('performs a trailing <dynamics> transition flat, by the same rule', () => {
