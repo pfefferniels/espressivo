@@ -20,7 +20,7 @@
 > | rule | status |
 > | --- | --- |
 > | **C1** — a type stays class-based if it wraps a live XML subtree | **superseded.** The live XOM tree being the domain model is the *root cause* this campaign exists to remove. `DistributionData` has already become a six-armed sum type; the `*Def` and `*Style` hierarchies are next. |
-> | **C3** — the `*Data` holders stay classes | **superseded**, and already amended in place at its own site. Seven of the eight had a *dead* XML constructor that was a second, divergent reader of every instruction element; all seven are deleted. |
+> | **C3** — the `*Data` holders stay classes | **superseded**, and amended twice in place at its own site. Seven of the eight had a *dead* XML constructor that was a second, divergent reader of every instruction element; all seven are deleted. As of the payload-record pass, **none of the eight classes exists**: each is a `readonly` record plus free functions on the read side and an `Add<X>Options` object on the write side. |
 > | **C5** — no mass `getX()`/`setX()` conversion | **superseded in principle**, but its *reasoning* is still worth reading: (ii) named a real collision hazard, and (iii) correctly observed that a thousand mechanical edits is the worst diff shape for an equivalence review. The conclusion changes; the caution does not. Convert incrementally, per module, gated. |
 > | **E1** — the interior keeps Java's logs-and-returns-null behaviour, bug-for-bug | **narrowed.** Parity of *output* still binds absolutely. What no longer binds is the *mechanism*: returning a `Result` instead of logging to the console and returning `null` skips exactly the same elements and produces exactly the same bytes, while keeping the reason as a value. Behaviour-preserving by construction. |
 > | **I6** — no allocation-heavy immutability in hot loops | **still binding, and now measurable.** `npm run bench` exists; `scripts/bench-baseline.json` pins it. Do not trade a measured win for elegance. |
@@ -915,6 +915,52 @@ one pure module:
 > parsed unconditionally, cost thirty non-null assertions at the single read site. The
 > other seven `*Data` classes are untouched by that reasoning, and this rule still governs
 > them.
+
+> **AMENDED AGAIN — none of the eight is a class.** Every one of the three tests this rule
+> states had lapsed by the time the last of them was removed. They did not parse XML: the
+> functional-core campaign had already split each into a `readonly` read half beside its type
+> (`data/rubato.ts`, `tempo.ts`, `dynamics.ts`, `movement.ts`) and left the class as the write
+> half only. They carried no memos: `MovementData.x1`/`x2` went into `resolveMovement` with the
+> arithmetic. And their methods held no arithmetic: this rule's own T16 move is what took it
+> out. What was left were mutable property bags with initialisers — Java DTOs — and one
+> attached behaviour each in `ArticulationData` and `OrnamentData`.
+>
+> The replacement is the shape RULE F5 and RULE N1 already describe, and which
+> `OrnamentationMap.AddOrnamentOptions` was already using: an `Add<X>Options` object at the one
+> writer, optional properties spelled `?:`, absence meaning the attribute is not written. The
+> read halves are `readonly` records in `data/` — `articulation.ts` and `ornament.ts` joined
+> the four that were already there — and the two attached behaviours are free functions
+> (`articulateNote`, `applyOrnament` / `applyGeneratedOrnament`).
+>
+> Four things fall out that a reviewer should not have to rediscover. Writer overload sets
+> collapse, because the arms differed only in argument shape: 11 writers became 5, and the two
+> that disagreed on attribute order had to pick one — recorded at each site. Pairs of the form
+> `fooString: string | null` + `foo: number | null` with "both null is an error" became
+> `foo: number | string`, which deleted two `console.error` + `return -1` branches by making
+> the state unrepresentable. Two argument mutations that RULE I1 does not sanction are gone
+> (`addDynamicsFromData`'s clamp write-back, `addOrnamentFromData`'s name write-back). And
+> `OrnamentData.generation` — render state parked on a data object, set and read one line
+> apart — is a parameter again.
+>
+> Two things deliberately did **not** change. The `get<X>DataOf` reader names stay, as
+> `getMetricalAccentuationDataOf` already had after the same treatment: they are the parity
+> anchor to the Java method of that name, and the "Data" in them names Java's class, not this
+> tree's. And `clone()` is not replaced by a helper — it is a spread.
+>
+> **Citation paths.** Anchors of the form `data/<X>Data.ts:NNN` elsewhere in this document are
+> historical: unlike the `docs/history/` move, these files were dissolved rather than relocated,
+> so their line numbers do not survive. Where a fact is still wanted, it is here:
+>
+> | was | now |
+> | --- | --- |
+> | `RubatoData.ts` | `data/rubato.ts` (`resolveRubato`), `RubatoMap.AddRubatoOptions` |
+> | `MovementData.ts` | `data/movement.ts` (`resolveMovement`, `movementSegment`), `MovementMap.AddMovementOptions` |
+> | `TempoData.ts` | `data/tempo.ts`, `TempoMap.AddTempoOptions` |
+> | `DynamicsData.ts` | `data/dynamics.ts`, `DynamicsMap.AddDynamicsOptions` |
+> | `ArticulationData.ts` | `data/articulation.ts` (`Articulation`, `articulateNote`), `ArticulationMap.AddArticulationOptions` |
+> | `OrnamentData.ts` | `data/ornament.ts` (`Ornament`, `applyOrnament`, `applyGeneratedOrnament`, `principalNoteId`) |
+> | `MetricalAccentuationData.ts` | `data/metricalAccentuation.ts` |
+> | `DistributionData.ts` | `data/distribution.ts` |
 
 ```ts
 // src/mpm/elements/maps/data/bezier.ts — pure functions, no classes, no XML
