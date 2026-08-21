@@ -17,7 +17,6 @@ import { Performance } from '../../src/mpm/elements/Performance.js';
 import { GenericMap } from '../../src/mpm/elements/maps/GenericMap.js';
 import { ImprecisionMap } from '../../src/mpm/elements/maps/ImprecisionMap.js';
 import { MovementMap } from '../../src/mpm/elements/maps/MovementMap.js';
-import { MovementData } from '../../src/mpm/elements/maps/data/MovementData.js';
 import { TempoMap } from '../../src/mpm/elements/maps/TempoMap.js';
 import type { Normalized } from '../../src/units.js';
 import { performMsm, renderExpressiveMidi } from '../../src/api/index.js';
@@ -54,7 +53,7 @@ function msmText(): string {
 function mpmTextOf(...maps: GenericMap[]): string {
   const performance = okValue(Performance.fromName('facade test', PPQ));
   const tempoMap = TempoMap.createTempoMap()!;
-  tempoMap.addConstantTempo(0, '120', 0.25);
+  tempoMap.addTempo({ date: 0, bpm: '120', beatLength: 0.25 });
   performance.getGlobal()!.getDated()!.addMap(tempoMap);
   for (const map of maps) performance.getGlobal()!.getDated()!.addMap(map);
   performance.addPart(okValue(Part.fromValues('Piano', 1, 0, 0)));
@@ -74,17 +73,13 @@ function imprecisionMpm(mpmSeed?: number): string {
 /** A movement ramp, whose sampling density `movementSampleMaxStep` controls. */
 function movementMpm(): string {
   const map = MovementMap.createMovementMap()!;
-  const ramp = new MovementData();
-  ramp.startDate = 0;
-  ramp.position = 0.0 as Normalized;
-  ramp.transitionTo = 1.0 as Normalized;
-  map.addMovementData(ramp);
+  map.addMovement({ date: 0, position: 0.0 as Normalized, transitionTo: 1.0 as Normalized });
   // The last entry of a movementMap is never rendered; it marks where the transition aims.
-  const terminator = new MovementData();
-  terminator.startDate = 5760;
-  terminator.position = 1.0 as Normalized;
-  terminator.transitionTo = 1.0 as Normalized;
-  map.addMovementData(terminator);
+  map.addMovement({
+    date: 5760,
+    position: 1.0 as Normalized,
+    transitionTo: 1.0 as Normalized,
+  });
   return mpmTextOf(map);
 }
 

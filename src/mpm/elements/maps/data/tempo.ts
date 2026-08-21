@@ -6,10 +6,10 @@ import { numericBpmValue, type TempoStyle } from '../../styles/style.js';
  *
  * ## Why this is two types and not one
  *
- * `TempoData` — still in this directory, and still the type MEI export builds (see
- * {@link ../TempoData.ts}) — carries eleven `| null` fields for what is really a choice
- * between two shapes. A constant tempo has no `transition.to`, no `meanTempoAt` and no
- * `exponent`; a transitioning one always has all three.
+ Java's `TempoData` carries eleven `| null` fields for what is really a choice between two
+ * shapes. A constant tempo has no `transition.to`, no `meanTempoAt` and no `exponent`; a
+ * transitioning one always has all three. The write half is
+ * `TempoMap.AddTempoOptions`, and it is a different set of fields again.
  *
  * ## Absence, and why there is none of it left
  *
@@ -33,7 +33,7 @@ import { numericBpmValue, type TempoStyle } from '../../styles/style.js';
  * `NaN` is a number, and the arms hold numbers.
  *
  * Port of meico.mpm.elements.maps.data.TempoData, restructured. The Java class is the union
- * of this type and the {@link TempoData} payload.
+ * of this type and `TempoMap.AddTempoOptions`.
  */
 
 /** The span a tempo instruction governs, and the beat its bpm is counted in. */

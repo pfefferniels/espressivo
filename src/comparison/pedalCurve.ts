@@ -56,7 +56,7 @@
  *
  * ## `⊥` here is the non-monotone date component (§4)
  *
- * `<movement>` has no clamps — `MovementData:50-54` parses `@curvature`/`@protraction` and uses
+ * `<movement>` has no clamps — `resolveMovement` takes `@curvature`/`@protraction` and uses
  * them, where `DynamicsMap.ts:170-181` clamps to `[0,1]` and `[−1,1]`. Out of those ranges the
  * inner control points leave the unit square, `x(t)` stops being monotone, and the sampler emits
  * events whose dates go backwards: there is no `date ↦ position` function to compare, so §4's

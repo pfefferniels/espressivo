@@ -13,8 +13,9 @@
  *
  * ## Four renderer behaviours, each of which changes the curve
  *
- * 1. `@loop` gates the cycle (AD-10). `RubatoData.loop` defaults to false
- *    (`RubatoData.ts:37`) and `renderRubatoToMap` breaks out of the span at the first frame
+ * 1. `@loop` gates the cycle (AD-10). `@loop` defaults to false
+ *    (`resolveRubato`, `data/rubato.ts`) and `renderRubatoToMap` breaks out of the span at the
+ *    first frame
  *    boundary when it is off (`RubatoMap.ts:199-203`). The `mod` in the formula *is* the
  *    repetition `@loop` controls, so with the flag off the warp applies on `[t₀, t₀ + L)` and
  *    `δ ≡ 0` across the rest of the span. The repo's own fixtures carry
@@ -34,7 +35,8 @@
  *    gives `−1.78e−15`, `(25, 7)` gives `+8.88e−16` — so a fixture that happened to pick such
  *    a pair would fail an "exactly 0" assertion for a reason unrelated to rubato.
  *
- * Defaults for absent `@intensity` / `@lateStart` / `@earlyEnd` with no def are `RubatoData`'s
+ * Defaults for absent `@intensity` / `@lateStart` / `@earlyEnd` with no def are
+ * `resolveRubato`'s
  * own initializers 1.0 / 0.0 / 1.0 — the identity warp. `@frameLength` is tick-valued and
  * therefore ppq-sensitive; `@intensity` and the window bounds are dimensionless and are not
  * rescaled.
@@ -223,7 +225,7 @@ function readRawRubato(
     lateStartRaw.present ? lateStartRaw.value : 0,
     earlyEndRaw.present ? earlyEndRaw.value : 1,
   );
-  // RubatoData's initializers: 1.0 / 0.0 / 1.0 — the identity warp.
+  // `resolveRubato`'s fallbacks: 1.0 / 0.0 / 1.0 — the identity warp.
   const intensity = intensityRaw.present ? intensityRaw.value : 1;
 
   if (!Number.isFinite(intensity + lateStart + earlyEnd))

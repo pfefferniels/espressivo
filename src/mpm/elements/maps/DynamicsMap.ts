@@ -5,7 +5,6 @@ import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { type Result } from '../../../prelude/index.js';
 import { type MpmParseError } from '../parseError.js';
-import { DynamicsData } from './data/DynamicsData.js';
 import {
   resolveDynamics,
   dynamicsAt,
@@ -14,6 +13,33 @@ import {
 } from './data/dynamics.js';
 import { numericDynamicsValue } from '../styles/style.js';
 import { elementAt, mapPresent, unwrapOr } from '../../../prelude/index.js';
+
+/**
+ * Everything a `<dynamics>` element can say, for {@link DynamicsMap.addDynamics} (RULE F5's
+ * named-parameter shape, applied inside the library).
+ *
+ * Optional properties are `?:` and never `null` (RULE N1): an attribute nobody supplied is an
+ * attribute that is not written.
+ */
+export interface AddDynamicsOptions {
+  /** `@date`, in ticks. Always written. */
+  readonly date: number;
+  /**
+   * `@volume`. A number, a style-relative name, or one of the MEI exporter's placeholders — a
+   * string is written verbatim, so the wording a document used round-trips.
+   */
+  readonly volume: number | string;
+  /** `@transition.to`, spelled as {@link volume} is; absent means a constant instruction. */
+  readonly transitionTo?: number | string;
+  /** `@curvature`, clamped into `[0, 1]` on the way out. */
+  readonly curvature?: number;
+  /** `@protraction`, clamped into `[-1, 1]` on the way out. */
+  readonly protraction?: number;
+  /** `@subNoteDynamics`; written only when true, which is the only value the schema uses. */
+  readonly subNoteDynamics?: boolean;
+  /** `xml:id` of the dynamics element. */
+  readonly id?: string;
+}
 
 /**
  * An MPM `dynamicsMap`: loudness over the timeline, as constant levels and as
@@ -46,58 +72,35 @@ export class DynamicsMap extends GenericMap {
       : GenericMap.makeMap(xml, 'DynamicsMap', (elt) => new DynamicsMap(elt));
   }
 
-  addDynamics(
-    date: number,
-    volume: string,
-    transitionTo?: string,
-    curvature?: number,
-    protraction?: number,
-    subNoteDynamics?: boolean,
-    id?: string,
-  ): number {
+  /**
+   * Add a `<dynamics>`.
+   *
+   * Attribute order is `date`, `volume`, `transition.to`, `curvature`, `protraction`,
+   * `subNoteDynamics`, `xml:id`, each omitted where the caller supplied nothing.
+   *
+   * The clamps correct the element, not the caller's object. The `addDynamicsFromData` arm this
+   * replaces wrote the clamped values back into the payload it was handed, which is Java's
+   * behaviour and an argument mutation RULE I1 does not sanction; nothing in `src/` read the
+   * payload again afterwards.
+   */
+  addDynamics(dynamics: AddDynamicsOptions): number {
     const e = new Element('dynamics', MPM_NAMESPACE);
-    e.addAttribute(new Attribute('date', String(date)));
-    e.addAttribute(new Attribute('volume', volume));
-    if (transitionTo !== undefined) e.addAttribute(new Attribute('transition.to', transitionTo));
-    if (curvature !== undefined)
-      e.addAttribute(new Attribute('curvature', String(DynamicsMap.clampCurvature(curvature))));
-    if (protraction !== undefined)
+    e.addAttribute(new Attribute('date', String(dynamics.date)));
+    e.addAttribute(new Attribute('volume', String(dynamics.volume)));
+    if (dynamics.transitionTo !== undefined)
+      e.addAttribute(new Attribute('transition.to', String(dynamics.transitionTo)));
+    if (dynamics.curvature !== undefined)
       e.addAttribute(
-        new Attribute('protraction', String(DynamicsMap.clampProtraction(protraction))),
+        new Attribute('curvature', String(DynamicsMap.clampCurvature(dynamics.curvature))),
       );
-    if (subNoteDynamics) e.addAttribute(new Attribute('subNoteDynamics', 'true'));
-    if (id !== undefined)
-      e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id));
-    return this.insertElement(new KeyValue(date, e), false);
-  }
-
-  addDynamicsFromData(data: DynamicsData): number {
-    const e = new Element('dynamics', MPM_NAMESPACE);
-    e.addAttribute(new Attribute('date', String(data.startDate)));
-    if (data.volumeString !== null) e.addAttribute(new Attribute('volume', data.volumeString));
-    else if (data.volume !== null) e.addAttribute(new Attribute('volume', String(data.volume)));
-    else {
-      console.error('Cannot add dynamics, volume not specified.');
-      return -1;
-    }
-    if (data.transitionToString !== null)
-      e.addAttribute(new Attribute('transition.to', data.transitionToString));
-    else if (data.transitionTo !== null)
-      e.addAttribute(new Attribute('transition.to', String(data.transitionTo)));
-    // The clamped values are written back into `data`, so a caller that reuses the object
-    // sees the correction rather than keeping a value the document does not carry.
-    if (data.curvature !== null) {
-      data.curvature = DynamicsMap.clampCurvature(data.curvature);
-      e.addAttribute(new Attribute('curvature', String(data.curvature)));
-    }
-    if (data.protraction !== null) {
-      data.protraction = DynamicsMap.clampProtraction(data.protraction);
-      e.addAttribute(new Attribute('protraction', String(data.protraction)));
-    }
-    if (data.subNoteDynamics) e.addAttribute(new Attribute('subNoteDynamics', 'true'));
-    if (data.xmlId !== null)
-      e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', data.xmlId));
-    return this.insertElement(new KeyValue(data.startDate, e), false);
+    if (dynamics.protraction !== undefined)
+      e.addAttribute(
+        new Attribute('protraction', String(DynamicsMap.clampProtraction(dynamics.protraction))),
+      );
+    if (dynamics.subNoteDynamics === true) e.addAttribute(new Attribute('subNoteDynamics', 'true'));
+    if (dynamics.id !== undefined)
+      e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', dynamics.id));
+    return this.insertElement(new KeyValue(dynamics.date, e), false);
   }
 
   /**

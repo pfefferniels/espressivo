@@ -743,7 +743,7 @@ const RUBATO_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.2 — the exponent of (τ/frameLength)^intensity; 1.0 is RubatoData’s initializer and ' +
+      '§5.2 — the exponent of (τ/frameLength)^intensity; 1.0 is resolveRubato’s fallback and ' +
       'the identity warp. A ratio gain, hence the logarithm. jnd 1 [convention], ' +
       'unnormalized; the dimension’s density is the displacement curve, not this row.',
   },
@@ -809,7 +809,7 @@ const RUBATO_ROWS: readonly ComparisonRegistryRow[] = [
     notes:
       '§5.2/AD-10/R3 — a BOOLEAN with a row, which is the correction revision 1 needed: ' +
       'filing @loop as a structural finding made two documents differing only in it score ' +
-      'd_rubato = 0. It defaults to FALSE (RubatoData.ts:37) and renderRubatoToMap breaks ' +
+      'd_rubato = 0. It defaults to FALSE (resolveRubato, data/rubato.ts) and renderRubatoToMap breaks ' +
       'out of the span at the first frame boundary when it is off, so the warp applies on ' +
       '[t₀, t₀ + frameLength) and δ ≡ 0 on the rest of the span; the mod in §5.2’s formula ' +
       'IS this flag. It is never inherited from the def, hence the single site. Its ' +
@@ -1188,7 +1188,7 @@ const ACCENTUATION_ROWS: readonly ComparisonRegistryRow[] = [
 /**
  * §5.5/AD-11i/R4: the inline duration precedence, as a liveness rule keyed on the ELEMENT.
  *
- * `ArticulationData.articulateNote` reads `duration` once up front and every branch computes
+ * `articulateNote` (`maps/data/articulation.ts`) reads `duration` once up front and every branch computes
  * from that original value, overwriting the previous branch's write — so the three tick-domain
  * levers do not compose and the LAST to fire wins. Written in the source's own order, the
  * winner is `absoluteDurationChange`, then `relativeDuration`, then `absoluteDuration`; and
@@ -1200,7 +1200,7 @@ const inlineDurationRule = (attribute: string): ComparisonLiveness => ({
     `on an inline <articulation> @${attribute} is live only when no lever of higher ` +
     'precedence is present — the order is absoluteDurationChange > relativeDuration > ' +
     'absoluteDuration, and NONE of them fires when @absoluteDurationMs is present ' +
-    '(ArticulationData.articulateNote reads duration once and each branch overwrites from that ' +
+    '(articulateNote reads duration once and each branch overwrites from that ' +
     'original value). On an <articulationDef> the same attributes COMPOSE, so the rule is keyed ' +
     'on the element and never on the attribute name (§5.5, AD-11i, R4).',
 });

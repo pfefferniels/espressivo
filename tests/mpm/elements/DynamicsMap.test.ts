@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { okValue } from '../../support/result.js';
 import { DynamicsMap } from '../../../src/mpm/elements/maps/DynamicsMap.js';
-import { DynamicsData } from '../../../src/mpm/elements/maps/data/DynamicsData.js';
 import {
   dynamicsAt,
   isConstantDynamics,
@@ -82,15 +81,15 @@ describe('DynamicsMap', () => {
   describe('addDynamics', () => {
     it('should add a constant dynamics instruction', () => {
       const map = DynamicsMap.createDynamicsMap();
-      const index = map.addDynamics(0, '80');
+      const index = map.addDynamics({ date: 0, volume: '80' });
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
     });
 
     it('should add dynamics at the correct date', () => {
       const map = DynamicsMap.createDynamicsMap();
-      map.addDynamics(0, '60');
-      map.addDynamics(960, '100');
+      map.addDynamics({ date: 0, volume: '60' });
+      map.addDynamics({ date: 960, volume: '100' });
 
       expect(map.size()).toBe(2);
       expect(map.getFirstElement()!.getAttributeValue('date')).toBe('0');
@@ -101,7 +100,7 @@ describe('DynamicsMap', () => {
 
     it('should add dynamics with transition', () => {
       const map = DynamicsMap.createDynamicsMap();
-      const index = map.addDynamics(0, '60', '100');
+      const index = map.addDynamics({ date: 0, volume: '60', transitionTo: '100' });
 
       const elem = map.getElement(index)!;
       expect(elem.getAttributeValue('volume')).toBe('60');
@@ -110,7 +109,13 @@ describe('DynamicsMap', () => {
 
     it('should add dynamics with curvature and protraction', () => {
       const map = DynamicsMap.createDynamicsMap();
-      const index = map.addDynamics(0, '60', '100', 0.5, 0.3);
+      const index = map.addDynamics({
+        date: 0,
+        volume: '60',
+        transitionTo: '100',
+        curvature: 0.5,
+        protraction: 0.3,
+      });
 
       const elem = map.getElement(index)!;
       expect(elem.getAttributeValue('curvature')).toBe('0.5');
@@ -119,7 +124,14 @@ describe('DynamicsMap', () => {
 
     it('should add dynamics with subNoteDynamics flag', () => {
       const map = DynamicsMap.createDynamicsMap();
-      const index = map.addDynamics(0, '60', '100', 0.5, 0.3, true);
+      const index = map.addDynamics({
+        date: 0,
+        volume: '60',
+        transitionTo: '100',
+        curvature: 0.5,
+        protraction: 0.3,
+        subNoteDynamics: true,
+      });
 
       const elem = map.getElement(index)!;
       expect(elem.getAttributeValue('subNoteDynamics')).toBe('true');
@@ -127,7 +139,7 @@ describe('DynamicsMap', () => {
 
     it('should add dynamics with id', () => {
       const map = DynamicsMap.createDynamicsMap();
-      const index = map.addDynamics(0, '80', undefined, undefined, undefined, undefined, 'dyn-1');
+      const index = map.addDynamics({ date: 0, volume: '80', id: 'dyn-1' });
 
       const elem = map.getElement(index)!;
       const idAttr = elem.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
@@ -135,32 +147,24 @@ describe('DynamicsMap', () => {
       expect(idAttr!.getValue()).toBe('dyn-1');
     });
 
-    it('should add dynamics from DynamicsData', () => {
+    it('should take a numeric volume as readily as a spelled one', () => {
       const map = DynamicsMap.createDynamicsMap();
-      const dd = new DynamicsData();
-      dd.startDate = 0;
-      dd.volume = 80;
-      dd.volumeString = '80';
-
-      const index = map.addDynamicsFromData(dd);
-      expect(index).toBeGreaterThanOrEqual(0);
+      const index = map.addDynamics({ date: 0, volume: 80 });
       expect(map.size()).toBe(1);
+      expect(map.getElement(index)!.getAttributeValue('volume')).toBe('80');
     });
 
-    it('should add DynamicsData with all fields', () => {
+    it('should write every attribute it is given', () => {
       const map = DynamicsMap.createDynamicsMap();
-      const dd = new DynamicsData();
-      dd.startDate = 0;
-      dd.volume = 50;
-      dd.volumeString = '50';
-      dd.transitionTo = 100;
-      dd.transitionToString = '100';
-      dd.curvature = 0.3;
-      dd.protraction = 0.2;
-      dd.subNoteDynamics = true;
-      dd.xmlId = 'dyn-data-1';
-
-      const index = map.addDynamicsFromData(dd);
+      const index = map.addDynamics({
+        date: 0,
+        volume: '50',
+        transitionTo: '100',
+        curvature: 0.3,
+        protraction: 0.2,
+        subNoteDynamics: true,
+        id: 'dyn-data-1',
+      });
       const elem = map.getElement(index)!;
       expect(elem.getAttributeValue('volume')).toBe('50');
       expect(elem.getAttributeValue('transition.to')).toBe('100');
@@ -169,23 +173,11 @@ describe('DynamicsMap', () => {
       expect(elem.getAttributeValue('subNoteDynamics')).toBe('true');
     });
 
-    it('should reject DynamicsData without volume', () => {
-      const map = DynamicsMap.createDynamicsMap();
-      const dd = new DynamicsData();
-      dd.startDate = 0;
-      dd.volume = null;
-      dd.volumeString = null;
-
-      const index = map.addDynamicsFromData(dd);
-      expect(index).toBe(-1);
-      expect(map.size()).toBe(0);
-    });
-
     it('should maintain sorted order when adding out of order', () => {
       const map = DynamicsMap.createDynamicsMap();
-      map.addDynamics(960, '100');
-      map.addDynamics(0, '60');
-      map.addDynamics(480, '80');
+      map.addDynamics({ date: 960, volume: '100' });
+      map.addDynamics({ date: 0, volume: '60' });
+      map.addDynamics({ date: 480, volume: '80' });
 
       expect(map.size()).toBe(3);
       expect(map.getElement(0)!.getAttributeValue('date')).toBe('0');
@@ -202,13 +194,13 @@ describe('DynamicsMap', () => {
 
     it('should return null for negative index', () => {
       const map = DynamicsMap.createDynamicsMap();
-      map.addDynamics(0, '80');
+      map.addDynamics({ date: 0, volume: '80' });
       expect(map.getDynamicsDataOf(-1)).toBeNull();
     });
 
     it('should return DynamicsData for a valid constant dynamics', () => {
       const map = DynamicsMap.createDynamicsMap();
-      map.addDynamics(0, '80');
+      map.addDynamics({ date: 0, volume: '80' });
 
       const dd = map.getDynamicsDataOf(0)!;
       expect(dd).not.toBeNull();
@@ -219,7 +211,7 @@ describe('DynamicsMap', () => {
 
     it('should detect constant dynamics correctly (no transition.to attribute)', () => {
       const map = DynamicsMap.createDynamicsMap();
-      map.addDynamics(0, '80');
+      map.addDynamics({ date: 0, volume: '80' });
 
       const dd = map.getDynamicsDataOf(0)!;
       expect(dd.transitionTo).toBe(80);
@@ -229,7 +221,7 @@ describe('DynamicsMap', () => {
 
     it('should handle out-of-bounds index by clamping', () => {
       const map = DynamicsMap.createDynamicsMap();
-      map.addDynamics(0, '80');
+      map.addDynamics({ date: 0, volume: '80' });
 
       const dd = map.getDynamicsDataOf(100);
       expect(dd).not.toBeNull();
@@ -238,7 +230,7 @@ describe('DynamicsMap', () => {
 
     it('should set endDate to MAX_VALUE for the last dynamics instruction', () => {
       const map = DynamicsMap.createDynamicsMap();
-      map.addDynamics(0, '80');
+      map.addDynamics({ date: 0, volume: '80' });
 
       const dd = map.getDynamicsDataOf(0)!;
       expect(dd.endDate).toBe(Number.MAX_VALUE);
@@ -246,8 +238,8 @@ describe('DynamicsMap', () => {
 
     it('should set endDate to the start of the next dynamics instruction', () => {
       const map = DynamicsMap.createDynamicsMap();
-      map.addDynamics(0, '60');
-      map.addDynamics(960, '100');
+      map.addDynamics({ date: 0, volume: '60' });
+      map.addDynamics({ date: 960, volume: '100' });
 
       const dd = map.getDynamicsDataOf(0)!;
       expect(dd.endDate).toBe(960);
@@ -255,7 +247,7 @@ describe('DynamicsMap', () => {
 
     it('should retrieve dynamics with a transition', () => {
       const map = DynamicsMap.createDynamicsMap();
-      map.addDynamics(0, '60', '100');
+      map.addDynamics({ date: 0, volume: '60', transitionTo: '100' });
 
       const dd = map.getDynamicsDataOf(0)!;
       expect(dd.volume).toBe(60);
@@ -266,9 +258,9 @@ describe('DynamicsMap', () => {
 
     it('should retrieve multiple dynamics instructions', () => {
       const map = DynamicsMap.createDynamicsMap();
-      map.addDynamics(0, '60');
-      map.addDynamics(480, '80');
-      map.addDynamics(960, '100');
+      map.addDynamics({ date: 0, volume: '60' });
+      map.addDynamics({ date: 480, volume: '80' });
+      map.addDynamics({ date: 960, volume: '100' });
 
       const dd0 = map.getDynamicsDataOf(0)!;
       expect(dd0.volume).toBe(60);
@@ -354,35 +346,53 @@ describe('DynamicsMap', () => {
   describe('addDynamics clamps the curve parameters', () => {
     it('clamps what addDynamics writes into the element', () => {
       const map = DynamicsMap.createDynamicsMap();
-      const index = map.addDynamics(0, '60', '100', 1.5, -2.0);
+      const index = map.addDynamics({
+        date: 0,
+        volume: '60',
+        transitionTo: '100',
+        curvature: 1.5,
+        protraction: -2.0,
+      });
       const elem = map.getElement(index)!;
 
       expect(elem.getAttributeValue('curvature')).toBe('1');
       expect(elem.getAttributeValue('protraction')).toBe('-1');
     });
 
-    it('clamps what addDynamicsFromData writes, and corrects the data object too', () => {
-      // Java writes the corrected value back into the caller's object, so a caller that
-      // reuses it does not keep a value the document does not carry.
+    /**
+     * The clamp corrects the element and leaves the caller's object alone. Java writes the
+     * corrected value back into the payload it was handed; that is an argument mutation
+     * RULE I1 does not sanction, and no caller in `src/` reads the payload again.
+     */
+    it('clamps the element without touching the options object it was given', () => {
       const map = DynamicsMap.createDynamicsMap();
-      const data = new DynamicsData();
-      data.startDate = 0;
-      data.volumeString = '60';
-      data.transitionToString = '100';
-      data.curvature = -0.5;
-      data.protraction = 4.0;
+      const options = {
+        date: 0,
+        volume: '60',
+        transitionTo: '100',
+        curvature: -0.5,
+        protraction: 4.0,
+      };
 
-      const elem = map.getElement(map.addDynamicsFromData(data))!;
+      const elem = map.getElement(map.addDynamics(options))!;
 
       expect(elem.getAttributeValue('curvature')).toBe('0');
       expect(elem.getAttributeValue('protraction')).toBe('1');
-      expect(data.curvature).toBe(0.0);
-      expect(data.protraction).toBe(1.0);
+      expect(options.curvature).toBe(-0.5);
+      expect(options.protraction).toBe(4.0);
     });
 
     it('leaves an in-range value untouched', () => {
       const map = DynamicsMap.createDynamicsMap();
-      const elem = map.getElement(map.addDynamics(0, '60', '100', 0.4, -0.44))!;
+      const elem = map.getElement(
+        map.addDynamics({
+          date: 0,
+          volume: '60',
+          transitionTo: '100',
+          curvature: 0.4,
+          protraction: -0.44,
+        }),
+      )!;
 
       expect(elem.getAttributeValue('curvature')).toBe('0.4');
       expect(elem.getAttributeValue('protraction')).toBe('-0.44');
@@ -397,8 +407,8 @@ describe('DynamicsMap', () => {
 
     it('should return the dynamics data active at a given date', () => {
       const map = DynamicsMap.createDynamicsMap();
-      map.addDynamics(0, '60');
-      map.addDynamics(480, '100');
+      map.addDynamics({ date: 0, volume: '60' });
+      map.addDynamics({ date: 480, volume: '100' });
 
       const dd = map.getDynamicsDataAt(240);
       expect(dd).not.toBeNull();
@@ -407,8 +417,8 @@ describe('DynamicsMap', () => {
 
     it('should return the most recent dynamics at the exact date', () => {
       const map = DynamicsMap.createDynamicsMap();
-      map.addDynamics(0, '60');
-      map.addDynamics(480, '100');
+      map.addDynamics({ date: 0, volume: '60' });
+      map.addDynamics({ date: 480, volume: '100' });
 
       const dd = map.getDynamicsDataAt(480);
       expect(dd).not.toBeNull();
@@ -419,8 +429,8 @@ describe('DynamicsMap', () => {
   describe('GenericMap operations', () => {
     it('should support removeElement by index', () => {
       const map = DynamicsMap.createDynamicsMap();
-      map.addDynamics(0, '60');
-      map.addDynamics(960, '100');
+      map.addDynamics({ date: 0, volume: '60' });
+      map.addDynamics({ date: 960, volume: '100' });
 
       map.removeElementAt(0);
       expect(map.size()).toBe(1);
@@ -429,9 +439,9 @@ describe('DynamicsMap', () => {
 
     it('should support getElementBeforeAt', () => {
       const map = DynamicsMap.createDynamicsMap();
-      map.addDynamics(0, '60');
-      map.addDynamics(480, '80');
-      map.addDynamics(960, '100');
+      map.addDynamics({ date: 0, volume: '60' });
+      map.addDynamics({ date: 480, volume: '80' });
+      map.addDynamics({ date: 960, volume: '100' });
 
       const elem = map.getElementBeforeAt(500);
       expect(elem).not.toBeNull();
@@ -477,49 +487,7 @@ describe('DynamicsMap', () => {
       });
     });
 
-    describe('clone', () => {
-      it('should produce an identical copy', () => {
-        const dd = new DynamicsData();
-        dd.startDate = 100;
-        dd.endDate = 500;
-        dd.volume = 80;
-        dd.volumeString = '80';
-        dd.transitionTo = 120;
-        dd.transitionToString = '120';
-        dd.curvature = 0.5;
-        dd.protraction = 0.3;
-        dd.subNoteDynamics = true;
-        dd.xmlId = 'clone-test';
-
-        const clone = dd.clone();
-        expect(clone.startDate).toBe(100);
-        expect(clone.endDate).toBe(500);
-        expect(clone.volume).toBe(80);
-        expect(clone.volumeString).toBe('80');
-        expect(clone.transitionTo).toBe(120);
-        expect(clone.transitionToString).toBe('120');
-        expect(clone.curvature).toBe(0.5);
-        expect(clone.protraction).toBe(0.3);
-        expect(clone.subNoteDynamics).toBe(true);
-        expect(clone.xmlId).toBe('clone-test');
-      });
-
-      it('clone does not share state with original', () => {
-        const dd = new DynamicsData();
-        dd.volume = 80;
-        dd.transitionTo = 120;
-        dd.curvature = 0.5;
-
-        const clone = dd.clone();
-        clone.volume = 999;
-        clone.transitionTo = 999;
-        clone.curvature = 0.9;
-
-        expect(dd.volume).toBe(80);
-        expect(dd.transitionTo).toBe(120);
-        expect(dd.curvature).toBe(0.5);
-      });
-
+    describe('resolving the same element twice', () => {
       /** The resolved half is `readonly` and derives its control points at read time. */
       it('two independently resolved data with the same parameters agree everywhere', () => {
         const parameters = {

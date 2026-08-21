@@ -5,7 +5,6 @@ import { Performance } from '../../src/mpm/elements/Performance.js';
 import { Part } from '../../src/mpm/elements/Part.js';
 import { ImprecisionMap } from '../../src/mpm/elements/maps/ImprecisionMap.js';
 import { MovementMap } from '../../src/mpm/elements/maps/MovementMap.js';
-import { MovementData } from '../../src/mpm/elements/maps/data/MovementData.js';
 import { TempoMap } from '../../src/mpm/elements/maps/TempoMap.js';
 import { GenericMap } from '../../src/mpm/elements/maps/GenericMap.js';
 import { Element, Attribute } from '../../src/xml/XomTypes.js';
@@ -53,7 +52,7 @@ function makeMsm(ppq = 720): Msm {
 function makePerformance(mpmSeed?: number): Performance {
   const perf = okValue(Performance.fromName('perf', 720));
   const tempoMap = TempoMap.createTempoMap();
-  tempoMap.addConstantTempo(0, '120', 0.25);
+  tempoMap.addTempo({ date: 0, bpm: '120', beatLength: 0.25 });
   perf.getGlobal()!.getDated()!.addMap(tempoMap);
 
   const imp = ImprecisionMap.createImprecisionMap('timing');
@@ -68,21 +67,17 @@ function makePerformance(mpmSeed?: number): Performance {
 function makeMovementPerformance(): Performance {
   const perf = okValue(Performance.fromName('perf', 720));
   const tempoMap = TempoMap.createTempoMap();
-  tempoMap.addConstantTempo(0, '120', 0.25);
+  tempoMap.addTempo({ date: 0, bpm: '120', beatLength: 0.25 });
   perf.getGlobal()!.getDated()!.addMap(tempoMap);
 
   const movMap = MovementMap.createMovementMap();
-  const md = new MovementData();
-  md.startDate = 0;
-  md.position = 0.0 as Normalized;
-  md.transitionTo = 1.0 as Normalized;
-  movMap.addMovementData(md);
+  movMap.addMovement({ date: 0, position: 0.0 as Normalized, transitionTo: 1.0 as Normalized });
   // The last entry of a movementMap is never rendered; it marks where the transition aims.
-  const term = new MovementData();
-  term.startDate = 5760;
-  term.position = 1.0 as Normalized;
-  term.transitionTo = 1.0 as Normalized;
-  movMap.addMovementData(term);
+  movMap.addMovement({
+    date: 5760,
+    position: 1.0 as Normalized,
+    transitionTo: 1.0 as Normalized,
+  });
   perf.getGlobal()!.getDated()!.addMap(movMap);
 
   perf.addPart(okValue(Part.fromValues('Piano', 1, 0, 0)));

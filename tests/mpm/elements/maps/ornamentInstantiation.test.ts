@@ -2,7 +2,12 @@ import { describe, it, expect, vi } from 'vitest';
 import { okValue } from '../../../support/result.js';
 import { OrnamentationMap } from '../../../../src/mpm/elements/maps/OrnamentationMap.js';
 import { GenericMap } from '../../../../src/mpm/elements/maps/GenericMap.js';
-import { OrnamentData } from '../../../../src/mpm/elements/maps/data/OrnamentData.js';
+import {
+  applyGeneratedOrnament,
+  applyOrnament,
+  NO_V3_ORNAMENT_FIELDS,
+  type Ornament,
+} from '../../../../src/mpm/elements/maps/data/ornament.js';
 import { OrnamentNote } from '../../../../src/mpm/elements/maps/data/OrnamentNote.js';
 import {
   isV3Ornament,
@@ -24,7 +29,7 @@ import type { TemporalValue } from '../../../../src/mpm/elements/styles/defs/Tem
 /**
  * The MPM v3 discrete-note renderer, driven end to end through
  * `OrnamentationMap.renderOrnamentationToMap` — the same entry point `Performance` calls, so
- * these tests exercise the real seam (`OrnamentData.apply`) and the real insertion path
+ * these tests exercise the real seam (`Ornament.apply`) and the real insertion path
  * rather than a helper.
  *
  * Every expected number below is computed by hand in the comment above it, from DESIGN.md
@@ -139,6 +144,20 @@ function notesOf(score: GenericMap) {
       dynamics: number('ornament.dynamics'),
     };
   });
+}
+
+/** An ornament with every field at the value a bare `<ornament>` reads as. */
+function orn(fields: Partial<Ornament> = {}): Ornament {
+  return {
+    xmlId: null,
+    date: 0.0,
+    scale: 0.0,
+    ornamentDefName: null,
+    ornamentDef: null,
+    noteOrder: null,
+    ...NO_V3_ORNAMENT_FIELDS,
+    ...fields,
+  };
 }
 
 describe('MPM v3 ornament instantiation', () => {
@@ -1432,47 +1451,38 @@ describe('MPM v3 ornament instantiation', () => {
   });
 
   describe('the v3 gate (D6)', () => {
-    const dataWith = (mutate: (data: OrnamentData) => void, xml = new Element('ornament')) => {
-      const data = new OrnamentData();
-      mutate(data);
-      return { data, xml };
-    };
+    const dataWith = (fields: Partial<Ornament> = {}, xml = new Element('ornament')) => ({
+      data: orn(fields),
+      xml,
+    });
 
     it('fires on a note pool', () => {
-      const { data, xml } = dataWith((d) => {
-        d.notes = [new OrnamentNote('n1', chromatic(1))];
-      });
+      const { data, xml } = dataWith({ notes: [new OrnamentNote('n1', chromatic(1))] });
       expect(isV3Ornament(xml, data)).toBe(true);
     });
 
     it('fires on noteid', () => {
-      const { data, xml } = dataWith((d) => {
-        d.noteid = '#p';
-      });
+      const { data, xml } = dataWith({ noteid: '#p' });
       expect(isV3Ornament(xml, data)).toBe(true);
     });
 
     it('fires on a repetitions attribute, even when it is the default 0', () => {
       const xml = new Element('ornament');
       xml.addAttribute(new Attribute('repetitions', '0'));
-      const { data } = dataWith(() => undefined, xml);
+      const { data } = dataWith({}, xml);
       expect(isV3Ornament(xml, data)).toBe(true);
     });
 
     it('fires on the grouping and repeat tokens of note.order', () => {
       for (const order of ['|: #a :|', '[ #a #b ]', '#a :|: #b', '#a | #b']) {
-        const { data, xml } = dataWith((d) => {
-          d.noteOrderText = order;
-        });
+        const { data, xml } = dataWith({ noteOrderText: order });
         expect(isV3Ornament(xml, data)).toBe(true);
       }
     });
 
     it('does not fire on any v2 note.order', () => {
       for (const order of ['#a #b #c', 'ascending pitch', 'descending pitch', '#a']) {
-        const { data, xml } = dataWith((d) => {
-          d.noteOrderText = order;
-        });
+        const { data, xml } = dataWith({ noteOrderText: order });
         expect(isV3Ornament(xml, data)).toBe(false);
       }
     });
@@ -1788,44 +1798,35 @@ describe('MPM v3 ornament instantiation', () => {
     });
   });
 
-  describe('the OrnamentData.apply seam', () => {
+  describe('the apply seam', () => {
     it('returns the generated chords rather than an empty list', () => {
-      const data = new OrnamentData();
-      data.ornamentDef = makeDef('fig', { noSpread: true });
+      const data = orn({ ornamentDef: makeDef('fig', { noSpread: true }) });
       const one = new Element('note');
-      data.generation = { chords: [[one]], spacing: null };
-      expect(data.apply([])).toEqual([[one]]);
+      expect(applyGeneratedOrnament(data, { chords: [[one]], spacing: null })).toEqual([[one]]);
     });
 
     it('still returns nothing on the v2 path, and still writes the v2 marker', () => {
-      const data = new OrnamentData();
-      data.ornamentDef = makeDef('fig', { v2FrameStart: -22, v2FrameLength: 44 });
+      const data = orn({ ornamentDef: makeDef('fig', { v2FrameStart: -22, v2FrameLength: 44 }) });
       const one = new Element('note');
-      expect(data.apply([[one]])).toEqual([]);
+      expect(applyOrnament(data, [[one]])).toEqual([]);
       // a single chord goes to the *end* of the frame, −22 + 44 = 22: v2's out-of-loop
       // placement of the last chord, which for n = 1 is the only one
       expect(one.getAttributeValue('ornament.date.offset')).toBe('22');
     });
 
     it('runs the spacing writer after the gradient', () => {
-      const data = new OrnamentData();
-      data.ornamentDef = makeDef('fig', { noSpread: true, gradient: [1, 1] });
-      data.scale = 1;
+      const data = orn({
+        ornamentDef: makeDef('fig', { noSpread: true, gradient: [1, 1] }),
+        scale: 1,
+      });
       const one = new Element('note');
       const order: string[] = [];
-      data.generation = {
+      applyGeneratedOrnament(data, {
         chords: [[one]],
         spacing: () => order.push(one.getAttributeValue('ornament.dynamics') ?? 'none'),
-      };
-      data.apply([]);
+      });
       // the gradient has already written its marker by the time the spacing runs
       expect(order).toEqual(['1']);
-    });
-
-    it('does not carry the generation into a clone', () => {
-      const data = new OrnamentData();
-      data.generation = { chords: [[new Element('note')]], spacing: null };
-      expect(data.clone().generation).toBeNull();
     });
   });
 });

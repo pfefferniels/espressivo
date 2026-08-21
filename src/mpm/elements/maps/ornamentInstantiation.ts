@@ -6,7 +6,7 @@ import { formatNoteOrderPerf, parseNoteOrder } from './data/noteOrder.js';
 import { expandOrnament } from './data/ornamentExpansion.js';
 import { FrameDomain, NoteOffShift, TemporalSpread } from '../styles/defs/TemporalSpread.js';
 import type { GenericMap } from './GenericMap.js';
-import type { OrnamentData } from './data/OrnamentData.js';
+import { applyGeneratedOrnament, principalNoteId, type Ornament } from './data/ornament.js';
 import type { NoteOrderList, PitchSpec, ResolvedNote, Slot } from './data/ornamentExpansion.js';
 import type { OrnamentAlignment } from '../styles/defs/TemporalSpread.js';
 import type { TemporalValue } from '../styles/defs/TemporalValue.js';
@@ -153,7 +153,7 @@ interface PrincipalGeometry {
 
 /** One ornament, read and expanded, waiting for its group's layout. */
 export interface PreparedOrnament {
-  readonly od: OrnamentData;
+  readonly od: Ornament;
   /** The principal note element, or null on D7's no-principal path. */
   readonly principal: Element | null;
   readonly geometry: PrincipalGeometry;
@@ -177,7 +177,7 @@ export interface PreparedOrnament {
  * only characters the v3 grammar adds and none can occur in a v2 value, so the v3 parser
  * stays off the v2 path entirely.
  */
-export function isV3Ornament(xml: Element, od: OrnamentData): boolean {
+export function isV3Ornament(xml: Element, od: Ornament): boolean {
   if (od.notes.length > 0) return true;
   if (od.noteid !== null) return true;
   if (attribute('repetitions', xml) !== null) return true;
@@ -199,7 +199,7 @@ export function isV3Ornament(xml: Element, od: OrnamentData): boolean {
  * @returns null when the ornament cannot be rendered; the reason has been logged
  */
 export function prepareOrnament(
-  od: OrnamentData,
+  od: Ornament,
   ornamentXml: Element,
   notes: ReadonlyMap<string, Element>,
   owners: ReadonlyMap<Element, GenericMap>,
@@ -217,7 +217,7 @@ export function prepareOrnament(
   if (order === null || order.kind !== 'list') {
     // A pitch keyword keeps its full v2 behaviour (D9), so this is unreachable from
     // `OrnamentationMap.apply` — `isV3Ornament`'s character probe rejects both keywords. It
-    // stands for callers that build an OrnamentData in code.
+    // stands for callers that build an Ornament in code.
     console.error(
       `Warning: ${label} combines MPM v3 features with the v2 note.order keyword "${od.noteOrderText}"; the ornament is skipped.`,
     );
@@ -330,12 +330,12 @@ export function instantiateOrnaments(
  * reference is dropped by the expansion anyway and must not consume the principal slot.
  */
 function resolvePrincipal(
-  od: OrnamentData,
+  od: Ornament,
   order: NoteOrderList,
   notes: ReadonlyMap<string, Element>,
   label: string,
 ): Element | null {
-  const noteid = od.getPrincipalNoteId();
+  const noteid = principalNoteId(od);
   if (noteid !== null) {
     const principal = notes.get(noteid);
     if (principal !== undefined) return principal;
@@ -356,7 +356,7 @@ function resolvePrincipal(
 }
 
 /** The note pool as the expansion engine wants it: id → pitch spec. */
-function poolOf(od: OrnamentData): ReadonlyMap<string, PitchSpec> {
+function poolOf(od: Ornament): ReadonlyMap<string, PitchSpec> {
   const pool = new Map<string, PitchSpec>();
   for (const note of od.notes) pool.set(note.id, note.pitchSpec);
   return pool;
@@ -370,7 +370,7 @@ function poolOf(od: OrnamentData): ReadonlyMap<string, PitchSpec> {
  */
 function msmPitchesOf(
   order: NoteOrderList,
-  od: OrnamentData,
+  od: Ornament,
   notes: ReadonlyMap<string, Element>,
 ): ReadonlyMap<string, number> {
   const pool = new Set(od.notes.map((note) => note.id));
@@ -409,7 +409,7 @@ interface FrameValues {
  * spec's attribute defaults, `0.0ticks` and `100%`, so the ornament spans exactly its
  * principal: the only reading under which a def of nothing but a `dynamicsGradient` renders.
  */
-function frameValues(od: OrnamentData): FrameValues {
+function frameValues(od: Ornament): FrameValues {
   const def = od.ornamentDef;
   const alignment: OrnamentAlignment = def === null ? 'at start' : def.getAlignment();
   const spread = def === null ? null : def.getTemporalSpread();
@@ -510,7 +510,7 @@ function resolveFrame(
  * `ms` suffix". Null for every other case, which makes the expansion engine reject the
  * ornament with its own message.
  */
-function frameNoteBudget(od: OrnamentData, values: FrameValues): number | null {
+function frameNoteBudget(od: Ornament, values: FrameValues): number | null {
   if (od.repetitions !== -1) return null;
   if (values.length.domain !== 'milliseconds') return null;
   return Math.ceil(values.length.value / FILL_MILLISECONDS_PER_NOTE);
@@ -615,9 +615,11 @@ function renderGroup(
   if (owner === null) return;
   // `built` is `planned.map(…)`, so the two sequences are the same length by construction.
   for (const [plan, one] of zipWith(planned, built, (p, b) => [p, b] as const)) {
-    plan.ornament.od.generation = { chords: one.chords, spacing: plan.spacing };
-    for (const chord of plan.ornament.od.apply(one.chords))
-      for (const note of chord) owner.addElement(note);
+    const generated = applyGeneratedOrnament(plan.ornament.od, {
+      chords: one.chords,
+      spacing: plan.spacing,
+    });
+    for (const chord of generated) for (const note of chord) owner.addElement(note);
   }
 }
 

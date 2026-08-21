@@ -53,19 +53,23 @@ export interface Rubato {
 }
 
 /**
- * The four rubato parameters and the loop flag **as the element declares them** — a value
- * where the attribute is present, null where it is absent.
+ * The four rubato parameters and the loop flag as one `<rubato>` element spells them out:
+ * present where the element carries the attribute, absent where it does not.
  *
- * Null means *the element does not carry the attribute*, and nothing else. A present but
- * unparseable value is `NaN` here, not null; see the header on why that distinction is the
- * whole of the def-inheritance rule.
+ * Read in both directions. `RubatoMap.getRubatoDataOf` produces one of these from an element
+ * and {@link RubatoMap.addRubato} consumes one to write an element, so a `<rubato>` written
+ * from a declaration reads back as the declaration it was written from.
+ *
+ * Absence is `?:`, not `| null` (RULE N1): the element did not supply the attribute. A present
+ * but unparseable value is `NaN` here, never absent; see the header on why that distinction is
+ * the whole of the def-inheritance rule.
  */
-export interface DeclaredRubato {
-  readonly frameLength: number | null;
-  readonly intensity: number | null;
-  readonly lateStart: number | null;
-  readonly earlyEnd: number | null;
-  readonly loop: boolean | null;
+export interface RubatoDeclaration {
+  readonly frameLength?: number;
+  readonly intensity?: number;
+  readonly lateStart?: number;
+  readonly earlyEnd?: number;
+  readonly loop?: boolean;
 }
 
 /** The span a rubato instruction governs. */
@@ -87,7 +91,7 @@ export interface RubatoSpan {
  */
 export function resolveRubato(
   span: RubatoSpan,
-  declared: DeclaredRubato,
+  declared: RubatoDeclaration,
   def: RubatoDef | null,
 ): Rubato | null {
   const frameLength = declared.frameLength ?? def?.getFrameLength() ?? null;

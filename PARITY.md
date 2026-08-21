@@ -56,13 +56,13 @@ what that measurement returned, and the standing hash from `TD3` onwards is
 Each of these was a defect in the Java reference or in the port. Each is fixed, guarded by tests
 that fail if the fix is reverted, and proven not to touch fixture bytes.
 
-### `ArticulationData.articulateNote` no longer hangs
+### `articulateNote` no longer hangs
 
 |                           |                                                          |
 | ------------------------- | -------------------------------------------------------- |
 | Item                      | `TD1`, approved 2026-08-08 (ARCHITECTURE.md §6.3 row P3) |
 | Java                      | `ArticulationData.java:197`                              |
-| TypeScript                | `src/mpm/elements/maps/data/ArticulationData.ts:193-215` |
+| TypeScript                | `src/mpm/elements/maps/data/articulation.ts:170-178`     |
 | Guard tests               | `tests/mpm/elements/ArticulationMap.test.ts`             |
 | Reachable from a fixture? | No — no fixture carries `absoluteDurationChange`         |
 
@@ -123,7 +123,7 @@ of scope and was removed — so no fixture path could reach the change.
 | ---------- | -------------------------------------------------------------------------------------- |
 | Item       | `T20b`, ground-truth regeneration approved 2026-08-08                                  |
 | Java       | `pfefferniels/meico@1b3711f0`, "Fix movementMap XML round-trip and rendering fidelity" |
-| TypeScript | `src/mpm/elements/maps/MovementMap.ts`, `src/mpm/elements/maps/data/MovementData.ts`   |
+| TypeScript | `src/mpm/elements/maps/MovementMap.ts`, `src/mpm/elements/maps/data/movement.ts`       |
 
 This is a divergence from **upstream cemfi/meico**, not from the reference the port is verified
 against: the fork fixed five things about `movementMap`, the port mirrors all five, and the
@@ -131,7 +131,7 @@ Java-generated reference fixtures were **regenerated from the fixed fork** so th
 equivalence suite tests the corrected behaviour.
 
 1. `MovementData`'s XML constructor reads `controller` as a plain, no-namespace attribute.
-2. `addMovement(MovementData)` serializes `controller` (after `protraction`, before `xml:id`).
+2. `addMovement` serializes `controller` (after `protraction`, before `xml:id`).
 3. `getMovementDataOf` parses `curvature`, `protraction` and `controller`.
 4. The movement sampling step became a knob instead of a literal (see D1 below).
 5. The reference generator's movement cases use normalized 0..1 positions — see
@@ -463,8 +463,10 @@ its transition branch: `curvature` and `protraction` were never read, leaving bo
 transition rendered on the straight Bézier whatever curve the document asked for. Both now read
 what Java reads, in Java's order, and the two curve parameters pass the boundary guards Java
 applies (`curvature` into `[0, 1]`, `protraction` into `[-1, 1]`) on the way in — and, matching
-`DynamicsMap.java:91-163,225-230`, on the way out through `addDynamics` and `addDynamicsFromData`
-too, the latter writing the corrected value back into the caller's `DynamicsData` as Java does.
+`DynamicsMap.java:91-163,225-230`, on the way out through `addDynamics` too. Java additionally
+writes the corrected value back into the caller's `DynamicsData`; this port does not, because the
+payload is now a `readonly` options object and no caller reads it again. That is an argument
+mutation, not an output, so no byte moves.
 
 **The fixture blind spot, which is the part worth keeping.** Both defects survived the whole
 certification programme because the fixtures cannot express them. Every `<articulation>` in
@@ -870,9 +872,9 @@ Behaviours that look like defects and are reproduced anyway. Unlike §1's entrie
 queued for repair: either the Java source leaves the intent genuinely ambiguous, or the "defect"
 costs nothing. Several are pinned by unit tests that assert the wrong-looking value on purpose.
 
-### `ArticulationData` duration modifiers overwrite, they do not compose
+### Articulation duration modifiers overwrite, they do not compose
 
-`src/mpm/elements/maps/data/ArticulationData.ts:145-153`. `duration` is read **once**, up front,
+`src/mpm/elements/maps/data/articulation.ts:138-178`. `duration` is read **once**, up front,
 and every branch computes from that original value rather than from what the previous branch
 wrote — so `absoluteDuration`, `relativeDuration` and `absoluteDurationChange` do not compose;
 the last one to fire simply overwrites.

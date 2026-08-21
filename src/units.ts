@@ -1,7 +1,7 @@
 /**
  * Compile-time units of measure, with zero runtime cost (ARCHITECTURE.md §7, RULE U1).
  *
- * The failure these prevent happened: {@link MovementData.getMovementSegment} takes its
+ * The failure these prevent happened: `movementSegment` (`mpm/elements/maps/data/movement.ts`) takes its
  * sampling threshold in a normalized 0..1 domain and returns values scaled ×127, so
  * `maxStepSize` meant one thing going in and another coming out. Fixtures generated against a
  * 0..127 input subdivided ~1270× too often and stored 16129 = 127 × 127, double-scaled.

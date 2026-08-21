@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { okValue } from '../../support/result.js';
 import { TempoMap } from '../../../src/mpm/elements/maps/TempoMap.js';
-import { TempoData } from '../../../src/mpm/elements/maps/data/TempoData.js';
 import {
   resolveTempo,
   type ConstantTempo,
@@ -99,15 +98,15 @@ describe('TempoMap', () => {
   describe('addTempo', () => {
     it('should add a constant tempo instruction', () => {
       const map = TempoMap.createTempoMap();
-      const index = map.addConstantTempo(0, '120', 0.25);
+      const index = map.addTempo({ date: 0, bpm: '120', beatLength: 0.25 });
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
     });
 
     it('should add tempo at the correct date', () => {
       const map = TempoMap.createTempoMap();
-      map.addConstantTempo(0, '100', 0.25);
-      map.addConstantTempo(960, '140', 0.25);
+      map.addTempo({ date: 0, bpm: '100', beatLength: 0.25 });
+      map.addTempo({ date: 960, bpm: '140', beatLength: 0.25 });
 
       expect(map.size()).toBe(2);
       expect(map.getFirstElement()!.getAttributeValue('date')).toBe('0');
@@ -118,7 +117,13 @@ describe('TempoMap', () => {
 
     it('should add a tempo with transition', () => {
       const map = TempoMap.createTempoMap();
-      const index = map.addTempoTransition(0, '120', '140', 0.25, 0.5);
+      const index = map.addTempo({
+        date: 0,
+        bpm: '120',
+        transitionTo: '140',
+        meanTempoAt: 0.5,
+        beatLength: 0.25,
+      });
       expect(index).toBeGreaterThanOrEqual(0);
 
       const elem = map.getElement(index)!;
@@ -130,7 +135,14 @@ describe('TempoMap', () => {
 
     it('should add a tempo with transition and id', () => {
       const map = TempoMap.createTempoMap();
-      const index = map.addTempoTransition(0, '120', '140', 0.25, 0.5, 'tempo-1');
+      const index = map.addTempo({
+        date: 0,
+        bpm: '120',
+        transitionTo: '140',
+        meanTempoAt: 0.5,
+        beatLength: 0.25,
+        id: 'tempo-1',
+      });
 
       const elem = map.getElement(index)!;
       const idAttr = elem.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
@@ -138,42 +150,41 @@ describe('TempoMap', () => {
       expect(idAttr!.getValue()).toBe('tempo-1');
     });
 
-    it('should add a tempo from TempoData', () => {
+    it('should take a numeric bpm as readily as a spelled one', () => {
       const map = TempoMap.createTempoMap();
-      const td = new TempoData();
-      td.startDate = 0;
-      td.bpm = 120;
-      td.bpmString = '120';
-      td.beatLength = 0.25;
-
-      const index = map.addTempoData(td);
-      expect(index).toBeGreaterThanOrEqual(0);
+      const index = map.addTempo({ date: 0, bpm: 120, beatLength: 0.25 });
       expect(map.size()).toBe(1);
+      expect(map.getElement(index)!.getAttributeValue('bpm')).toBe('120');
     });
 
-    it('should add TempoData with transition', () => {
+    /** Attribute order is byte-visible: meanTempoAt goes before beatLength, xml:id last. */
+    it('should write the transitioning attributes in serialization order', () => {
       const map = TempoMap.createTempoMap();
-      const td = new TempoData();
-      td.startDate = 0;
-      td.bpm = 60;
-      td.bpmString = '60';
-      td.transitionTo = 120;
-      td.transitionToString = '120';
-      td.beatLength = 0.25;
-      td.meanTempoAt = 0.5;
+      const xml = map
+        .getElement(
+          map.addTempo({
+            date: 0,
+            bpm: 60,
+            transitionTo: 120,
+            meanTempoAt: 0.5,
+            beatLength: 0.25,
+            id: 'tempo-full',
+          }),
+        )!
+        .toXML();
 
-      const index = map.addTempoData(td);
-      const elem = map.getElement(index)!;
-      expect(elem.getAttributeValue('bpm')).toBe('60');
-      expect(elem.getAttributeValue('transition.to')).toBe('120');
-      expect(elem.getAttributeValue('meanTempoAt')).toBe('0.5');
+      expect(xml).toContain('bpm="60"');
+      expect(xml).toContain('transition.to="120"');
+      expect(xml.indexOf('transition.to=')).toBeLessThan(xml.indexOf('meanTempoAt='));
+      expect(xml.indexOf('meanTempoAt=')).toBeLessThan(xml.indexOf('beatLength='));
+      expect(xml.indexOf('beatLength=')).toBeLessThan(xml.indexOf('xml:id='));
     });
 
     it('should maintain sorted order when adding out of order', () => {
       const map = TempoMap.createTempoMap();
-      map.addConstantTempo(960, '140', 0.25);
-      map.addConstantTempo(0, '100', 0.25);
-      map.addConstantTempo(480, '120', 0.25);
+      map.addTempo({ date: 960, bpm: '140', beatLength: 0.25 });
+      map.addTempo({ date: 0, bpm: '100', beatLength: 0.25 });
+      map.addTempo({ date: 480, bpm: '120', beatLength: 0.25 });
 
       expect(map.size()).toBe(3);
       expect(map.getElement(0)!.getAttributeValue('date')).toBe('0');
@@ -190,13 +201,13 @@ describe('TempoMap', () => {
 
     it('should return null for negative index', () => {
       const map = TempoMap.createTempoMap();
-      map.addConstantTempo(0, '120', 0.25);
+      map.addTempo({ date: 0, bpm: '120', beatLength: 0.25 });
       expect(map.getTempoDataOf(-1)).toBeNull();
     });
 
     it('should return TempoData for a valid constant tempo', () => {
       const map = TempoMap.createTempoMap();
-      map.addConstantTempo(0, '120', 0.25);
+      map.addTempo({ date: 0, bpm: '120', beatLength: 0.25 });
 
       const td = map.getTempoDataOf(0)!;
       expect(td).not.toBeNull();
@@ -208,7 +219,7 @@ describe('TempoMap', () => {
 
     it('should detect a constant tempo correctly', () => {
       const map = TempoMap.createTempoMap();
-      map.addConstantTempo(0, '120', 0.25);
+      map.addTempo({ date: 0, bpm: '120', beatLength: 0.25 });
 
       const td = expectConstant(map.getTempoDataOf(0));
       // The constant arm has no `transitionTo` field at all, so its absence is structural
@@ -219,7 +230,7 @@ describe('TempoMap', () => {
 
     it('should handle out-of-bounds index by clamping', () => {
       const map = TempoMap.createTempoMap();
-      map.addConstantTempo(0, '120', 0.25);
+      map.addTempo({ date: 0, bpm: '120', beatLength: 0.25 });
 
       const td = map.getTempoDataOf(100);
       expect(td).not.toBeNull();
@@ -228,7 +239,7 @@ describe('TempoMap', () => {
 
     it('should set endDate to MAX_VALUE for the last tempo instruction', () => {
       const map = TempoMap.createTempoMap();
-      map.addConstantTempo(0, '120', 0.25);
+      map.addTempo({ date: 0, bpm: '120', beatLength: 0.25 });
 
       const td = map.getTempoDataOf(0)!;
       expect(td.endDate).toBe(Number.MAX_VALUE);
@@ -236,8 +247,8 @@ describe('TempoMap', () => {
 
     it('should set endDate to the start of the next tempo instruction', () => {
       const map = TempoMap.createTempoMap();
-      map.addConstantTempo(0, '100', 0.25);
-      map.addConstantTempo(960, '140', 0.25);
+      map.addTempo({ date: 0, bpm: '100', beatLength: 0.25 });
+      map.addTempo({ date: 960, bpm: '140', beatLength: 0.25 });
 
       const td = map.getTempoDataOf(0)!;
       expect(td.endDate).toBe(960);
@@ -245,9 +256,9 @@ describe('TempoMap', () => {
 
     it('should retrieve multiple tempo instructions', () => {
       const map = TempoMap.createTempoMap();
-      map.addConstantTempo(0, '100', 0.25);
-      map.addConstantTempo(480, '120', 0.25);
-      map.addConstantTempo(960, '140', 0.25);
+      map.addTempo({ date: 0, bpm: '100', beatLength: 0.25 });
+      map.addTempo({ date: 480, bpm: '120', beatLength: 0.25 });
+      map.addTempo({ date: 960, bpm: '140', beatLength: 0.25 });
 
       const td0 = map.getTempoDataOf(0)!;
       expect(td0.bpm).toBe(100);
@@ -264,8 +275,8 @@ describe('TempoMap', () => {
 
     it('should correctly parse a transition tempo instruction', () => {
       const map = TempoMap.createTempoMap();
-      map.addTempoTransition(0, '60', '120', 0.25, 0.5);
-      map.addConstantTempo(720, '120', 0.25); // endpoint
+      map.addTempo({ date: 0, bpm: '60', transitionTo: '120', meanTempoAt: 0.5, beatLength: 0.25 });
+      map.addTempo({ date: 720, bpm: '120', beatLength: 0.25 }); // endpoint
 
       const td = expectTransitioning(map.getTempoDataOf(0));
       expect(td.bpm).toBe(60);
@@ -276,8 +287,8 @@ describe('TempoMap', () => {
 
     it('should set exponent to 1.0 for meanTempoAt = 0.5 (linear)', () => {
       const map = TempoMap.createTempoMap();
-      map.addTempoTransition(0, '60', '120', 0.25, 0.5);
-      map.addConstantTempo(720, '120', 0.25);
+      map.addTempo({ date: 0, bpm: '60', transitionTo: '120', meanTempoAt: 0.5, beatLength: 0.25 });
+      map.addTempo({ date: 720, bpm: '120', beatLength: 0.25 });
 
       const td = expectTransitioning(map.getTempoDataOf(0));
       expect(td.exponent).toBeCloseTo(1.0, 10);
@@ -285,7 +296,13 @@ describe('TempoMap', () => {
 
     it('should convert to constant tempo if transitionTo equals bpm', () => {
       const map = TempoMap.createTempoMap();
-      map.addTempoTransition(0, '120', '120', 0.25, 0.5);
+      map.addTempo({
+        date: 0,
+        bpm: '120',
+        transitionTo: '120',
+        meanTempoAt: 0.5,
+        beatLength: 0.25,
+      });
 
       const td = expectConstant(map.getTempoDataOf(0));
       expect(td.bpm).toBe(120);
@@ -293,7 +310,7 @@ describe('TempoMap', () => {
 
     it('should convert to constant bpm at transitionTo when meanTempoAt <= 0', () => {
       const map = TempoMap.createTempoMap();
-      map.addTempoTransition(0, '60', '120', 0.25, 0);
+      map.addTempo({ date: 0, bpm: '60', transitionTo: '120', meanTempoAt: 0, beatLength: 0.25 });
 
       // meanTempoAt <= 0 means: instantly jump to transitionTo, and stay there — the
       // target becomes the tempo, in both its numeric and its written form.
@@ -304,7 +321,7 @@ describe('TempoMap', () => {
 
     it('should convert to constant bpm at original bpm when meanTempoAt >= 1', () => {
       const map = TempoMap.createTempoMap();
-      map.addTempoTransition(0, '60', '120', 0.25, 1.0);
+      map.addTempo({ date: 0, bpm: '60', transitionTo: '120', meanTempoAt: 1.0, beatLength: 0.25 });
 
       // meanTempoAt >= 1 means: never reach transitionTo, stay at bpm
       const td = expectConstant(map.getTempoDataOf(0));
@@ -320,7 +337,7 @@ describe('TempoMap', () => {
       e.addAttribute(new Attribute('transition.to', '120'));
       e.addAttribute(new Attribute('beatLength', '0.25'));
       map.addElement(e);
-      map.addConstantTempo(720, '120', 0.25);
+      map.addTempo({ date: 720, bpm: '120', beatLength: 0.25 });
 
       const td = expectTransitioning(map.getTempoDataOf(0));
       expect(td.meanTempoAt).toBe(0.5);
@@ -331,8 +348,8 @@ describe('TempoMap', () => {
   describe('computeExponent', () => {
     it('exponent for meanTempoAt=0.5 is exactly 1.0', () => {
       const map = TempoMap.createTempoMap();
-      map.addTempoTransition(0, '60', '120', 0.25, 0.5);
-      map.addConstantTempo(720, '120', 0.25);
+      map.addTempo({ date: 0, bpm: '60', transitionTo: '120', meanTempoAt: 0.5, beatLength: 0.25 });
+      map.addTempo({ date: 720, bpm: '120', beatLength: 0.25 });
 
       const td = expectTransitioning(map.getTempoDataOf(0));
       // ln(0.5)/ln(0.5) = 1.0
@@ -341,8 +358,8 @@ describe('TempoMap', () => {
 
     it('exponent for meanTempoAt=0.3 is ln(0.5)/ln(0.3)', () => {
       const map = TempoMap.createTempoMap();
-      map.addTempoTransition(0, '60', '120', 0.25, 0.3);
-      map.addConstantTempo(720, '120', 0.25);
+      map.addTempo({ date: 0, bpm: '60', transitionTo: '120', meanTempoAt: 0.3, beatLength: 0.25 });
+      map.addTempo({ date: 720, bpm: '120', beatLength: 0.25 });
 
       const td = expectTransitioning(map.getTempoDataOf(0));
       const expected = Math.log(0.5) / Math.log(0.3);
@@ -354,8 +371,8 @@ describe('TempoMap', () => {
 
     it('exponent for meanTempoAt=0.7 is ln(0.5)/ln(0.7)', () => {
       const map = TempoMap.createTempoMap();
-      map.addTempoTransition(0, '60', '120', 0.25, 0.7);
-      map.addConstantTempo(720, '120', 0.25);
+      map.addTempo({ date: 0, bpm: '60', transitionTo: '120', meanTempoAt: 0.7, beatLength: 0.25 });
+      map.addTempo({ date: 720, bpm: '120', beatLength: 0.25 });
 
       const td = expectTransitioning(map.getTempoDataOf(0));
       const expected = Math.log(0.5) / Math.log(0.7);
@@ -367,8 +384,8 @@ describe('TempoMap', () => {
 
     it('exponent for meanTempoAt=0.1', () => {
       const map = TempoMap.createTempoMap();
-      map.addTempoTransition(0, '60', '120', 0.25, 0.1);
-      map.addConstantTempo(720, '120', 0.25);
+      map.addTempo({ date: 0, bpm: '60', transitionTo: '120', meanTempoAt: 0.1, beatLength: 0.25 });
+      map.addTempo({ date: 720, bpm: '120', beatLength: 0.25 });
 
       const td = expectTransitioning(map.getTempoDataOf(0));
       const expected = Math.log(0.5) / Math.log(0.1);
@@ -377,8 +394,8 @@ describe('TempoMap', () => {
 
     it('exponent for meanTempoAt=0.9', () => {
       const map = TempoMap.createTempoMap();
-      map.addTempoTransition(0, '60', '120', 0.25, 0.9);
-      map.addConstantTempo(720, '120', 0.25);
+      map.addTempo({ date: 0, bpm: '60', transitionTo: '120', meanTempoAt: 0.9, beatLength: 0.25 });
+      map.addTempo({ date: 720, bpm: '120', beatLength: 0.25 });
 
       const td = expectTransitioning(map.getTempoDataOf(0));
       const expected = Math.log(0.5) / Math.log(0.9);
@@ -395,7 +412,7 @@ describe('TempoMap', () => {
 
     it('returns constant bpm for dates strictly after the tempo instruction', () => {
       const map = TempoMap.createTempoMap();
-      map.addConstantTempo(0, '120', 0.25);
+      map.addTempo({ date: 0, bpm: '120', beatLength: 0.25 });
 
       // getTempoAt uses getElementIndexBefore (strictly before), so at date=0
       // there is nothing strictly before 0, and getTempoDataAt returns null -> default 100.
@@ -407,16 +424,16 @@ describe('TempoMap', () => {
 
     it('returns bpm at startDate for transition', () => {
       const map = TempoMap.createTempoMap();
-      map.addTempoTransition(0, '60', '120', 0.25, 0.5);
-      map.addConstantTempo(720, '120', 0.25);
+      map.addTempo({ date: 0, bpm: '60', transitionTo: '120', meanTempoAt: 0.5, beatLength: 0.25 });
+      map.addTempo({ date: 720, bpm: '120', beatLength: 0.25 });
 
       expect(map.getTempoAt(0)).toBe(100.0); // default because nothing strictly before date 0
     });
 
     it('returns the transition tempo at midpoint for linear transition (meanTempoAt=0.5)', () => {
       const map = TempoMap.createTempoMap();
-      map.addTempoTransition(0, '60', '120', 0.25, 0.5);
-      map.addConstantTempo(720, '120', 0.25);
+      map.addTempo({ date: 0, bpm: '60', transitionTo: '120', meanTempoAt: 0.5, beatLength: 0.25 });
+      map.addTempo({ date: 720, bpm: '120', beatLength: 0.25 });
 
       // pow(360/720, 1.0) * (120 - 60) + 60 = 90.
       expect(map.getTempoAt(360)).toBeCloseTo(90.0, 5);
@@ -424,8 +441,8 @@ describe('TempoMap', () => {
 
     it('returns transitionTo at endDate for transition', () => {
       const map = TempoMap.createTempoMap();
-      map.addTempoTransition(0, '60', '120', 0.25, 0.5);
-      map.addConstantTempo(720, '120', 0.25);
+      map.addTempo({ date: 0, bpm: '60', transitionTo: '120', meanTempoAt: 0.5, beatLength: 0.25 });
+      map.addTempo({ date: 720, bpm: '120', beatLength: 0.25 });
 
       // Strictly-before puts date 720 on the first instruction, not the second, and at its
       // own endDate a transition answers with `transitionTo`.
@@ -434,8 +451,8 @@ describe('TempoMap', () => {
 
     it('returns correct tempo for accelerando (meanTempoAt=0.3)', () => {
       const map = TempoMap.createTempoMap();
-      map.addTempoTransition(0, '60', '120', 0.25, 0.3);
-      map.addConstantTempo(720, '120', 0.25);
+      map.addTempo({ date: 0, bpm: '60', transitionTo: '120', meanTempoAt: 0.3, beatLength: 0.25 });
+      map.addTempo({ date: 720, bpm: '120', beatLength: 0.25 });
 
       // meanTempoAt < 0.5 reaches the mean tempo earlier, so the midpoint sits closer to
       // transitionTo than the linear 90 would.
@@ -449,8 +466,8 @@ describe('TempoMap', () => {
 
     it('returns correct tempo for ritardando (meanTempoAt=0.7)', () => {
       const map = TempoMap.createTempoMap();
-      map.addTempoTransition(0, '60', '120', 0.25, 0.7);
-      map.addConstantTempo(720, '120', 0.25);
+      map.addTempo({ date: 0, bpm: '60', transitionTo: '120', meanTempoAt: 0.7, beatLength: 0.25 });
+      map.addTempo({ date: 720, bpm: '120', beatLength: 0.25 });
 
       // meanTempoAt > 0.5 reaches the mean later, so the midpoint sits closer to the starting
       // 60 than the linear 90 would.
@@ -464,9 +481,9 @@ describe('TempoMap', () => {
 
     it('handles multiple tempo instructions with correct lookup', () => {
       const map = TempoMap.createTempoMap();
-      map.addConstantTempo(0, '100', 0.25);
-      map.addConstantTempo(480, '140', 0.25);
-      map.addConstantTempo(960, '80', 0.25);
+      map.addTempo({ date: 0, bpm: '100', beatLength: 0.25 });
+      map.addTempo({ date: 480, bpm: '140', beatLength: 0.25 });
+      map.addTempo({ date: 960, bpm: '80', beatLength: 0.25 });
 
       expect(map.getTempoAt(240)).toBe(100.0);
       expect(map.getTempoAt(720)).toBe(140.0);
@@ -698,47 +715,7 @@ describe('TempoMap', () => {
     });
   });
 
-  describe('TempoData', () => {
-    it('default values', () => {
-      const td = new TempoData();
-      expect(td.startDate).toBe(0);
-      expect(td.endDate).toBeNull();
-      expect(td.bpm).toBeNull();
-      expect(td.bpmString).toBeNull();
-      expect(td.transitionTo).toBeNull();
-      expect(td.transitionToString).toBeNull();
-      expect(td.beatLength).toBe(0.25);
-      expect(td.meanTempoAt).toBeNull();
-      expect(td.xmlId).toBeNull();
-    });
-
-    it('clone produces a deep copy', () => {
-      const td = new TempoData();
-      td.startDate = 100;
-      td.endDate = 200;
-      td.bpm = 120;
-      td.bpmString = '120';
-      td.transitionTo = 140;
-      td.transitionToString = '140';
-      td.beatLength = 0.5;
-      td.meanTempoAt = 0.3;
-      td.xmlId = 'test-id';
-
-      const clone = td.clone();
-      expect(clone.startDate).toBe(100);
-      expect(clone.endDate).toBe(200);
-      expect(clone.bpm).toBe(120);
-      expect(clone.bpmString).toBe('120');
-      expect(clone.transitionTo).toBe(140);
-      expect(clone.transitionToString).toBe('140');
-      expect(clone.beatLength).toBe(0.5);
-      expect(clone.meanTempoAt).toBe(0.3);
-      expect(clone.xmlId).toBe('test-id');
-
-      clone.bpm = 999;
-      expect(td.bpm).toBe(120);
-    });
-
+  describe('getTempoDataOf: the resolved read half', () => {
     // Three of the fields below are resolved by the reader and cannot come from a raw parse
     // of the element: `bpmString`, which `addTempo(TempoData)` prefers on the way back out and
     // which a byte-stable round-trip therefore needs; `exponent`, without which a declared
@@ -831,8 +808,8 @@ describe('TempoMap', () => {
   describe('GenericMap operations', () => {
     it('should support removeElement by index', () => {
       const map = TempoMap.createTempoMap();
-      map.addConstantTempo(0, '100', 0.25);
-      map.addConstantTempo(960, '140', 0.25);
+      map.addTempo({ date: 0, bpm: '100', beatLength: 0.25 });
+      map.addTempo({ date: 960, bpm: '140', beatLength: 0.25 });
 
       map.removeElementAt(0);
       expect(map.size()).toBe(1);
@@ -841,9 +818,9 @@ describe('TempoMap', () => {
 
     it('should support getElementBeforeAt', () => {
       const map = TempoMap.createTempoMap();
-      map.addConstantTempo(0, '100', 0.25);
-      map.addConstantTempo(480, '120', 0.25);
-      map.addConstantTempo(960, '140', 0.25);
+      map.addTempo({ date: 0, bpm: '100', beatLength: 0.25 });
+      map.addTempo({ date: 480, bpm: '120', beatLength: 0.25 });
+      map.addTempo({ date: 960, bpm: '140', beatLength: 0.25 });
 
       const elem = map.getElementBeforeAt(500);
       expect(elem).not.toBeNull();

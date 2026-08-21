@@ -13,7 +13,7 @@
  *
  * ## `@scale` defaults to 0 and gates HALF the ornament (AD-40.1)
  *
- * `OrnamentData.ts:121` initialises `scale = 0.0`, and `DynamicsGradient.apply` multiplies both
+ * `getOrnamentDataOf` reads an absent `@scale` as `0.0`, and `DynamicsGradient.apply` multiplies both
  * endpoints by it — so an `<ornament>` with no `@scale` performs no dynamics at all while its
  * `<temporalSpread>` applies in full. Contrast §5.4, where `accentuationPattern@scale` is
  * MANDATORY: absent, the whole instruction is skipped. Same attribute name, two dispositions.
@@ -113,7 +113,7 @@ import { assertSpanEndRule } from './spanEnds.js';
 import { bottom, valued, type Valued } from './values.js';
 import { resolutionAt, type OrderedMapView } from './document.js';
 
-/** `OrnamentData.ts:121` — and the reason half an unscaled ornament is inert. */
+/** `@scale`'s default of 0.0 — and the reason half an unscaled ornament is inert. */
 export const DEFAULT_ORNAMENT_SCALE = 0;
 
 /** Which engine the renderer runs this ornament through (`isV3Ornament`). */

@@ -42,7 +42,7 @@
  * through {@link OrnamentNote}, which owns its serialization.
  */
 
-import { OrnamentData } from '../mpm/elements/maps/data/OrnamentData.js';
+import type { Ornament } from '../mpm/elements/maps/data/ornament.js';
 import { OrnamentNote } from '../mpm/elements/maps/data/OrnamentNote.js';
 import { OrnamentDef } from '../mpm/elements/styles/defs/OrnamentDef.js';
 import { isErr, type Result } from '../prelude/index.js';
@@ -183,13 +183,13 @@ function isDelayed(name: string): boolean {
  * @param date the ornament's date in ticks
  * @param idBase the stem for generated pool-note ids, and the ornament's own `xml:id`
  */
-export function buildOrnamentData(
+export function buildOrnament(
   shape: OrnamentShape,
   defName: string,
   principalId: string,
   date: number,
   idBase: string,
-): OrnamentData {
+): Ornament {
   const steps = distinctSteps(shape.sequence);
   // A step's pool id is its position in `steps`, which covers every numeric token of the
   // sequence by construction, so the lookup needs no fallback.
@@ -201,22 +201,25 @@ export function buildOrnamentData(
     (step) => new OrnamentNote(idOfStep(step), { kind: 'diatonic', value: step }),
   );
 
-  const data = new OrnamentData();
-  data.date = date;
-  data.ornamentDefName = defName;
-  // `scale` weights the def's dynamicsGradient. 0.0 is the schema default and what processArpeg
-  // uses; anything else would invent a dynamic shaping the encoding never asked for.
-  data.scale = 0.0;
-  data.xmlId = idBase;
-  data.noteid = `#${principalId}`;
-  data.notes = notes;
-  // Left at the schema default; see divergence 2 in the module header for why the reference's
-  // `-1` is not emitted here.
-  data.repetitions = 0;
-  data.noteOrderText = shape.sequence
-    .map((token) => (typeof token === 'number' ? `#${idOfStep(token)}` : token))
-    .join(' ');
-  return data;
+  return {
+    date,
+    ornamentDefName: defName,
+    ornamentDef: null,
+    // `scale` weights the def's dynamicsGradient. 0.0 is the schema default and what
+    // processArpeg uses; anything else would invent a dynamic shaping the encoding never
+    // asked for.
+    scale: 0.0,
+    xmlId: idBase,
+    noteid: `#${principalId}`,
+    notes,
+    // Left at the schema default; see divergence 2 in the module header for why the
+    // reference's `-1` is not emitted here.
+    repetitions: 0,
+    noteOrder: null,
+    noteOrderText: shape.sequence
+      .map((token) => (typeof token === 'number' ? `#${idOfStep(token)}` : token))
+      .join(' '),
+  };
 }
 
 /**

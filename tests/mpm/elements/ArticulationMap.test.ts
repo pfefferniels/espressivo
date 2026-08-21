@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { okValue } from '../../support/result.js';
 import { ArticulationMap } from '../../../src/mpm/elements/maps/ArticulationMap.js';
-import { ArticulationData } from '../../../src/mpm/elements/maps/data/ArticulationData.js';
+import {
+  articulateNote,
+  NEUTRAL_ARTICULATION_MODIFIERS,
+  type Articulation,
+} from '../../../src/mpm/elements/maps/data/articulation.js';
 import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
 import { Element, Attribute, Builder } from '../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
@@ -30,14 +34,24 @@ describe('ArticulationMap', () => {
   describe('addArticulation', () => {
     it('should add an articulation instruction', () => {
       const map = ArticulationMap.createArticulationMap();
-      const index = map.addArticulation(0, 'staccato', 'note1', 'art-1');
+      const index = map.addArticulation({
+        date: 0,
+        nameRef: 'staccato',
+        noteid: 'note1',
+        id: 'art-1',
+      });
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
     });
 
     it('should store attributes correctly', () => {
       const map = ArticulationMap.createArticulationMap();
-      const index = map.addArticulation(0, 'legato', 'note2', 'art-2');
+      const index = map.addArticulation({
+        date: 0,
+        nameRef: 'legato',
+        noteid: 'note2',
+        id: 'art-2',
+      });
       const elem = map.getElement(index)!;
 
       expect(elem.getLocalName()).toBe('articulation');
@@ -48,7 +62,7 @@ describe('ArticulationMap', () => {
 
     it('should store xmlId', () => {
       const map = ArticulationMap.createArticulationMap();
-      const index = map.addArticulation(0, 'staccato', null, 'art-3');
+      const index = map.addArticulation({ date: 0, nameRef: 'staccato', id: 'art-3' });
       const elem = map.getElement(index)!;
 
       const idAttr = elem.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
@@ -56,16 +70,9 @@ describe('ArticulationMap', () => {
       expect(idAttr!.getValue()).toBe('art-3');
     });
 
-    it('should return -1 for null articulationDefName', () => {
-      const map = ArticulationMap.createArticulationMap();
-      const index = map.addArticulation(0, null, 'note1', 'art-1');
-      expect(index).toBe(-1);
-      expect(map.size()).toBe(0);
-    });
-
     it('should handle null noteid and id gracefully', () => {
       const map = ArticulationMap.createArticulationMap();
-      const index = map.addArticulation(0, 'staccato', null, null);
+      const index = map.addArticulation({ date: 0, nameRef: 'staccato' });
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
 
@@ -75,9 +82,9 @@ describe('ArticulationMap', () => {
 
     it('should maintain sorted order when adding out of order', () => {
       const map = ArticulationMap.createArticulationMap();
-      map.addArticulation(960, 'staccato', null, null);
-      map.addArticulation(0, 'legato', null, null);
-      map.addArticulation(480, 'accent', null, null);
+      map.addArticulation({ date: 960, nameRef: 'staccato' });
+      map.addArticulation({ date: 0, nameRef: 'legato' });
+      map.addArticulation({ date: 480, nameRef: 'accent' });
 
       expect(map.size()).toBe(3);
       expect(map.getElement(0)!.getAttributeValue('date')).toBe('0');
@@ -86,76 +93,53 @@ describe('ArticulationMap', () => {
     });
   });
 
-  describe('addArticulationFromData', () => {
-    it('should add an articulation from ArticulationData', () => {
+  describe('addArticulation: the writable modifiers', () => {
+    /** Absence, not neutrality, decides: an unmentioned modifier writes no attribute. */
+    it('writes no modifier attribute when none is given', () => {
       const map = ArticulationMap.createArticulationMap();
-      const ad = new ArticulationData();
-      ad.date = 0;
-      ad.articulationDefName = 'staccato';
+      const elem = map.getElement(map.addArticulation({ date: 0, nameRef: 'staccato' }))!;
 
-      const index = map.addArticulationFromData(ad);
-      expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
-    });
-
-    it('should store absoluteDurationChange when non-zero', () => {
-      const map = ArticulationMap.createArticulationMap();
-      const ad = new ArticulationData();
-      ad.date = 0;
-      ad.articulationDefName = 'staccato';
-      ad.absoluteDurationChange = -100;
-
-      const index = map.addArticulationFromData(ad);
-      const elem = map.getElement(index)!;
-      expect(elem.getAttributeValue('absoluteDurationChange')).toBe('-100');
-    });
-
-    it('should store relativeDuration when not 1.0', () => {
-      const map = ArticulationMap.createArticulationMap();
-      const ad = new ArticulationData();
-      ad.date = 0;
-      ad.articulationDefName = 'staccato';
-      ad.relativeDuration = 0.5;
-
-      const index = map.addArticulationFromData(ad);
-      const elem = map.getElement(index)!;
-      expect(elem.getAttributeValue('relativeDuration')).toBe('0.5');
-    });
-
-    it('should not store relativeDuration when 1.0 (default)', () => {
-      const map = ArticulationMap.createArticulationMap();
-      const ad = new ArticulationData();
-      ad.date = 0;
-      ad.articulationDefName = 'staccato';
-      ad.relativeDuration = 1.0;
-
-      const index = map.addArticulationFromData(ad);
-      const elem = map.getElement(index)!;
+      expect(elem.getAttribute('absoluteDuration')).toBeNull();
+      expect(elem.getAttribute('absoluteDurationChange')).toBeNull();
       expect(elem.getAttribute('relativeDuration')).toBeNull();
     });
 
-    it('should not store absoluteDurationChange when 0.0 (default)', () => {
+    it('writes each modifier it is given, neutral values included', () => {
       const map = ArticulationMap.createArticulationMap();
-      const ad = new ArticulationData();
-      ad.date = 0;
-      ad.articulationDefName = 'staccato';
-      ad.absoluteDurationChange = 0.0;
+      const elem = map.getElement(
+        map.addArticulation({
+          date: 0,
+          nameRef: 'staccato',
+          absoluteDuration: 240,
+          absoluteDurationChange: -100,
+          relativeDuration: 1.0,
+        }),
+      )!;
 
-      const index = map.addArticulationFromData(ad);
-      const elem = map.getElement(index)!;
-      expect(elem.getAttribute('absoluteDurationChange')).toBeNull();
+      expect(elem.getAttributeValue('absoluteDuration')).toBe('240');
+      expect(elem.getAttributeValue('absoluteDurationChange')).toBe('-100');
+      expect(elem.getAttributeValue('relativeDuration')).toBe('1');
     });
 
-    it('should store absoluteDuration when not null', () => {
+    /** Attribute order is byte-visible; xml:id goes last, as in every other map writer. */
+    it('serializes in attribute order', () => {
       const map = ArticulationMap.createArticulationMap();
-      const ad = new ArticulationData();
-      ad.date = 0;
-      ad.articulationDefName = 'staccato';
-      ad.absoluteDuration = 240;
+      const xml = map
+        .getElement(
+          map.addArticulation({
+            date: 0,
+            nameRef: 'staccato',
+            noteid: '#note1',
+            relativeDuration: 0.5,
+            id: 'art-1',
+          }),
+        )!
+        .toXML();
 
-      const index = map.addArticulationFromData(ad);
-      const elem = map.getElement(index)!;
-      expect(elem.getAttributeValue('absoluteDuration')).toBe('240');
+      expect(xml.indexOf('name.ref=')).toBeLessThan(xml.indexOf('noteid='));
+      expect(xml.indexOf('noteid=')).toBeLessThan(xml.indexOf('relativeDuration='));
+      expect(xml.indexOf('relativeDuration=')).toBeLessThan(xml.indexOf('xml:id='));
     });
   });
 
@@ -203,13 +187,13 @@ describe('ArticulationMap', () => {
 
     it('should return null for negative index', () => {
       const map = ArticulationMap.createArticulationMap();
-      map.addArticulation(0, 'staccato', null, null);
+      map.addArticulation({ date: 0, nameRef: 'staccato' });
       expect(map.getArticulationDataOf(-1)).toBeNull();
     });
 
     it('should return ArticulationData for a valid articulation', () => {
       const map = ArticulationMap.createArticulationMap();
-      map.addArticulation(0, 'staccato', 'note1', null);
+      map.addArticulation({ date: 0, nameRef: 'staccato', noteid: 'note1' });
 
       const ad = map.getArticulationDataOf(0);
       expect(ad).not.toBeNull();
@@ -227,7 +211,7 @@ describe('ArticulationMap', () => {
 
     it('should handle out-of-bounds index by clamping', () => {
       const map = ArticulationMap.createArticulationMap();
-      map.addArticulation(0, 'staccato', null, null);
+      map.addArticulation({ date: 0, nameRef: 'staccato' });
 
       const ad = map.getArticulationDataOf(100);
       expect(ad).not.toBeNull();
@@ -236,7 +220,7 @@ describe('ArticulationMap', () => {
 
     it('round-trip: addArticulation -> getArticulationDataOf preserves values', () => {
       const map = ArticulationMap.createArticulationMap();
-      map.addArticulation(240, 'legato', 'note5', 'art-5');
+      map.addArticulation({ date: 240, nameRef: 'legato', noteid: 'note5', id: 'art-5' });
 
       const ad = map.getArticulationDataOf(0)!;
       expect(ad.date).toBe(240);
@@ -323,7 +307,7 @@ describe('ArticulationMap', () => {
       note.addAttribute(new Attribute('duration.perf', '720'));
       note.addAttribute(new Attribute('velocity', '64'));
 
-      map.getArticulationDataOf(0)!.articulateNote(note);
+      articulateNote(map.getArticulationDataOf(0)!, note);
 
       expect(parseFloat(note.getAttributeValue('duration.perf')!)).toBeCloseTo(360, 5);
       expect(parseFloat(note.getAttributeValue('velocity')!)).toBeCloseTo(84, 5);
@@ -361,7 +345,7 @@ describe('ArticulationMap', () => {
       note.addAttribute(new Attribute('date.perf', '0'));
       note.addAttribute(new Attribute('duration.perf', '720'));
       note.addAttribute(new Attribute('velocity', '64'));
-      ad.articulateNote(note);
+      articulateNote(ad, note);
 
       // 720 * 0.5 (def) * 0.9 (inline): the inline factor multiplies the def's result, not
       // the original duration. Velocity goes the other way - the def's -5 lands on 59 and
@@ -397,91 +381,18 @@ describe('ArticulationMap', () => {
     });
   });
 
-  describe('ArticulationData', () => {
-    it('should have correct default values', () => {
-      const ad = new ArticulationData();
-      expect(ad.date).toBe(0.0);
-      expect(ad.noteid).toBeNull();
-      expect(ad.absoluteDuration).toBeNull();
-      expect(ad.absoluteDurationChange).toBe(0.0);
-      expect(ad.absoluteDurationMs).toBeNull();
-      expect(ad.absoluteDurationChangeMs).toBe(0.0);
-      expect(ad.relativeDuration).toBe(1.0);
-      expect(ad.absoluteDelay).toBe(0.0);
-      expect(ad.absoluteDelayMs).toBe(0.0);
-      expect(ad.absoluteVelocity).toBeNull();
-      expect(ad.absoluteVelocityChange).toBe(0.0);
-      expect(ad.relativeVelocity).toBe(1.0);
-      expect(ad.detuneCents).toBe(0.0);
-      expect(ad.detuneHz).toBe(0.0);
-      expect(ad.xml).toBeNull();
-      expect(ad.xmlId).toBeNull();
-      expect(ad.styleName).toBe('');
-      expect(ad.style).toBeNull();
-      expect(ad.defaultArticulation).toBeNull();
-      expect(ad.defaultArticulationDef).toBeNull();
-      expect(ad.articulationDefName).toBeNull();
-      expect(ad.articulationDef).toBeNull();
+  describe('articulateNote', () => {
+    /** An articulation that names no def and carries no modifier: every field at its neutral. */
+    const artic = (fields: Partial<Articulation> = {}): Articulation => ({
+      xmlId: null,
+      date: 0,
+      noteid: null,
+      articulationDefName: null,
+      articulationDef: null,
+      ...NEUTRAL_ARTICULATION_MODIFIERS,
+      ...fields,
     });
 
-    it('should clone correctly with all fields', () => {
-      const ad = new ArticulationData();
-      ad.date = 100;
-      ad.noteid = 'note1';
-      ad.absoluteDuration = 240;
-      ad.absoluteDurationChange = -50;
-      ad.absoluteDurationMs = 500;
-      ad.absoluteDurationChangeMs = 10;
-      ad.relativeDuration = 0.8;
-      ad.absoluteDelay = 20;
-      ad.absoluteDelayMs = 15;
-      ad.absoluteVelocity = 100;
-      ad.absoluteVelocityChange = -10;
-      ad.relativeVelocity = 0.9;
-      ad.detuneCents = 5.0;
-      ad.detuneHz = 2.5;
-      ad.xmlId = 'art-clone';
-      ad.styleName = 'testStyle';
-      ad.articulationDefName = 'staccato';
-
-      const clone = ad.clone();
-      expect(clone.date).toBe(100);
-      expect(clone.noteid).toBe('note1');
-      expect(clone.absoluteDuration).toBe(240);
-      expect(clone.absoluteDurationChange).toBe(-50);
-      expect(clone.absoluteDurationMs).toBe(500);
-      expect(clone.absoluteDurationChangeMs).toBe(10);
-      expect(clone.relativeDuration).toBe(0.8);
-      expect(clone.absoluteDelay).toBe(20);
-      expect(clone.absoluteDelayMs).toBe(15);
-      expect(clone.absoluteVelocity).toBe(100);
-      expect(clone.absoluteVelocityChange).toBe(-10);
-      expect(clone.relativeVelocity).toBe(0.9);
-      expect(clone.detuneCents).toBe(5.0);
-      expect(clone.detuneHz).toBe(2.5);
-      expect(clone.xmlId).toBe('art-clone');
-      expect(clone.styleName).toBe('testStyle');
-      expect(clone.articulationDefName).toBe('staccato');
-    });
-
-    it('clone should be independent of original', () => {
-      const ad = new ArticulationData();
-      ad.absoluteDelay = 10;
-      ad.relativeDuration = 0.5;
-      ad.detuneCents = 3.0;
-
-      const clone = ad.clone();
-      clone.absoluteDelay = 20;
-      clone.relativeDuration = 0.8;
-      clone.detuneCents = 0.0;
-
-      expect(ad.absoluteDelay).toBe(10);
-      expect(ad.relativeDuration).toBe(0.5);
-      expect(ad.detuneCents).toBe(3.0);
-    });
-  });
-
-  describe('ArticulationData.articulateNote', () => {
     function createNote(datePerf: number, durationPerf: number, velocity: number): Element {
       const note = new Element('note', Mpm.MPM_NAMESPACE);
       note.addAttribute(new Attribute('date', '0'));
@@ -492,46 +403,42 @@ describe('ArticulationMap', () => {
     }
 
     it('should return false for null note', () => {
-      const ad = new ArticulationData();
-      expect(ad.articulateNote(null)).toBe(false);
+      const ad = artic();
+      expect(articulateNote(ad, null)).toBe(false);
     });
 
     it('absoluteDelay shifts date.perf', () => {
-      const ad = new ArticulationData();
-      ad.absoluteDelay = 50;
+      const ad = artic({ absoluteDelay: 50 });
 
       const note = createNote(100, 200, 80);
-      ad.articulateNote(note);
+      articulateNote(ad, note);
 
       expect(parseFloat(note.getAttributeValue('date.perf')!)).toBeCloseTo(150, 5);
     });
 
     it('absoluteDelay=0 does not shift date.perf', () => {
-      const ad = new ArticulationData();
-      ad.absoluteDelay = 0;
+      const ad = artic({ absoluteDelay: 0 });
 
       const note = createNote(100, 200, 80);
-      ad.articulateNote(note);
+      articulateNote(ad, note);
 
       expect(parseFloat(note.getAttributeValue('date.perf')!)).toBeCloseTo(100, 5);
     });
 
     it('negative absoluteDelay shifts date.perf backward', () => {
-      const ad = new ArticulationData();
-      ad.absoluteDelay = -30;
+      const ad = artic({ absoluteDelay: -30 });
 
       const note = createNote(100, 200, 80);
-      ad.articulateNote(note);
+      articulateNote(ad, note);
 
       expect(parseFloat(note.getAttributeValue('date.perf')!)).toBeCloseTo(70, 5);
     });
 
     it('absoluteDelayMs sets articulation.absoluteDelayMs attribute', () => {
-      const ad = new ArticulationData();
-      ad.absoluteDelayMs = 25;
+      const ad = artic({ absoluteDelayMs: 25 });
 
       const note = createNote(100, 200, 80);
-      ad.articulateNote(note);
+      articulateNote(ad, note);
 
       const attr = note.getAttribute('articulation.absoluteDelayMs');
       expect(attr).not.toBeNull();
@@ -539,81 +446,73 @@ describe('ArticulationMap', () => {
     });
 
     it('absoluteDuration sets duration.perf to fixed value', () => {
-      const ad = new ArticulationData();
-      ad.absoluteDuration = 100;
+      const ad = artic({ absoluteDuration: 100 });
 
       const note = createNote(100, 200, 80);
-      ad.articulateNote(note);
+      articulateNote(ad, note);
 
       expect(parseFloat(note.getAttributeValue('duration.perf')!)).toBeCloseTo(100, 5);
     });
 
     it('relativeDuration multiplies duration.perf', () => {
-      const ad = new ArticulationData();
-      ad.relativeDuration = 0.5;
+      const ad = artic({ relativeDuration: 0.5 });
 
       const note = createNote(100, 200, 80);
-      ad.articulateNote(note);
+      articulateNote(ad, note);
 
       expect(parseFloat(note.getAttributeValue('duration.perf')!)).toBeCloseTo(100, 5);
     });
 
     it('relativeDuration=1.0 does not change duration.perf', () => {
-      const ad = new ArticulationData();
-      ad.relativeDuration = 1.0;
+      const ad = artic({ relativeDuration: 1.0 });
 
       const note = createNote(100, 200, 80);
-      ad.articulateNote(note);
+      articulateNote(ad, note);
 
       expect(parseFloat(note.getAttributeValue('duration.perf')!)).toBeCloseTo(200, 5);
     });
 
     it('absoluteVelocity sets velocity to fixed value', () => {
-      const ad = new ArticulationData();
-      ad.absoluteVelocity = 127;
+      const ad = artic({ absoluteVelocity: 127 });
 
       const note = createNote(100, 200, 80);
-      ad.articulateNote(note);
+      articulateNote(ad, note);
 
       expect(parseFloat(note.getAttributeValue('velocity')!)).toBeCloseTo(127, 5);
     });
 
     it('relativeVelocity multiplies velocity', () => {
-      const ad = new ArticulationData();
-      ad.relativeVelocity = 0.5;
+      const ad = artic({ relativeVelocity: 0.5 });
 
       const note = createNote(100, 200, 80);
-      ad.articulateNote(note);
+      articulateNote(ad, note);
 
       expect(parseFloat(note.getAttributeValue('velocity')!)).toBeCloseTo(40, 5);
     });
 
     it('absoluteVelocityChange adds to velocity', () => {
-      const ad = new ArticulationData();
-      ad.absoluteVelocityChange = 20;
+      const ad = artic({ absoluteVelocityChange: 20 });
 
       const note = createNote(100, 200, 80);
-      ad.articulateNote(note);
+      articulateNote(ad, note);
 
       expect(parseFloat(note.getAttributeValue('velocity')!)).toBeCloseTo(100, 5);
     });
 
     it('negative absoluteVelocityChange reduces velocity', () => {
-      const ad = new ArticulationData();
-      ad.absoluteVelocityChange = -30;
+      const ad = artic({ absoluteVelocityChange: -30 });
 
       const note = createNote(100, 200, 80);
-      ad.articulateNote(note);
+      articulateNote(ad, note);
 
       expect(parseFloat(note.getAttributeValue('velocity')!)).toBeCloseTo(50, 5);
     });
 
     it('detuneCents sets detuneCents attribute', () => {
-      const ad = new ArticulationData();
-      ad.detuneCents = 15.0;
+      const ad = artic({ detuneCents: 15.0 });
 
       const note = createNote(100, 200, 80);
-      ad.articulateNote(note);
+      articulateNote(ad, note);
 
       const attr = note.getAttribute('detuneCents');
       expect(attr).not.toBeNull();
@@ -621,11 +520,10 @@ describe('ArticulationMap', () => {
     });
 
     it('detuneHz sets detuneHz attribute', () => {
-      const ad = new ArticulationData();
-      ad.detuneHz = 3.5;
+      const ad = artic({ detuneHz: 3.5 });
 
       const note = createNote(100, 200, 80);
-      ad.articulateNote(note);
+      articulateNote(ad, note);
 
       const attr = note.getAttribute('detuneHz');
       expect(attr).not.toBeNull();
@@ -633,23 +531,19 @@ describe('ArticulationMap', () => {
     });
 
     it('detuneCents=0 does not add attribute', () => {
-      const ad = new ArticulationData();
-      ad.detuneCents = 0.0;
+      const ad = artic({ detuneCents: 0.0 });
 
       const note = createNote(100, 200, 80);
-      ad.articulateNote(note);
+      articulateNote(ad, note);
 
       expect(note.getAttribute('detuneCents')).toBeNull();
     });
 
     it('combined: absoluteDelay + relativeDuration + absoluteVelocityChange', () => {
-      const ad = new ArticulationData();
-      ad.absoluteDelay = 20;
-      ad.relativeDuration = 0.75;
-      ad.absoluteVelocityChange = -10;
+      const ad = artic({ absoluteDelay: 20, relativeDuration: 0.75, absoluteVelocityChange: -10 });
 
       const note = createNote(100, 200, 80);
-      ad.articulateNote(note);
+      articulateNote(ad, note);
 
       expect(parseFloat(note.getAttributeValue('date.perf')!)).toBeCloseTo(120, 5);
       expect(parseFloat(note.getAttributeValue('duration.perf')!)).toBeCloseTo(150, 5);
@@ -657,11 +551,10 @@ describe('ArticulationMap', () => {
     });
 
     it('absoluteDurationMs sets articulation.absoluteDurationMs attribute', () => {
-      const ad = new ArticulationData();
-      ad.absoluteDurationMs = 500;
+      const ad = artic({ absoluteDurationMs: 500 });
 
       const note = createNote(100, 200, 80);
-      ad.articulateNote(note);
+      articulateNote(ad, note);
 
       const attr = note.getAttribute('articulation.absoluteDurationMs');
       expect(attr).not.toBeNull();
@@ -669,11 +562,10 @@ describe('ArticulationMap', () => {
     });
 
     it('absoluteDurationChangeMs sets articulation.absoluteDurationChangeMs attribute', () => {
-      const ad = new ArticulationData();
-      ad.absoluteDurationChangeMs = 50;
+      const ad = artic({ absoluteDurationChangeMs: 50 });
 
       const note = createNote(100, 200, 80);
-      ad.articulateNote(note);
+      articulateNote(ad, note);
 
       const attr = note.getAttribute('articulation.absoluteDurationChangeMs');
       expect(attr).not.toBeNull();
@@ -693,11 +585,7 @@ describe('ArticulationMap', () => {
     // outer net; the watchdog is what converts non-termination into a failure. It counts
     // reads of `absoluteDurationChange`, which the loop body performs once per iteration, so
     // a loop that spins trips it within `maxReads` iterations.
-    function articulateUnderWatchdog(
-      ad: ArticulationData,
-      note: Element,
-      maxReads = 100_000,
-    ): boolean {
+    function articulateUnderWatchdog(ad: Articulation, note: Element, maxReads = 100_000): boolean {
       const change = ad.absoluteDurationChange;
       let reads = 0;
       Object.defineProperty(ad, 'absoluteDurationChange', {
@@ -711,7 +599,7 @@ describe('ArticulationMap', () => {
         },
       });
       try {
-        return ad.articulateNote(note);
+        return articulateNote(ad, note);
       } finally {
         Object.defineProperty(ad, 'absoluteDurationChange', {
           configurable: true,
@@ -723,9 +611,7 @@ describe('ArticulationMap', () => {
     }
 
     it('absoluteDurationChange shortens a positive duration and marks the note modified', () => {
-      const ad = new ArticulationData();
-      ad.xmlId = 'art1';
-      ad.absoluteDurationChange = -70;
+      const ad = artic({ xmlId: 'art1', absoluteDurationChange: -70 });
 
       const note = createNote(100, 200, 80);
       articulateUnderWatchdog(ad, note);
@@ -736,9 +622,7 @@ describe('ArticulationMap', () => {
     }, 5000);
 
     it('absoluteDurationChange is halved until the duration stays positive', () => {
-      const ad = new ArticulationData();
-      ad.xmlId = 'art1';
-      ad.absoluteDurationChange = -400;
+      const ad = artic({ xmlId: 'art1', absoluteDurationChange: -400 });
 
       const note = createNote(100, 100, 80);
       articulateUnderWatchdog(ad, note);
@@ -752,9 +636,7 @@ describe('ArticulationMap', () => {
       // The case that discriminates the two candidate fixes: with the flipped comparison
       // but no guard this spins forever, because durNew converges to 0.0 and stays <= 0.0.
       // duration.perf="0.0" is real - it occurs in composite_advanced_augmented.msm.
-      const ad = new ArticulationData();
-      ad.xmlId = 'art1';
-      ad.absoluteDurationChange = -70;
+      const ad = artic({ xmlId: 'art1', absoluteDurationChange: -70 });
 
       const note = createNote(100, 0, 80);
       articulateUnderWatchdog(ad, note);
@@ -764,9 +646,7 @@ describe('ArticulationMap', () => {
     }, 5000);
 
     it('absoluteDurationChange is skipped for a negative duration, which stays unmodified', () => {
-      const ad = new ArticulationData();
-      ad.xmlId = 'art1';
-      ad.absoluteDurationChange = -70;
+      const ad = artic({ xmlId: 'art1', absoluteDurationChange: -70 });
 
       const note = createNote(100, -10, 80);
       articulateUnderWatchdog(ad, note);
@@ -776,9 +656,7 @@ describe('ArticulationMap', () => {
     }, 5000);
 
     it('a positive absoluteDurationChange lengthens the note without halving', () => {
-      const ad = new ArticulationData();
-      ad.xmlId = 'art1';
-      ad.absoluteDurationChange = 50;
+      const ad = artic({ xmlId: 'art1', absoluteDurationChange: 50 });
 
       const note = createNote(100, 200, 80);
       articulateUnderWatchdog(ad, note);
@@ -792,10 +670,7 @@ describe('ArticulationMap', () => {
       // fire simply overwrites - unlike ArticulationDef, which re-reads and therefore
       // composes. TD1 kept that difference: the guard tests the hoisted local, it does not
       // re-read the attribute.
-      const ad = new ArticulationData();
-      ad.xmlId = 'art1';
-      ad.relativeDuration = 0.5;
-      ad.absoluteDurationChange = -70;
+      const ad = artic({ xmlId: 'art1', relativeDuration: 0.5, absoluteDurationChange: -70 });
 
       const note = createNote(100, 200, 80);
       articulateUnderWatchdog(ad, note);
@@ -906,8 +781,8 @@ describe('ArticulationMap', () => {
   describe('GenericMap operations', () => {
     it('should support removeElement by index', () => {
       const map = ArticulationMap.createArticulationMap();
-      map.addArticulation(0, 'staccato', null, null);
-      map.addArticulation(960, 'legato', null, null);
+      map.addArticulation({ date: 0, nameRef: 'staccato' });
+      map.addArticulation({ date: 960, nameRef: 'legato' });
 
       map.removeElementAt(0);
       expect(map.size()).toBe(1);
@@ -924,9 +799,9 @@ describe('ArticulationMap', () => {
 
     it('should support getElementBeforeAt', () => {
       const map = ArticulationMap.createArticulationMap();
-      map.addArticulation(0, 'staccato', null, null);
-      map.addArticulation(480, 'legato', null, null);
-      map.addArticulation(960, 'accent', null, null);
+      map.addArticulation({ date: 0, nameRef: 'staccato' });
+      map.addArticulation({ date: 480, nameRef: 'legato' });
+      map.addArticulation({ date: 960, nameRef: 'accent' });
 
       const elem = map.getElementBeforeAt(500);
       expect(elem).not.toBeNull();
