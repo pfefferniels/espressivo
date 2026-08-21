@@ -1,15 +1,11 @@
 /**
- * Branded types with smart constructors.
+ * Branded types with checked constructors, for new code.
  *
- * `src/units.ts` already brands five quantities and is required to emit nothing, which is why
- * it has no constructors: RULE U2 forbade them so that "type-level only" could be proved by a
- * zero-line emitted-JS diff. That was the right trade for a port under a byte-equivalence
- * gate, and it has a cost — a brand you can only apply with `as` documents an intention but
- * checks nothing, so `parseFloat(s) as Ticks` brands a `NaN` as happily as a tick count.
- *
- * This module is the other half, for new code: the brand plus the *proof obligation* that goes
- * with it. `src/units.ts` keeps its guarantee and is re-exported unchanged; nothing here is
- * imported by the parity-frozen arithmetic.
+ * `src/units.ts` brands five quantities without constructors, because RULE U2 requires it to
+ * emit no JavaScript at all. The cost is that its brands can only be applied with `as`, which
+ * documents an intention and checks nothing: `parseFloat(s) as Ticks` brands a `NaN` as
+ * happily as a tick count. This module supplies the missing half — the brand together with the
+ * proof obligation. It is not imported by the parity-frozen arithmetic.
  */
 import { err, ok, type Result } from './result.js';
 
@@ -33,8 +29,7 @@ export type Unbrand<T> = T extends Brand<infer Base, string> ? Base : T;
  * ```
  *
  * The returned function is the only way to produce the type without an `as`, so a value of
- * that type carries the predicate as a proof: every reader downstream may rely on it without
- * re-checking, which is exactly the local reasoning a bare `number` cannot support.
+ * that type carries the predicate as a proof and no reader downstream need re-check it.
  */
 export function refiner<Base, Name extends string, E>(
   predicate: (value: Base) => boolean,
@@ -44,11 +39,9 @@ export function refiner<Base, Name extends string, E>(
 }
 
 /**
- * Apply a brand without checking it.
- *
- * The escape hatch, named so it can be grepped. Use it only where the invariant is established
- * by construction a line or two above; anywhere else, use {@link refiner} and handle the
- * failure. It exists because `as` is invisible and this is not.
+ * Apply a brand without checking it — the escape hatch, named so it can be grepped where `as`
+ * could not be. Only for an invariant established by construction a line or two above;
+ * anywhere else use {@link refiner} and handle the failure.
  */
 export function unsafeBrand<Base, Name extends string>(value: Base): Brand<Base, Name> {
   return value as Brand<Base, Name>;

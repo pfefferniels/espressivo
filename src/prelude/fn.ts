@@ -1,21 +1,15 @@
 /**
- * Function composition.
- *
- * Deliberately three functions and no more. The combinators here exist to let a sequence of
- * named steps read top to bottom instead of inside out; anything further — currying, partial
- * application helpers, point-free plumbing — makes TypeScript's inference worse and the call
- * site harder to read, which is the opposite of the point.
+ * Function composition: three combinators, so that a sequence of named steps reads top to
+ * bottom instead of inside out. Currying and point-free plumbing are deliberately absent —
+ * both cost inference quality and call-site clarity.
  */
 
 /**
  * Feed a value through a chain of functions, left to right.
  *
- * The overload list stops where the longest chain in the tree does. `Performance.renderPart` is
- * a seven-stage fold whose state changes type at most of its boundaries — that is the point of
- * it, since the type at each boundary is what pins the render stages in their order — and an
- * arity that could not express it would push that pipeline into a bespoke local combinator,
- * which is the outcome this module exists to prevent. Each overload is one line and costs
- * nothing at runtime; the implementation has been variadic all along.
+ * The overloads stop at the arity of the longest chain in the tree, `Performance.renderPart`,
+ * whose stages are pinned in order by the type at each boundary. The implementation is
+ * variadic.
  */
 export function pipe<A>(a: A): A;
 export function pipe<A, B>(a: A, ab: (a: A) => B): B;
