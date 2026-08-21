@@ -10,19 +10,18 @@ import * as dateMap from '../src/msm/dateMap.js';
 import * as mpmNoteIds from '../src/mei/mpmNoteIds.js';
 import { Element, Attribute } from '../src/xml/XomTypes.js';
 
-// T14 dissolved `mei/Helper` into nine modules (ARCHITECTURE.md §8.2) and left the `Helper`
-// object in `index.ts` as the compatibility shim for its published API. These tests pin what
-// that shim promises: every original public static is still reachable under its original name
-// and still does what it did.
+// `mei/Helper` is dissolved into nine modules (ARCHITECTURE.md §8.2); the `Helper` object in
+// `index.ts` is the compatibility shim for its published API. These tests pin what that shim
+// promises: every original public static is still reachable under its original name, and still
+// does what it did.
 
 /**
- * The 34 public statics `mei/Helper` carried at 757948e that survive, in declaration order.
+ * The 34 public statics the shim promises, in `mei/Helper`'s declaration order.
  *
- * It carried 41. T21 deleted the 7 `compat/unsupported.js` members (the two
+ * Java's `Helper` carried 41. The seven the shim does not promise — the two
  * `validateAgainstSchema*`, `writeStringToFile`, the two `xslTransform*` and the two
- * `makeXslt*Transformer`) per ARCHITECTURE.md §8.10: every one was a stub that could not do
- * its job, so the shim no longer promises them. The tests that exercised those seven went
- * with them (charter invariant 7c, tests of removed behavior).
+ * `makeXslt*Transformer` — were stubs that could not do their job, and ARCHITECTURE.md §8.10
+ * removes them rather than keep them unimplemented.
  */
 const PUBLIC_STATICS = [
   'getFirstChildElement',

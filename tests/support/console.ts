@@ -9,11 +9,9 @@ import { vi, type MockInstance } from 'vitest';
  * suite's own output readable, and it is also how a test can assert that the reason WAS
  * reported.
  *
- * The idiom was `vi.spyOn(console, 'error').mockImplementation(() => {})` in five places,
- * which is an empty function literal and therefore a `no-empty-function` finding each time.
- * `mockReturnValue(undefined)` is the same spy with no function literal at all: `vi.spyOn`
- * calls through by default, and setting a return value is what replaces that implementation.
- * Restoring is the caller's job, exactly as it was — `spy.mockRestore()`.
+ * `mockReturnValue(undefined)` rather than `mockImplementation(() => {})`: the same spy
+ * without an empty function literal, and so without a `no-empty-function` finding. Restoring
+ * is the caller's job — `spy.mockRestore()`.
  */
 export function silenceConsoleError(): MockInstance<typeof console.error> {
   return vi.spyOn(console, 'error').mockReturnValue(undefined);
