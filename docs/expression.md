@@ -129,6 +129,10 @@ A weight above 1 can drive a factor negative below `s = 1` — `weightedFactors(
 is about −0.05 — and `exaggerateMpm` rejects that, naming the dimension. Keeping the slider inside
 the admissible range is the caller's job; §8 of the design document has the per-dimension ranges.
 
+Rendering per tick: hold the parsed `Msm` and call `msmObj.exportExpressiveMidi(performance, ...)`
+instead of re-parsing through `renderExpressiveMidi` — ~1.2x here, since the MPM itself is fresh
+every tick either way.
+
 ## The full model
 
 The per-attribute registry and the reasoning behind every inclusion and exclusion
