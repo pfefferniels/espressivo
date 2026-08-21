@@ -443,11 +443,8 @@ export class GenericMap extends AbstractXmlSubtree {
    * serialized (`sortXml`), so the difference is byte-visible.
    */
   private insertionIndexFor(date: number): number {
-    // `findLastIndex` (ES2023) IS the backwards linear scan this comment defends, so the
-    // spelling now says what the reasoning says. Its `-1` for "no entry qualifies" is the
-    // same answer the loop's fall-through gave: `-1 + 1` is 0, insert at the front. The NaN
-    // behaviour is untouched, because the predicate and the direction are untouched — and
-    // the checked read is gone with the index it was checking.
+    // `findLastIndex` is that backwards scan. Its `-1` for "no entry qualifies" becomes 0
+    // under the `+ 1`: insert at the front.
     return this.elements.findLastIndex((entry) => entry.getKey() <= date) + 1;
   }
 

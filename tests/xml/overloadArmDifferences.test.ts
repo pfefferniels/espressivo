@@ -2,17 +2,14 @@
  * The per-method behavioural probe RULE M2a demands before any navigation implementation is
  * merged into another (ARCHITECTURE.md §9, and the "forbidden in T14" row of §11).
  *
- * Four functions in `src/xml/tree.ts` used to be TypeScript overload sets whose two arms were
- * told apart at runtime by `typeof arg1`. Reading them as "the same lookup, arguments either
- * way round" is the mistake this file exists to prevent: three of the four carry **two
- * genuinely different implementations**, and two of those disagree on inputs a caller can
- * actually reach.
+ * Four pairs of functions in `src/xml/tree.ts` read as one lookup with the arguments either
+ * way round. That is the mistake this file exists to prevent: three of the four pairs are two
+ * genuinely different implementations, and two of those disagree on inputs a caller can reach.
  *
- * So the arms were given separate names rather than merged — a rename changes no behaviour by
- * construction, where a merge would have had to pick a winner on the byte-compared
- * serialisation path. This file pins the differences that make the merge illegal, so that
- * anyone who later proposes one has to delete an explicit, failing assertion rather than an
- * absence of evidence.
+ * The arms therefore carry separate names rather than being merged — a rename changes no
+ * behaviour by construction, where a merge would have to pick a winner on the byte-compared
+ * serialisation path. Pinning the differences here means anyone proposing a merge has to
+ * delete an explicit failing assertion rather than an absence of evidence.
  *
  * Each test states BOTH answers. Where they agree, the test says so and the merge is merely
  * unmotivated; where they differ, the test names the input and the merge is a behaviour change.

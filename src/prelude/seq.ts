@@ -48,10 +48,9 @@ export function head<T>(xs: NonEmptyArray<T>): T {
 }
 
 export function last<T>(xs: NonEmptyArray<T>): T {
-  // `at(-1)`, not `xs[xs.length - 1]`: the negative index IS "from the end", so there is no
-  // length arithmetic left to get wrong. The cast is unchanged and is the one the note above
-  // covers — `at` returns `T | undefined` for the same reason `[]` does, and `NonEmptyArray`
-  // is the proof it cannot be `undefined` here.
+  // `at(-1)` rather than `xs[xs.length - 1]`, so there is no length arithmetic to get wrong.
+  // `at` returns `T | undefined` for the same reason `[]` does; `NonEmptyArray` is the proof it
+  // cannot be `undefined` here, and the cast is the one the note at the top of this file covers.
   return xs.at(-1) as T;
 }
 
@@ -142,15 +141,8 @@ export function numberAt(
 /**
  * The last element satisfying the predicate, or `null`. A backwards scan, named.
  *
- * The scan is `Array.prototype.findLast` (ES2023) rather than the descending `for` loop this
- * used to hold. That loop had to write `if (x !== undefined && predicate(x))` — a guard that
- * `noUncheckedIndexedAccess` demanded and that could never fire, because `i` was bounded by
- * `xs.length`. Handing the index back to the engine deletes the index, so it deletes the
- * guard with it, and the element type no longer has to promise it is non-nullish to keep the
- * two absences apart.
- *
- * What survives is the `?? null`: the platform reports a miss as `undefined` and this module
- * reports it as `null`, which is the convention every option combinator here is built on.
+ * The `?? null` is deliberate: the platform reports a miss as `undefined` and this module
+ * reports it as `null`, the convention every option combinator here is built on.
  */
 export function findLast<T extends NonNullable<unknown>>(
   xs: readonly T[],
@@ -207,20 +199,14 @@ export function partitionWith<A>(
  * iteration order is insertion order by specification (ECMA-262, `%Map.prototype%`
  * `[@@iterator]`), not an implementation detail.
  *
- * A bucket is created as `[x]` and only grown, so the `NonEmptyArray` in the return type holds
- * and a caller reading a group's first element needs no guard.
+ * Keys compare by SameValueZero, so a `NaN` key buckets with itself and `0`/`-0` collapse.
+ * Every bucket is created holding its first element, so the `NonEmptyArray` in the return type
+ * holds and a caller reading a group's first element needs no guard.
  */
 export function groupBy<A, K>(xs: Iterable<A>, key: (a: A) => K): ReadonlyMap<K, NonEmptyArray<A>> {
-  // `Map.groupBy` (ES2024) is this function, in the engine. Both orders documented above are
-  // its specified behaviour and not an accident of this implementation: it appends within a
-  // bucket and creates a bucket on first sight of the key, so encounter order holds inside a
-  // group and first-seen order holds across them. Keys are compared by SameValueZero, exactly
-  // as `Map.prototype.set` did in the loop this replaces, so a `NaN` key still buckets with
-  // itself and `0`/`-0` still collapse.
-  //
-  // The cast is the one the note at the top of this file describes, and it is now the only
-  // thing this function does: a bucket the engine creates is created as `[x]` and only ever
-  // grown, so it cannot be empty, and `NonEmptyArray` is how that reaches the call sites.
+  // Every order promised above is `Map.groupBy`'s specified behaviour rather than a property
+  // of this call: it appends within a bucket and creates one on first sight of a key. The cast
+  // is the construction proof the note at the top of this file describes.
   return Map.groupBy(xs, key) as unknown as ReadonlyMap<K, NonEmptyArray<A>>;
 }
 

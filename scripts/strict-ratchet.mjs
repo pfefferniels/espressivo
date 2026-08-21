@@ -32,24 +32,17 @@ const FLAGS = ['--noUncheckedIndexedAccess'];
 /**
  * Errors per test directory, for one flag.
  *
- * **The guard below is the load-bearing part of this function.** The counts come from
- * scraping the compiler's stderr with a regex, and the whole ratchet rests on that regex
- * matching. If it ever stops matching — a compiler that prefixes paths differently, emits
- * colour codes, or changes the literal `error TS` token — every directory reports zero and
- * `--check` passes trivially. That failure does not crash and does not warn: it reads
- * exactly like a clean sweep, and a `--save` in that state bakes an all-zero baseline in,
- * after which every genuine finding looks like a regression.
+ * The counts come from scraping the compiler's output with a regex, so the guard below is
+ * load-bearing: if the regex stops matching — a compiler that prefixes paths differently,
+ * emits colour codes, or changes the literal `error TS` token — every directory reports zero,
+ * `--check` passes trivially, and a `--save` in that state bakes an all-zero baseline in.
+ * That failure reads exactly like a clean sweep. So a non-zero exit with no parsed lines
+ * throws: `tsc` exiting non-zero means it had something to say, and if we understood none of
+ * it we do not get to report a number.
  *
- * So: a non-zero exit with no parsed lines is a parser failure, not a clean tree, and it
- * throws. `tsc` exiting non-zero means it had something to say; if we understood none of it,
- * we do not get to report a number.
- *
- * This was checked rather than assumed when `npx tsc` became TypeScript 7 (the native Go
- * compiler): TS 7.0.2 and TS 6.0.3 produce byte-identical diagnostic formatting AND an
- * identical finding set here — 397 findings under `--noUncheckedIndexedAccess`, same files,
- * same positions, same codes — so the baseline stayed comparable across the switch and did
- * not need re-saving. The guard exists for the next compiler change, which will not
- * necessarily be as kind.
+ * TypeScript 7.0.2 and 6.0.3 were measured to produce an identical finding set here — 397
+ * under `--noUncheckedIndexedAccess`, same files, positions and codes — so the baseline
+ * survived that switch unchanged. The guard is for the next compiler change.
  */
 function measure(flag) {
   let out = '';

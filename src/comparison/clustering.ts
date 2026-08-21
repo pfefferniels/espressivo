@@ -470,9 +470,8 @@ export function pam(
     for (const [position, medoid] of medoids.entries())
       for (let candidate = 0; candidate < n; ++candidate) {
         if (medoids.includes(candidate)) continue;
-        // `with` (ES2023) is copy-one-index-replaced as a single expression, where this was
-        // a spread and then a mutation of the copy — two statements that a reader had to put
-        // together to see that `medoids` is not being written to.
+        // `with` copies the array with one index replaced, so `medoids` itself is never
+        // written to.
         const trial = medoids.with(position, candidate);
         const trialCost = partitionCost(matrix, trial, labels, order);
         const better =
