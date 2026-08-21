@@ -135,7 +135,7 @@ export class Mpm extends AbstractMsm {
 
     for (const perf of perfs) {
       // go through all performance elements
-      const p = Performance.createPerformance(perf); // generate an instance of class Performance from it
+      const p = Performance.fromXml(perf); // generate an instance of class Performance from it
       if (isErr(p)) continue;
       this.performances.push(p.value);
     }

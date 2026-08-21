@@ -1124,7 +1124,7 @@ export class Mei2MsmMpmConverter {
     // entitled to say something. What it can say is new — `createPerformance` used to print
     // its exception itself and hand back a bare null, so this message could only report
     // *that* the performance failed.
-    const created = Performance.createPerformance('MEI export performance');
+    const created = Performance.fromName('MEI export performance');
     if (isErr(created)) {
       console.error(
         `Failed to generate an instance of Performance. Skipping mdiv ${titleString}. ${describeMpmParseError(created.error)}`,
@@ -2265,7 +2265,7 @@ export class Mei2MsmMpmConverter {
     // false: the line above has already gone through `requireMovement`, and a movement is only
     // built once its performance exists (`makeMovement` returns early otherwise). The record
     // carries the performance beside the MSM, so the pairing is now in the type.
-    const performancePart = MpmPart.createPart(label, parseInt(number), midiChannel, midiPort);
+    const performancePart = MpmPart.fromValues(label, parseInt(number), midiChannel, midiPort);
     if (isOk(performancePart)) {
       requirePerformance(ctx).addPart(performancePart.value);
       if (xmlId !== null) performancePart.value.setId(xmlId.getValue());

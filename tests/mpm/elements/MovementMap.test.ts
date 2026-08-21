@@ -860,7 +860,7 @@ describe('MovementMap', () => {
       controller: string,
     ): Mpm {
       const mpm = Mpm.createMpm();
-      const perf = okValue(Performance.createPerformance('perf', 720));
+      const perf = okValue(Performance.fromName('perf', 720));
       mpm.addPerformance(perf);
 
       const tempoMap = TempoMap.createTempoMap()!;
@@ -887,7 +887,7 @@ describe('MovementMap', () => {
         movMap.addMovement(term);
       }
       perf.getGlobal()!.getDated()!.addMap(movMap);
-      perf.addPart(okValue(Part.createPart('Piano', 1, 0, 0)));
+      perf.addPart(okValue(Part.fromValues('Piano', 1, 0, 0)));
       return mpm;
     }
 
