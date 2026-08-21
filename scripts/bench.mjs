@@ -1,50 +1,23 @@
 /**
- * Rendering benchmark, with a superlinearity detector.
+ * Rendering benchmark, with a superlinearity detector — the net under a rendering path whose
+ * linearity was won back once and can be handed away again one allocation at a time.
  *
- * Commit 980ae7e won 3.1x on real fixtures and 71x on a 32 000-note score by removing five
- * superlinear shapes from the rendering path, and measured all of it ad hoc. The functional
- * rewrite moves that same path onto immutable data, which is exactly the kind of change that
- * can hand those wins back one allocation at a time. This script is the net.
+ * The per-fixture wall times are the coarse signal. The real one is microseconds per note
+ * across four sizes: a linear stage holds that roughly flat, and anything quadratic shows up
+ * as a rising column long before it becomes a timeout. Convert and render are timed apart, or
+ * one stage's curve hides inside the total. Current figures are in `bench-baseline.json`.
  *
- * The per-fixture wall times are the coarse signal. The real one is **microseconds per note
- * across four sizes**: a linear stage holds that roughly flat, and anything quadratic shows up
- * as a rising column long before it becomes a timeout.
- *
- * The two stages are timed apart, which is the whole reason this file exists in this shape.
- * Measured on the tree at the time of writing:
- *
- *      notes   convert us/note   render us/note
- *        250               627               35
- *        500               863               13
- *       1000              1750               15
- *       2000              3901               29
- *       4000              8025               15
- *
- * That table is **historical**: the converter was quadratic because every structural lookup
- * went through `Element.query`, which serialises the subtree to XML text, re-parses it, and
- * then pays XPath's node-set ordering — `compareDocumentPosition` over a flat `<score>` is
- * O(n) per comparison. Replacing those with tree walks made it linear. Current figures are in
- * `bench-baseline.json`; the same 4000-note score now takes about 235 ms.
- *
- * **Where the next win is, measured and not yet taken.** A `--cpu-prof` of the full pipeline
- * at 16 000 notes now attributes **46.8% of self time to `descendantElements`** — the walk
- * that replaced `query` — plus 16% to the garbage collector, while `Element.query` does not
- * appear in the top twelve at all. Timing shows the residual shape: 4000 → 8000 → 16 000 notes
- * costs 235 → 346 → 621 ms (roughly linear), but 16 000 → 32 000 costs 621 → 1926 ms, which is
- * 3.1x for 2x the notes. So a Θ(n)-per-call walk is still being made O(n) times somewhere, with
- * a constant small enough that it only shows past 16 000 notes. Two candidates worth measuring
- * before optimising: the generator allocation per call (16% GC is a lot), and whichever caller
- * runs it per note. Not chased here — the absolute numbers are fine and the remaining shape is
- * beyond the size of a real score — but it is the next thing, and this is where it is written
- * down.
- *
- * Keep the two columns separate regardless, or one stage's curve hides inside a total.
+ * A residual nonlinearity is known and not chased: 4000 → 8000 → 16 000 notes costs
+ * 235 → 346 → 621 ms, but 16 000 → 32 000 costs 621 → 1926 ms — 3.1x for twice the notes. A
+ * `--cpu-prof` at 16 000 notes attributes 46.8 % of self time to `descendantElements` and 16 %
+ * to the garbage collector, so a Θ(n) walk is being run O(n) times somewhere. Worth measuring
+ * before optimising: the generator allocation per call, and whichever caller runs it per note.
  *
  *   node scripts/bench.mjs                 measure and print
  *   node scripts/bench.mjs --save          write scripts/bench-baseline.json
  *   node scripts/bench.mjs --check         compare against the baseline, exit 1 on regression
  *
- * Timing is not a unit test and deliberately does not run in `vitest`: a CI box under load
+ * Timing is not a unit test and deliberately does not run in `vitest`, where a loaded CI box
  * would make it flap. `--check` is for running by hand either side of a change.
  */
 import { readFileSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
@@ -59,7 +32,7 @@ const BASELINE = join(ROOT, 'scripts/bench-baseline.json');
 const TOLERANCE = 1.25;
 /** Repeats per measurement; the median is reported, which is stabler than a mean under GC. */
 const REPEATS = 3;
-// Kept small deliberately: the converter is quadratic, so 8000 notes alone is ~2 minutes.
+// Kept small: the largest sizes dominate the run time.
 const SYNTHETIC_SIZES = [250, 500, 1000, 2000];
 
 const api = await import(join(ROOT, 'dist/api/index.js'));
@@ -126,14 +99,9 @@ function renderAll(meiText) {
 }
 
 /**
- * The two stages timed apart, because only one of them was ever the problem.
- *
- * **Median of {@link REPEATS}, not one sample.** This took a single measurement per size until
- * an agent noticed the same commit reporting "x2.7 SUPERLINEAR" and "x1.2 linear enough" ten
- * minutes apart. One unlucky sample at the smallest size is enough to invert the verdict,
- * because the drift is a ratio and the smallest size is its noisiest term. The fixture block
- * had always taken a median; the synthetic block, which is the one the verdict is computed
- * from, had not.
+ * The two stages timed apart, each the median of {@link REPEATS} runs. A single sample per
+ * size is not enough: the drift verdict is a ratio whose noisiest term is the smallest size,
+ * so one unlucky run there inverts it.
  */
 function timeStages(meiText) {
   let movements = [];

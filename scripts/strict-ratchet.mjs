@@ -1,37 +1,24 @@
 /**
- * A one-way ratchet for the compiler flags that are not on yet.
+ * A one-way ratchet for the compiler flags that are not on yet. Currently pointed at `tests/`
+ * and at `--noUncheckedIndexedAccess`, which `tsconfig.json` already enforces for `src/` and
+ * `tsconfig.tests.json` still opts out of.
  *
- * **Now pointed at `tests/`.** It did this job for `src/` first — 885 errors to zero across
- * fifteen directories, by five agents and me, and `noUncheckedIndexedAccess` is now ON in
- * `tsconfig.json` so the compiler enforces that side directly. `tsconfig.tests.json` opts the
- * test project out for the moment, at 1047, and this script keeps that number falling.
- *
- * `noUncheckedIndexedAccess` is the strongest remaining check available to this codebase and
- * the last one still off: it makes `xs[i]` have type `T | undefined`, which is exactly the
- * mistake a tree full of index-based loops is prone to. It reports 885 errors in `src/`, so it
- * cannot simply be switched on — it is being cleared directory by directory, by several people
- * at once.
- *
- * That is the problem this script exists for. Between "885" and "0" the flag protects nothing,
- * and a new indexed loop written in an already-cleared directory silently puts the count back
- * up. A count that can go both ways is not progress. This makes it monotonic: the baseline is
- * committed per directory, and the check fails if any directory gets worse.
+ * The flag makes `xs[i]` a `T | undefined`, which is the mistake a tree full of index-based
+ * loops is prone to. Too many findings to switch on outright, and while it is off a new
+ * indexed loop in an already-cleared directory silently puts the count back up. This makes the
+ * count monotonic: the baseline is committed per directory, and `--check` fails if any
+ * directory gets worse.
  *
  *   node scripts/strict-ratchet.mjs            report the current counts against the baseline
  *   node scripts/strict-ratchet.mjs --check     exit 1 if any directory regressed
  *   node scripts/strict-ratchet.mjs --save      re-record the baseline (only ever downward)
  *   node scripts/strict-ratchet.mjs --reseed    establish a baseline from scratch
  *
- * `--save` refuses to record a worse number for any directory, which is what makes it a
- * ratchet rather than a rubber stamp. A directory absent from the baseline counts as zero, so
- * a new folder cannot arrive with a fresh allowance either.
- *
- * `--reseed` is the deliberate exception, and exists because that guard is otherwise total:
- * pointing the ratchet at a NEW target — as happened when `src/` reached zero and this turned
- * to `tests/` — means every directory looks like a regression from an implied zero, and
- * `--save` correctly refuses all of them. Reseeding is not a way to launder a regression: it
- * records whatever is there now, so use it only when the thing being measured has changed,
- * and say so in the commit.
+ * `--save` refuses to record a worse number for any directory, and a directory absent from the
+ * baseline counts as zero, so a new folder cannot arrive with a fresh allowance. `--reseed` is
+ * the deliberate exception, needed when the ratchet is pointed at a new target and every
+ * directory therefore looks like a regression from an implied zero. It records whatever is
+ * there now, so use it only when what is being measured has changed, and say so in the commit.
  */
 import { execSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';

@@ -1,34 +1,24 @@
 /**
- * A one-way ratchet for ESLint, and the reason it exists is a sentence from this campaign's
- * opening diagnosis:
+ * A one-way ratchet for ESLint: the same instrument as {@link ./strict-ratchet.mjs}, pointed
+ * at `eslint .` rather than at a compiler flag, and wired into `npm run verify`.
  *
- *   > `npm run verify` does not run ESLint, so the lint gate has been quietly red.
- *
- * It reported **1053 findings** that day and nothing failed, because nothing looked. The
- * campaign has since taken `src/` to a quarter of that, but "nothing looked" is still true,
- * and a count nobody enforces is a count that drifts back up. This is the same instrument as
- * {@link ./strict-ratchet.mjs}, pointed at `eslint .` instead of at a compiler flag, and wired
- * into `npm run verify` so that the gate is real.
- *
- * The reason it is a ratchet rather than `eslint --max-warnings 0` is arithmetic: turning the
- * lint gate on outright means clearing every finding first, and the two worst directories are
- * being rewritten by other people right now. A ratchet makes the number monotonic today and
- * lets it reach zero on its own schedule — which is exactly how `noUncheckedIndexedAccess`
- * got from 885 to 0 in `src/`.
+ * A ratchet rather than `eslint --max-warnings 0` because turning the gate on outright would
+ * mean clearing every finding first. This makes the count monotonic now and lets it reach zero
+ * on its own schedule.
  *
  *   node scripts/lint-ratchet.mjs            report the current counts against the baseline
  *   node scripts/lint-ratchet.mjs --check    exit 1 if any directory regressed
  *   node scripts/lint-ratchet.mjs --save     re-record the baseline (only ever downward)
  *   node scripts/lint-ratchet.mjs --reseed   establish a baseline from scratch
  *
- * `--save` refuses to record a worse number for any directory, and a directory absent from
- * the baseline counts as zero — so a new folder cannot arrive with a fresh allowance. That
- * guard is total, which is what `--reseed` is the deliberate exception to: use it only when
- * the thing being measured has changed (a rule added, a directory renamed) and say so in the
- * commit. It is not a way to launder a regression.
+ * `--save` refuses to record a worse number for any directory, and a directory absent from the
+ * baseline counts as zero, so a new folder cannot arrive with a fresh allowance. `--reseed` is
+ * the deliberate exception to that guard: use it only when what is being measured has changed
+ * — a rule added, a directory renamed — and say so in the commit. It is not a way to launder a
+ * regression.
  *
- * Counts are per directory rather than per file so that moving code between files inside a
- * directory is not a regression, and per rule as well so the report says what got worse.
+ * Counts are per directory rather than per file, so that moving code between files inside a
+ * directory is not a regression.
  */
 import { execSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
