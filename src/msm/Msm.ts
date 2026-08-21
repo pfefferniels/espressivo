@@ -25,25 +25,16 @@ import type { Performance } from '../mpm/elements/Performance.js';
 import type { RenderOptions } from '../mpm/RenderOptions.js';
 
 /**
- * The one module-local navigation helper left, and the reason it is still here.
+ * Strip the extension from a filename. Module-local rather than the shared
+ * {@link module:music/text.getFilenameWithoutExtension} because the two differ on one input: a
+ * filename with no dot at all. `lastIndexOf` is then -1, and the shared copy evaluates
+ * `substring(0, -1)`, which JavaScript reads as `substring(0, 0)` — the empty string — where
+ * this one returns the name. Neither is Java's, whose `String.substring(0, -1)` throws.
  *
- * This file used to open with eight of them — "Java's `Helper` in miniature, private to
- * this module" — carrying a warning not to deduplicate them against `src/xml/` without a
- * per-method behavioural comparison (ARCHITECTURE.md RULE M2a). That comparison is
- * `tests/msm/navigationEquivalence.test.ts`: it restates all eight and feeds both sides the
- * MSM/MPM fixture corpus plus the adversarial trees the rule names — a namespaced `xml:id`,
- * children sharing a local name across three namespaces, text nodes between siblings, a
- * detached element, the empty name. **Seven of the eight agreed everywhere**, so seven are
- * gone and their callers now use `xml/tree.ts` and `xml/ids.ts`. This is the eighth.
- *
- * It differs from {@link module:music/text.getFilenameWithoutExtension} on one input:
- * a filename with **no dot at all**. `lastIndexOf` is then -1, and the shared copy
- * evaluates `substring(0, -1)` — which JavaScript reads as `substring(0, 0)`, the empty
- * string — where this one guards for -1 and returns the name. Neither is Java's, whose
- * `String.substring(0, -1)` throws; this copy is what the reference behaviour of
- * {@link Msm.getTitle} and {@link Msm.renderMidi} was measured against, and under the
- * shared copy an extensionless file would title the movement `''` and name its MIDI
- * `.mid`. The divergence is pinned by the probe rather than left to be rediscovered.
+ * This copy is what the reference behaviour of {@link Msm.getTitle} and {@link Msm.renderMidi}
+ * was measured against; under the shared one an extensionless file would title the movement `''`
+ * and name its MIDI `.mid`. The divergence is pinned by
+ * `tests/msm/navigationEquivalence.test.ts`.
  */
 function getFilenameWithoutExtension(filename: string): string {
   const i = filename.lastIndexOf('.');
@@ -56,35 +47,25 @@ function getFilenameWithoutExtension(filename: string): string {
  * Rename `copy`'s `xml:id` to `meico_repetition_<reps>_<baseId>` and record the step in the
  * old-id → new-id chain. No-op for a copy with no `xml:id`.
  *
- * The two loops in {@link Msm.applySequencingMapToMap} carried this block character for
- * character, four lines and a backwards `for` each. It is lifted out because it is the same
- * block, not because the loops around it may be restructured — they may not, and the note on
- * that method says so at length. Nothing here is reordered: both call sites invoke it exactly
- * where the block stood.
+ * `repetitionIDs` is a chain, not a base-id index: `base → rep1 → rep2 → …`. The backwards walk
+ * follows it from the base id to the id of the previous iteration, which is the key the new
+ * entry belongs under, so a caller can follow any old id forward to its current one.
  *
- * **`repetitionIDs` is a chain, not a base-id index**: `base → rep1 → rep2 → …`. The
- * backwards walk follows it from the base id to the id of the *previous* iteration, which is
- * the key the new entry belongs under, so a caller can follow any old id forward to its
- * current one.
- *
- * A missing link used to be `repetitionIDs.get(prevId)!`, which on a broken chain assigns
- * `undefined` to a `string` and then writes an entry under an `undefined` key — a
- * `Map<string, string>` handed back to the caller with a key that is not a string, and no
- * error anywhere. The chain cannot be broken from inside this module: an element reaching
- * `reps` has passed through here `reps - 1` times already, each of those wrote the entry this
- * step reads, and `resolveSequencingMaps` threads one table through every call. It CAN be
- * broken by an outside caller of the public `applySequencingMapToMap` who supplies a fresh
- * table for a second pass, and that is now a thrown error rather than a corrupt result.
+ * The chain cannot be broken from inside this module: an element reaching `reps` has passed
+ * through here `reps - 1` times already, each of those wrote the entry this step reads, and
+ * `resolveSequencingMaps` threads one table through every call. An outside caller of the public
+ * `applySequencingMapToMap` can break it by supplying a fresh table for a second pass, which
+ * throws rather than writing an entry under an `undefined` key.
  */
 function recordRepetitionId(repetitionIDs: Map<string, string>, copy: Element, reps: number): void {
-  const id = copy.getAttribute('id', 'http://www.w3.org/XML/1998/namespace'); // get the id of the copy
-  if (id === null) return; // it has no xml:id
+  const id = copy.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
+  if (id === null) return;
 
-  let prevId = id.getValue(); // get the base ID
-  const newId = `meico_repetition_${String(reps)}_${prevId}`; // generate a new ID
-  id.setValue(newId); // set the attribute
+  let prevId = id.getValue();
+  const newId = `meico_repetition_${String(reps)}_${prevId}`;
+  id.setValue(newId);
 
-  // the key of the map entry should be the ID of the previous iteration, not the base ID
+  // the key of the map entry is the ID of the previous iteration, not the base ID
   for (let r = reps - 1; r > 0; --r) {
     const linked = repetitionIDs.get(prevId);
     if (linked === undefined)
@@ -98,33 +79,31 @@ function recordRepetitionId(repetitionIDs: Map<string, string>, copy: Element, r
 }
 
 /**
- * This class holds data in msm format (Musical Sequence Markup).
- * Port of meico.msm.Msm
- * @author Axel Berndt.
- *
- * MSM is the middle of the pipeline: `Mei2MsmMpmConverter` turns an MEI score into an MSM
- * (what is played, in symbolic time) plus an MPM (how it is played), and this class turns
- * an MSM back into MIDI. Its two exports are the two halves of that:
+ * A document in MSM format (Musical Sequence Markup), the middle of the pipeline:
+ * `Mei2MsmMpmConverter` turns an MEI score into an MSM (what is played, in symbolic time) plus
+ * an MPM (how it is played), and this class turns an MSM back into MIDI. Its two exports are the
+ * two halves of that:
  *
  * - {@link exportMidi} — the score as written. Dates are MSM ticks, one tempo event, one
  *   velocity for every note.
- * - {@link exportExpressiveMidi} — the score as performed. Expects the
- *   `milliseconds.date` / `milliseconds.date.end` / `velocity` attributes that
- *   {@link Performance.perform} writes, and reads *those* instead of `date`/`duration`.
+ * - {@link exportExpressiveMidi} — the score as performed. Expects the `milliseconds.date` /
+ *   `milliseconds.date.end` / `velocity` attributes that {@link Performance.perform} writes, and
+ *   reads those instead of `date`/`duration`.
  *
- * The document is `<msm>` → one `<global>` plus one `<part>` per instrument; each of those
- * is `<header>` + `<dated>`, and `<dated>` holds the maps — `timeSignatureMap`,
- * `keySignatureMap`, `markerMap`, `sequencingMap`, `pedalMap`, `miscMap`, and in a part
- * also `<score>`, the note list itself. A part's own map wins over the global one of the
- * same name wherever both exist.
+ * The document is `<msm>` → one `<global>` plus one `<part>` per instrument; each of those is
+ * `<header>` + `<dated>`, and `<dated>` holds the maps — `timeSignatureMap`, `keySignatureMap`,
+ * `markerMap`, `sequencingMap`, `pedalMap`, `miscMap`, and in a part also `<score>`, the note
+ * list itself. A part's own map wins over the global one of the same name wherever both exist.
  *
- * The XML tree is the single source of truth: this class holds no parsed model beside it,
- * every getter reads the tree, and every mutator writes it.
+ * The XML tree is the single source of truth: this class holds no parsed model beside it, every
+ * getter reads the tree, and every mutator writes it.
  *
- * Two of the maps are not read during MIDI export at all but consumed earlier:
- * `sequencingMap` by {@link resolveSequencingMaps} (repeats and jumps, applied before
- * anything is rendered) and `miscMap`, which is scratch space the MEI converter deletes on
- * its way out.
+ * Two of the maps are not read during MIDI export but consumed earlier: `sequencingMap` by
+ * {@link resolveSequencingMaps} (repeats and jumps, applied before anything is rendered) and
+ * `miscMap`, which is scratch space the MEI converter deletes on its way out.
+ *
+ * Port of meico.msm.Msm
+ * @author Axel Berndt.
  */
 export class Msm extends AbstractMsm {
   /**
@@ -135,76 +114,46 @@ export class Msm extends AbstractMsm {
    * {@link parseChannelVolumeMap} is the only reader — the position map is not thinned.
    * Java: `Msm.java:25,1073`.
    */
-  private static readonly CONTROL_CHANGE_DENSITY: number = 10; // in MPM-to-MIDI export a series of control change events may be generated; this constant limits their density
-
-  /*
-   * THERE IS NO CONSTRUCTOR HERE, AND THAT IS THE CHANGE.
-   *
-   * `new Msm()`, `new Msm(document)` and `new Msm(xml)` all still work, and none of the 36
-   * call sites moved: {@link AbstractMsm}'s `constructor(source?: Document | string)` accepts
-   * all three and is inherited. What stood here was three overload signatures over a body
-   * that dispatched on `typeof` and then called `super` with the argument it had been handed
-   * — the overloads' whole content, restated as runtime tests the compiler could not tie back
-   * to them.
-   *
-   * The comment defending them said the three modes "are three different things to start from
-   * ... not one parameter that happens to be optional", and that collapsing them "would say
-   * less than the three signatures do". They have the same arity and one parameter each, so
-   * the union lists exactly the same three modes; nothing was said that is no longer said.
-   *
-   * The body's fourth arm, for `new Msm(42)` from untyped JavaScript, is not needed either: a
-   * value that is neither `undefined` nor a `Document` reaches `XmlBase`'s
-   * `typeof arg === 'string' && isXmlString` test, fails it, and leaves the field
-   * initializers standing — `data` and `file` null, `isValidFlag` false — which is exactly
-   * what that arm's bare `super()` produced.
-   *
-   * Named factories (`fromXml`, `fromDocument`, `empty`) would read better still; see
-   * {@link AbstractMsm}'s constructor for why that is a scheduled change and not this one.
-   */
+  private static readonly CONTROL_CHANGE_DENSITY: number = 10;
 
   /**
-   * this factory creates an initial Msm instance with empty global maps
-   * @param title
-   * @param id an id string for the root element or null, in the latter case a random UUID will be created
-   * @param ppq
-   * @returns
+   * A fresh Msm with empty global maps.
    *
-   * The eight global maps are created empty and in this order, and the order is part of
-   * the serialised output: nothing sorts `<dated>` afterwards, so a fresh MSM's global
-   * `<dated>` has exactly this child sequence.
+   * The eight global maps are created empty and in this order, and the order is part of the
+   * serialised output: nothing sorts `<dated>` afterwards, so a fresh MSM's global `<dated>` has
+   * exactly this child sequence.
    *
-   * `id === null` is the second of this file's two `uuid` call sites. Unlike
-   * {@link addUUID} it produces a **bare** UUID with no `meico_` prefix (as Java does,
-   * `Msm.java:121`), so the equivalence tests' `meico_` canonicalisation does not cover
-   * it and a null `id` yields output that differs run to run. The pipeline never takes
-   * that branch — `Mei2MsmMpmConverter` always passes an explicit movement id.
+   * @param id an id for the root element, or null for a random UUID. Unlike {@link addUUID} that
+   *   UUID is bare, with no `meico_` prefix (as Java does, `Msm.java:121`), so the equivalence
+   *   tests' `meico_` canonicalisation does not cover it and a null `id` yields output that
+   *   differs run to run. The pipeline never takes that branch — `Mei2MsmMpmConverter` always
+   *   passes an explicit movement id.
    */
   static createMsm(title: string, id: string | null, ppq: number): Msm {
-    const root = new Element('msm'); // create the root element of the msm/xml tree
-    root.addAttribute(new Attribute('title', title)); // add a title attribute to it
+    const root = new Element('msm');
+    root.addAttribute(new Attribute('title', title));
 
     const idAttribute = new Attribute(
       'xml:id',
       'http://www.w3.org/XML/1998/namespace',
       id === null ? uuidv4() : id,
-    ); // make new id attribute
-    root.addAttribute(idAttribute); // add it to the MSM movement element
+    );
+    root.addAttribute(idAttribute);
 
-    // create global containers
     const global = new Element('global');
     const dated = new Element('dated');
     const header = new Element('header');
 
-    root.addAttribute(new Attribute('pulsesPerQuarter', String(ppq))); // add the attribute to the root
+    root.addAttribute(new Attribute('pulsesPerQuarter', String(ppq)));
 
-    dated.appendChild(new Element('timeSignatureMap')); // global time signatures
-    dated.appendChild(new Element('keySignatureMap')); // global key signatures
-    dated.appendChild(new Element('markerMap')); // global rehearsal marks
-    dated.appendChild(new Element('sectionMap')); // global map of section structure
-    dated.appendChild(new Element('phraseMap')); // global map of phrase structure
-    dated.appendChild(new Element('sequencingMap')); // global sequencingMap
-    dated.appendChild(new Element('pedalMap')); // global map for pedal instructions
-    dated.appendChild(new Element('miscMap')); // a temporal map
+    dated.appendChild(new Element('timeSignatureMap'));
+    dated.appendChild(new Element('keySignatureMap'));
+    dated.appendChild(new Element('markerMap')); // rehearsal marks
+    dated.appendChild(new Element('sectionMap'));
+    dated.appendChild(new Element('phraseMap'));
+    dated.appendChild(new Element('sequencingMap'));
+    dated.appendChild(new Element('pedalMap'));
+    dated.appendChild(new Element('miscMap'));
 
     global.appendChild(header);
     global.appendChild(dated);
@@ -214,12 +163,9 @@ export class Msm extends AbstractMsm {
   }
 
   /**
-   * create a copy of this object
-   * @returns the copy of this Msm object
-   * @throws {MissingNodeError} when this Msm is empty — there is then nothing to copy.
-   *   `this.getDocument()!.copy()` is what this was, so an empty Msm threw here before too;
-   *   the difference is that the error says which document and not "cannot read property
-   *   copy of null". `Performance.cloneForRender` is the caller that can reach it.
+   * A deep copy of this Msm, carrying over the validity flag and the file path.
+   * @throws {MissingNodeError} when this Msm is empty and there is nothing to copy;
+   *   `Performance.cloneForRender` is the caller that can reach it
    */
   clone(): Msm {
     const document = this.getDocument();
@@ -233,16 +179,7 @@ export class Msm extends AbstractMsm {
   }
 
   /**
-   * This getter method returns the title string from the root element's attribute title.
-   * If missing, use the filename without extension or return "".
-   * @returns
-   *
-   * **The `try`/`catch` this used to carry could not fire.** It was there to absorb a null
-   * root — `getAttribute('title', this.getRootElement()!)` — but both the local reader this
-   * file used to define and `xml/tree.attribute`, which replaced it, take `Element | null`
-   * and answer `null` for a null element. So the catch arm and the fall-through arm were
-   * the same arm, reached the same way, and the assertion in between claimed a root the
-   * method then did not need. Same three outcomes, no exception path.
+   * The root element's `title`, else the filename without extension, else `""`.
    */
   getTitle(): string {
     const title = attribute('title', this.getRootElement());
@@ -253,11 +190,9 @@ export class Msm extends AbstractMsm {
   }
 
   /**
-   * this getter returns the timing resolution (pulses per quarternote) of the MSM
-   * @returns 0 where there is no document, or no `pulsesPerQuarter` on its root
-   *
-   * The `try`/`catch` went for the reason given at {@link getTitle}, and `parseInt` does
-   * not throw — a non-numeric attribute yields `NaN` here as it did before.
+   * The timing resolution in pulses per quarter note.
+   * @returns 0 where there is no document or no `pulsesPerQuarter` on its root, `NaN` where the
+   *   attribute is not numeric
    */
   getPPQ(): number {
     const ppq = attribute('pulsesPerQuarter', this.getRootElement());
@@ -265,44 +200,37 @@ export class Msm extends AbstractMsm {
   }
 
   /**
-   * this getter returns the timing resolution (pulses per quarternote) of the MSM
-   * @returns
+   * {@link getPPQ} under its long name.
    */
   getPulsesPerQuarter(): number {
     return this.getPPQ();
   }
 
   /**
-   * Set the pulses per quarter timing resolution attribute.
-   * Be careful with this, it does not change any midi date values!
-   * It is safer to invoke convertPPQ().
-   * @param ppq
+   * Overwrite the `pulsesPerQuarter` attribute, leaving every date value as it is —
+   * {@link convertPPQ} is the safe way to change the timing basis.
+   *
+   * The attribute must already exist: this setter does not create it, and an empty Msm or a root
+   * without `pulsesPerQuarter` throws.
    */
   setPulsesPerQuarter(ppq: number): void {
-    // Two assertions became two named failures. An empty Msm and one whose root carries no
-    // `pulsesPerQuarter` both threw here before — this is a *setter* for an attribute it
-    // does not create, which is the surprise the message now states outright.
     requireAttribute('pulsesPerQuarter', this.requireRootElement()).setValue(String(ppq));
   }
 
   /**
-   * Set the pulses per quarter timing resolution attribute.
-   * Be careful with this, it does not change any midi date values!
-   * It is safer to invoke convertPPQ().
-   * @param ppq
+   * {@link setPulsesPerQuarter} under its short name.
    */
   setPPQ(ppq: number): void {
     this.setPulsesPerQuarter(ppq);
   }
 
   /**
-   * this method converts the timing basis, i.e., it sets the new ppq value and converts all attributes date, date.end and duration in the whole document
-   * @param ppq
+   * Change the timing basis: set the new ppq and rescale every `date`, `date.end` and `duration`
+   * in the document by `ppq / ppqOld`.
    *
-   * The three statements are order-dependent: the log line reads the *old* resolution
-   * (hence it must run before `setPPQ`), and the rescaling factor is `ppq / ppqOld`
-   * captured before the attribute is overwritten. `milliseconds.date` and friends are
-   * deliberately not in the XPath — they are absolute times and do not scale with ppq.
+   * Order-dependent: the log line reads the old resolution, so it must run before `setPPQ`, and
+   * the factor is captured before the attribute is overwritten. `milliseconds.date` and friends
+   * are deliberately not in the XPath — they are absolute times and do not scale with ppq.
    */
   convertPPQ(ppq: number): void {
     const ppqOld = this.getPPQ();
@@ -314,15 +242,9 @@ export class Msm extends AbstractMsm {
 
     this.setPPQ(ppq);
 
-    // find all attributes date, date.end and duration, and convert their values
     const atts: Nodes = this.requireRootElement().query(
       'descendant::*[attribute::date]/attribute::date | descendant::*[attribute::date.end]/attribute::date.end | descendant::*[attribute::duration]/attribute::duration',
     );
-    // `as unknown as Attribute` was here, on the ground that an `attribute::` step yields
-    // attributes. It does — {@link Element.query} pushes a real {@link Attribute} for every
-    // attribute hit — which is precisely why the claim can be *tested* instead of asserted.
-    // A cast that is right is still a cast, and the same three lines appear at
-    // `dropRepetitionCounters` and `addIds` over `Element`.
     for (const node of atts) {
       if (!(node instanceof Attribute)) continue;
       node.setValue(String((parseFloat(node.getValue()) * ppq) / ppqOld));
@@ -330,34 +252,33 @@ export class Msm extends AbstractMsm {
   }
 
   /**
-   * this method converts the timing basis, i.e., it sets the new ppq value and converts all attributes date, date.end and duration in the whole document
-   * @param ppq
+   * {@link convertPPQ} under its long name.
    */
   convertPulsesPerQuarter(ppq: number): void {
     this.convertPPQ(ppq);
   }
 
   /**
-   * computes the minimal integer timing resolution necessary for a rhythmically reasonably accurate representation of the score data in this MSM
+   * The minimal integer timing resolution that still represents this score's rhythms accurately.
+   * For each note it walks powers of two upwards until one divides the note's duration — then
+   * its date — exactly, and keeps the finest value found over all notes.
+   *
    * @returns the number of subdivisions per quarter note the score needs, a power of two
    *
-   * For each note it walks powers of two upwards until one divides the note's duration —
-   * then its date — exactly, and keeps the finest value found over all notes.
-   *
    * Three details are Java's (`Msm.java:254-279`) and all three are load-bearing:
-   * 1. `ppq / subdivs` is **integer** division there (`Msm.java:262` and `:270`, both
-   *    operands `int`), hence `Math.trunc` here. Float division would agree only while
-   *    `subdivs` divides `ppq`.
-   * 2. Both inner loops start at the running `maxSubdivisions`, not at 1 — so
-   *    `Math.max` can never actually raise anything, the value only ever grows.
-   * 3. Consequently the result is order-dependent and can exceed what any single note
-   *    needs: at ppq 720 a duration of 22 matches at `subdivs` 32 (720/32 truncates to
-   *    22), and a whole-quarter note coming after it then matches only at 128 (720/128
-   *    truncates to 5) — so dates/durations `[22, 720]` yield 128 where `[720, 22]` yield
-   *    32. Verified by running the Java arithmetic, not merely reasoned about.
+   * 1. `ppq / subdivs` is integer division there (`Msm.java:262` and `:270`, both operands
+   *    `int`), hence `Math.trunc` here. Float division would agree only while `subdivs` divides
+   *    `ppq`.
+   * 2. Both inner loops start at the running `maxSubdivisions`, not at 1, so `Math.max` can
+   *    never raise anything — the value only ever grows.
+   * 3. The result is therefore order-dependent and can exceed what any single note needs: at ppq
+   *    720 a duration of 22 matches at `subdivs` 32 (720/32 truncates to 22), and a whole-quarter
+   *    note coming after it then matches only at 128 (720/128 truncates to 5) — so dates and
+   *    durations `[22, 720]` yield 128 where `[720, 22]` yield 32. Confirmed by running the Java
+   *    arithmetic.
    *
-   * Nothing in `src/` calls this method — Java's only caller is `exportPitches`, which
-   * this port does not have — so the unit tests are the only exercise it gets.
+   * Nothing in `src/` calls this — Java's only caller is `exportPitches`, which this port does
+   * not have — so the unit tests are the only exercise it gets.
    */
   getMinimalPPQ(): number {
     const ppq = this.getPPQ();
@@ -365,20 +286,16 @@ export class Msm extends AbstractMsm {
 
     const parts = this.getPartsArray();
     for (const part of parts) {
-      // go through all parts
       const dated = part.getFirstChildElement('dated');
       if (dated === null) continue;
       const score = dated.getFirstChildElement('score');
       if (score === null) continue;
-      // go through all notes
       for (const note of score.getChildElements('note')) {
-        // `getAttributeValue(…)!` here handed `parseFloat` a real null on a note with no
-        // `duration`, which is `NaN`; `NaN % k` is `NaN`, so no `subdivs` ever matched and
-        // the note contributed nothing. `getAttributeValue`'s `''` gives the same `NaN` by
-        // the same route. Note that JAVA DIVERGES on this input — `Double.parseDouble(null)`
-        // throws an NPE that nothing here catches — but no fixture carries a note without a
-        // `duration` or a `date`, and this method has no caller in `src/` at all.
-        const dur = Math.round(parseFloat(getAttributeValue('duration', note))); // get the note's duration
+        // A note with no `duration` or `date` yields `NaN` here, and `NaN % k` is `NaN`, so no
+        // `subdivs` matches and the note contributes nothing. Java diverges on that input —
+        // `Double.parseDouble(null)` throws an NPE nothing catches — but no fixture carries
+        // such a note, and this method has no caller in `src/`.
+        const dur = Math.round(parseFloat(getAttributeValue('duration', note)));
         for (let subdivs = maxSubdivisions; subdivs <= ppq; subdivs *= 2) {
           if (dur % Math.trunc(ppq / subdivs) === 0) {
             maxSubdivisions = Math.max(maxSubdivisions, subdivs);
@@ -386,7 +303,7 @@ export class Msm extends AbstractMsm {
           }
         }
 
-        const date = Math.round(parseFloat(getAttributeValue('date', note))); // get the note's date
+        const date = Math.round(parseFloat(getAttributeValue('date', note)));
         for (let subdivs = maxSubdivisions; subdivs <= ppq; subdivs *= 2) {
           if (date % Math.trunc(ppq / subdivs) === 0) {
             maxSubdivisions = Math.max(maxSubdivisions, subdivs);
@@ -400,19 +317,13 @@ export class Msm extends AbstractMsm {
   }
 
   /**
-   * Generate a "raw" part element with its corresponding attributes and empty "header" and "dated" environments.
-   * This element is not added to the document! It is up to the application to do this.
-   * @param name
-   * @param number (string overload)
-   * @param midiChannel
-   * @param midiPort
-   * @returns the part element just generated
+   * {@link AbstractMsm.makePartFromString} plus the MSM-specific maps. The element is not added
+   * to the document; that is the caller's job.
    *
-   * Adds the MSM-specific maps on top of what {@link AbstractMsm.makePartFromString}
-   * builds. The child order below is the order they appear in the serialised part, and it
-   * is not the same as the global `<dated>` order in {@link createMsm} — the global has a
-   * `sectionMap` and no `<score>`, the part has a `<score>` and a `miscMap` containing a
-   * `tupletSpanMap`. Both orders are Java's.
+   * The child order below is the order they appear in the serialised part, and it is not the
+   * global `<dated>` order in {@link createMsm} — the global has a `sectionMap` and no
+   * `<score>`, the part has a `<score>` and a `miscMap` containing a `tupletSpanMap`. Both
+   * orders are Java's.
    */
   static override makePartFromString(
     name: string,
@@ -422,10 +333,7 @@ export class Msm extends AbstractMsm {
   ): Element {
     const part = AbstractMsm.makePartFromString(name, number, midiChannel, midiPort);
 
-    // add some MSM-specific maps to the dated environment.
-    // The `<dated>` is one this method's own super call appended two lines ago, which is the
-    // narrow case `requireFirstChildElement` is documented for — "the shape of a document
-    // this port itself built".
+    // the `<dated>` the super call appended a line ago
     const dated = requireFirstChildElement(part, 'dated');
     dated.appendChild(new Element('timeSignatureMap'));
     dated.appendChild(new Element('keySignatureMap'));
@@ -442,13 +350,7 @@ export class Msm extends AbstractMsm {
   }
 
   /**
-   * Generate a "raw" part element with its corresponding attributes and empty "header" and "dated" environments.
-   * This element is not added to the document! It is up to the application to do this.
-   * @param name
-   * @param number
-   * @param midiChannel
-   * @param midiPort
-   * @returns the part element just generated
+   * {@link Msm.makePartFromString} with a numeric part number.
    */
   static override makePart(
     name: string,
@@ -459,23 +361,15 @@ export class Msm extends AbstractMsm {
     return Msm.makePartFromString(name, String(number), midiChannel, midiPort);
   }
 
-  /**
-   * add the specified part to the xml structure
-   * @param part
-   */
+  /** Append a part to the root element. */
   addPart(part: Element): void {
     this.requireRootElement().appendChild(part);
   }
 
   /**
-   * Retrieve the part element that matches the given specifications. If the number matches already,
-   * the others will not be checked, otherwise the name is checked and, if nothing was found, the MIDI
-   * channel and port are checked.
-   * @param number
-   * @param name
-   * @param midiChannel
-   * @param midiPort
-   * @returns
+   * The part matching the given specification, tried in three rounds over all parts: by
+   * `number`, then by `name`, then by MIDI port and channel together. The first round to hit
+   * wins, so a number match is never checked against the name.
    */
   getPart(number: number, name: string, midiChannel: number, midiPort: number): Element | null {
     const parts = this.getPartsArray();
@@ -501,40 +395,27 @@ export class Msm extends AbstractMsm {
       }
     }
 
-    return null; // nothing found
+    return null;
   }
 
-  /**
-   * a getter that returns all part elements in the XML tree
-   * @returns
-   */
+  /** all `<part>` elements, in document order */
   getParts(): Elements {
     return this.requireRootElement().getChildElements('part');
   }
 
-  /**
-   * a convenience method that returns all part elements as an array for iteration
-   * @returns
-   */
+  /** {@link getParts} as an array, for iteration */
   getPartsArray(): Element[] {
     return this.getParts().toArray();
   }
 
-  /**
-   * a getter for the global environment
-   * @returns
-   */
+  /** the `<global>` environment, or null if this document has none */
   getGlobal(): Element | null {
     return this.requireRootElement().getFirstChildElement('global');
   }
 
   /**
-   * a convenience method to generate timeSignature elements
-   * @param date
-   * @param numerator
-   * @param denominator
-   * @param id
-   * @returns
+   * A `<timeSignature>` entry. `date` is in MSM ticks; a null `id` leaves the element without an
+   * `xml:id`.
    */
   static makeTimeSignature(
     date: number,
@@ -555,154 +436,121 @@ export class Msm extends AbstractMsm {
   }
 
   /**
-   * removes all rest elements from the score lists;
-   * this method is not part of the mei.exportMsm() cleanup procedure as some applications may still need the rests;
-   * others who don't, can call this method to remove all rest elements and get a purged msm
+   * Remove every rest. Not part of the `mei.exportMsm()` cleanup, since some applications still
+   * need the rests; this is for the ones that want a purged MSM.
    *
    * The XPath is `descendant::*[local-name()='rest']`, so it takes every `<rest>` in the
-   * document, not only those under `<score>`. `removeChild` followed by `detach` is
-   * Java's pairing (`Msm.java:415`); the second call has nothing left to do once the
-   * first has unlinked the node.
+   * document, not only those under `<score>`. The query result is a fixed snapshot, so unlinking
+   * mid-walk cannot disturb it. `removeChild` followed by `detach` is Java's pairing
+   * (`Msm.java:415`); the second call has nothing left to do once the first has unlinked the
+   * node.
    */
   removeRests(): void {
-    // `getRootElement() === null` is exactly `isEmpty()` — a parsed Document always has a
-    // root — so the guard now yields the value the query needs.
     const root = this.getRootElement();
     if (root === null) return;
 
-    const r: Nodes = root.query("descendant::*[local-name()='rest']"); // select all rest elements
-    // The query result is a fixed snapshot, so unlinking a node from its parent mid-walk
-    // cannot disturb the walk — which is what the index loop here was already relying on.
+    const r: Nodes = root.query("descendant::*[local-name()='rest']");
     for (const rest of r) {
-      // A node on the `descendant::` axis has a parent by construction, so this `continue`
-      // is unreachable — it is the total spelling of the `getParent()!` that was here, and
-      // the same shape `XmlBase.removeAllElements` uses over the same kind of query result.
+      // a node on the `descendant::` axis has a parent, so this never continues
       const parent = rest.getParent();
       if (parent === null) continue;
-      parent.removeChild(rest); // remove them
+      parent.removeChild(rest);
       rest.detach();
     }
   }
 
   /**
-   * this method expands all global and local maps according to the sequencingMaps;
-   * if a local sequencingMap (can be empty) is given in a certain part, that part ignores the global sequencingMap
-   * @returns a map with xml:id mappings for those elements that have been copied and needed an updated id
+   * Expand every global and local map according to the sequencingMaps, turning music encoded by
+   * reference into literal, linear time.
    *
-   * ## What a sequencingMap is
+   * MSM stores repeats, endings and jumps by reference rather than writing the music out twice:
+   * a `<sequencingMap>` holds `<goto>` elements ({@link Goto}) saying "on reaching this date,
+   * continue at that one". After this runs, every remaining map plays front to back and the
+   * sequencingMaps themselves are gone. Everything downstream — performance rendering, MIDI
+   * export — assumes it has already happened.
    *
-   * MSM stores repeats, endings and jumps *by reference* rather than by writing the music
-   * out twice: a `<sequencingMap>` holds `<goto>` elements ({@link Goto}) saying "on
-   * reaching this date, continue at that one". This method is what turns that into
-   * literal, linear time — after it runs, every remaining map plays front to back and the
-   * sequencingMaps themselves are gone. Everything downstream (performance rendering,
-   * MIDI export) assumes it has already happened.
+   * A part with its own `<sequencingMap>` uses it and ignores the global one even if its own is
+   * empty, which is how a part opts out of a global repeat. Only a part with no local map at all
+   * falls back to the global one. That is why the fallback path also checks for an empty global
+   * map and skips the part, while the local path does not: an empty local map still means
+   * "expand nothing here".
    *
-   * ## Scoping rule
+   * Global maps are expanded first, then each part's. Both loops skip `sequencingMap` itself (it
+   * is not music), `miscMap` (scratch space, deleted later) and any empty map. The
+   * sequencingMaps are removed last, after every map that referred to them has been expanded —
+   * the global one especially, since parts without a local map are still reading it during the
+   * part loop.
    *
-   * A part with its own `<sequencingMap>` uses it and ignores the global one — **even if
-   * its own is empty**, which is how a part opts out of a global repeat. Only a part with
-   * no local map at all falls back to the global one. That is why the fallback path also
-   * checks for an empty global map and skips the part, while the local path does not: an
-   * empty local map still means "expand nothing here".
+   * One `repetitionIDs` map is threaded through every call so the caller gets a single old-id →
+   * new-id table for the whole document; see {@link applySequencingMapToMap} for what goes into
+   * it.
    *
-   * ## Order of operations, and why it cannot be reordered
+   * Nothing in `src/` calls this, in this port or in Java — it is opt-in API. The MEI converter
+   * writes sequencingMaps (`Mei2MsmMpmConverter.processEnding` builds the `<goto>`s) but leaves
+   * them unexpanded, so an MSM straight out of the pipeline still has its repeats encoded by
+   * reference and the reference fixtures contain `<goto>` elements. The fixture pipeline
+   * therefore does not exercise the expansion below; `tests/msm/MsmSequencing.test.ts` covers it.
    *
-   * Global maps are expanded first, then each part's. Both loops skip `sequencingMap`
-   * itself (it is not music), `miscMap` (scratch space, deleted later) and any empty map.
-   * The sequencingMaps are removed **last**, after every map that referred to them has
-   * been expanded — the global one especially, since parts without a local map are still
-   * reading it during the part loop.
-   *
-   * One `repetitionIDs` map is threaded through every call so the caller gets a single
-   * old-id → new-id table for the whole document; see {@link applySequencingMapToMap} for
-   * what goes into it.
-   *
-   * ## Who calls this
-   *
-   * Nothing in `src/` does, in this port or in Java — it is opt-in API. The MEI converter
-   * *writes* sequencingMaps (`Mei2MsmMpmConverter.processEnding` builds the `<goto>`s) but
-   * leaves them unexpanded, so an MSM straight out of the pipeline still has its repeats
-   * encoded by reference, and the reference fixtures contain `<goto>` elements. It
-   * follows that the fixture pipeline does **not** exercise the expansion code below;
-   * `tests/msm/MsmSequencing.test.ts` is what covers it.
+   * @returns xml:id mappings for the elements that were copied and needed an updated id
    */
   resolveSequencingMaps(): Map<string, string> {
     const repetitionIDs = new Map<string, string>();
-    const root = this.getRootElement(); // null for exactly one reason: `isEmpty()`
+    const root = this.getRootElement();
     if (root === null) return repetitionIDs;
 
-    // Walked once and held, where this used to re-navigate `root → <global> → <dated>` four
-    // separate times and assert both links away on each. The four navigations answered the
-    // same element, and asserting them said nothing the second time that it had not already
-    // claimed the first. A `<global>` or a `<dated>` missing throws here as it did before —
-    // named now, instead of "cannot read property getFirstChildElement of null".
+    // a missing `<global>` or `<dated>` throws here
     const globalDated = requireFirstChildElement(requireFirstChildElement(root, 'global'), 'dated');
-    const globalSequencingMap = globalDated.getFirstChildElement('sequencingMap'); // get the global sequencingMap (or null if there is none)
-    const parts = root.getChildElements('part'); // get all the parts
+    const globalSequencingMap = globalDated.getFirstChildElement('sequencingMap');
+    const parts = root.getChildElements('part');
 
     // expand global maps
     if (globalSequencingMap !== null) {
       const maps = globalDated.getChildElements();
-      // go through all maps
       for (const map of maps) {
         if (
-          map.getChildCount() === 0 || // do not expand sequencingMaps
-          map.getLocalName() === 'miscMap' || // ignore miscMaps as they will be deleted anyway
+          map.getChildCount() === 0 ||
+          map.getLocalName() === 'miscMap' ||
           map.getLocalName() === 'sequencingMap'
         )
-          // or if the map is empty
-          continue; // continue with the next
+          continue;
 
-        const newMap = Msm.applySequencingMapToMap(globalSequencingMap, map, repetitionIDs); // apply the global sequencingMap to it
-        if (newMap !== null) globalDated.replaceChild(map, newMap); // replace the old map by the new one
+        const newMap = Msm.applySequencingMapToMap(globalSequencingMap, map, repetitionIDs);
+        if (newMap !== null) globalDated.replaceChild(map, newMap);
       }
     }
 
-    // go through all parts and expand their maps according to the underlying sequencingMaps
-    // for each part
     for (const part of parts) {
-      // A part with no `<dated>` threw here before and throws here now; the three reads of
-      // it are one.
-      const partDated = requireFirstChildElement(part, 'dated');
-      let sequencingMap = partDated.getFirstChildElement('sequencingMap'); // get the part's local sequencingMap if there is one
+      const partDated = requireFirstChildElement(part, 'dated'); // a part without one throws
+      let sequencingMap = partDated.getFirstChildElement('sequencingMap');
       let localMap = true;
       if (sequencingMap === null) {
-        // if there is none
         localMap = false;
-        sequencingMap = globalSequencingMap; // get the global sequencingMap
-        if (sequencingMap === null || sequencingMap.getChildCount() === 0)
-          // if there is none or it is empty
-          continue; // continue with the next part
+        sequencingMap = globalSequencingMap;
+        // an absent or empty global map leaves this part unexpanded
+        if (sequencingMap === null || sequencingMap.getChildCount() === 0) continue;
       }
 
-      // go through the score and all maps (except the sequencingMap itself) and apply the sequencingMap to them
       const maps = partDated.getChildElements();
-      // go through all maps
       for (const map of maps) {
         if (
-          map.getChildCount() === 0 || // do not expand sequencingMaps
-          map.getLocalName() === 'miscMap' || // ignore miscMaps as they will be deleted anyway
+          map.getChildCount() === 0 ||
+          map.getLocalName() === 'miscMap' ||
           map.getLocalName() === 'sequencingMap'
         )
-          // or if the map is empty
-          continue; // continue with the next
+          continue;
 
-        const newMap = Msm.applySequencingMapToMap(sequencingMap, map, repetitionIDs); // apply the sequencingMap to it
-        // `map` came out of `partDated.getChildElements()`, so its parent is `partDated`.
-        // Kept as the parent lookup rather than folded into `partDated` because that is
-        // what the line did, and the two differ if anything ever reparents a map mid-loop.
-        if (newMap !== null) requireParentElement(map).replaceChild(map, newMap); // replace the old map by the new one
+        const newMap = Msm.applySequencingMapToMap(sequencingMap, map, repetitionIDs);
+        if (newMap !== null) requireParentElement(map).replaceChild(map, newMap);
       }
 
-      // delete the local sequencingMap (because it does not apply anymore)
+      // the local sequencingMap does not apply any more
       if (localMap) {
         partDated.removeChild(sequencingMap);
         sequencingMap.detach();
       }
     }
 
-    // delete the global sequencingMap (because it does not apply anymore)
+    // nor does the global one
     if (globalSequencingMap !== null) {
       globalDated.removeChild(globalSequencingMap);
       globalSequencingMap.detach();
@@ -712,97 +560,65 @@ export class Msm extends AbstractMsm {
   }
 
   /**
-   * apply the sequencingMap to the map; this expands the map
-   * @param sequencingMap
-   * @param map
-   * @param repetitionIDs this map will be filled with mappings of xml:id's that are extended to avoid double occurrences
-   * @returns the expanded map (to replace the old map) or null (to keep the old map)
+   * Expand `map` according to `sequencingMap` — the heart of repeat and ending resolution, and
+   * the most order-sensitive code in this file. Nothing below may be reordered, rewritten as
+   * array methods or otherwise simplified: the arithmetic has to stay bit-identical to Java
+   * (`Msm.java:500`) and the traversal has to visit elements in exactly the same sequence.
    *
-   * The heart of repeat/ending resolution, and the most order-sensitive code in this
-   * file. **Nothing below this comment may be reordered, rewritten as array methods, or
-   * "simplified"** — the arithmetic is required to stay bit-identical to Java
-   * (`Msm.java:500`) and the traversal is required to visit elements in exactly the same
-   * sequence.
-   *
-   * ## The traversal
-   *
-   * `newMap` starts as a flat copy of `map` and is refilled by walking the original in
-   * *playback* order. `currentDate` is where playback has got to in the original,
-   * `dateOffset` is how far ahead the new map has run because of material already
-   * repeated. Each iteration of the outer loop finds the next goto at or after
-   * `currentDate` that is still active, copies everything from `currentDate` up to (not
-   * including) the goto's date, then jumps: `dateOffset` grows by the distance skipped
-   * and `currentDate` moves to the goto's target.
+   * `newMap` starts as a flat copy of `map` and is refilled by walking the original in playback
+   * order. `currentDate` is where playback has got to in the original, `dateOffset` is how far
+   * ahead the new map has run because of material already repeated. Each iteration of the outer
+   * loop finds the next goto at or after `currentDate` that is still active, copies everything
+   * from `currentDate` up to (not including) the goto's date, then jumps: `dateOffset` grows by
+   * the distance skipped and `currentDate` moves to the goto's target.
    *
    * The `continue gotoSearch` at the end of a taken jump restarts the goto search from the
-   * beginning, because a jump can land *before* gotos that were already passed, and those
-   * must be reconsidered. The loop still terminates: a goto is only ever taken by
-   * consuming a `1` from its {@link Goto.activity} string, and every test of a goto
-   * advances that string's cursor, so the total number of jumps is bounded by the total
-   * number of `1`s in the sequencingMap. Falling out of the inner `for` instead — a full
-   * pass over `gotos` with none of them applying — is what ends the search.
+   * beginning, because a jump can land before gotos that were already passed and those must be
+   * reconsidered. It still terminates: a goto is only ever taken by consuming a `1` from its
+   * {@link Goto.activity} string, and every test of a goto advances that string's cursor, so the
+   * number of jumps is bounded by the number of `1`s in the sequencingMap. Falling out of the
+   * inner `for` — a full pass over `gotos` with none applying — is what ends the search.
    *
-   * That restart used to be written `for (let i = 0; i < gotos.length; ++i) { … i = -1; }`,
-   * assigning to the loop variable to make `++i` land back on 0. The shape is identical;
-   * what the label buys is that the goto in hand comes from iterating `gotos` rather than
-   * from `gotos[i]`, which under `--noUncheckedIndexedAccess` is a `Goto | undefined` that
-   * no bound check can talk the compiler out of. Nothing is reordered: the inner `for`
-   * visits the gotos in list order from index 0, exactly as `i = -1; ++i` did, and the
-   * `isActive()` calls — which mutate, one pass consumed per call — fall in the same
-   * places in the same order.
+   * The second, near-identical loop copies the tail, everything from the last jump to the end of
+   * the map, with no goto to stop at. It differs in one deliberate way: no `else` branch adding
+   * a fresh `repetitionCounter`, because nothing will visit those elements again.
    *
-   * The second, near-identical loop after it copies the tail — everything from the last
-   * jump to the end of the map — with no goto to stop at. It differs from the first in
-   * one deliberate way: it has no `else` branch adding a fresh `repetitionCounter`,
-   * because nothing will visit those elements again.
+   * A repeated element would otherwise appear twice with the same `xml:id`. To renumber the
+   * duplicates, the original element — not the copy — is tagged with a temporary
+   * `repetitionCounter`: absent means "first time seen", otherwise it holds how often it has
+   * been copied, and copy n gets `meico_repetition_<n>_<baseId>` (see {@link recordRepetitionId}
+   * for the id chain that records). Because the counter is written on the original, the copy
+   * made on the first encounter carries none while every later copy carries a stale one — which
+   * is why the cleanup at the end sweeps `newMap` as well as `map`.
    *
-   * ## repetitionCounter and the id chain
-   *
-   * A repeated element would otherwise appear twice with the same `xml:id`. To renumber
-   * the duplicates, the *original* element (not the copy) is tagged with a temporary
-   * `repetitionCounter` attribute: absent means "first time seen", otherwise it holds how
-   * often it has been copied. Copy *n* gets `meico_repetition_<n>_<baseId>`.
-   *
-   * `repetitionIDs` is a chain, not a base-id index: `base → rep1 → rep2 → …`. That is
-   * what the small backwards `for (let r = reps - 1; …)` loop walks — it follows the
-   * chain from the base id to the id of the *previous* iteration, which is the key the
-   * new entry belongs under. Callers can therefore follow any old id forward to its
-   * current one.
-   *
-   * The counter is written on the original, so the copy made on the *first* encounter
-   * carries no `repetitionCounter` while every later copy carries a stale one. That is
-   * why the cleanup at the end sweeps `newMap` as well as `map`.
+   * @param repetitionIDs filled with the xml:id mappings of the copies that were renumbered
+   * @returns the expanded map, to replace the old one, or null to keep the old one
    */
   static applySequencingMapToMap(
     sequencingMap: Element,
     map: Element,
     repetitionIDs: Map<string, string>,
   ): Element | null {
-    const gs = sequencingMap.getChildElements('goto'); // get the gotos
-    if (gs.size() === 0) return null; // if there are no gotos in the sequencingMap, i.e. nothing to expand, return null
+    const gs = sequencingMap.getChildElements('goto');
+    if (gs.size() === 0) return null; // nothing to expand
 
-    // Make an Array of Goto instances — parse each `<goto>`, keep the ones that parse, and
-    // report the ones that do not. That is `filterMap` exactly: the "skip this one" arm is
-    // the `null` return, so the loop no longer has to say `continue` in a `catch`.
+    // a `<goto>` that does not parse is reported and dropped; see Goto.initFromElement
     const gotos = filterMap(gs, (g) => {
       try {
-        return new Goto(g); // from the goto element create a Goto instance
+        return new Goto(g);
       } catch (e) {
-        console.error(e); // print the exception and continue with the next
+        console.error(e);
         return null;
       }
     });
 
-    // create a new map and fill it by traversing the original map as indicated by the goto elements
-    const newMap = cloneElement(map); // make a flat copy of the map (no children so far) to refill it according to the sequencingMap
+    const newMap = cloneElement(map); // flat copy, refilled below in playback order
 
-    let currentDate = 0.0; // start at date 0.0
-    let dateOffset = 0.0; // this sums up the offsets that come from inserting repetitions
+    let currentDate = 0.0;
+    let dateOffset = 0.0; // sums up the offsets that come from inserting repetitions
     gotoSearch: for (;;) {
-      // find the next goto
       for (const gt of gotos) {
-        // get the next goto
-        if (gt.date < currentDate || !gt.isActive()) continue; // if the goto is before currentDate or it is not active continue with the next
+        if (gt.date < currentDate || !gt.isActive()) continue;
 
         // copy everything between currentDate and gt.date from the original map into newMap
         for (
@@ -810,44 +626,36 @@ export class Msm extends AbstractMsm {
           e !== null;
           e = getNextSiblingElement(e)
         ) {
-          // go through the map elements
-          // `getElementAtAfter` yields only dated elements, but `getNextSiblingElement`
-          // steps to the next sibling of ANY name, so an undated one can arrive here. It
-          // threw before — three lines on, as `eCopy.getAttribute('date')!.setValue(…)`,
-          // once `parseFloat(null)`'s NaN had failed the comparison below — and it throws
-          // here, naming `date` at the point the map's ordering invariant is broken.
+          // `getElementAtAfter` yields only dated elements, but `getNextSiblingElement` steps
+          // to the next sibling of any name, so an undated one can arrive here. It throws,
+          // naming `date` at the point the map's ordering invariant is broken.
           const dateAttribute = requireAttribute('date', e);
-          currentDate = parseFloat(dateAttribute.getValue()); // read its date
-          if (currentDate >= gt.date) break; // if the element's date is at or after the goto don't copy further
-          const eCopy = e.copy(); // make a deep copy of the element
-          // The copy carries what the original carries, so these two reads cannot miss what
-          // the reads on `e` just found; they are checked rather than asserted because that
-          // is a fact about `copy()`, not one the type system holds.
-          requireAttribute('date', eCopy).setValue(String(currentDate + dateOffset)); // draw its date
+          currentDate = parseFloat(dateAttribute.getValue());
+          if (currentDate >= gt.date) break; // at or after the goto: do not copy further
+          const eCopy = e.copy();
+          requireAttribute('date', eCopy).setValue(String(currentDate + dateOffset));
 
-          const endDate = e.getAttribute('date.end'); // get the date.end attribute
+          const endDate = e.getAttribute('date.end');
           if (endDate !== null) {
-            // if the element has one, update it, too
             const dur = parseFloat(endDate.getValue()) - parseFloat(dateAttribute.getValue());
             requireAttribute('date.end', eCopy).setValue(String(currentDate + dur + dateOffset));
           }
 
-          const repetitionCounter = e.getAttribute('repetitionCounter'); // get the counter
+          const repetitionCounter = e.getAttribute('repetitionCounter');
           if (repetitionCounter !== null) {
-            // this is not the first time we process this element
-            const reps = 1 + parseInt(repetitionCounter.getValue()); // increase repetition counter
-            repetitionCounter.setValue(String(reps)); // write it to the attribute
+            const reps = 1 + parseInt(repetitionCounter.getValue());
+            repetitionCounter.setValue(String(reps));
             recordRepetitionId(repetitionIDs, eCopy, reps);
           } else {
-            // this is the first time we process this element
-            e.addAttribute(new Attribute('repetitionCounter', '0')); // add an attribute to count the repetitions
+            // first time this element is processed
+            e.addAttribute(new Attribute('repetitionCounter', '0'));
           }
-          newMap.appendChild(eCopy); // append the copy to the new map
+          newMap.appendChild(eCopy);
         }
 
-        dateOffset += gt.date - gt.targetDate; // draw the dateOffset
-        currentDate = gt.targetDate; // draw currentDate
-        continue gotoSearch; // start searching for the next goto
+        dateOffset += gt.date - gt.targetDate;
+        currentDate = gt.targetDate;
+        continue gotoSearch;
       }
       break; // no goto applied on a full pass, so playback is past the last one
     }
@@ -859,41 +667,31 @@ export class Msm extends AbstractMsm {
       e = getNextSiblingElement(e)
     ) {
       const dateAttribute = requireAttribute('date', e); // see the note in the loop above
-      currentDate = parseFloat(dateAttribute.getValue()); // read its date
-      const eCopy = e.copy(); // make a deep copy
-      requireAttribute('date', eCopy).setValue(String(currentDate + dateOffset)); // draw its date
+      currentDate = parseFloat(dateAttribute.getValue());
+      const eCopy = e.copy();
+      requireAttribute('date', eCopy).setValue(String(currentDate + dateOffset));
 
-      const endDate = e.getAttribute('date.end'); // get the date.end attribute
+      const endDate = e.getAttribute('date.end');
       if (endDate !== null) {
-        // if the element has one, update it, too
         const dur = parseFloat(endDate.getValue()) - parseFloat(dateAttribute.getValue());
         requireAttribute('date.end', eCopy).setValue(String(currentDate + dur + dateOffset));
       }
 
-      const repetitionCounter = e.getAttribute('repetitionCounter'); // get the counter
+      const repetitionCounter = e.getAttribute('repetitionCounter');
       if (repetitionCounter !== null) {
-        // this is not the first time
-        const reps = 1 + parseInt(repetitionCounter.getValue()); // increase repetition counter
-        repetitionCounter.setValue(String(reps)); // write it to the attribute
+        const reps = 1 + parseInt(repetitionCounter.getValue());
+        repetitionCounter.setValue(String(reps));
         recordRepetitionId(repetitionIDs, eCopy, reps);
       }
 
-      newMap.appendChild(eCopy); // append the copy to the new map
+      newMap.appendChild(eCopy);
     }
 
-    // cleanup: delete all repetitionCounter attributes from all map and newMap elements
-    //
-    // One walk written once, run twice — the two blocks here were character-for-character
-    // identical but for the element queried. Forward rather than backwards: a query result
-    // is a fixed snapshot of *distinct* elements, and each visit only strips an attribute
-    // from the element it landed on, so nothing a later step reads depends on an earlier
-    // one. The backwards index was Java's habit for list mutation, and there is no list
-    // being mutated here.
+    // Cleanup: strip every repetitionCounter from both maps. Forward rather than backwards —
+    // a query result is a fixed snapshot of distinct elements and each visit only strips an
+    // attribute from the element it landed on, so no step depends on an earlier one.
     const dropRepetitionCounters = (from: Element): void => {
       for (const node of from.query('descendant::*[@repetitionCounter]')) {
-        // `descendant::*` yields elements and `[@repetitionCounter]` requires the attribute,
-        // so both facts hold — and both are now tested rather than asserted with
-        // `as unknown as Element` and a `!`.
         if (!(node instanceof Element)) continue;
         node.removeAttribute(requireAttribute('repetitionCounter', node));
       }
@@ -916,14 +714,10 @@ export class Msm extends AbstractMsm {
   }
 
   /**
-   * writes the msm document to a string (filename parameter kept for API compatibility)
-   * @param _filename the filename string (not used in TS port; kept for API compatibility)
-   * @returns the XML string or null
+   * The msm document as an XML string, or null if there is no document.
    *
-   * The parameter is inert — it mirrors Java's `writeMsm(String filename)`, which this
-   * port cannot honour without a file system. Kept so ported call sites still compile.
-   * (It costs one `no-unused-vars`, which an `argsIgnorePattern: '^_'` in the ESLint
-   * config would retire properly; that config is not this item's to change.)
+   * @param _filename inert. It mirrors Java's `writeMsm(String filename)`, which this port
+   *   cannot honour without a file system; kept so ported call sites still compile.
    */
   writeMsmString(_filename?: string): string | null {
     return this.exportXml();
@@ -944,10 +738,6 @@ export class Msm extends AbstractMsm {
    * @param bpm the tempo of the midi track; 120 by default
    * @param generateProgramChanges see the boolean overload; true by default
    * @returns the Midi object, or null if this MSM is empty
-   *
-   * `bpm` and `generateProgramChanges` are one signature because they are the same mode
-   * with more detail supplied. The boolean-first overload above stays separate because it
-   * is a *different* mode — its single argument means something else.
    */
   exportMidi(bpm?: number, generateProgramChanges?: boolean): Midi | null;
   exportMidi(bpmOrGenPC?: number | boolean, generateProgramChanges?: boolean): Midi | null {
@@ -966,8 +756,8 @@ export class Msm extends AbstractMsm {
    * Render this MSM as expressive MIDI — the performed, millisecond-timed version.
    *
    * @param performance if given, it is applied to a copy of this MSM first
-   *   ({@link Performance.perform}) and the result is rendered; if omitted, **this** MSM
-   *   is rendered as-is and must already carry the performance attributes
+   *   ({@link Performance.perform}) and the result is rendered; if omitted, this MSM is
+   *   rendered as-is and must already carry the performance attributes
    * @param generateProgramChanges true by default; ignored when `performance` is omitted,
    *   as in Java (`Msm.java:667`), because that path delegates with a hard-coded `true`
    * @param options render knobs, passed straight through to {@link Performance.perform};
@@ -1031,8 +821,6 @@ export class Msm extends AbstractMsm {
     const file = this.getFile();
     console.log(`\nConverting ${file !== null ? file : 'MSM data'} to MIDI.`);
 
-    // `getRootElement() === null` is exactly `isEmpty()`, so the early return and the
-    // navigation below now take the same value.
     const root = this.getRootElement();
     if (root === null) return null;
 
@@ -1048,9 +836,6 @@ export class Msm extends AbstractMsm {
       this.makeInitialTempo(bpm, track);
     }
 
-    // Looked up once. The three calls below asserted `<global>` three times over, each
-    // re-walking the root's children to make the same claim; an MSM without a `<global>`
-    // threw on the first of them then and throws here now.
     const global = requireFirstChildElement(root, 'global');
     this.parseMarkerMap(global, track, exportExpressive);
     this.parseTimeSignatureMap(global, track, exportExpressive);
@@ -1108,18 +893,13 @@ export class Msm extends AbstractMsm {
   /**
    * The single tempo event of a non-expressive export, at date 0.
    *
-   * `bpm` counts *beats*, and a beat is one unit of the first global time signature's
-   * denominator — so 120 bpm in 6/8 means 120 eighths, not 120 quarters.
+   * `bpm` counts beats, and a beat is one unit of the first global time signature's denominator
+   * — so 120 bpm in 6/8 means 120 eighths, not 120 quarters.
    *
-   * **This method used the `!` as control flow, and the two absences it collapsed are not
-   * the same absence.** The whole five-link navigation sat inside a `try` so that any
-   * missing link — no global, no dated, no timeSignatureMap, no timeSignature — threw a
-   * `TypeError` and fell back to a quarter-note beat, which is Java's catch-all. But the
-   * *sixth* `!`, on `getAttributeValue('denominator')`, does not throw: it hands `parseInt`
-   * a genuine `null`, which coerces to the string "null" and yields `NaN`, so a
-   * `<timeSignature>` with no denominator produced `1.0 / NaN` = `NaN`, NOT the 0.25
-   * fallback. Written out, that difference is visible; written as a `!` chain in a `try`,
-   * it read as if the two cases agreed. Both behaviours are preserved exactly.
+   * The two absences here are not the same absence, and Java distinguishes them too. A missing
+   * link in the navigation — no global, no dated, no timeSignatureMap, no timeSignature — falls
+   * back to a quarter-note beat. A `<timeSignature>` present but carrying no `denominator`
+   * yields `1.0 / NaN`, i.e. `NaN`, not the 0.25 fallback.
    */
   private makeInitialTempo(bpm: number, track: Track): void {
     const root = this.getRootElement();
@@ -1130,10 +910,9 @@ export class Msm extends AbstractMsm {
 
     let beatlength: number;
     if (timeSignature === null) {
-      beatlength = 0.25; // the missing-element arm, formerly the `catch`
+      beatlength = 0.25; // Java's catch-all arm
     } else {
       const denominator = timeSignature.getAttributeValue('denominator');
-      // `parseInt(null!)` is `parseInt("null")` is `NaN`; see the note above.
       beatlength = 1.0 / (denominator === null ? NaN : parseInt(denominator));
     }
     track.add(EventMaker.createTempo(0, bpm, beatlength));
@@ -1153,10 +932,10 @@ export class Msm extends AbstractMsm {
    * Turns the part's `name` attribute into a program change (a guess at the instrument,
    * by name lookup) and a track name event.
    *
-   * A part with no usable name still gets a program change — to Acoustic Grand Piano —
-   * but no track name. `generateProgramChanges` is already the *resolved* flag here: the
-   * caller clears it when a programChangeMap has supplied an initial program change, so
-   * this method never overrides an explicit one.
+   * A part with no usable name still gets a program change — to Acoustic Grand Piano — but no
+   * track name. `generateProgramChanges` is the resolved flag: the caller clears it when a
+   * programChangeMap has supplied an initial program change, so this never overrides an explicit
+   * one.
    */
   private processPartName(
     part: Element,
@@ -1164,9 +943,6 @@ export class Msm extends AbstractMsm {
     channel: number,
     generateProgramChanges: boolean,
   ): void {
-    // Three reads of `name` — a presence test, an emptiness test, and an asserted read —
-    // become one. `null` and `''` take the same branch here, which is why the value can be
-    // tested for both at once.
     const name = part.getAttributeValue('name');
     if (name === null || name === '') {
       if (generateProgramChanges) {
@@ -1184,10 +960,10 @@ export class Msm extends AbstractMsm {
   /**
    * Renders the part's programChangeMap.
    *
-   * @returns whether the map contained an entry at date 0 — *not* whether it rendered
-   *   anything. The caller uses it to decide whether {@link processPartName} still has to
-   *   invent an opening program change: a map that only switches instrument later leaves
-   *   the opening bars unset, so the name-derived guess is still wanted.
+   * @returns whether the map contained an entry at date 0 — not whether it rendered anything.
+   *   The caller uses it to decide whether {@link processPartName} still has to invent an
+   *   opening program change: a map that only switches instrument later leaves the opening bars
+   *   unset, so the name-derived guess is still wanted.
    *
    * Only reached when program change generation is on at all, so an MSM exported with
    * `generateProgramChanges` false keeps its explicit programChangeMap out of the MIDI
@@ -1215,11 +991,8 @@ export class Msm extends AbstractMsm {
         ? Msm.readMillisecondsDateFromElement(n)
         : Math.round(parseFloat(getAttributeValue('date', n)));
       if (date === 0) weHaveAnInitialPrgCh = true;
-      // `parseInt(n.getAttributeValue('value')!)` was this, and on a `<programChange>` with
-      // no `value` it handed `parseInt` a real null — the string "null", hence NaN, hence a
-      // program change to instrument NaN, which `channelMessage` masks to 0 (Acoustic Grand
-      // Piano). `getAttributeValue`'s miss is `''`, and `parseInt('')` is NaN too, so this
-      // is the same number by the same route with no lie in the type.
+      // A `<programChange>` with no `value` yields NaN, which `channelMessage` masks to 0,
+      // Acoustic Grand Piano. Java lands on the same number by the same route.
       const value = parseInt(getAttributeValue('value', n));
       track.add(EventMaker.createProgramChange(channel, date, value));
     }
@@ -1231,23 +1004,19 @@ export class Msm extends AbstractMsm {
    * a note-off per `<note>`. `<rest>` elements are not rendered; only `note` children of
    * `<score>` are visited.
    *
-   * The two branches are not symmetric, and both asymmetries are Java's
-   * (`Msm.java:1000`):
+   * The two branches are not symmetric, and both asymmetries are Java's (`Msm.java:1000`):
    *
-   * - a note with no `xml:id` gets the text `'unknown'` in the expressive branch but the
-   *   empty string in the symbolic one, because the latter goes through
-   *   {@link getAttributeValue}, whose miss value is `''`;
+   * - a note with no `xml:id` gets the text `'unknown'` in the expressive branch but the empty
+   *   string in the symbolic one, because the latter goes through {@link getAttributeValue},
+   *   whose miss value is `''`;
    * - a missing `milliseconds.date.end` logs and falls back to `date + duration`, mixing a
-   *   millisecond date with a tick duration. That is a data error rather than a supported
-   *   mode, which is why it is loud.
+   *   millisecond date with a tick duration. That is a data error rather than a supported mode,
+   *   which is why it is loud.
    *
-   * Velocity defaults to 100 where the attribute is absent — the same constant the
-   * symbolic branch uses unconditionally.
+   * Velocity defaults to 100 where the attribute is absent — the same constant the symbolic
+   * branch uses unconditionally.
    */
   private processScore(part: Element, track: Track, exportExpressive: boolean): void {
-    // The three-way guard was three tests followed by three assertions re-reading the same
-    // three things; it is now three reads, each tested where it is bound. Same short
-    // circuit, same order, one walk of `part`'s children instead of three.
     const dated = part.getFirstChildElement('dated');
     if (dated === null) return;
     const score = dated.getFirstChildElement('score');
@@ -1289,13 +1058,11 @@ export class Msm extends AbstractMsm {
         track.add(EventMaker.createNoteOff(chan, dateEnd, pitch, 0));
       } else {
         const date = Math.round(parseFloat(getAttributeValue('date', n)));
-        // `'id'`, not `'xml:id'`. Both spellings reach the same attribute through
-        // `attribute`'s third lookup, but only this one is CORRECT in the reference too:
-        // Java's `Helper.getAttribute` matches a local name, so
+        // `'id'`, not `'xml:id'`: Java's `Helper.getAttribute` matches a local name, so
         // `Helper.getAttributeValue("xml:id", n)` missed all three of its lookups and always
         // returned `""` — every text event in every reference `.mid` was `FF 01 00`, a
-        // zero-length payload. That is a defect in the fork rather than a contract to match,
-        // and it is fixed there (`meico@68ccd3b8`); the references were regenerated with it.
+        // zero-length payload. That was a defect in the fork rather than a contract to match; it
+        // is fixed there (`meico@68ccd3b8`) and the references were regenerated with the fix.
         const xmlId = getAttributeValue('id', n);
         track.add(EventMaker.createTextEvent(date, xmlId));
         track.add(EventMaker.createNoteOn(chan, date, pitch, 100));
@@ -1310,16 +1077,15 @@ export class Msm extends AbstractMsm {
    * Converts the part's channelVolumeMap into channel-volume control changes.
    * Expressive export only — in symbolic export the map is ignored entirely.
    *
-   * The loop runs **backwards through the map**, and that is what implements
-   * {@link CONTROL_CHANGE_DENSITY}: of a cluster of entries within the density window the
-   * *last* survives, since it is the one seen first. Entries carrying `mandatory` bypass
-   * the thinning. Iterating forwards would keep the first of each cluster instead and
-   * change the output. Ordering of the resulting events is not affected — `Track.add`
-   * sorts by tick, stably.
+   * The loop runs backwards through the map, and that is what implements
+   * {@link CONTROL_CHANGE_DENSITY}: of a cluster of entries within the density window the last
+   * survives, since it is the one seen first. Entries carrying `mandatory` bypass the thinning.
+   * Iterating forwards would keep the first of each cluster instead and change the output. The
+   * order of the resulting events is unaffected — `Track.add` sorts by tick, stably.
    *
-   * Two paths add a default volume of 100 at date 0: no channelVolumeMap at all, and a
-   * map whose earliest surviving entry is after date 0 (`prevDate > 0`, which an empty map
-   * also satisfies since `prevDate` is still its initial sentinel).
+   * Two paths add a default volume of 100 at date 0: no channelVolumeMap at all, and a map whose
+   * earliest surviving entry is after date 0 (`prevDate > 0`, which an empty map also satisfies
+   * since `prevDate` is still its initial sentinel).
    */
   private parseChannelVolumeMap(part: Element, track: Track, exportExpressive: boolean): void {
     if (!exportExpressive) return;
@@ -1359,13 +1125,13 @@ export class Msm extends AbstractMsm {
    * Converts the part's positionMap (pedalling) into control changes.
    * Expressive export only.
    *
-   * Unlike {@link parseChannelVolumeMap} this is **not** thinned by
-   * {@link CONTROL_CHANGE_DENSITY}; every entry becomes an event. It also iterates
-   * backwards, but here that is only shape shared with its neighbour, not a filter.
+   * Unlike {@link parseChannelVolumeMap} this is not thinned by {@link CONTROL_CHANGE_DENSITY};
+   * every entry becomes an event. It iterates backwards too, but here that is shape shared with
+   * its neighbour, not a filter.
    *
-   * An unrecognised (or absent) `controller` falls through to controller number 0 — bank
-   * select — rather than being skipped. Java does the same (`Msm.java:1092`); only
-   * `sustain` and `soft` are mapped.
+   * An unrecognised or absent `controller` falls through to controller number 0 — bank select —
+   * rather than being skipped. Java does the same (`Msm.java:1092`); only `sustain` and `soft`
+   * are mapped.
    */
   private parsePositionMap(part: Element, track: Track, exportExpressive: boolean): void {
     if (!exportExpressive) return;
@@ -1409,17 +1175,16 @@ export class Msm extends AbstractMsm {
    * (`Mei2MsmMpmConverter` writes exactly those two, and the reference fixtures contain
    * nothing else).
    *
-   * **Fixed upstream, then here.** The thresholds used to be `> 1.0` / `< 1.0`, which a
-   * sharp — exactly `1.0` — passed neither, so a sharp key signature reached MIDI as zero
-   * accidentals while a flat one was counted correctly. That asymmetry is why it never
-   * looked like an off-by-one. It was Java's arithmetic verbatim, and it was simply wrong:
-   * `keys_accidentals` is D major and Java wrote `sf=0`.
+   * The thresholds are `> 0` / `< 0`, not Java's original `> 1.0` / `< 1.0`, which a sharp —
+   * exactly `1.0` — passed neither, so a sharp key signature reached MIDI as zero accidentals
+   * while a flat one was counted correctly (`keys_accidentals` is D major and Java wrote
+   * `sf=0`).
    *
-   * Repaired in the fork first (`meico@db83c7c5`, `Msm.java:1151,1155`) and the reference
-   * MIDI regenerated from it, so byte equivalence still holds — it is now equivalence with
-   * a Java that counts sharps. Four fixtures moved, by six bytes in all: `keys_accidentals`,
-   * `comprehensive`, `composite_advanced` and `tuplets`, each an `sf` byte of `0` becoming
-   * the sharp count it always should have been. Recorded in PARITY.md §3.
+   * Repaired in the fork first (`meico@db83c7c5`, `Msm.java:1151,1155`) and the reference MIDI
+   * regenerated from it, so byte equivalence still holds — against a Java that counts sharps.
+   * Four fixtures moved by six bytes in all: `keys_accidentals`, `comprehensive`,
+   * `composite_advanced` and `tuplets`, each an `sf` byte of `0` becoming the sharp count.
+   * Recorded in PARITY.md §3.
    */
   private parseKeySignatureMap(part: Element, track: Track, exportExpressive: boolean): void {
     const dated = part.getFirstChildElement('dated');
@@ -1432,9 +1197,7 @@ export class Msm extends AbstractMsm {
       e !== null;
       e = getNextSiblingElement('keySignature', e)
     ) {
-      // `parseFloat(e.getAttributeValue('date')!)` was this. `getAttributeValue`'s miss is
-      // `''` and `parseFloat('')` is `NaN`, which is exactly what `parseFloat(null)` gave —
-      // an undated entry has always produced an event at tick NaN, and still does.
+      // an undated entry produces an event at tick NaN, as in Java
       const date = exportExpressive
         ? Msm.readMillisecondsDateFromElement(e)
         : Math.round(parseFloat(getAttributeValue('date', e)));
@@ -1476,9 +1239,7 @@ export class Msm extends AbstractMsm {
         ? Msm.readMillisecondsDateFromElement(e)
         : Math.round(parseFloat(getAttributeValue('date', e)));
 
-      // Absent is 4; present-but-unparsable stays NaN. Reading the attribute once keeps
-      // those two apart, which is the whole reason the test was written against
-      // `getAttribute` rather than against the value.
+      // absent is 4; present but unparsable stays NaN
       const numeratorAttribute = e.getAttribute('numerator');
       const numerator =
         numeratorAttribute === null ? 4 : Math.round(parseFloat(numeratorAttribute.getValue()));
@@ -1494,11 +1255,8 @@ export class Msm extends AbstractMsm {
    * anchors that sequencingMap gotos aim at (`target.id` names a marker's `xml:id`, see
    * {@link Goto}). Called once for `<global>` and once per part.
    *
-   * A marker with no `message` becomes the literal `'marker'`; one carrying an EMPTY
-   * `message` keeps the empty string, which is a different event. That distinction used to
-   * be made by `e.getAttributeValue('message')!` — an assertion that typed the null away
-   * and then tested for it anyway, inside a `try` for an accessor that cannot throw. Three
-   * spellings of one question; this is the question.
+   * A marker with no `message` becomes the literal `'marker'`; one carrying an empty `message`
+   * keeps the empty string, which is a different event.
    */
   private parseMarkerMap(part: Element, track: Track, exportExpressive: boolean): void {
     const dated = part.getFirstChildElement('dated');
@@ -1522,24 +1280,20 @@ export class Msm extends AbstractMsm {
   }
 
   /**
-   * This method checks whether the velocity values hold the specified limits. If not, they are scaled down.
-   * @param min
-   * @param max
-   *
-   * Called once, as `fitVelocities(0, 127)` from the expressive branch of
-   * {@link renderMidi}, and it **rewrites the `velocity` attributes in place** — this is
-   * one of the sanctioned mutation sites, and it is why it must run before any note event
-   * is built.
+   * Compress the velocity values into `[min, max]` if any of them fall outside it. Called once,
+   * as `fitVelocities(0, 127)` from the expressive branch of {@link renderMidi}, and it rewrites
+   * the `velocity` attributes in place — which is why it must run before any note event is
+   * built.
    *
    * Two details that look like bugs and are not:
    *
    * - `highest` starts at `-Number.MAX_VALUE`, where Java writes `Double.MIN_VALUE`
-   *   (`Msm.java:803`) — which in Java is the smallest *positive* double, not the most
-   *   negative one. The port writes what Java meant. It cannot diverge at this call site:
-   *   both sentinels are far below `max`, and {@link computePartwiseCompression} reads
-   *   `highest` only inside `highest > max`.
-   * - the scan is `if (value < lowest) … else if (value > highest) …`, so a run of
-   *   descending values never sets `highest` at all. Java's, verbatim.
+   *   (`Msm.java:803`), which in Java is the smallest positive double rather than the most
+   *   negative one. The port writes what Java meant, and cannot diverge at this call site: both
+   *   sentinels are far below `max`, and {@link computePartwiseCompression} reads `highest` only
+   *   inside `highest > max`.
+   * - the scan is `if (value < lowest) … else if (value > highest) …`, so a run of descending
+   *   values never sets `highest` at all. Java's, verbatim.
    */
   private fitVelocities(min: number, max: number): void {
     // if min is greater than max, switch the values
@@ -1579,18 +1333,12 @@ export class Msm extends AbstractMsm {
   }
 
   /**
-   * This method computes a compression of an unlimited input domain to a limited output domain.
-   * It uses a semicircle to define a projection into the interval [min, max].
-   * @param x
-   * @param min
-   * @param max
-   * @returns
+   * Compress an unlimited input domain into `[min, max]` by projecting it onto a semicircle.
    *
-   * **Unused, here and in Java** (`Msm.java:846`) — the rejected alternative to
-   * {@link computePartwiseCompression}, kept because Java keeps it. Java's own comment
-   * says why it lost: the projection is fixed, so it practically never reaches `min` or
-   * `max` and the available range goes to waste. Retained rather than deleted so the two
-   * trees stay comparable; a dead-code sweep (T21) can take it, with that note.
+   * Unused, here and in Java (`Msm.java:846`) — the rejected alternative to
+   * {@link computePartwiseCompression}, retained so the two trees stay comparable. Java's own
+   * comment says why it lost: the projection is fixed, so it practically never reaches `min` or
+   * `max` and the available range goes to waste.
    */
   private static computeSemicircleCompression(x: number, min: number, max: number): number {
     const radius = (max - min) / 2.0;
@@ -1600,29 +1348,23 @@ export class Msm extends AbstractMsm {
   }
 
   /**
-   * This method computes a compression of a limited input domain to a limited output domain.
-   * It uses a partwise linear mapping.
-   * @param attributes the values to be mapped according to the compression
-   * @param lowest
-   * @param highest
-   * @param min
-   * @param max
+   * Compress a limited input domain into `[min, max]` by a piecewise linear mapping, writing the
+   * results through `attributes`.
    *
-   * The mapping is piecewise linear in up to five pieces: the far-below tail
-   * `[lowest, min)`, the lower roll-off `[min, lowerCompMax)`, the untouched middle, the
-   * upper roll-off `(upperCompMin, max]` and the far-above tail `(max, highest]`. Values
-   * in the middle are left exactly as they are — that is the `continue`, not a skipped
-   * write.
+   * The mapping has up to five pieces: the far-below tail `[lowest, min)`, the lower roll-off
+   * `[min, lowerCompMax)`, the untouched middle, the upper roll-off `(upperCompMin, max]` and
+   * the far-above tail `(max, highest]`. Values in the middle are left exactly as they are —
+   * that is what the `continue` means, not a skipped write.
    *
    * `rolloffFactor` is what keeps the compression from flattening everything: only
    * `1 - rolloffFactor` of each in-range half's span is given up to make room for the
-   * out-of-range tail. `upperRolloff1` is written as `((max - upperCompMin) *
-   * rolloffFactor) / (max - upperCompMin)`, i.e. algebraically just `rolloffFactor`;
-   * kept in that form because it is Java's (`Msm.java:886`) and because the expression
-   * documents which span is being scaled.
+   * out-of-range tail. `upperRolloff1` is written as
+   * `((max - upperCompMin) * rolloffFactor) / (max - upperCompMin)`, algebraically just
+   * `rolloffFactor`; kept in that form because it is Java's (`Msm.java:886`) and because the
+   * expression documents which span is being scaled.
    *
-   * Floating-point arithmetic under a bit-identity requirement: **no operand may be
-   * reordered and no subexpression factored out**, however redundant it looks.
+   * Floating-point arithmetic under a bit-identity requirement: no operand may be reordered and
+   * no subexpression factored out, however redundant it looks.
    */
   private static computePartwiseCompression(
     attributes: KeyValue<number, Attribute>[],
@@ -1680,38 +1422,27 @@ export class Msm extends AbstractMsm {
   }
 
   /**
-   * returns the date of the last note's offset (not in milliseconds but in MIDI ticks!)
-   * @returns
+   * The offset date of the last note, in MIDI ticks — not milliseconds.
    */
   getEndDate(): number {
     let latestOffset = 0.0;
-    const parts = this.requireRootElement().getChildElements('part'); // get all parts
+    const parts = this.requireRootElement().getChildElements('part');
 
-    // in each part
     for (const part of parts) {
       const dated = part.getFirstChildElement('dated');
       if (dated === null) continue;
       const score = dated.getFirstChildElement('score');
       if (score === null) continue;
 
-      // Compute the offset of each note and keep the largest. Forwards, where Java walks
-      // backwards (`Msm.java:1382`): the loop is a maximum over a set, `latestOffset` is
-      // *assigned* rather than accumulated, and `>` is strict, so a tie keeps a value equal
-      // to the one it would have replaced. No sum is reassociated and no order is observable
-      // — the two directions answer the same double for every input, NaN included (`NaN >
-      // x` is false whichever end you start from).
+      // Keep the largest note offset. Forwards, where Java walks backwards (`Msm.java:1382`):
+      // this is a maximum over a set, `latestOffset` is assigned rather than accumulated and
+      // `>` is strict, so the direction is not observable — NaN included, since `NaN > x` is
+      // false from either end. An undated or durationless note contributes such a NaN.
       for (const note of score.getChildElements('note')) {
-        // Both were `getAttributeValue(…)!`, which hands `parseFloat` a real null on a note
-        // that lacks the attribute — the string "null", so `NaN`. `getAttributeValue`'s miss
-        // is `''`, and `parseFloat('')` is `NaN` too, so an undated or durationless note
-        // still contributes a NaN offset that fails `>` and is ignored. Same number, and
-        // the type no longer claims a string that is not there.
-        const date = parseFloat(getAttributeValue('date', note)); // get its date
-        const dur = parseFloat(getAttributeValue('duration', note)); // get its duration
-        const offset = date + dur; // compute the offset date
-        if (offset > latestOffset)
-          // if its after the last offset known so far
-          latestOffset = offset; // set this to the last offset
+        const date = parseFloat(getAttributeValue('date', note));
+        const dur = parseFloat(getAttributeValue('duration', note));
+        const offset = date + dur;
+        if (offset > latestOffset) latestOffset = offset;
       }
     }
 
@@ -1719,19 +1450,14 @@ export class Msm extends AbstractMsm {
   }
 
   /**
-   * a helper method for parsing the milliseconds date of an element
-   * @param e
-   * @returns
+   * The `milliseconds.date` of an element, rounded. The single place expressive export reads a
+   * date — notes, markers, signatures and control changes all come through here, which is why an
+   * MSM that has not been performed produces one error line per element rather than one for the
+   * document.
    *
-   * The single place expressive export reads a date. Everything below it — notes, markers,
-   * signatures, control changes — goes through here, which is why an MSM that has not been
-   * performed produces one error line per element rather than one for the document.
-   *
-   * The fallback to `date` is a last resort, not a mode: it substitutes a value in MSM
-   * ticks where milliseconds are expected. An element with **neither** attribute throws, in
-   * this port and in Java (`Msm.java:1424` dereferences the null `Attribute`, giving an NPE;
-   * `dateAtt!.getValue()` here gave a `TypeError`). That stays a throw — the only change is
-   * that it names both attributes it looked for instead of reporting a missing property.
+   * The fallback to `date` is a last resort, not a mode: it substitutes a value in MSM ticks
+   * where milliseconds are expected. An element with neither attribute throws, here and in Java
+   * (`Msm.java:1424` dereferences the null `Attribute` for an NPE).
    */
   private static readMillisecondsDateFromElement(e: Element): number {
     const millisecondsDate = attribute('milliseconds.date', e);
@@ -1745,29 +1471,22 @@ export class Msm extends AbstractMsm {
       throw new MissingNodeError(
         `element ${e.toXML()} has neither a "milliseconds.date" nor a "date" attribute`,
       );
-    return Math.round(parseFloat(symbolicDate.getValue())); // Math.round(double) returns number
+    return Math.round(parseFloat(symbolicDate.getValue()));
   }
 
   /**
-   * this method adds xml:ids to all note and rest elements, as far as they do not have an id
-   * @returns the generated ids count
+   * Give every `note` and `rest` without an `xml:id` a fresh one; elements that already have one
+   * keep it.
    *
-   * The XPath returns document order and {@link addUUID} is applied in that order, so the
-   * *n*-th generated id belongs to the *n*-th id-less note or rest.
+   * @returns how many ids were generated
    *
-   * Which elements are selected is observable; the order in which they are visited is
-   * not, as long as this is the only generator running — reversing the loop just permutes
-   * a set of opaque UUIDs among the same elements, and the tests' first-occurrence
-   * canonicalisation quotients exactly that away (confirmed: a reversed-loop mutant flips
-   * nothing). Changing the *predicate* is what shows: dropping `rest` from it flips the
-   * probe immediately. Treat the traversal as fixed anyway — the invariance argument
-   * stops holding the moment a second id generator runs against the same document, which
-   * is the situation `Mei2MsmMpmConverter` is in.
+   * The XPath returns document order and {@link addUUID} is applied in that order, so the n-th
+   * generated id belongs to the n-th id-less note or rest. Which elements are selected is
+   * observable in the output — dropping `rest` from the predicate flips the equivalence probe
+   * immediately — so treat the traversal as fixed.
    *
-   * Not on the pipeline path: nothing in `src/` calls this, so unlike its MEI namesake it
-   * does not contribute ids to the reference fixtures.
-   *
-   * The predicate is `not(@xml:id)`, so elements that already have one keep it.
+   * Nothing in `src/` calls this, so unlike its MEI namesake it does not contribute ids to the
+   * reference fixtures.
    */
   addIds(): number {
     console.log('Adding IDs to MSM:');
@@ -1780,11 +1499,9 @@ export class Msm extends AbstractMsm {
     const e: Nodes = root.query(
       "descendant::*[(local-name()='note' or local-name()='rest') and not(@xml:id)]",
     );
-    // go through all the nodes. `descendant::*` yields elements, so the `instanceof` cannot
-    // fire; it replaces an `as unknown as Element` and is what lets the return below stay
-    // `e.size()` — the count of what the query SELECTED, which is what Java returns, rather
-    // than a count of what this loop happened to visit.
-    for (const node of e) if (node instanceof Element) addUUID(node); // add the xml:id attribute with a UUID
+    // `descendant::*` yields elements, so the `instanceof` never skips one — which is what
+    // lets the return below stay `e.size()`, the count of what was selected, as Java returns.
+    for (const node of e) if (node instanceof Element) addUUID(node);
 
     console.log(' done');
 

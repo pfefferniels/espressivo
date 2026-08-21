@@ -1,29 +1,26 @@
 /**
  * The ornament dictionary: which auxiliary notes each notated ornament sign plays.
  *
- * SOURCE. A verbatim port of `src/resources/ornaments.dict` from LarsEngeln/meico branch
- * `develop` @ `3deb141c` (open PR cemfi/meico#31), described in
- * `docs/history/ornamentation/research/lars-v3-implementation.md` §7.3. The seven entries and their step
- * sequences below are exactly that file's seven entries, in its order; the header comments of
- * the dict are reproduced as documentation where they carry a rule.
+ * A verbatim port of `src/resources/ornaments.dict` from LarsEngeln/meico branch `develop` @
+ * `3deb141c` (open PR cemfi/meico#31), described in
+ * `docs/history/ornamentation/research/lars-v3-implementation.md` §7.3: the same seven entries
+ * in the same order. The dict's header comments are reproduced below where they carry a rule.
  *
- * WHY A TABLE AND NOT A FILE. The reference ships a text resource parsed at runtime. Here it
- * is an `as const` table (DESIGN.md §4, "`src/mei/resources/ornaments.dict.ts` — as const
- * table, no runtime file IO"): the library is consumed as an ES module by bundlers and by the
- * browser, where `resources/` next to the sources does not exist. Making the data code also
- * makes the shapes type-checked and lets the compiler prove the lookup total.
+ * The reference parses that text resource at runtime; here it is an `as const` table
+ * (DESIGN.md §4, "`src/mei/resources/ornaments.dict.ts` — as const table, no runtime file
+ * IO"), because the library is consumed as an ES module by bundlers and by the browser, where
+ * `resources/` next to the sources does not exist.
  *
- * WHAT A SEQUENCE MEANS. Each entry's sequence is a list of **diatonic step offsets relative
- * to the principal note** — `0` is the principal's own pitch, `1` the next scale degree up,
- * `-1` the next down — interleaved with the literal repeat tokens `|:`, `:|` and `:|:` that
- * delimit the part of the sequence a trill repeats. Steps stay *diatonic* all the way into the
- * MPM; see {@link ../mei/MeiOrnamentExpander} for why that diverges from the reference, which
- * resolves them to halftones already in the MEI.
+ * A sequence is a list of diatonic step offsets relative to the principal note — `0` is the
+ * principal's own pitch, `1` the next scale degree up, `-1` the next down — interleaved with
+ * the literal repeat tokens `|:`, `:|` and `:|:` that delimit the part a trill repeats. Steps
+ * stay diatonic all the way into the MPM; see {@link ../mei/MeiOrnamentExpander} for why that
+ * diverges from the reference, which resolves them to halftones already in the MEI.
  *
- * The dict's own grammar (its lines 1-13) is not reimplemented — comments (`%`), name lines
- * (`#`) and alteration lines have already been applied in transcribing the file into the table.
- * The one rule that survives into code is the alias rule: the first `#` line is the display
- * name and every following `#` line is an alternative spelling matching the same entry.
+ * The dict's own grammar (its lines 1-13) is not reimplemented: comments (`%`), name lines
+ * (`#`) and alteration lines were applied when transcribing the file into the table. The one
+ * rule that survives into code is the alias rule — the first `#` line is the display name, and
+ * every following `#` line an alternative spelling matching the same entry.
  */
 
 /**
@@ -40,9 +37,8 @@ export interface OrnamentShape {
   /** The dict's first `#` line — the display name, and the MPM `ornamentDef` name we author. */
   readonly name: string;
   /**
-   * Further `#` lines: alternative spellings that match the same entry. Empty for most
-   * entries, because a SMuFL glyph name usually normalises onto {@link name} by itself
-   * ({@link normalizeOrnamentName}) and needs no explicit alias.
+   * Further `#` lines: alternative spellings that match the same entry. Empty for most entries,
+   * because {@link normalizeOrnamentName} usually folds a SMuFL glyph name onto {@link name}.
    */
   readonly aliases: readonly string[];
   /** The alteration line, tokenised. */
@@ -50,12 +46,8 @@ export interface OrnamentShape {
 }
 
 /**
- * The seven shipped entries of `ornaments.dict`, in file order.
- *
- * Read the sequences against the dict's own example (its line 13, `1 0 |: -1 0 :| 1 0`): a
- * trill is "principal, upper neighbour, over and over"; a turn is a four-note figure played
- * once; a mordent is a three-note bite; "trill with mordent" is a trill that lands in a lower
- * mordent; the double cadence is a lower-neighbour prefix in front of a trill.
+ * The seven shipped entries of `ornaments.dict`, in file order. Read the sequences against the
+ * dict's own worked example, its line 13: `1 0 |: -1 0 :| 1 0`.
  */
 export const ORNAMENT_SHAPES = [
   { name: 'trill', aliases: [], sequence: ['|:', 0, 1, ':|'] },
@@ -66,8 +58,7 @@ export const ORNAMENT_SHAPES = [
   { name: 'trill with mordent', aliases: [], sequence: ['|:', 0, 1, ':|', 0, -1, 0] },
   {
     name: 'double cadence lower prefix',
-    // The dict spells this alias out even though the normaliser below would derive it anyway;
-    // its own comment (line 39) says as much. Keeping it is free and documents the intent.
+    // The dict spells this alias out (its line 39) even though the normaliser below derives it.
     aliases: ['ornamentPrecompDoubleCadenceLowerPrefix'],
     sequence: [-1, 0, '|:', 1, 0, ':|'],
   },
@@ -81,20 +72,15 @@ export const ORNAMENT_SHAPES = [
  * leading `ornamentPrecomp` or `ornament`, split before each capital, join with spaces,
  * lowercase.
  *
- * DIVERGENCE FROM THE REFERENCE (blueprint §7.5, third defect): it strips only the longer
- * prefix `ornamentPrecomp`, so a plain `ornamentTrill` keeps its `Trill` capital, normalises to
- * `ornament trill`, misses the dict and dereferences null. Stripping both prefixes — longest
- * first, which is why the order of the two `startsWith` tests matters — is the fix.
+ * Two deliberate divergences from the reference (blueprint §7.5, third defect). It strips only
+ * `ornamentPrecomp`, so a plain `ornamentTrill` normalises to `ornament trill`, misses the dict
+ * and dereferences null; here both prefixes are stripped, longest first — which is why the
+ * order of the two `startsWith` tests matters. And the split is on a lowercase-to-uppercase
+ * boundary rather than before every capital (`glyphName.split("(?=[A-Z])")`), which shatters a
+ * name that is not camelCase: `"UPPER MORDENT"` becomes `"u p p e r m o r d e n t"`.
  *
- * The split is on a **lowercase-to-uppercase boundary**, not simply before every capital as the
- * reference does it (`glyphName.split("(?=[A-Z])")`). Splitting before every capital shatters a
- * name that is not camelCase — `"UPPER MORDENT"` becomes `"u p p e r m o r d e n t"` — so a
- * caller that upper-cased a dict spelling would silently miss the entry. Restricting the split
- * to a genuine camel hump leaves every non-camelCase spelling intact while still cutting
- * `DoubleCadenceLowerPrefix` into its four words.
- *
- * Names that are already dict spellings therefore pass through with only their whitespace
- * collapsed and their case folded, both of which are idempotent.
+ * A name that is already a dict spelling therefore passes through with only its whitespace
+ * collapsed and its case folded, both idempotent.
  */
 export function normalizeOrnamentName(raw: string): string {
   let name = raw.trim();
@@ -114,11 +100,9 @@ export function normalizeOrnamentName(raw: string): string {
  * Both the query and every candidate spelling go through {@link normalizeOrnamentName}, so a
  * SMuFL glyph name, its spaced-out form and any casing all reach the same entry.
  *
- * Returning null rather than throwing is the contract the caller needs: an unknown or absent
- * ornament name is an encoding the dictionary has no opinion about (a bare `<mordent/>` with no
- * `@form` is the common case), and RULE E1 / DESIGN.md D16 make that a log-and-skip, not a
- * failure. The reference has no null check here and throws instead (blueprint §7.5, second
- * defect).
+ * An unknown or absent name returns null rather than throwing — a bare `<mordent/>` with no
+ * `@form` is the common case, and RULE E1 / DESIGN.md D16 make that a log-and-skip. The
+ * reference has no null check here and throws instead (blueprint §7.5, second defect).
  */
 export function lookupOrnamentShape(name: string): OrnamentShape | null {
   const wanted = normalizeOrnamentName(name);
@@ -133,10 +117,10 @@ export function lookupOrnamentShape(name: string): OrnamentShape | null {
 /**
  * The distinct diatonic steps of a sequence, in order of first appearance.
  *
- * This is what the MPM note *pool* holds: the pool is an ornament's vocabulary, and
+ * This is what the MPM note pool holds — the pool is an ornament's vocabulary, and
  * `ornament.xml:78-79` is explicit that "the order of these note elements have no semantic
- * meaning" — the playing order lives in `note.order`. So a turn's `1 0 -1 0` contributes three
- * pool notes, not four, and `note.order` names the `0` note twice.
+ * meaning"; the playing order lives in `note.order`. A turn's `1 0 -1 0` therefore contributes
+ * three pool notes, not four, and `note.order` names the `0` note twice.
  */
 export function distinctSteps(sequence: readonly OrnamentToken[]): number[] {
   const steps: number[] = [];

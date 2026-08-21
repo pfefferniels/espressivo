@@ -2,96 +2,74 @@ import { Element } from '../xml/XomTypes.js';
 import { requireAttributeValue, reverseDescendantElements } from '../xml/tree.js';
 
 /**
- * Insertion into a date-sorted MSM map.
- *
- * Moved verbatim out of `mei/Helper` by T14 (ARCHITECTURE.md §8.2). It lives in `src/msm/`
- * rather than in `src/xml/` because it knows about the `date` attribute, which is MSM
- * domain vocabulary rather than XML generics.
+ * Insertion into a date-sorted MSM map. Lives in `src/msm/` rather than `src/xml/` because it
+ * knows the `date` attribute, which is MSM vocabulary rather than XML generics.
  *
  * Port of `meico.mei.Helper.addToMap`.
  * @author Axel Berndt
  */
 
 /**
- * this method adds element addThis to a timely sequenced list, the map, and ensures the timely order of the elements in the map;
- * therefore, addThis must contain the attribute "date"; if not, addThis is appended at the end
+ * Insert `addThis` into `map` at the position its `date` attribute calls for, preserving the
+ * invariant every MSM map depends on: children in non-decreasing `date` order. An element
+ * without a `date` is appended at the end. Three properties of the insertion are load-bearing:
  *
- * This is the invariant every MSM map depends on: children are in non-decreasing `date`
- * order. Three properties of the insertion are load-bearing and must not be "tidied":
- *
- * - the scan runs **backwards** from the end and stops at the first element whose `date`
- *   is `<=` the new one, inserting *after* it. Together those make the insertion stable
- *   — a new element lands behind everything already at the same date, so elements added
- *   at one date keep the order the converter emitted them in, which is what makes the
- *   serialized MSM byte-comparable against the Java reference;
- * - the search covers *descendants*, not children (it was written as
- *   `descendant::*[attribute::date]`, then as the equivalent `descendantElements` walk,
- *   and is now {@link reverseDescendantElements}, which produces the same elements in the
- *   order this scan reads them and stops as soon as it is told to) — but the insertion
- *   index comes from `map.indexOf(...)`, which only knows direct children.
- *   For a map whose entries have dated grandchildren, the two disagree and `indexOf`
- *   returns -1, making the insert position 0. No MSM map produced by this converter
- *   nests dated elements, so the case does not arise; Java has the identical shape;
+ * - the scan runs backwards from the end and stops at the first element whose `date` is `<=`
+ *   the new one, inserting after it. That makes the insertion stable — a new element lands
+ *   behind everything already at the same date, so elements added at one date keep the order
+ *   the converter emitted them in, which is what makes the serialized MSM byte-comparable
+ *   against the Java reference;
+ * - the search covers descendants ({@link reverseDescendantElements}), but the insertion index
+ *   comes from `map.indexOf(...)`, which only knows direct children. For a map whose entries
+ *   have dated grandchildren the two disagree, `indexOf` returns -1 and the insert position
+ *   becomes 0. No MSM map produced by this converter nests dated elements, so the case does not
+ *   arise; Java has the identical shape;
  * - dates are compared as `parseFloat`ed doubles, matching Java's `Double.parseDouble`.
  *
- * Why lazily: building the array first made every insertion a full pass over the map, so
- * filling a `<score>` with n notes cost Θ(n²) — after the whole-document XPath queries
- * were removed from the converter this was 56% of a conversion, and the largest remaining
- * superlinear term. The reverse walk finds the last dated element after O(depth) work, and
- * the common case — a note dated at or after everything already in the map — accepts it
- * immediately. A note dated before the whole map still walks the whole map, exactly as it
- * did before.
+ * The walk is lazy because materialising the dated elements first made every insertion a full
+ * pass over the map, so filling a `<score>` with n notes cost Θ(n²) — measured at 56% of a
+ * conversion. The reverse walk reaches the last dated element after O(depth) work and the
+ * common case, a note dated at or after everything already in the map, accepts it immediately.
+ * A note dated before the whole map still walks the whole map.
  *
- * The "no dated elements at all" case has to stay distinguishable from "every dated
- * element is later", because the two do different things: the first appends at the end,
- * the second inserts at the front. Hence {@link sawDated} rather than a length test.
+ * "No dated elements at all" appends at the end while "every dated element is later" inserts at
+ * the front, so the two must stay distinguishable — hence {@link sawDated} rather than a
+ * length test.
  *
- * @param addThis an xml element (should have an attribute date)
- * @param map a timely sequenced list of elements with attribute date
- * @return the index of the element in the map or -1 if insertion failed
+ * @return the index `addThis` landed at, or -1 if either argument was null
  */
 export function addToMap(addThis: Element | null, map: Element | null): number {
-  if (map == null || addThis == null)
-    // no map or no element to insert
-    return -1; // no insertion
+  if (map == null || addThis == null) return -1;
 
   const dateAttribute = addThis.getAttribute('date');
   if (dateAttribute === null) {
-    // no attribute date
-    map.appendChild(addThis); // simply append addThis to the end of the map
-    return map.getChildCount() - 1; // and return the index
+    map.appendChild(addThis);
+    return map.getChildCount() - 1;
   }
 
-  const date = parseFloat(dateAttribute.getValue()); // get the date of addThis
+  const date = parseFloat(dateAttribute.getValue());
   let sawDated = false; // whether the map holds any dated element at all
   for (const dated of reverseDescendantElements(
     map,
     (element) => element.getAttribute('date') !== null,
   )) {
-    // go through the elements in the map that have an attribute date, back to front
     sawDated = true;
-    // The walk's own predicate is what guarantees the attribute is there, and a predicate
-    // is not something a type can carry — so the read is checked rather than asserted, and
-    // an impossible miss names `date` instead of arriving as `parseFloat(null)`'s NaN two
-    // comparisons later. Exactly `dated.getAttributeValue('date')!`: this port's
-    // `Element.getAttribute(name)` already matches on local name, so the two namespaced
-    // retries `requireAttributeValue` makes on top of it cannot find anything the plain
-    // lookup missed (see its docstring).
+    // The walk's predicate is what puts the attribute there; reading it through
+    // `requireAttributeValue` makes an impossible miss name `date` rather than arrive as
+    // `parseFloat(null)`'s NaN two comparisons later.
     if (parseFloat(requireAttributeValue('date', dated)) <= date) {
-      // if the element directly before date is found
-      let index = map.indexOf(dated); // get the index of the element just found
-      map.insertChild(addThis, ++index); // insert addThis right after the element
-      return index; // return the index
+      let index = map.indexOf(dated);
+      map.insertChild(addThis, ++index);
+      return index;
     }
   }
 
   if (!sawDated) {
-    // if there are no elements in the map with a date attribute
-    map.appendChild(addThis); // simply append addThis to the end of the map
-    return map.getChildCount() - 1; // and return the index
+    map.appendChild(addThis);
+    return map.getChildCount() - 1;
   }
 
-  // if all elements in the map had a date later than addThis's date
-  map.insertChild(addThis, 0); // insert addThis at the front of the map (as first child)
-  return 0; // return the index
+  // every dated element is later than addThis
+  map.insertChild(addThis, 0);
+  return 0;
 }

@@ -1,10 +1,7 @@
 /**
  * MEI's `dur` vocabulary to the numbers MSM and MIDI use. Leaf module — imports nothing.
  *
- * Moved verbatim out of `mei/Helper` by T14 (ARCHITECTURE.md §8.2).
- *
- * The conversion tables below are pipeline arithmetic, not style. Every literal in this
- * module feeds tick computations whose results are byte-compared against the Java
+ * Every literal below feeds tick computations that are byte-compared against the Java
  * reference, so the values, the case labels and the fall-through defaults are frozen.
  *
  * Port of the duration half of `meico.mei.Helper`.
@@ -12,15 +9,12 @@
  */
 
 /**
- * convert the duration string into decimal (e.g., 4 -> 1/4) and returns the result
+ * Convert a `dur` value to a decimal fraction of a whole note: `1` → 1.0, `4` → 0.25, down
+ * to `2048`. The three mensural names sit above the whole note (`breve` 2, `long` 4,
+ * `maxima` 8).
  *
- * The unit is the whole note: `1` → 1.0, `4` → 0.25, down to `2048`. The three mensural
- * names sit above the whole note (`breve` 2, `long` 4, `maxima` 8). An unrecognised
- * string — including `'0'`, which MEI allows for a breve — returns **0.0**, and callers
- * that divide by the result get infinity rather than an error. Java behaves identically.
- *
- * @param durString
- * @return
+ * An unrecognised string — including `'0'`, which MEI allows for a breve — returns 0.0, and
+ * callers that divide by the result get infinity rather than an error. Java behaves the same.
  */
 export function duration2decimal(durString: string): number {
   switch (durString) {
@@ -59,9 +53,7 @@ export function duration2decimal(durString: string): number {
 }
 
 /**
- * convert a duration string to a word representation
- * @param durString
- * @return
+ * Convert a `dur` value to its English note-value name; unrecognised strings pass through.
  */
 export function duration2word(durString: string): string {
   switch (durString) {
@@ -95,20 +87,16 @@ export function duration2word(durString: string): string {
 }
 
 /**
- * convert a duration specified in pulses (based on ppq) to decimal format
- * @param pulses
- * @param ppq
- * @return
+ * Convert a duration in MIDI ticks to a decimal fraction of a whole note, at `ppq` ticks
+ * per quarter.
  */
 export function pulseDuration2decimal(pulses: number, ppq: number): number {
   return pulses / (ppq * 4.0);
 }
 
 /**
- * generate an HTML Unicode string with the note/rest value and dots according to the specified duration
- * @param duration
- * @param isRest
- * @return
+ * Render a decimal duration as HTML Unicode entities: the note or rest glyph plus its dots.
+ * Anything below a 128th, or above a maxima, degrades to the word `note`/`rest`.
  */
 export function decimalDuration2HtmlUnicode(duration: number, isRest: boolean): string {
   if (duration < 0.0078125) return isRest ? 'rest' : 'note';
@@ -161,11 +149,8 @@ export function decimalDuration2HtmlUnicode(duration: number, isRest: boolean): 
 }
 
 /**
- * This is a helper method for decimalDuration2HtmlUnicode().
- * From a decimal duration value, take the undotted note value and the remainder. This method computes the number of dots.
- * @param undottedNoteValue
- * @param remainder
- * @return
+ * The augmentation dots that make up `remainder` on top of `undottedNoteValue`, halving the
+ * dot value each step and stopping at a 128th.
  */
 function durationRemainder2UnicodeDots(undottedNoteValue: number, remainder: number): string {
   let dots = '';

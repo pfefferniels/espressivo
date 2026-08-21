@@ -15,12 +15,10 @@ import type { Msm } from '../msm/Msm.js';
 import type { Mpm } from '../mpm/Mpm.js';
 
 /**
- * The document an empty {@link Mei} starts from. Java loads the equivalent from the
- * resource `/resources/minimal.mei`; there is no resource loader here, so it is inlined.
- * It is deliberately the smallest tree that still satisfies everything downstream reaches
- * for: a `meiHead` with a `title` (so {@link Mei.getTitle} has somewhere to look), and a
- * `music/body/mdiv/score` spine with one `staffDef` and one empty `measure` (so
- * {@link Mei.getMusic} is non-null and the converter finds a body to walk).
+ * The document an empty {@link Mei} starts from. Java loads the equivalent from the resource
+ * `/resources/minimal.mei`; there is no resource loader here, so it is inlined. It is the
+ * smallest tree everything downstream still reaches into: a `meiHead` with a `title`, and a
+ * `music/body/mdiv/score` spine with one `staffDef` and one empty `measure`.
  */
 const MINIMAL_MEI = `<?xml version="1.0" encoding="UTF-8"?>
 <mei xmlns="http://www.music-encoding.org/ns/mei" meiversion="4.0.0">
@@ -54,12 +52,8 @@ const MINIMAL_MEI = `<?xml version="1.0" encoding="UTF-8"?>
  * Walk a chain of child-element names down from `start`, stopping at the first missing link.
  *
  * `childPath(head, 'fileDesc', 'titleStmt', 'title')` is `head/fileDesc/titleStmt/title` or
- * null — the same short-circuit the null-tolerant {@link firstChildElement} already performs
- * per link, hoisted so that a caller writes the path once instead of threading a
- * `Element | null` through four statements and asserting it non-null at each of them.
- *
- * The fold reads `start` as its seed, so a null `start` yields null without any lookup, which
- * is what lets {@link Mei.getTitle} pass `getMeiHead()` straight in.
+ * null. `start` is the fold's seed, so a null `start` yields null without any lookup — which is
+ * what lets {@link Mei.getTitle} pass `getMeiHead()` straight in.
  */
 function childPath(start: Element | null, ...names: readonly string[]): Element | null {
   return foldl(names, start, (e, name) => (e === null ? null : firstChildElement(name, e)));
@@ -82,19 +76,17 @@ export interface StaffProvenance {
 /**
  * An MEI document, held as a XOM-style {@link Document} tree.
  *
- * `Mei` is the **entry stage** of the pipeline this port exists for:
- * `MEI → MSM + MPM → (expressive) MIDI`. It is deliberately a thin wrapper — it owns the
- * tree, offers navigation helpers over it (`getMeiHead`, `getMusic`, `getAllMdivs`, …),
- * and three *preprocessing* passes that rewrite the tree in place before conversion:
- * {@link Mei.resolveCopyofs}, {@link Mei.removeRendElements} and
- * {@link Mei.resolveExpansions}. All musical interpretation lives in
- * {@link Mei2MsmMpmConverter}, which calls those three in that order (see its
- * `convertMei`) and then walks the `body` subtrees.
+ * `Mei` is the entry stage of the pipeline `MEI → MSM + MPM → (expressive) MIDI`. It owns the
+ * tree, offers navigation helpers over it (`getMeiHead`, `getMusic`, `getAllMdivs`, …), and
+ * three preprocessing passes that rewrite the tree in place before conversion:
+ * {@link Mei.resolveCopyofs}, {@link Mei.removeRendElements} and {@link Mei.resolveExpansions}.
+ * All musical interpretation lives in {@link Mei2MsmMpmConverter}, which calls those three in
+ * that order (see its `convertMei`) and then walks the `body` subtrees.
  *
- * **The preprocessing passes mutate this instance.** The converter works around that by
- * copying the whole document up front and restoring it afterwards when its `cleanup` flag
- * is set — so a caller who converts twice with `cleanup` gets the same result twice, and a
- * caller who converts with `cleanup: false` does not. That is Java's contract too.
+ * The preprocessing passes mutate this instance. The converter works around that by copying the
+ * whole document up front and restoring it afterwards when its `cleanup` flag is set — so a
+ * caller who converts twice with `cleanup` gets the same result twice, and a caller who
+ * converts with `cleanup: false` does not. That is Java's contract too.
  *
  * Port of `meico.mei.Mei`.
  * @author Axel Berndt
@@ -108,19 +100,8 @@ export class Mei extends XmlBase {
   /** parse MEI from an XML string */
   constructor(xml: string, isXmlString: true);
   /**
-   * Three genuinely different things to start from — nothing, a parsed tree, or XML source.
-   *
-   * The first two were separate overloads, and `unified-signatures` was right that they are
-   * one signature with an optional parameter: `mei?: Document` accepts exactly the two call
-   * forms `()` and `(document)` accepted, and dispatches on the same `arg === undefined`
-   * the body already tested. The objection recorded here — that collapsing would make
-   * `new Mei(someString)` silently mean "empty" — applies to the *string* overload, which
-   * stays separate because its second argument is what distinguishes it; a lone string is
-   * still a type error. `XmlBase` had already made the identical split for the identical
-   * reason (T17), and `AbstractMsm` after it.
-   *
-   * Java has eight constructors here; the five that take `File`, `InputStream` or a
-   * validation schema have no counterpart in this port.
+   * Java has eight constructors here; the five that take `File`, `InputStream` or a validation
+   * schema have no counterpart in this port.
    */
   constructor(arg?: Document | string, isXmlString?: true) {
     if (arg === undefined) {
@@ -156,8 +137,6 @@ export class Mei extends XmlBase {
    * The same two-step is used by {@link Mei.getMusic}.
    */
   getMeiHead(): Element | null {
-    // `getRootElement()` is null exactly when `isEmpty()`, so reading it into a local both
-    // states the emptiness test and removes the three assertions the repeated calls needed.
     const root = this.getRootElement();
     if (root === null) return null;
 
@@ -170,28 +149,23 @@ export class Mei extends XmlBase {
   /**
    * The work title, used to name the MSM movements the converter produces.
    *
-   * **The two fallback paths below are unreachable, in this port and in Java alike.** They
-   * are written as `catch (NullPointerException)` handlers around
-   * `firstChildElement(name, ofThis)` — but that method returns null for a null
-   * `ofThis` in both languages (`Helper.java:…getFirstChildElement(String, Element)`
-   * opens with `if (ofThis == null) return null;`), so no exception is ever thrown and
-   * control never leaves the first block. The effective behaviour is therefore: read
-   * `meiHead/fileDesc/titleStmt/title`, and if any link of that chain is missing fall
-   * through to the filename. The MEI 3.0 (`workDesc/work/titleStmt/title`) and MEI 4.0+
-   * (`workList/work/title`) locations are never consulted.
+   * The two fallback paths below are unreachable, in this port and in Java alike. They are
+   * written as `catch (NullPointerException)` handlers around `firstChildElement(name, ofThis)`,
+   * but that method returns null for a null `ofThis` in both languages
+   * (`Helper.java:…getFirstChildElement(String, Element)` opens with
+   * `if (ofThis == null) return null;`), so no exception is ever thrown and control never leaves
+   * the first block. The effective behaviour is: read `meiHead/fileDesc/titleStmt/title`, and if
+   * any link of that chain is missing fall through to the filename. The MEI 3.0
+   * (`workDesc/work/titleStmt/title`) and MEI 4.0+ (`workList/work/title`) locations are never
+   * consulted.
    *
    * Kept bug-for-bug: the reference MSM fixtures carry titles produced by exactly this
-   * behaviour. Do not "repair" the fallbacks — that would rename movements.
+   * behaviour, so repairing the fallbacks would rename movements.
    * @return the title, the source filename without extension, or an empty string
    */
   getTitle(): string {
     let title: Element | null;
 
-    // The chains below used to be written link by link, each link asserting the previous
-    // one non-null (`firstChildElement('titleStmt', title!)`) — ten assertions for a walk
-    // that is *defined* to stop at the first missing link. {@link childPath} is that walk,
-    // so the nulls flow instead of being asserted away, and the try/catch scaffolding keeps
-    // documenting Java's structure without any `!` inside it.
     try {
       title = childPath(this.getMeiHead(), 'fileDesc', 'titleStmt', 'title');
     } catch {
@@ -209,20 +183,17 @@ export class Mei extends XmlBase {
   }
 
   /**
-   * The fallback {@link Mei.getTitle} uses when the `title` element is not where it looks:
-   * the source filename without its path or extension, or the empty string for MEI that
-   * never came from a file. Reading `getFile()` once at the caller is what lets the two
-   * `this.getFile()!` assertions go — the ternary tested it and then asserted it again.
+   * The fallback {@link Mei.getTitle} uses when the `title` element is not where it looks: the
+   * source filename without its path or extension, or the empty string for MEI that never came
+   * from a file.
    */
   private static titleFromFilename(file: string | null): string {
     return file === null ? '' : getFilenameWithoutExtension(Mei.fileBasename(file));
   }
 
   /**
-   * the file is stored as a path string here, whereas Java uses a File object;
-   * this reproduces java.io.File.getName(), i.e. the path is stripped down to the last path segment
-   * @param path
-   * @return
+   * The last segment of a path. The file is a path string here where Java uses a `File`, so this
+   * stands in for `java.io.File.getName()`.
    */
   private static fileBasename(path: string): string {
     const i = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
@@ -277,16 +248,6 @@ export class Mei extends XmlBase {
     return result;
   }
 
-  /*
-   * `requireRootElement` used to be declared here — the root element, where this instance
-   * being empty would be a broken invariant rather than an outcome the caller handles
-   * (ARCHITECTURE.md RULE N2a, applied to the one `XmlBase` accessor `Mei` reads without a
-   * null branch). It is now inherited from {@link XmlBase}, which grew the identical method
-   * for its own three tree-wide operations; `AbstractMsm` had written it a third time. Where
-   * absence *is* possible in this file — `getMeiHead`, `getMusic`, `resolveExpansions` — the
-   * nullable accessor stays and the null is branched on.
-   */
-
   /** all variant encodings — `choice` and `app` elements — anywhere in this document */
   getAllVariantEncodings(): Nodes {
     return Mei.getAllVariantEncodingsStatic(this.requireRootElement());
@@ -315,7 +276,7 @@ export class Mei extends XmlBase {
   }
 
   /**
-   * Convert this MEI into one MSM plus one MPM **per movement** (`mdiv`).
+   * Convert this MEI into one MSM plus one MPM per movement (`mdiv`).
    *
    * @param ppq pulses per quarter note. A floor, not a fixed value: the converter compares
    *   it against {@link Mei.computeMinimalPPQ} and silently raises it if this resolution
@@ -331,15 +292,11 @@ export class Mei extends XmlBase {
    *   to inspect the intermediate state.
    * @return the MSMs and the matching MPMs, index-aligned
    *
-   * NOT YET USABLE — construct the converter yourself, as `tests/integration` does:
-   * `new Mei2MsmMpmConverter(ppq, …).convert(mei)`. `Mei2MsmMpmConverter` imports this
-   * module for `Mei.getLayer`/`getStaff` and for the `instanceof Mei` that discriminates
-   * its two `convert` overloads, so a top-level import here would close a value cycle
-   * between the two modules. T18 removed the `Mpm` ⇄ `GenericStyle` cycle and the
-   * CommonJS `require` that used to stand in for this import, but not this cycle:
-   * untangling it means editing the converter's overload dispatch, which is T15's item
-   * and the highest-risk change in the project. Until T15 lands, this method throws
-   * rather than pretending — same observable behaviour the `require` had.
+   * Not usable: this method throws. `Mei2MsmMpmConverter` imports this module for
+   * `Mei.getLayer`/`getStaff` and for the `instanceof Mei` that discriminates its two `convert`
+   * overloads, so a top-level import here would close a value cycle between the two modules.
+   * Construct the converter yourself, as `tests/integration` does:
+   * `new Mei2MsmMpmConverter(ppq, …).convert(mei)`.
    */
   exportMsmMpm(
     ppq = 720,
@@ -359,34 +316,29 @@ export class Mei extends XmlBase {
    * The coarsest pulses-per-quarter resolution that still represents every note value in
    * this MEI as a whole number of ticks.
    *
-   * `dur` attributes are note *values* (`4` = quarter), converted to fractions of a whole
-   * note by {@link duration2decimal}; each dot halves the value again. The smallest
-   * such fraction `dur` divided into a quarter note (`0.25 / dur`) is how many ticks a
-   * quarter must be worth. Results below 1 clamp to 1 and non-integers round *up* — never
-   * down, or the shortest note would not fit.
+   * `dur` attributes are note values (`4` = quarter), converted to fractions of a whole note by
+   * {@link duration2decimal}; each dot halves the value again. The smallest such fraction
+   * divided into a quarter note (`0.25 / dur`) is how many ticks a quarter must be worth.
+   * Results below 1 clamp to 1 and non-integers round up — never down, or the shortest note
+   * would not fit.
    *
-   * Tuplets are not considered (Java says so explicitly), so this is a lower bound on what
-   * a tuplet-bearing score really needs; the converter's own rounding absorbs the rest.
+   * Tuplets are not considered (Java says so explicitly), so this is a lower bound on what a
+   * tuplet-bearing score really needs; the converter's own rounding absorbs the rest.
    *
-   * The `descendant::*[attribute::dur]` this used to hand to {@link Element.query} matches
-   * one element per note, so the node set is the size of the score — and XPath sorts a
-   * node set into document order through xmldom's `compareDocumentPosition`, which walks
-   * both ancestor chains per comparison. That sort was 23% of a conversion on a 2000-note
-   * score. {@link descendantElements} is the same axis walked directly, in the same
-   * pre-order. The reverse loop this used to be was kept only because Java writes one; the
-   * fold is a minimum, so it does not depend on the order, and {@link foldl} says that.
+   * A direct axis walk, not an XPath: the node set would be the size of the score, and sorting
+   * it into document order through xmldom's `compareDocumentPosition` — which walks both
+   * ancestor chains per comparison — was 23% of a conversion on a 2000-note score.
    *
-   * The dot loop stays a loop on purpose: `d /= 2` per dot is the accumulation Java
-   * performs, and the closed form `d / 2 ** dots` is a different sequence of roundings.
+   * The dot loop stays a loop on purpose: `d /= 2` per dot is the accumulation Java performs,
+   * and the closed form `d / 2 ** dots` is a different sequence of roundings.
    */
   computeMinimalPPQ(): number {
     const e = this.getMusic();
     if (e === null) return 0;
 
     const durs = descendantElements(e, (element) => element.getAttribute('dur') !== null);
-    // `durs` was selected on `dur` being present, so the ternaries below can never take
-    // their `4.0`/`0` arm — but they are Java's, and reading the value once instead of
-    // asking twice is what lets the two `!` assertions go.
+    // The predicate already guarantees `dur`, so the ternaries below cannot take their
+    // `4.0`/`0` arm; they are Java's and stay.
     const dur = foldl(durs, 4.0, (smallest, elem) => {
       const durValue = elem.getAttributeValue('dur');
       let d = durValue !== null ? duration2decimal(durValue) : 4.0;
@@ -416,11 +368,11 @@ export class Mei extends XmlBase {
    * - the same set of references recurring, i.e. a cycle (`a` copies `b` copies `a`). Those
    *   placeholders are unresolvable, so they are reported and deleted from the tree.
    *
-   * Note the ids: every `xml:id` **inside** a copy is suffixed with `_meico_<uuid>` so the
-   * document keeps unique ids, but the copy's own root id is then overwritten with the
-   * placeholder's id — the placeholder's identity survives, its content is replaced. The
-   * order in which those UUIDs are drawn is observable in the output and the equivalence
-   * tests canonicalise by first occurrence, so **do not reorder these loops**.
+   * Every `xml:id` inside a copy is suffixed with `_meico_<uuid>` so the document keeps unique
+   * ids, but the copy's own root id is then overwritten with the placeholder's id — the
+   * placeholder's identity survives, its content is replaced. The order in which those UUIDs are
+   * drawn is observable in the output and the equivalence tests canonicalise by first
+   * occurrence, so the loops below must not be reordered.
    *
    * Scanning starts at the root element, not at `music`: references may point from the
    * music into `meiHead`.
@@ -443,22 +395,15 @@ export class Mei extends XmlBase {
     const notResolved: string[] = [];
     let previousPlaceholders = new Map<Element, string>();
 
-    // `for (;;)` rather than `while (true)`: the loop really has no entry condition — it
-    // ends on one of two `break`s below, nothing resolved left to do or the same placeholder
-    // set twice running — and spelling that as a condition that is always true is what
-    // `no-unnecessary-condition` objects to. Same loop, no test at the top.
     for (;;) {
       const elements = new Map<string, Element>();
       const placeholders = new Map<Element, string>();
 
-      // Was `e.query('descendant::*[attribute::copyof or attribute::sameas or
-      // attribute::xml:id]')`. Nearly every element in an MEI carries an `xml:id`, so that
-      // node set is the whole document, and XPath sorting it into document order — an AVL
-      // insert per hit under xmldom's ancestor-chain-walking `compareDocumentPosition` —
-      // was 25% of a conversion. The walk below is the same axis in the same order, which
-      // matters here more than anywhere: `placeholders` and `elements` are insertion-ordered
-      // maps whose order decides which duplicate id wins and in what sequence the UUIDs
-      // below are drawn, and that sequence is observable in the output.
+      // A direct axis walk, not an XPath: nearly every element in an MEI carries an `xml:id`,
+      // so the node set is the whole document and sorting it into document order cost 25% of a
+      // conversion. Pre-order matters here more than anywhere — `placeholders` and `elements`
+      // are insertion-ordered, and their order decides which duplicate id wins and in what
+      // sequence the UUIDs below are drawn.
       const all = descendantElements(
         e,
         (element) =>
@@ -520,11 +465,10 @@ export class Mei extends XmlBase {
           continue;
         }
 
-        // `descendant-or-self::*[@xml:id]`, written out: self first, then the subtree in
-        // pre-order, which is the document order XPath returned. The order is load-bearing
-        // — it is the sequence the UUIDs below are drawn in — and the axis is `-or-self`,
-        // so the copy's own root id is renamed too, before the loop after this one
-        // overwrites it with the placeholder's.
+        // `descendant-or-self::*[@xml:id]`: self first, then the subtree in pre-order. The
+        // order is the sequence the UUIDs below are drawn in, and the axis includes self, so
+        // the copy's own root id is renamed too — before the loop after this one overwrites it
+        // with the placeholder's.
         const hasXmlId = (element: Element) =>
           element.getAttribute('id', 'http://www.w3.org/XML/1998/namespace') !== null;
         const ids = descendantElements(copy, hasXmlId);
@@ -545,10 +489,6 @@ export class Mei extends XmlBase {
       }
     }
 
-    // A real diagnostic, on the channel diagnostics belong on. The progress lines that used
-    // to surround it ("Resolving copyofs and sameas's:", " done") are gone: a library has no
-    // business narrating its passes to whatever stdout the host happens to have, and nothing
-    // read them — the twenty console.log spies in Mei.test.ts existed only to silence them.
     if (notResolved.length > 0)
       console.error(`The following placeholders could not be resolved:\n${notResolved.toString()}`);
 
@@ -565,18 +505,16 @@ export class Mei extends XmlBase {
    * their text matters to the conversion — so each one is replaced by its own string value
    * and dropped.
    *
-   * "Replaced" is generous: the text is **appended to the end of the parent**, not spliced
-   * in at the `rend`'s position, so a `rend` in the middle of mixed content moves its text
-   * to the back. Java does the same (`parent.appendChild(r.getValue())`), and downstream
-   * consumers of these strings — `dynam`, `tempo`, `dir` labels — read the parent's whole
-   * value, so the reordering is invisible there. Kept as is.
+   * "Replaced" is generous: the text is appended to the end of the parent, not spliced in at
+   * the `rend`'s position, so a `rend` in the middle of mixed content moves its text to the
+   * back. Java does the same (`parent.appendChild(r.getValue())`), and downstream consumers of
+   * these strings — `dynam`, `tempo`, `dir` labels — read the parent's whole value, so the
+   * reordering is invisible there.
    *
-   * `descendant::*[local-name()='rend']` used to go through {@link Element.query}, which
-   * pays XPath's node-set ordering over the whole `music` subtree even when the answer is
-   * a handful of elements — 13% of a conversion of a score with no `rend` in it at all,
-   * because the cost is in the axis, not in the hits. Same walk, same pre-order, so a
-   * `rend` nested in another `rend` is still visited after its container, and still ends
-   * up appending its text to a subtree that has already been detached.
+   * A direct axis walk, not an XPath, which would pay node-set ordering over the whole `music`
+   * subtree even with no hits at all: 13% of a conversion of a score containing no `rend`.
+   * Pre-order either way, so a `rend` nested in another is visited after its container and
+   * appends its text to a subtree that has already been detached.
    */
   removeRendElements(): void {
     const e = this.getMusic();
@@ -600,9 +538,7 @@ export class Mei extends XmlBase {
    */
   resolveExpansions(): void {
     const music = this.getMusic();
-    // A non-null `music` implies a non-null root — `getMusic` reads the root to find it —
-    // so the second test never fails; writing it out is what removes the assertion, and it
-    // leaves the pass a no-op on empty MEI exactly as before.
+    // A non-null `music` implies a non-null root, since `getMusic` reads the root to find it.
     const root = this.getRootElement();
     if (music !== null && root !== null) {
       root.replaceChild(music, this._resolveExpansions(music));
@@ -623,24 +559,19 @@ export class Mei extends XmlBase {
    *    the walk), dropping any child that the `plist` does not name;
    * 3. detach all children into an id-keyed map, then re-append them in `plist` order.
    *
-   * ### Two known port divergences, both latent — no fixture in the suite has an `expansion`
+   * Two port divergences, both latent — no fixture in the suite has an `expansion`, and fixing
+   * either would be a behaviour change.
    *
-   * The `catch` in step 3 is Java's repeat mechanism: appending an element that already
-   * has a parent throws `MultipleParentException` there, and the handler makes a fresh
-   * copy with fresh `meico_expansion_of_…` ids. This port's {@link Element.appendChild}
-   * does not throw — it silently detaches the node from its old parent and re-appends it.
-   * So the `try` always succeeds, the handler is unreachable, and **a repeated `plist`
-   * entry moves the section to its later position instead of duplicating it**: `A B A`
-   * plays as `B A`, not `A B A`.
+   * The `catch` in step 3 is Java's repeat mechanism: appending an element that already has a
+   * parent throws `MultipleParentException` there, and the handler makes a fresh copy with
+   * fresh `meico_expansion_of_…` ids. This port's {@link Element.appendChild} does not throw —
+   * it silently detaches the node from its old parent and re-appends it. So the `try` always
+   * succeeds, the handler is unreachable, and a repeated `plist` entry moves the section to its
+   * later position instead of duplicating it: `A B A` plays as `B A`.
    *
-   * Inside that handler, Java additionally rewrites `#`-references among the copy's
-   * descendants so they point at the renamed copies (`Mei.java`, the `copyDescendants`
-   * loop). This port never implemented it: the loop was present but empty, narrating the
-   * intent in comments while doing nothing, and has been removed — the id map
-   * `idOldAndNew` is built and, as in the original port, not consumed.
-   *
-   * Fixing either belongs with the XomTypes work (T17) and a decision about MEI expansion
-   * support; both are behaviour changes, so neither is done here.
+   * Inside that handler, Java additionally rewrites `#`-references among the copy's descendants
+   * so they point at the renamed copies (`Mei.java`, the `copyDescendants` loop). This port does
+   * not: the id map `idOldAndNew` is built and never consumed.
    */
   private _resolveExpansions(root: Element): Element {
     const regularizedRoot = root.copy();
@@ -686,9 +617,8 @@ export class Mei extends XmlBase {
       let child = firstChildElement(regularizedRoot);
       while (child !== null) {
         child.detach();
-        // `getAttributeValue` answers `''` rather than null for an absent `@xml:id`, so
-        // Java's `id != null` here was true for every child and the guard it opened never
-        // skipped one. An unidentified child is keyed under `''`, as it always has been.
+        // `getAttributeValue` answers `''` rather than null for an absent `@xml:id`, so Java's
+        // `id != null` guard here skipped nothing: an unidentified child is keyed under `''`.
         childHash.set(getAttributeValue('id', child), child);
         child = firstChildElement(regularizedRoot);
       }
@@ -754,69 +684,63 @@ export class Mei extends XmlBase {
 
   /**
    * Split every multi-layer `staff` into one single-layer `staff` per layer, so that the
-   * conversion downstream emits **one MSM `part` per MEI layer** instead of one per staff.
+   * conversion downstream emits one MSM `part` per MEI layer instead of one per staff.
    *
-   * MEI keeps the voices of a keyboard or divisi staff as sibling `layer` elements inside
-   * one `staff`, and {@link Mei2MsmMpmConverter} makes one MSM part per `staffDef` — so
-   * those voices are merged into a single part, sharing one MIDI channel and one
-   * instrument. This pass rewrites the encoding so each voice arrives as its own staff,
-   * and therefore its own part, channel and instrument. It is what you want before
-   * per-voice performance rendering, and it is **not** part of the conversion pipeline:
-   * the converter never calls it, so the default behaviour is unchanged. Call it yourself
-   * before `exportMsm`/`exportMsmMpm`.
+   * MEI keeps the voices of a keyboard or divisi staff as sibling `layer` elements inside one
+   * `staff`, and {@link Mei2MsmMpmConverter} makes one MSM part per `staffDef`, so those voices
+   * merge into a single part sharing one MIDI channel and one instrument. This pass rewrites
+   * the encoding so each voice arrives as its own staff, and therefore its own part, channel
+   * and instrument — what per-voice performance rendering needs. It is not part of the
+   * conversion pipeline; the converter never calls it, so call it yourself before
+   * `exportMsm`/`exportMsmMpm`.
    *
-   * **This mutates the instance**, like the other preprocessing passes — clone first if
-   * the original is still needed. Unlike them it is *not* undone by the converter's
-   * `cleanup` flag, because the converter never invokes it.
+   * It mutates the instance, like the other preprocessing passes — clone first if the original
+   * is still needed. Unlike them it is not undone by the converter's `cleanup` flag, because
+   * the converter never invokes it.
    *
-   * The new staffs are numbered by **string concatenation** of the original `@n` values,
-   * `staff@n + layer@n` — staff 2, layer 1 becomes staff `21`. Elements missing an `@n`
-   * get a synthetic one: `1000000` for a staff, and `<layer index> * 1000000` for a layer,
-   * so the first unnumbered layer of an unnumbered staff becomes staff `10000000`. Each
-   * moved layer is renumbered `@n="1"`, since its new staff holds only it.
+   * The new staffs are numbered by string concatenation of the original `@n` values,
+   * `staff@n + layer@n` — staff 2, layer 1 becomes staff `21`. Elements missing an `@n` get a
+   * synthetic one: `1000000` for a staff, and `<layer index> * 1000000` for a layer, so the
+   * first unnumbered layer of an unnumbered staff becomes staff `10000000`. Each moved layer is
+   * renumbered `@n="1"`, since its new staff holds only it.
    *
-   * Every `staffDef` is then regenerated: each new staff gets a deep copy of the
-   * `staffDef` its original staff referenced (so clef, key, transposition and instrument
-   * carry over), renumbered to the new `@n` and appended to the copy's original container;
-   * the originals are then detached. The copies are appended in **ascending numeric order**
-   * of the new `@n`, which is what keeps the part order in the MSM musically sensible
-   * rather than following the order the layers happened to be visited in. A score with no
-   * `scoreDef` at all gets one, appended to `score`, holding freshly minted empty
-   * `staffDef`s.
+   * Every `staffDef` is then regenerated: each new staff gets a deep copy of the `staffDef` its
+   * original staff referenced (so clef, key, transposition and instrument carry over),
+   * renumbered to the new `@n` and appended to the copy's original container; the originals are
+   * then detached. The copies are appended in ascending numeric order of the new `@n`, which
+   * keeps the MSM part order musically sensible rather than following the order the layers
+   * happened to be visited in. A score with no `scoreDef` at all gets one, appended to `score`,
+   * holding freshly minted empty `staffDef`s.
    *
-   * Two upstream behaviours are reproduced rather than repaired, and both are recorded in
-   * PARITY.md §4:
+   * Two upstream behaviours are reproduced rather than repaired, both recorded in PARITY.md §4:
    *
-   * - The concatenation scheme is **ambiguous**: staff 1 / layer 11 and staff 11 / layer 1
-   *   both yield `111`, and then share a `staffDef` and a part.
+   * - the concatenation scheme is ambiguous — staff 1 / layer 11 and staff 11 / layer 1 both
+   *   yield `111`, and then share a `staffDef` and a part;
    * - `oStaff` elements are matched alongside `staff`, but only their `layer` children are
-   *   moved — an `oStaff` holding `oLayer` children yields no new staff and is **dropped**,
-   *   because the original is detached unconditionally.
+   *   moved, so an `oStaff` holding `oLayer` children yields no new staff and is dropped: the
+   *   original is detached unconditionally.
    *
-   * Backported from upstream `meico.mei.Mei.layersToStaffs()` (cemfi/meico v0.11.10, with
-   * the v0.11.12 fix that inserts the new staffs at the original's position instead of
-   * appending them to the end of the measure). It postdates the v0.11.2 reference fork this
-   * port is otherwise measured against; see PARITY.md §8.
+   * Backported from upstream `meico.mei.Mei.layersToStaffs()` (cemfi/meico v0.11.10, with the
+   * v0.11.12 fix that inserts the new staffs at the original's position instead of appending
+   * them to the end of the measure). It postdates the v0.11.2 reference fork this port is
+   * otherwise measured against; see PARITY.md §8.
    *
-   * @return one map per `mdiv`, in {@link Mei.getAllMdivs} order, from each generated
-   *   staff's `@n` to the staff and layer it came from. An `mdiv` with no `score`
-   *   contributes an empty map rather than being skipped, so the result stays index-aligned
-   *   with `getAllMdivs()`. The maps are per-`mdiv` rather than merged because the numbering
-   *   is only unique within one: two movements can each hold a staff `1`, and merging would
-   *   silently collapse them.
+   * @return one map per `mdiv`, in {@link Mei.getAllMdivs} order, from each generated staff's
+   *   `@n` to the staff and layer it came from. An `mdiv` with no `score` contributes an empty
+   *   map rather than being skipped, so the result stays index-aligned with `getAllMdivs()`. The
+   *   maps are per-`mdiv` rather than merged because the numbering is only unique within one:
+   *   two movements can each hold a staff `1`, and merging would collapse them.
    *
-   *   Java returns `void` and discards this — it builds the same table internally to
-   *   regenerate the `staffDef`s and then drops it. Returning it changes no XML and no
-   *   fixture byte, and it is the only way a caller can map an MSM part number back to the
-   *   voice it came from, since the `@n` concatenation is lossy (PARITY.md §8.3). Requested
-   *   by a downstream consumer that codes part numbers as small integers.
+   *   Java returns `void` and discards this table, which it builds internally to regenerate the
+   *   `staffDef`s. Returning it changes no XML and no fixture byte, and it is the only way a
+   *   caller can map an MSM part number back to the voice it came from, since the `@n`
+   *   concatenation is lossy (PARITY.md §8.3).
    */
   layersToStaffs(): Map<string, StaffProvenance>[] {
     const namespaceURI = this.requireRootElement().getNamespaceURI();
     const provenance: Map<string, StaffProvenance>[] = [];
 
     for (const mdiv of this.getAllMdivs()) {
-      // each mdiv has to be processed individually
       const score = firstChildElement('score', mdiv);
       if (score === null) {
         provenance.push(new Map()); // keep the result aligned with getAllMdivs()
@@ -837,8 +761,8 @@ export class Mei extends XmlBase {
         }
       }
 
-      // for each new staff number, where it came from — needed here so the new staffDefs
-      // are generated with the correct original contents, and returned to the caller
+      // for each new staff number, where it came from — needed here so the new staffDefs are
+      // generated from the right originals, and returned to the caller
       const newStaffOrigStaff = new Map<string, StaffProvenance>();
       provenance.push(newStaffOrigStaff);
 
@@ -944,9 +868,6 @@ export class Mei extends XmlBase {
    */
   static getLayerId(layer: Element | null): string {
     if (layer === null || layer.getLocalName() !== 'layer') return '';
-    // Read each attribute once and branch on the value, rather than testing for it and then
-    // asserting it back: two lookups per attribute became one, on a method the conversion
-    // calls per note.
     const def = layer.getAttributeValue('def');
     if (def !== null) return def;
     const n = layer.getAttributeValue('n');

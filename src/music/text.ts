@@ -1,19 +1,15 @@
 /**
  * String utilities. Leaf module — imports nothing.
  *
- * Moved verbatim out of `mei/Helper` by T14 (ARCHITECTURE.md §8.2). {@link repeatString} was
- * `private static` in `Helper`, where it sat next to its only caller `prettyXml`; the move
- * table sends the two to different modules, so it is exported here and imported by
- * `src/xml/prettyPrint.ts`. See the T14 log entry for why that call was made.
- *
  * Port of the string half of `meico.mei.Helper`.
  * @author Axel Berndt
  */
 
 /**
- * this method parses an input string, extracts all integer substrings and returns them as a list of integers
- * @param input
- * @return
+ * Collect every integer substring, in order of appearance.
+ *
+ * ` bis ` and ` to ` are rewritten to ` -` first, so a written range (`3 bis 7`) comes back
+ * as `[3, -7]` — the upper bound negated.
  */
 export function extractAllIntegersFromString(input: string): number[] {
   const str = input.replace(/ bis /g, ' -').replace(/ to /g, ' -');
@@ -27,9 +23,10 @@ export function extractAllIntegersFromString(input: string): number[] {
 }
 
 /**
- * just a little helper method to separate the filename from the extension
- * @param filename filename string incl. extension (may include the complete path)
- * @return filename/path without extension
+ * Strip the extension from a filename, which may include the complete path.
+ *
+ * A leading dot at index 0 marks a dotfile and the name is returned whole. A name with no
+ * dot at all returns the empty string, because `substring` clamps the -1.
  */
 export function getFilenameWithoutExtension(filename: string): string {
   const i = filename.lastIndexOf('.');
@@ -40,9 +37,9 @@ export function getFilenameWithoutExtension(filename: string): string {
 }
 
 /**
- * just a helper method for prettyXml(): two spaces per nesting level
- * @param stack
- * @return
+ * Indentation for `prettyXml`: two spaces per nesting level.
+ *
+ * Exported because its only caller lives in `src/xml/prettyPrint.ts`; `private static` in Java.
  */
 export function repeatString(stack: number): string {
   let indent = '';

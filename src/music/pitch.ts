@@ -2,10 +2,7 @@
  * MEI's `pname`/`accid` vocabularies to the numbers MSM and MIDI use, and back.
  * Leaf module — imports nothing.
  *
- * Moved verbatim out of `mei/Helper` by T14 (ARCHITECTURE.md §8.2).
- *
- * The conversion tables below are pipeline arithmetic, not style. Every literal in this
- * module feeds pitch computations whose results are byte-compared against the Java
+ * Every literal below feeds pitch computations that are byte-compared against the Java
  * reference, so the values, the case labels and the fall-through defaults are frozen.
  *
  * Port of the pitch/accidental half of `meico.mei.Helper`.
@@ -13,17 +10,12 @@
  */
 
 /**
- * compute the decimal value of the accidental (1 = 1 semitone)
+ * Decimal value of an MEI `accid`, in semitones. Fractional because MEI's quarter-tone
+ * vocabulary is covered too: `su`/`3qs` are +1.5, `sd`/`1qs` +0.5. Anything unrecognised
+ * yields 0, as does `n` (natural), which is listed explicitly and falls through.
  *
- * Covers MEI's quarter-tone vocabulary as well, which is why the return type is
- * fractional: `su`/`3qs` are +1.5, `sd`/`1qs` +0.5, and so on. Anything unrecognised —
- * including `n` (natural), which is listed explicitly and deliberately falls through —
- * yields 0. Note that {@link accidDecimal2String} is not a strict inverse: it
- * maps 2 back to `ss` and 3 to `xs`, so `x`, `ts` and the `n`-prefixed spellings do not
- * survive a round trip.
- *
- * @param accid the string to be converted
- * @return the decimal value of the accidental
+ * {@link accidDecimal2String} is not a strict inverse: it maps 2 back to `ss` and 3 to `xs`,
+ * so `x`, `ts` and the `n`-prefixed spellings do not survive a round trip.
  */
 export function accidString2decimal(accid: string): number {
   let accidentals = 0.0;
@@ -95,16 +87,13 @@ export function accidString2decimal(accid: string): number {
 }
 
 /**
- * Compute the string value of a Decimal (given as String or number).
- * Will take the most simple accidental sign (avoids combinations with neutral signs).
+ * The MEI `accid` for a decimal semitone value, taking the simplest sign (no combinations
+ * with neutrals). `null` in, `null` out.
  *
- * Both spellings of every value are listed (`'1'` and `'1.0'`) because the input reaches
- * this either from a JavaScript number's `toString` (`1`) or straight out of an MSM
- * attribute written by Java (`1.0`). A value that matches neither is **returned
- * unchanged** rather than rejected, so this can hand back arbitrary strings.
- *
- * @param accidObject
- * @return
+ * Both spellings of every value are listed (`'1'` and `'1.0'`) because the input arrives
+ * either from a JavaScript number's `toString` (`1`) or straight out of an MSM attribute
+ * written by Java (`1.0`). A value matching neither is returned unchanged rather than
+ * rejected, so this can hand back arbitrary strings.
  */
 export function accidDecimal2String(accidObject: string | number | null): string | null {
   let accid = '';
@@ -163,9 +152,7 @@ export function accidDecimal2String(accidObject: string | number | null): string
 }
 
 /**
- * convert an accidental string to a word representation
- * @param accid
- * @return
+ * The English name of an MEI `accid`; unrecognised strings yield the empty string.
  */
 export function accidString2word(accid: string): string {
   let accidental = '';
@@ -236,9 +223,8 @@ export function accidString2word(accid: string): string {
 }
 
 /**
- * compute the string value of accidental decimal value (1 = 1 semitone)
- * @param accid double value of accidental
- * @return the unicode string value of the accidental
+ * The accidental glyph, as HTML Unicode entities, for a decimal value in semitones. A value
+ * outside the table yields `'?'`; 0 yields the empty string.
  */
 export function accidDecimal2unicodeString(accid: number): string {
   if (accid === 0.0) {
@@ -268,21 +254,16 @@ export function accidDecimal2unicodeString(accid: number): string {
 }
 
 /**
- * converts an mei pname to a midi pitch number in the first midi octave
+ * The pitch class of an MEI `pname`, 0–11, in the first MIDI octave — one octave below the
+ * first MEI CMN octave. Bare letters (`c`…`b`, either case) and letters with a baked-in
+ * accidental (`c#`, `cs`, `db`, `df`, …) are accepted; the octave is the caller's business.
+ * Unrecognised input returns -1.
  *
- * Accepts bare letters (`c`…`b`, either case) and letters with a baked-in accidental
- * (`c#`, `cs`, `db`, `df`, …); the octave is the caller's business, this only gives the
- * pitch class.
- *
- * **There is no case returning 10.** `a#`, `as`, `bb` and `bf` — and their capitalised
- * forms — are absent from the table and fall through to -1, while every other
- * chromatic degree is spelled out. The gap is in `Helper.java` too and is ported as is.
- * It is latent in practice: MEI normally encodes B flat as `pname="b"` with a separate
- * `accid`, and the converter's other entry point passes only the first character
- * (`pname2midi(ac.substring(0, 1))`), so a bare letter always reaches the table.
- *
- * @param pname the pname string
- * @return the midi pitch number in the first midi octave (one octave below the first MEI CMN octave), or -1 if unrecognised
+ * No case returns 10: `a#`, `as`, `bb`, `bf` and their capitalised forms are absent from the
+ * table and fall through to -1, while every other chromatic degree is spelled out. The gap is
+ * in `Helper.java` too and is ported as is. It is latent in practice — MEI normally encodes B
+ * flat as `pname="b"` with a separate `accid`, and the converter's other entry point passes
+ * only the first character (`pname2midi(ac.substring(0, 1))`).
  */
 export function pname2midi(pname: string): number {
   switch (pname) {
@@ -365,9 +346,8 @@ export function pname2midi(pname: string): number {
 }
 
 /**
- * converts a midi pitch value to a pitch name string (which includes enharmonic equivalents)
- * @param midipitch the midi pitch value
- * @return the pitch name string
+ * The pitch name of a MIDI pitch, both enharmonic spellings space-separated where the class
+ * is chromatic (`'C# Db'`).
  */
 export function midi2pname(midipitch: number): string {
   const pitchclass = Math.round(midipitch % 12.0);
@@ -402,11 +382,12 @@ export function midi2pname(midipitch: number): string {
 }
 
 /**
- * convert a midi pitch value to a pitch name string without accidental, the accidental will be encoded in a separate string;
- * this method is used during MIDI to MSM conversion
- * @param useSharpInsteadOfFlat use sharp or flat for accidental?
- * @param midipitch the midi pitch value
- * @param pnameAccid the output array: [pitchName, accidental] - must have length >= 2
+ * Split a MIDI pitch into a plain pitch name and a separate accidental, as MIDI→MSM
+ * conversion needs them. Writes through `pnameAccid` as `[pitchName, accidental]`; the array
+ * must already have length >= 2, and both slots are cleared to `''` for a pitch class outside
+ * 0–11. The accidental is a decimal string in Java's spelling (`'1.0'`, `'-1.0'`, `'0.0'`).
+ *
+ * @param useSharpInsteadOfFlat spell the black keys sharp rather than flat
  */
 export function midi2PnameAndAccid(
   useSharpInsteadOfFlat: boolean,
@@ -502,10 +483,9 @@ export function midi2PnameAndAccid(
 }
 
 /**
- * Extends midi2PnameAndAccid to set octave value from midi pitch.
- * @param useSharpInsteadOfFlat
- * @param midipitch
- * @param pnameAccidOct array of length >= 3: [pitchName, accidental, octave]
+ * {@link midi2PnameAndAccid} plus the octave. Writes through `pnameAccidOct` as
+ * `[pitchName, accidental, octave]`, which must already have length >= 3; the octave slot is
+ * left untouched when the pitch class is out of range.
  */
 export function midi2PnameAccidOct(
   useSharpInsteadOfFlat: boolean,
@@ -524,9 +504,8 @@ export function midi2PnameAccidOct(
 }
 
 /**
- * Map midi pitch to octave.
- * @param midiPitch
- * @return
+ * The octave number of a MIDI pitch, counting from 0 at pitch 21 (A0). Anything below 21
+ * returns -1.
  */
 function getMidiOctave(midiPitch: number): number {
   if (midiPitch >= 21 && midiPitch <= 23) return 0;
