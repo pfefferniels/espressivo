@@ -17,7 +17,11 @@ would otherwise have to be re-derived.
 | `module` / `moduleResolution` | ES2022 / bundler | **nodenext** / **nodenext** |
 | `engines.node` | `>=18.18.0` | **`>=22.0.0`** |
 
-Three facts about the upgrade that were measured rather than assumed:
+The native compiler typechecks `src/` (162 files, ~68 000 lines) in **0.8-1.2 s**, against
+**3.1-3.7 s** for TypeScript 6.0.3 on the same tree and the same tsconfig — roughly 3.4x,
+measured three runs each, warm. That is the whole of the 7.0 pitch and it holds here.
+
+Three further facts about the upgrade, measured rather than assumed:
 
 1. **It needed zero source changes.** TS 7.0.2 typechecks `src/` clean on the pre-existing
    tsconfig, and again after the ES2025/nodenext switch. Every relative import already
