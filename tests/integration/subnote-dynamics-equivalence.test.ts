@@ -6,14 +6,14 @@ import { Msm } from '../../src/msm/Msm.js';
 import { Mpm } from '../../src/mpm/Mpm.js';
 
 /**
- * `@subNoteDynamics`, against Java — a branch **no fixture in the corpus reached**.
+ * `@subNoteDynamics`, against Java — a branch no other fixture in the corpus reaches.
  *
- * Every `<volume>` entry in the repository carries `mandatory="true"`, so only the
- * non-sub-note branch of `DynamicsMap` was ever taken; every `channelVolumeMap` had exactly
- * one entry, at date 0, and the branch that emits a continuous ramp was unexercised. The MSM
+ * Every other `<volume>` entry in the repository carries `mandatory="true"`, so only the
+ * non-sub-note branch of `DynamicsMap` is taken; every other `channelVolumeMap` has exactly
+ * one entry, at date 0, leaving the branch that emits a continuous ramp unexercised. The MSM
  * model study listed this among the surfaces the byte gate cannot protect.
  *
- * The fixtures come in a **pair that differs in one boolean**, because one of them would prove
+ * The fixtures come in a pair that differs in one boolean, because one of them would prove
  * nothing: a suite holding only the `on` case cannot tell a regression from the `off`
  * behaviour. See `fixtures-subnote-dynamics/PROVENANCE.md` for how they were generated and the
  * table of what differs.
@@ -43,9 +43,8 @@ describe('@subNoteDynamics against the Java reference', () => {
   }
 
   it('on: emits a continuous channelVolume ramp', () => {
-    // Stated as an invariant rather than left to the byte comparison, because the byte
-    // comparison would also pass against a reference that had ONE entry — which is the state
-    // every channelVolumeMap in the corpus was in.
+    // Stated as an invariant rather than left to the byte comparison, which would also pass
+    // against a reference that had the single entry every other channelVolumeMap has.
     const xml = perform('subnote_dynamics_on');
     expect(volumes(xml).length).toBeGreaterThan(50);
 
@@ -56,18 +55,15 @@ describe('@subNoteDynamics against the Java reference', () => {
   });
 
   it('the boolean decides whether the transition reaches note velocities', () => {
-    // This is the semantic, and it is measured rather than described: the first instruction
-    // ramps 40 -> 120 across the first four notes.
+    // The first instruction ramps 40 -> 120 across the first four notes:
     //
     //   off  [40, 59.98…, 80, 100.02…, 120, 120, 120, 120]   five distinct
     //   on   [100, 100, 100, 100,      120, 120, 120, 120]   two
     //
     // With the flag off the transition is sampled once per note; with it on the velocities
     // take only the instructions' own values and the shape goes to the volume map instead.
-    //
-    // The second four are 120 in BOTH, so they are not what this fixture is about — the
-    // second instruction's transition does not reach the velocities either way. Recorded so a
-    // reader does not mistake that for the effect under test.
+    // The second four are 120 in both, so they are not the effect under test: the second
+    // instruction's transition does not reach the velocities either way.
     const off = velocities(perform('subnote_dynamics_off'));
     const on = velocities(perform('subnote_dynamics_on'));
 

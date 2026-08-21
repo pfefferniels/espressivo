@@ -14,13 +14,7 @@ const FIXTURES = join(__dirname2, 'fixtures');
 const MEI_DIR = join(FIXTURES, 'mei');
 const PERF_REF_DIR = join(FIXTURES, 'performance-reference');
 
-/**
- * Extract note elements from augmented MSM XML for structural comparison.
- * Returns an array of objects with key note attributes.
- */
-/**
- * Normalize a numeric string for comparison: "60.0" → "60", "100.0" → "100"
- */
+/** Java's "60.0" and this port's "60" are the same number, so attributes compare as numbers. */
 function normalizeNum(s: string): number {
   return parseFloat(s);
 }
@@ -72,8 +66,8 @@ function extractNoteStructure(xml: string): {
 }
 
 /**
- * Compare MIDI files structurally: same number of tracks, same number of events per track,
- * same event types and approximate tick positions.
+ * Track count, and per-track event counts within a slack of 2. Nothing else — not event
+ * types, not ticks, not payloads; `midi-byte-equivalence.test.ts` is the oracle for those.
  */
 function compareMidiStructure(
   tsMidi: Midi,
@@ -101,7 +95,7 @@ function compareMidiStructure(
   for (let t = 0; t < tsTracks.length; t++) {
     const tsSize = tsTracks[t].size();
     const refSize = refTracks[t].size();
-    // Allow small event count differences due to implementation details
+    // Slack of 2 events per track, for implementation differences.
     if (Math.abs(tsSize - refSize) > 2) {
       eventCountsMatch = false;
       details.push(`Track ${t}: TS=${tsSize} events, Java=${refSize} events`);
@@ -115,8 +109,7 @@ function compareMidiStructure(
   };
 }
 
-// Test fixtures
-// Auto-discover all MEI fixtures; every fixture MUST have a Java reference (missing = failure, not skip)
+// Every fixture must have a Java reference: a missing one is a failure, not a skip.
 const fixtures = readdirSync(MEI_DIR)
   .filter((f) => f.endsWith('.mei'))
   .map((f) => f.replace(/\.mei$/, ''))
@@ -151,10 +144,8 @@ describe('Performance equivalence: TypeScript vs Java reference', () => {
         const tsNotes = extractNoteStructure(tsXml);
         const refNotes = extractNoteStructure(refXml);
 
-        // Same number of notes
         expect(tsNotes.length).toBe(refNotes.length);
 
-        // Each note should have same pitch, date, and duration
         for (let i = 0; i < tsNotes.length; i++) {
           expect(tsNotes[i].pitch).toBe(refNotes[i].pitch);
           expect(tsNotes[i].date).toBe(refNotes[i].date);
@@ -248,7 +239,6 @@ describe('Performance equivalence: TypeScript vs Java reference', () => {
         expect(bytes).not.toBeNull();
         expect(bytes!.length).toBeGreaterThan(14);
 
-        // Round trip: parse the exported MIDI
         const reimported = Midi.fromBytes(bytes!);
         expect(reimported.getSequence().getTracks().length).toBeGreaterThan(0);
         expect(reimported.getSequence().getTracks().length).toBe(
@@ -279,7 +269,6 @@ describe('Performance equivalence: TypeScript vs Java reference', () => {
       const mpm = result.getValue()[0];
       const perf = mpm.getAllPerformances()[0];
 
-      // Should still produce output even if MPM parts don't match
       const augmented = perf.perform(msm);
       expect(augmented).not.toBeNull();
       const midi = augmented.exportMidi()!;
@@ -340,24 +329,19 @@ describe('Performance equivalence: TypeScript vs Java reference', () => {
         const mpm = result.getValue()[0];
         const perf = mpm.getAllPerformances()[0];
 
-        // Full pipeline
         const augmented = perf.perform(msm);
         expect(augmented).not.toBeNull();
 
-        // Augmented MSM should have milliseconds.date attributes
         const augXml = augmented.getRootElement()!.toXML();
         expect(augXml).toContain('milliseconds.date');
 
-        // Export to MIDI
         const midi = msm.exportExpressiveMidi(perf, true);
         expect(midi).not.toBeNull();
 
-        // Export binary
         const bytes = midi!.exportMidi();
         expect(bytes).not.toBeNull();
         expect(bytes!.length).toBeGreaterThan(14);
 
-        // Verify MIDI header
         expect(String.fromCharCode(bytes![0], bytes![1], bytes![2], bytes![3])).toBe('MThd');
       });
     }

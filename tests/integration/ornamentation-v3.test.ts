@@ -6,26 +6,24 @@
  *
  * ## Why these fixtures sit apart from `fixtures/`
  *
- * Everything under `tests/integration/fixtures/` is **Java-generated ground truth** and is
+ * Everything under `tests/integration/fixtures/` is Java-generated ground truth and is
  * immutable (CHARTER §15-17): those suites compare this port's output against meico's,
  * attribute by attribute. No Java build produces v3 ornamentation — the feature does not
  * exist there — so a v3 fixture cannot have that kind of reference output, and pretending
  * otherwise by regenerating anything would weaken the parity gate. `fixtures-v3/` is
- * therefore a separate directory of **spec-derived** inputs, and the expected values live
- * here, in the arithmetic below, rather than in a committed `_augmented.msm`.
+ * therefore a separate directory of spec-derived inputs, and the expected values live here,
+ * in the arithmetic below, rather than in a committed `_augmented.msm`.
  *
- * **Every number asserted here is computed by hand in the comment above it** (CHARTER §8),
- * from DESIGN.md §5's worked vectors and these three rules:
+ * Every number asserted here is computed by hand in the comment above it (CHARTER §8), from
+ * DESIGN.md §5's worked vectors and these three rules, never read off the implementation:
  *
  * - frame: `%` resolves against the principal's symbolic tick duration (D4); "at start"
  *   anchors the frame at the principal's date, "at end" at its end minus the frame length;
  * - spacing (frozen against the v2 engine, `TemporalSpread.apply`): slot `i` of `n` sits at
- *   `pow(i / (n − 1), intensity) * frameLength + frameStart`, and the **last** slot is
- *   placed outside that loop, pinned at `frameStart + frameLength`;
+ *   `pow(i / (n − 1), intensity) * frameLength + frameStart`, and the last slot is placed
+ *   outside that loop, pinned at `frameStart + frameLength`;
  * - milliseconds: every fixture states 120 bpm on a quarter beat at ppq 720, so one quarter
  *   is 500 ms and `ms = ticks * 500 / 720`. That ratio is the only tempo arithmetic used.
- *
- * None of the expected values was read off the implementation.
  *
  * ## What each fixture is for
  *
@@ -34,8 +32,8 @@
  * | `turn-atstart` | DESIGN.md §5.1 — the figure-1 turn, `%` frame, monophonic note-offs |
  * | `turn-atend` | DESIGN.md §5.2 — the same figure aligned at the end, and its head leftover |
  * | `trill-repetitions` | DESIGN.md §5.3 — repeat-group expansion, mixed `ticks`/`%` frame, the `pass` provenance |
- * | `spread-ms` | DESIGN.md §5.5 — a millisecond frame feeds the *unchanged* v2 marker engine |
- * | `atend-ms` | the D5 AMENDMENT — the end-anchored marker, and the head loss it costs |
+ * | `spread-ms` | DESIGN.md §5.5 — a millisecond frame feeds the unchanged v2 marker engine |
+ * | `atend-ms` | the D5 amendment — the end-anchored marker, and the head loss it costs |
  * | `multi-ornament` | D11 — two ornaments on one principal, and the overflow scale factor |
  * | `diatonic-key` | D8 — `interval.diatonic` against the MSM key signature |
  * | `legacy-timeunit` | D3 — the lenient read: legacy `time.unit`, suffix-less values, the `frame.start` alias |
@@ -43,10 +41,10 @@
  *
  * ## Timeouts
  *
- * Every case here carries an explicit timeout. `vitest.config.ts` sets a 30 s global one,
- * but TD1's rule (ARCHITECTURE.md §1216-1221) is that a family which *can* fail to
- * terminate states its own, so a regression fails the suite instead of hanging it — and an
- * integration case drives the expansion engine's repeat loops through the whole pipeline.
+ * Every case here carries an explicit timeout. `vitest.config.ts` sets a 30 s global one, but
+ * the rule in ARCHITECTURE.md §1216-1221 is that a family which can fail to terminate states
+ * its own, so a regression fails the suite instead of hanging it — and an integration case
+ * drives the expansion engine's repeat loops through the whole pipeline.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'fs';
@@ -71,14 +69,13 @@ const MS_PER_TICK = 500 / 720;
 /**
  * How closely a millisecond value must match: nine decimals, i.e. far below one microsecond.
  *
- * **Ticks are compared exactly and milliseconds are not**, and the asymmetry is deliberate.
- * A tick date is the spacing formula's own output and nothing divides it further, so exact
+ * Ticks are compared exactly and milliseconds are not, and the asymmetry is deliberate. A
+ * tick date is the spacing formula's own output and nothing divides it further, so exact
  * equality is meaningful there. A millisecond date has been through the tempo pass, where
- * `1462 * (500 / 720)` and `1462 * 500 / 720` differ in the last bit — this suite caught
- * exactly that on `v2-passthrough` when it first compared them with `toEqual`. Pinning the
- * last ulp of an association order would be a test about floating point, not about
- * ornamentation; `all-maps-equivalence.test.ts` makes the same call and documents it at
- * NUMERIC_TOLERANCE.
+ * `1462 * (500 / 720)` and `1462 * 500 / 720` differ in the last bit — measured on
+ * `v2-passthrough`. Pinning the last ulp of an association order would be a test about
+ * floating point, not about ornamentation; `all-maps-equivalence.test.ts` makes the same call
+ * and documents it at NUMERIC_TOLERANCE.
  */
 const MS_PRECISION = 9;
 
@@ -414,7 +411,7 @@ describe('turn-atend: the figure-2 turn (DESIGN.md §5.2)', () => {
    *   last, pinned:      720 + 720 = 1440
    *
    * monophonic durations: 960−720, 1200−960, 1440−1200, and the last runs to the principal's
-   * end 1440 ⇒ 240, 240, 240, and 1440 − 1440 = **0**. The zero is what DESIGN.md §5.2's own
+   * end 1440 ⇒ 240, 240, 240, and 1440 − 1440 = 0. The zero is what DESIGN.md §5.2's own
    * arithmetic yields — the pinned last slot coincides with the principal's end — and it is
    * pinned here rather than papered over.
    *
@@ -449,10 +446,9 @@ describe('turn-atend: the figure-2 turn (DESIGN.md §5.2)', () => {
     'marks the leftover as carved by the ornament that shortened it',
     () => {
       // The leftover is altered without being generated, and the augmented document has to say
-      // so — D15's `ornamented` covers "generated by **or altered by**" an ornament, and a
-      // reader can only see what is written (conductor's ruling, LOG.md "the carved leftover is
-      // ornamented"). It gets `ornament.carved` plus the ref, and none of the four attributes
-      // that describe a *position in the figure*, which the leftover does not occupy.
+      // so — D15's `ornamented` covers "generated by or altered by" an ornament (LOG.md, "the
+      // carved leftover is ornamented"). It gets `ornament.carved` plus the ref, and none of
+      // the four attributes describing a position in the figure, which it does not occupy.
       const { notes, generated } = render('turn-atend');
       const head = notes[0];
       expect(head.carved).toBe('true');
@@ -507,14 +503,11 @@ describe('turn-atend: the figure-2 turn (DESIGN.md §5.2)', () => {
   it(
     'gives the principal’s xml:id to the head leftover alone',
     () => {
-      // INVERTED. This used to pin the opposite — that the leftover and the heir BOTH carry
-      // xml:id="P", on the renderer's reading that "the leftover *is* the principal". The W6
-      // verifier caught what that means for the output: an augmented MSM with two elements
-      // sharing an xml:id, which is not a valid document. The conductor's **D10 id-uniqueness
-      // ruling** (docs/history/ornamentation/LOG.md, 2026-08-09) settled it the other way — the id goes to
-      // the head leftover when one survives, else to the heir, never to both. D10's original
-      // wording was exclusive and was never amended, and `ornament.anchor` sits on every
-      // generated note precisely so that no consumer needs the id there to find its way home.
+      // The D10 id-uniqueness ruling (docs/history/ornamentation/LOG.md, 2026-08-09): the id
+      // goes to the head leftover when one survives, else to the heir, never to both — two
+      // elements sharing an xml:id would not be a valid document. `ornament.anchor` sits on
+      // every generated note precisely so that no consumer needs the id there to find its way
+      // home.
       const { notes, generated } = render('turn-atend');
 
       const carriers = notes.filter((note) => note.id === 'P');
@@ -745,14 +738,14 @@ describe('spread-ms: a millisecond frame over a generated chord (DESIGN.md §5.5
 });
 
 // ---------------------------------------------------------------------------------------
-// The D5 AMENDMENT — a millisecond frame aligned "at end"
+// The D5 amendment — a millisecond frame aligned "at end"
 // ---------------------------------------------------------------------------------------
 
 describe('atend-ms: the end-anchored millisecond marker (D5 amendment)', () => {
   /**
    * The score and pool of `spread-ms`, with alignment="at end" and noteoff.shift absent.
    *
-   * The frame is anchored at the principal's millisecond END, which does not exist before
+   * The frame is anchored at the principal's millisecond end, which does not exist before
    * the tempo pass, so phase N cannot express it as an onset offset. It writes
    * `ornament.milliseconds.fromend.offset` instead — a static quantity, the spacing plus
    * frame.offset minus frameLength — and the millisecond pass resolves it as
@@ -937,7 +930,7 @@ describe('multi-ornament: two ornaments on one principal (D11)', () => {
 
 describe('diatonic-key: scale steps resolved against the key signature (D8)', () => {
   /**
-   * The MSM's part carries a key signature of two sharps at date 0, i.e. **D major**:
+   * The MSM's part carries a key signature of two sharps at date 0, i.e. D major:
    * `readKeyFifths` counts one per `<accidental>` with a positive `value` ⇒ keyFifths = 2.
    *
    * D8's algorithm: the tonic pitch class is 7 * keyFifths mod 12 = 14 mod 12 = 2 (D), and
@@ -947,10 +940,10 @@ describe('diatonic-key: scale steps resolved against the key signature (D8)', ()
    *
    * Principal P = 74 (D5), pitch class 2, which is degree 1 of that scale and therefore its
    * own anchor (no chromatic delta).
-   *   down (interval.diatonic="-1"): degree 1 − 1 = 0 ⇒ scale[0] = 1 ⇒ 74 − 2 + 1 = **73** (C♯5)
-   *   up   (interval.diatonic="2"):  degree 1 + 2 = 3 ⇒ scale[3] = 6 ⇒ 74 − 2 + 6 = **78** (F♯5)
+   *   down (interval.diatonic="-1"): degree 1 − 1 = 0 ⇒ scale[0] = 1 ⇒ 74 − 2 + 1 = 73 (C♯5)
+   *   up   (interval.diatonic="2"):  degree 1 + 2 = 3 ⇒ scale[3] = 6 ⇒ 74 − 2 + 6 = 78 (F♯5)
    *   up8  (interval.diatonic="7"):  degree 8 ⇒ octave carry 1, scale[8−7] = 2
-   *                                          ⇒ 74 − 2 + 12 + 2 = **86** (D6)
+   *                                          ⇒ 74 − 2 + 12 + 2 = 86 (D6)
    *
    * Two of the three would differ in C major, which is what makes this an assertion about
    * the key rather than about arithmetic: there D − 1 is C (72) and D + 2 is F (77).
@@ -1006,14 +999,13 @@ describe('diatonic-key: scale steps resolved against the key signature (D8)', ()
 
 describe('legacy-timeunit: frame values written the pre-v3 way (D3)', () => {
   /**
-   * D3's lenient reader had unit coverage only (W6 verifier's third secondary finding), so
-   * nothing proved that a document written the way real documents are written *plays*. All
-   * three readings are in one fixture, on three principals that do not overlap.
+   * D3's lenient reader is covered at the unit level elsewhere; this drives all three readings
+   * through the pipeline, on three principals that do not overlap.
    *
-   * **legacyMs — `time.unit="milliseconds"` with suffix-less values.**
+   * legacyMs — `time.unit="milliseconds"` with suffix-less values.
    * `<temporalSpread time.unit="milliseconds" frame.offset="-30" frameLength="60"
    * intensity="2.0" noteoff.shift="true"/>`, i.e. `spread-ms`'s def in the older spelling.
-   * The element is v3 because `frame.offset` is a v3 attribute *name*; both values then take
+   * The element is v3 because `frame.offset` is a v3 attribute name; both values then take
    * the legacy element-level unit, so the frame is [−30 ms, +30 ms] around the principal's
    * onset. Principal A: date 2880 = 2000 ms, duration 1440 = 1000 ms, pitch 64; pool +3 / +7
    * ⇒ 67 / 71; `note.order="#A #n2 #n3"` ⇒ three slots.
@@ -1024,7 +1016,7 @@ describe('legacy-timeunit: frame values written the pre-v3 way (D3)', () => {
    * 1970..2970, 1985..2985, 2030..3030 — the −30 / −15 / +30 the Java reference wrote for
    * the chord this def came from.
    *
-   * **legacyTicks — suffix-less with no `time.unit` at all ⇒ ticks (D3's default).**
+   * legacyTicks — suffix-less with no `time.unit` at all ⇒ ticks (D3's default).
    * `<temporalSpread frame.offset="0" frameLength="360"/>` over principal B (date 0,
    * duration 720, pitch 60), `note.order="#B #u1"`, u1 = +2 ⇒ 62. Two slots, intensity 1:
    *   i=0: pow(0/1,1)*360 + 0 =   0
@@ -1032,7 +1024,7 @@ describe('legacy-timeunit: frame values written the pre-v3 way (D3)', () => {
    * `noteoff.shift` defaults to `false`, so both notes end where B would have, at 720:
    * durations 720 and 360, milliseconds 0 and 250, both ending at 500.
    *
-   * **legacyAlias — `frame.start` read as `frame.offset`.**
+   * legacyAlias — `frame.start` read as `frame.offset`.
    * `<temporalSpread frame.start="180" frameLength="50%"/>` over principal C (date 1440,
    * duration 720, pitch 72), `note.order="#C #d1"`, d1 = +1 ⇒ 73. The `%` suffix is the only
    * v3 marker in the element; the alias then carries the offset, suffix-less and with no
@@ -1262,23 +1254,23 @@ describe('v2-passthrough: a v2 ornamentation document is untouched by v3 (D6)', 
 });
 
 // ---------------------------------------------------------------------------------------
-// A degenerate frame end to end: the finiteness guard (W9 hardening, finding O2)
+// A degenerate frame end to end: the finiteness guard
 // ---------------------------------------------------------------------------------------
 
 describe('a negative intensity reaches neither the augmented MSM nor the MIDI export', () => {
   /**
    * The guard in `createChords` exists for one measured failure, and its docblock names it:
    * a negative `intensity` made the renderer emit a real `<note date="Infinity"
-   * duration="NaN">` "into the augmented MSM and on into the MIDI export". Every test that
-   * pins the guard drives `renderOrnamentationToMap` directly, so nothing asserted that the
-   * two documents the docblock names come out clean. This closes that.
+   * duration="NaN">` "into the augmented MSM and on into the MIDI export". Every other test
+   * of the guard drives `renderOrnamentationToMap` directly; this is what asserts that the two
+   * documents the docblock names come out clean.
    *
-   * The construction is the W5 verifier's, unchanged: intensity −1,
-   * `frame.offset="-1000ticks"`, `frameLength="100ticks"`, `noteoff.shift="monophonic"`,
-   * four slots over a principal at date 0 with duration 1440. It is carried by an in-memory
-   * variant of `turn-atstart`'s MPM rather than by a tenth fixture pair — the MSM, the pool
-   * and `note.order` are reused unchanged and only the `<temporalSpread>` differs, so the
-   * arithmetic below is that fixture's with one frame substituted.
+   * The construction: intensity −1, `frame.offset="-1000ticks"`, `frameLength="100ticks"`,
+   * `noteoff.shift="monophonic"`, four slots over a principal at date 0 with duration 1440. It
+   * is carried by an in-memory variant of `turn-atstart`'s MPM rather than by a tenth fixture
+   * pair — the MSM, the pool and `note.order` are reused unchanged and only the
+   * `<temporalSpread>` differs, so the arithmetic below is that fixture's with one frame
+   * substituted.
    *
    * `pow(0, −1)` is `Infinity`, one of the two unguarded edges this renderer inherits from
    * the v2 spacing engine on purpose:
@@ -1387,7 +1379,7 @@ describe('a negative intensity reaches neither the augmented MSM nor the MIDI ex
       const events = noteEvents(midi!);
       expect(events.filter((event) => event.command === NOTE_ON)).toHaveLength(3);
       expect(events.filter((event) => event.command === NOTE_OFF)).toHaveLength(3);
-      // an Infinity date used to arrive here; a tick has to be a real, non-negative number
+      // a tick has to be a real, non-negative number
       expect(events.filter((event) => !Number.isFinite(event.tick) || event.tick < 0)).toEqual([]);
 
       const bytes = midi!.exportMidi();
@@ -1461,9 +1453,9 @@ describe('performing twice gives the same document', () => {
     'the canonicalisation is not vacuous: it rewrites ids that really differ',
     () => {
       // A control for the comparison above. `turn-atstart` generates three fresh ids per
-      // render (the fourth note inherits the principal's), so the two raw documents must
-      // NOT be equal — otherwise the test would pass for a renderer that emitted no ids at
-      // all, or a canonicaliser that erased everything.
+      // render (the fourth note inherits the principal's), so the two raw documents must not
+      // be equal — otherwise the test would pass for a renderer that emitted no ids at all,
+      // or a canonicaliser that erased everything.
       const { msm, performance } = load('turn-atstart');
       const first = performance.perform(msm).getRootElement()!.toXML();
       const second = performance.perform(msm).getRootElement()!.toXML();

@@ -2,12 +2,12 @@
  * MEI ornament signs, end to end: a hand-authored MEI through conversion, into an MPM v3
  * ornament, through the renderer, out as performed notes with real pitches and onsets.
  *
- * Most MEIs here are written by hand rather than taken from `fixtures/mei/`, and deliberately so:
- * those fixtures are Java-verified ground truth and upstream meico expands no ornament sign, so
- * there is no Java reference for anything this suite asserts. The expected numbers are computed
- * by hand from DESIGN.md's rules in the comments above each assertion (CAMPAIGN.md invariant 8),
- * never copied out of a run. The one exception is the last describe, which pins the seam decision
- * on the real `composite_advanced.mei` because that decision is *about* that fixture.
+ * Most MEIs here are written by hand rather than taken from `fixtures/mei/`: those fixtures are
+ * Java-verified ground truth and upstream meico expands no ornament sign, so there is no Java
+ * reference for anything this suite asserts. The expected numbers are computed by hand from
+ * DESIGN.md's rules in the comments above each assertion (CAMPAIGN.md invariant 8), never
+ * copied out of a run. The one exception is the last describe, which pins the seam decision on
+ * the real `composite_advanced.mei` because that decision is about that fixture.
  *
  * Per-test timeouts are explicit throughout (DESIGN.md D16): expansion walks repeat groups, and a
  * defect there is far more likely to hang than to return a wrong answer.
@@ -83,28 +83,28 @@ describe('MEI ornament signs → MPM', () => {
   it(
     'renders the trill as real notes at the right pitches for the key',
     () => {
-      // THE D8 VECTOR. Key signature 1♯ → G major, whose pitch classes sorted from C are
+      // The D8 vector. Key signature 1♯ → G major, whose pitch classes sorted from C are
       // {0,2,4,6,7,9,11} = C D E F♯ G A B. The principal d'' is midi 74, pitch class 2, which is
       // degree index 1 of that scale.
       //   step  0 → the principal itself                    → 74
       //   step +1 → degree index 2 → pitch class 4 (e)      → 76
       //
-      // THE SEQUENCE. dict trill = "|: 0 1 :|" and repetitions is 0, so the repeat group plays
+      // The sequence. dict trill = "|: 0 1 :|" and repetitions is 0, so the repeat group plays
       // once → [0, 1]. D9's landing rule then appends one principal-pitch copy, because the group
       // starts on a principal-pitch note → [0, 1, 0], three slots.
       //
-      // THE FRAME. The def is the default row: frame.offset 0 ticks, frameLength 80%, intensity
+      // The frame. The def is the default row: frame.offset 0 ticks, frameLength 80%, intensity
       // 0.9, noteoff.shift monophonic, alignment "at start". The principal is a quarter at
       // ppq 720 → 720 ticks, so 80% is 576 and the frame is [0, 576] (DESIGN.md D4: % resolves
-      // against the TICK duration, in the symbolic phase).
+      // against the tick duration, in the symbolic phase).
       //
-      // THE SPACING. D10's power-function engine over n = 3 slots, last slot pinned at the frame
+      // The spacing. D10's power-function engine over n = 3 slots, last slot pinned at the frame
       // end: onset(i) = (i/(n−1))^intensity × length
       //   i=0 → 0^0.9              × 576 = 0
       //   i=1 → 0.5^0.9            × 576 = e^(0.9·ln 0.5) × 576 = 0.53588673… × 576 = 308.67075…
       //   i=2 → 1^0.9              × 576 = 576
       //
-      // THE NOTE-OFFS. monophonic: each note ends where the next begins, and the last ends at the
+      // The note-offs. monophonic: each note ends where the next begins, and the last ends at the
       // principal's note-off, 720 (figure 1's tie) → durations 308.67075…, 267.32924…, 144.
       const notes = performMsmToData(convertMeiToMsmMpm(TRILL_MEI)[0]).parts.flatMap(
         (p) => p.notes,
@@ -296,10 +296,10 @@ describe('<arpeg> is not governed by any of this (DESIGN.md D6)', () => {
   it(
     'converts identically whether ornament expansion is on or off',
     () => {
-      // The strongest available form of "untouched": the whole MPM and MSM, byte for byte, across
-      // the flag that gates every line this wave added. Generated `meico_<uuid>` ids are renumbered
-      // first — two conversions of one source draw different uuids by design, which is the same
-      // quotient tests/api/facade-equivalence.test.ts takes — and nothing else is normalised.
+      // "Untouched" at its strongest: the whole MPM and MSM, byte for byte, across the flag that
+      // gates ornament expansion. Generated `meico_<uuid>` ids are renumbered first — two
+      // conversions of one source draw different uuids by design, the same quotient
+      // tests/api/facade-equivalence.test.ts takes — and nothing else is normalised.
       const canonicalise = (xml: string) => {
         const seen = new Map<string, string>();
         return xml.replace(/meico_[0-9a-f-]{36}/g, (id) => {
@@ -369,19 +369,19 @@ describe('<arpeg> is not governed by any of this (DESIGN.md D6)', () => {
 /**
  * The seam decision, pinned.
  *
- * MEI ornament expansion is deliberately NOT symmetric between the two entry points, and this is
- * the test that says so out loud. `Mei2MsmMpmConverter` defaults `expandOrnaments` to false; the
- * facade defaults it to true. That mirrors Java, where expansion is a document pre-pass in
- * `Mei.exportMsmMpm` and the bare converter never expands — and it is what keeps
- * `tests/integration/`'s four auto-discovering equivalence suites, all of which drive the
- * converter directly, byte-comparable against Java references that contain no expansion.
+ * MEI ornament expansion is deliberately not symmetric between the two entry points.
+ * `Mei2MsmMpmConverter` defaults `expandOrnaments` to false; the facade defaults it to true.
+ * That mirrors Java, where expansion is a document pre-pass in `Mei.exportMsmMpm` and the bare
+ * converter never expands — and it is what keeps `tests/integration/`'s four auto-discovering
+ * equivalence suites, all of which drive the converter directly, byte-comparable against Java
+ * references that contain no expansion.
  *
  * `composite_advanced.mei` is the only fixture MEI carrying an ornament sign
  * (`<trill xml:id="tr1" staff="1" startid="#n20"/>`, line 105), and its Java reference
- * `fixtures/reference/composite_advanced.mpm` has no `ornamentationMap` at all. So this fixture is
- * exactly where a well-meaning future change — moving the hook down into the converter, or
- * flipping the converter's default — would break Java parity. This test fails loudly if anyone
- * does, and names the reason in its own text.
+ * `fixtures/reference/composite_advanced.mpm` has no `ornamentationMap` at all. So this fixture
+ * is exactly where a well-meaning future change — moving the hook down into the converter, or
+ * flipping the converter's default — would break Java parity, and these tests fail loudly if
+ * anyone makes one.
  */
 describe('expansion is asymmetric between the converter and the facade, on purpose', () => {
   const FIXTURE = 'composite_advanced';
@@ -417,8 +417,7 @@ describe('expansion is asymmetric between the converter and the facade, on purpo
 
       expect(mpm).not.toContain('ornamentationMap');
       expect(mpm).not.toContain('ornamentationStyles');
-      // And the Java reference really is empty of it — the premise, restated from the file itself
-      // rather than trusted.
+      // The premise, read out of the reference file rather than trusted.
       const javaMpm = readFileSync(
         join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'reference', `${FIXTURE}.mpm`),
         'utf-8',
@@ -435,12 +434,10 @@ describe('expansion is asymmetric between the converter and the facade, on purpo
 
       // The ornament, on the part that owns staff 1, pointing at the note the MEI named.
       expect(mpm).toContain('ornamentationMap');
-      // …and *only* there. `@staff="1"` names one staff, and the expander's per-staff loop is
-      // the only thing keeping a single-staff sign off the global map, where it would reach
-      // across into the Bassoon. The multi-staff case above is what caught that in W8; the
-      // single-staff shape is the commoner one and had nothing pinning it (W8 verifier
-      // advisory 3). Slicing at the `<part` boundaries is what makes "in the Oboe" an assertion
-      // rather than a substring that happens to appear somewhere in the document.
+      // …and only there. `@staff="1"` names one staff, and the expander's per-staff loop is the
+      // only thing keeping a single-staff sign off the global map, where it would reach across
+      // into the Bassoon. Slicing at the `<part` boundaries is what makes "in the Oboe" an
+      // assertion rather than a substring that happens to appear somewhere in the document.
       const [beforeParts, oboe, bassoon] = mpm.split(/(?=<part )/);
       expect(oboe).toContain('name="Oboe"');
       expect(oboe).toContain('number="1"');
@@ -454,9 +451,9 @@ describe('expansion is asymmetric between the converter and the facade, on purpo
       expect(mpm).toContain('note.order="|: #tr1_n0 #tr1_n1 :|"');
       expect(mpm).toContain('<note xml:id="tr1_n0" interval.diatonic="0" />');
       expect(mpm).toContain('<note xml:id="tr1_n1" interval.diatonic="1" />');
-      // The def the expander generates for that name — the default row of the table.
-      // No `xmlns` here: the declaration is on the <mpm> root, and the serializer now emits
-      // one only where the namespace changes rather than on every namespaced element.
+      // The def the expander generates for that name — the default row of the table. No `xmlns`
+      // here: the declaration is on the <mpm> root, and the serializer emits one only where the
+      // namespace changes.
       expect(mpm).toContain('<ornamentDef name="trill">');
       expect(mpm).toContain(
         'frame.offset="0ticks" frameLength="80%" intensity="0.9" noteoff.shift="monophonic"',
@@ -469,7 +466,7 @@ describe('expansion is asymmetric between the converter and the facade, on purpo
     'the facade with expandOrnaments:false reproduces the direct converter exactly',
     () => {
       // The two defaults differ, but the two paths do not: state the setting and they agree byte
-      // for byte. This is what makes the asymmetry a *default* rather than a behavioural fork.
+      // for byte, which makes the asymmetry a default rather than a behavioural fork.
       const facadeOff = convertMeiToMsmMpm(meiText(), {
         sourceName: `${FIXTURE}.mei`,
         expandOrnaments: false,

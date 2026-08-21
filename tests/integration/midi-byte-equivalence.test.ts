@@ -1,37 +1,34 @@
 /**
- * MIDI byte-level equivalence tests.
- * Compares TS MIDI output event-by-event against Java reference MIDI files.
- * Tests both MEI-based and programmatic (all-maps) fixtures.
+ * MIDI event-level equivalence against the Java reference `.mid` files, for both the
+ * MEI-based and the programmatic (all-maps) fixtures.
  *
  * ## What this oracle does and does not see
  *
  * Despite the file's name it never compares bytes. `Msm.exportMidi` and
- * `exportExpressiveMidi` return a `Midi` **object**, so the TS side is an in-memory
+ * `exportExpressiveMidi` return a `Midi` object, so the TS side is an in-memory
  * `Sequence` that is never serialised; the Java side is a reference `.mid` read back
- * through **this port's own** `Midi.readMidiData`. Both are then reduced to
- * {@link MidiEventInfo} by {@link extractEvents} and compared field by field, with
- * `tickTolerance = 0`. That is deliberate — `src/midi/Midi.ts`'s header lists three
- * ways the writer's bytes legitimately differ from the JDK's — but it leaves two
- * blind spots worth knowing before trusting a green run. Both were measured by
- * executing the break and watching this suite stay green:
+ * through this port's own `Midi.readMidiData`. Both are reduced to {@link MidiEventInfo}
+ * by {@link extractEvents} and compared field by field with `tickTolerance = 0` — which
+ * is deliberate, since `src/midi/Midi.ts`'s header lists three ways the writer's bytes
+ * legitimately differ from the JDK's. Two blind spots follow, both measured by executing
+ * the break and watching this suite stay green:
  *
- * 1. **The SMF writer is not in the loop at all.** `Midi.exportMidi` and
- *    `buildTrackChunk` are never called here, so corrupting the meta payload length
- *    a track chunk writes leaves all 43 tests passing. What pins the writer is the
- *    round-trip in `tests/midi/Midi.test.ts` — export, re-read, compare — which is a
- *    self-consistency check, not a comparison against Java.
- * 2. **A defect on the shared construction path cancels.** `channelMessage` builds
- *    the short messages on *both* sides, so swapping its two data bytes, or making a
- *    program change emit a second one, leaves every comparison here equal.
- *    `tests/midi/MidiTypes.test.ts` and `tests/msm/Msm.test.ts` catch both, because
- *    they pin bytes against literals rather than against a re-read.
+ * 1. The SMF writer is not in the loop at all. `Midi.exportMidi` and `buildTrackChunk`
+ *    are never called here, so corrupting the meta payload length a track chunk writes
+ *    leaves all 43 tests passing. What pins the writer is the round-trip in
+ *    `tests/midi/Midi.test.ts` — export, re-read, compare — a self-consistency check,
+ *    not a comparison against Java.
+ * 2. A defect on the shared construction path cancels. `channelMessage` builds the short
+ *    messages on both sides, so swapping its two data bytes, or making a program change
+ *    emit a second one, leaves every comparison here equal.
+ *    `tests/midi/MidiTypes.test.ts` and `tests/msm/Msm.test.ts` catch both, because they
+ *    pin bytes against literals rather than against a re-read.
  *
- * So `npm run gate` alone is not sufficient for a change to the message constructors
- * or to the SMF writer; `npm run verify` is. What this suite does catch on its own is
- * the whole MSM+MPM → `Sequence` rendering pipeline — event order, ticks, channels,
- * payload contents — and the reader.
- * (`tests/integration/performance-equivalence.test.ts` re-reads the reference the same
- * way, and compares only track and event counts.)
+ * So `npm run gate` alone is not sufficient for a change to the message constructors or
+ * to the SMF writer; `npm run verify` is. What this suite catches on its own is the whole
+ * MSM+MPM → `Sequence` rendering pipeline — event order, ticks, channels, payload
+ * contents — and the reader. (`tests/integration/performance-equivalence.test.ts`
+ * re-reads the reference the same way, and compares only track and event counts.)
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, existsSync } from 'fs';
@@ -126,13 +123,12 @@ function compareEvents(
   for (const [t, tsTrack] of tsEvents.entries()) {
     const refTrack = refEvents[t] ?? [];
 
-    // Filter out end-of-track meta events for comparison (always present but may differ in placement)
+    // End-of-track metas are always present but may differ in placement.
     const tsFiltered = tsTrack.filter(notEndOfTrack);
     const refFiltered = refTrack.filter(notEndOfTrack);
 
     if (tsFiltered.length !== refFiltered.length) {
       diffs.push(`Track ${t} event count: TS=${tsFiltered.length} vs Java=${refFiltered.length}`);
-      // Still compare what we can
     }
 
     for (const [i, te] of tsFiltered.entries()) {
@@ -149,8 +145,6 @@ function compareEvents(
         diffs.push(`Track ${t} event ${i} (${te.type}): tick TS=${te.tick} vs Java=${re.tick}`);
       }
 
-      // The channel nibble belongs to every channel-voice message, not just notes: a
-      // programChange or a CC on the wrong channel addresses the wrong instrument.
       if (te.channel !== re.channel)
         diffs.push(
           `Track ${t} event ${i} (${te.type}): channel TS=${te.channel} vs Java=${re.channel}`,
@@ -159,8 +153,7 @@ function compareEvents(
       if (te.type === 'noteOn' || te.type === 'noteOff') {
         if (te.data1 !== re.data1)
           diffs.push(`Track ${t} event ${i}: pitch TS=${te.data1} vs Java=${re.data1}`);
-        // Release velocity was excluded by `te.type === 'noteOn' &&`. There are 590 noteOffs
-        // in the reference corpus and nothing checked what they carry.
+        // data2 on a noteOff is the release velocity, compared like the attack velocity.
         if (te.data2 !== re.data2)
           diffs.push(
             `Track ${t} event ${i} (${te.type}): velocity TS=${te.data2} vs Java=${re.data2}`,
@@ -171,25 +164,17 @@ function compareEvents(
         if (te.data2 !== re.data2)
           diffs.push(`Track ${t} event ${i}: CC value TS=${te.data2} vs Java=${re.data2}`);
       } else if (te.type === 'programChange') {
-        // 58 in the reference corpus, and the program number — the instrument — was compared
-        // by nothing at all: `programChange` matched none of the three branches, so only its
-        // tick and the word "programChange" were ever checked.
+        // data1 is the program number, i.e. the instrument.
         if (te.data1 !== re.data1)
           diffs.push(`Track ${t} event ${i}: program TS=${te.data1} vs Java=${re.data1}`);
       } else if (te.type === 'meta') {
         if (te.metaType !== re.metaType)
           diffs.push(`Track ${t} event ${i}: metaType TS=${te.metaType} vs Java=${re.metaType}`);
-        // ...and the payload, which is where a meta event keeps everything that matters: the
+        // The payload is where a meta event keeps everything that matters: the
         // microseconds-per-quarter of a set-tempo (0x51), the numerator and denominator of a
         // time signature (0x58), the accidental count of a key signature (0x59), the text of
-        // a track name (0x03). 1024 meta events in the corpus, none of them checked past
-        // their type byte until now.
-        //
-        //
-        // Text events (0x01) were excluded here when this check went in, because turning it on
-        // reported 524 mismatches across 22 fixtures — every one a 0x01 on the raw MIDI path,
-        // Java writing an empty payload where this port wrote the note's id. That divergence is
-        // fixed in `xml/tree.ts`'s `attribute`, so the exclusion is gone and the check is total.
+        // a track name (0x03). Text events (0x01) carry the note's id on the raw MIDI path
+        // and are compared like the rest.
         else if (te.metaPayload !== re.metaPayload)
           diffs.push(
             `Track ${t} event ${i}: meta 0x${(te.metaType ?? 0).toString(16)} payload TS=${te.metaPayload} vs Java=${re.metaPayload}`,
@@ -202,7 +187,7 @@ function compareEvents(
 }
 
 // ---- MEI-based fixtures (deterministic, no imprecision) ----
-// Auto-discover all MEI fixtures; every fixture MUST have a Java reference (missing = failure, not skip)
+// Every fixture must have a Java reference: a missing one is a failure, not a skip.
 const meiFigures = readdirSync(MEI_DIR)
   .filter((f) => f.endsWith('.mei'))
   .map((f) => f.replace(/\.mei$/, ''))

@@ -1,11 +1,10 @@
 /**
- * Full XML equivalence tests for ALL map types:
- * rubato, asynchrony, metrical accentuation, movement,
- * imprecision (timing, dynamics), and a combined all-maps test.
+ * Full XML equivalence for all map types: rubato, asynchrony, metrical accentuation,
+ * movement, imprecision (timing, dynamics), and a combined all-maps fixture.
  *
- * These tests load pre-built MSM+MPM XML (no MEI conversion),
- * run Performance.perform(), and compare the augmented MSM output
- * attribute-by-attribute against Java reference output.
+ * The inputs are pre-built MSM+MPM XML, so no MEI conversion is in the loop. Each is run
+ * through `Performance.perform()` and the augmented MSM is compared attribute by attribute
+ * against the Java reference.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'fs';
@@ -119,10 +118,8 @@ function compareElements(
       diffs.push(`${fp}@${name}: TS="${tsV}" vs Java="${refV}"`);
     }
   }
-  // Extra attributes and attribute ORDER, neither of which this comparator checked: it
-  // iterates the reference's attributes out of a name-keyed Map, so an attribute we emit and
-  // Java does not was invisible, and so was emitting the same set in a different sequence.
-  // Both were confirmed by mutating a reference file and watching this stay green.
+  // The loop above walks the reference's attributes only, so extra attributes and attribute
+  // order each need a pass of their own.
   const keep = (n: string): boolean =>
     !SKIP_ATTRS.has(n) && !(skipImprecision && IMPRECISION_SENSITIVE_ATTRS.has(n));
   for (const [name, tsV] of tsA) {
@@ -168,16 +165,16 @@ function loadAndPerform(name: string): { tsXml: string; refXml: string } {
   return { tsXml, refXml };
 }
 
-// Numeric agreement with the Java reference is EXACT: over all eight all-maps fixtures the
-// largest deviation across every attribute compared here is 0 ([TD3] measurement). This
-// tolerance is headroom for last-ulp divergence in Math.pow/Math.log, which Java specifies
-// to 1 ulp and does not guarantee across implementations (only StrictMath is reproducible);
-// at these magnitudes that lives near 1e-12. It is not headroom for formatting — the
-// comparison parses both sides to doubles, and both platforms' number-to-string is
-// round-trip exact. It was 0.01 until [TD3], which is 2.4x wider than the worst error the
-// AccentuationPatternDef segment-end bug caused (4.17e-3): the suite was green while the
-// port disagreed with the reference. Tighten this freely; widening it requires the same
-// evidence a parity divergence does.
+// Numeric agreement with the Java reference is exact: over all eight all-maps fixtures the
+// largest measured deviation across every attribute compared here is 0. This tolerance is
+// headroom for last-ulp divergence in Math.pow/Math.log, which Java specifies to 1 ulp and
+// does not guarantee across implementations (only StrictMath is reproducible); at these
+// magnitudes that lives near 1e-12. It is not headroom for formatting — the comparison parses
+// both sides to doubles, and both platforms' number-to-string is round-trip exact. For scale,
+// a tolerance of 0.01 is 2.4x wider than the worst error the AccentuationPatternDef
+// segment-end bug caused (4.17e-3), and held the suite green while the port disagreed with
+// the reference. Tighten this freely; widening it requires the same evidence a parity
+// divergence does.
 const NUMERIC_TOLERANCE = 1e-9;
 
 // Deterministic tests (no imprecision randomness)
@@ -209,7 +206,7 @@ describe('All map types: full XML equivalence (TS vs Java)', () => {
       if (!existsSync(join(REF_DIR, `${name}_augmented.msm`))) return;
       const { tsXml, refXml } = loadAndPerform(name);
       const diffs: string[] = [];
-      // Skip imprecision-affected attributes but compare everything else
+      // Compare everything except the imprecision-affected attributes.
       compareElements(parseXml(tsXml), parseXml(refXml), '', diffs, NUMERIC_TOLERANCE, true);
       // Filter out milliseconds.date and velocity diffs (these are shifted by imprecision)
       const structuralDiffs = diffs.filter(
@@ -228,7 +225,6 @@ describe('All map types: full XML equivalence (TS vs Java)', () => {
       if (!existsSync(join(REF_DIR, `${name}_augmented.msm`))) return;
       const { tsXml } = loadAndPerform(name);
       const tree = parseXml(tsXml);
-      // Find notes and check that some have modified milliseconds.date or velocity
       function findNotes(el: ParsedElement): ParsedElement[] {
         const r: ParsedElement[] = [];
         if (el.tag === 'note') r.push(el);
@@ -239,24 +235,22 @@ describe('All map types: full XML equivalence (TS vs Java)', () => {
       expect(notes.length).toBeGreaterThan(0);
 
       if (name === 'imprecision_timing') {
-        // At least some notes should have milliseconds.date != date.perf (shifted by imprecision)
+        // Only the presence of the attribute is checked: the pre-imprecision value is the
+        // tempo-rendered one and is not available here to compare against.
         let anyShifted = false;
         for (const note of notes) {
           const msDate = note.attrs.find((a) => a.name === 'milliseconds.date');
-          // For timing imprecision, the original value before imprecision is the tempo-rendered value
-          // Just verify the attribute exists
           if (msDate) anyShifted = true;
         }
         expect(anyShifted).toBe(true);
       } else if (name === 'imprecision_dynamics') {
-        // velocity values should exist and vary
         const velocities = notes
           .map((n) => n.attrs.find((a) => a.name === 'velocity'))
           .filter(Boolean);
         expect(velocities.length).toBeGreaterThan(0);
         const values = velocities.map((v) => parseFloat(v!.value));
         const allSame = values.every((v) => v === values[0]);
-        expect(allSame).toBe(false); // dynamics imprecision should produce different velocity values
+        expect(allSame).toBe(false);
       }
     });
   }
@@ -280,7 +274,6 @@ describe('All map types: full XML equivalence (TS vs Java)', () => {
   it('all_maps: augmented MSM has all expected map types in output', () => {
     if (!existsSync(join(REF_DIR, 'all_maps_augmented.msm'))) return;
     const { tsXml } = loadAndPerform('all_maps');
-    // Verify all map types produced output
     expect(tsXml).toContain('milliseconds.date'); // tempo rendering worked
     expect(tsXml).toContain('velocity'); // dynamics rendering worked
     expect(tsXml).toContain('channelVolumeMap'); // dynamics produced channelVolumeMap

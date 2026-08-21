@@ -8,26 +8,23 @@ import { Msm } from '../../src/msm/Msm.js';
 import { Mpm } from '../../src/mpm/Mpm.js';
 
 /**
- * The `<pedal>` element, against Java — a path with **no fixture coverage at all** until now.
+ * The `<pedal>` element, against Java — a path with no other fixture coverage.
  *
  * All 50 `pedalMap`s in the 82 MSM files under `tests/` are empty. Not one `<pedal>` element
- * exists in the corpus, so `processPedal`, the two deferred-resolution lists it feeds, and
- * every render stage that touches a pedalMap were no-ops corpus-wide, and the byte gate could
- * not protect a refactor in any of them. This suite is that gate.
+ * exists elsewhere in the corpus, so `processPedal`, the two deferred-resolution lists it
+ * feeds, and every render stage that touches a pedalMap are no-ops corpus-wide, and the byte
+ * gate cannot protect a refactor in any of them. This suite is that gate.
  *
  * See `fixtures-pedal/PROVENANCE.md` for how the references were generated and why the fixture
  * covers the four MEI spellings it does. The short version: each takes a different route
  * through `processPedal` — a plain `@tstamp`, a `@startid`/`@endid` span resolved through the
  * `endids` deferred list, a `@tstamp2` span resolved through the `tstamp2s` deferred list, and
- * a `@staff`-scoped entry that must land in the PART's map rather than the global one.
+ * a `@staff`-scoped entry that must land in the part's map rather than the global one.
  *
- * **On normalisers.** One, and it is the one `cross-validation.test.ts` keeps for the same
- * reason: Java's `Double.toString` writes `720.0` where JavaScript's `String(number)` writes
- * `720`, an examined and accepted difference (PARITY.md). Nothing else is forgiven — not
- * attribute order, not the XML declaration, not the trailing newline, not the namespace
- * declaration. Four normalisers that used to be needed for those are gone from this repo
- * because the underlying divergences were fixed, and this suite was written after that, so it
- * never needed them.
+ * One normaliser, the one `cross-validation.test.ts` keeps for the same reason: Java's
+ * `Double.toString` writes `720.0` where JavaScript's `String(number)` writes `720`, an
+ * examined and accepted difference (PARITY.md). Nothing else is forgiven — not attribute
+ * order, not the XML declaration, not the trailing newline, not the namespace declaration.
  */
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIX = join(HERE, 'fixtures-pedal');
@@ -64,9 +61,9 @@ describe('<pedal> against the Java reference', () => {
   });
 
   it('produces five pedals, not an empty pedalMap', () => {
-    // The assertion the rest of the file rests on. A fixture that silently produced no
+    // The assertion the rest of the file rests on: a fixture that silently produced no
     // `<pedal>` would pass every byte comparison above against a reference that also had
-    // none, and prove nothing at all — which is exactly the state the whole corpus was in.
+    // none, and prove nothing at all.
     const tags = pedalTags(msmXml);
     expect(tags).toHaveLength(5);
     expect(pedalTags(read('pedal.msm'))).toHaveLength(5);
@@ -105,8 +102,8 @@ describe('<pedal> against the Java reference', () => {
   });
 
   it('gives every pedal the performance attributes the render pass writes', () => {
-    // The render stages that touch a pedalMap were unreachable from any fixture, so this
-    // states what they must produce rather than trusting the byte comparison to notice.
+    // No other fixture reaches the render stages that touch a pedalMap, so this states what
+    // they must produce rather than trusting the byte comparison to notice.
     const msm = new Msm(read('pedal.msm'));
     const mpm = new Mpm(read('pedal.mpm'));
     const augmented = mpm.getAllPerformances()[0]!.perform(msm);

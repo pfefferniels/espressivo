@@ -1,14 +1,14 @@
 /**
- * The one spotlight claim only a render can settle: **the background gesture shrinks and the
- * foreground one does not move.**
+ * The one spotlight claim only a render can settle: the background gesture shrinks and the
+ * foreground one does not move.
  *
- * This is A14's method applied to `spotlightMpm` — the property suite validates no metric
- * choice (DESIGN §1.1), so what validates one is whether the effect moves the way the operation
- * is named for. `tests/api/spotlight.test.ts` covers everything about the facade that does not
+ * A14's method applied to `spotlightMpm` — the property suite validates no metric choice
+ * (DESIGN §1.1), so what validates one is whether the effect moves the way the operation is
+ * named for. `tests/api/spotlight.test.ts` covers everything about the facade that does not
  * need a performance; what it cannot show is that the written attributes add up to an audible
  * result, because an attenuated `@volume` pair is only evidence about a document.
  *
- * The document is hand-built and carries exactly two maps, and that is the whole design of the
+ * The document is hand-built and carries exactly two maps, which is the whole design of the
  * test: with a tempo pair and a dynamics pair and nothing else, each is unambiguously the
  * other's background, the two readings are independent (dynamics move no onset, tempo moves no
  * velocity), and nothing in the render touches a PRNG. `all_maps.mpm` would give a richer
@@ -63,8 +63,8 @@ const render = (ids: readonly string[], attenuation: number): readonly Performed
 const BASELINE = notesOf(canonicalMpm(TWO_GESTURES));
 
 /**
- * The size of the **dynamics** gesture as performed: how far apart the loudest and quietest
- * notes are. Zero would mean a flat performance.
+ * The size of the dynamics gesture as performed: how far apart the loudest and quietest notes
+ * are. Zero would mean a flat performance.
  */
 const dynamicContrast = (notes: readonly PerformedNote[]): number => {
   const velocities = notes.map((note) => note.velocity);
@@ -72,7 +72,7 @@ const dynamicContrast = (notes: readonly PerformedNote[]): number => {
 };
 
 /**
- * The size of the **tempo** gesture as performed: the ratio of the slowest rendered rate to the
+ * The size of the tempo gesture as performed: the ratio of the slowest rendered rate to the
  * fastest, minus 1 so that a flat performance reads 0.
  *
  * A ratio rather than a difference because tempo is a log-space quantity, and dividing by the
@@ -125,9 +125,8 @@ describe('spotlight: the background gesture shrinks (A14, rendered)', () => {
   });
 
   it('spotlighting the dynamics shrinks the tempo gesture instead', () => {
-    // The same document with the roles swapped, which is what makes the pair a test of the
-    // selection rather than of one dimension: nothing about this document changed except which
-    // of its two instructions was named.
+    // The same document with the roles swapped, which makes the pair a test of the selection
+    // rather than of one dimension: only which instruction was named differs.
     assertShrinks((attenuation) => tempoContrast(render(['dynamicsGesture'], attenuation)));
   });
 

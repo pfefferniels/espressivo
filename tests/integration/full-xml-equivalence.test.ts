@@ -1,6 +1,6 @@
 /**
- * Full XML equivalence test: compares the COMPLETE augmented MSM output
- * (all elements, all attributes, all maps) between TypeScript and Java reference.
+ * Full XML equivalence: the complete augmented MSM output — all elements, all attributes,
+ * all maps — compared against the Java reference.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync, readdirSync, existsSync } from 'fs';
@@ -27,10 +27,7 @@ interface ParsedElement {
   text: string;
 }
 
-/**
- * Minimal XML parser that extracts elements and attributes from XML string.
- * Good enough for MSM XML which is straightforward single-line XML.
- */
+/** Minimal XML parser: good enough for MSM, which is straightforward single-line XML. */
 function parseXml(xml: string): ParsedElement {
   xml = xml.replace(/<\?xml[^?]*\?>/, '').trim();
   let pos = 0;
@@ -43,7 +40,7 @@ function parseXml(xml: string): ParsedElement {
     skipWhitespace();
     if (xml[pos] !== '<')
       throw new Error(`Expected '<' at pos ${pos}: ${xml.substring(pos, pos + 20)}`);
-    pos++; // skip <
+    pos++;
     let tag = '';
     while (pos < xml.length && !/[\s/>]/.test(xml[pos])) tag += xml[pos++];
 
@@ -51,7 +48,6 @@ function parseXml(xml: string): ParsedElement {
     const children: ParsedElement[] = [];
     let text = '';
 
-    // parse attributes
     while (pos < xml.length) {
       skipWhitespace();
       if (xml[pos] === '/' && xml[pos + 1] === '>') {
@@ -62,26 +58,23 @@ function parseXml(xml: string): ParsedElement {
         pos++;
         break;
       }
-      // parse attribute
       let name = '';
       while (pos < xml.length && xml[pos] !== '=') name += xml[pos++];
       name = name.trim();
-      pos++; // skip =
-      const quote = xml[pos++]; // skip opening quote
+      pos++;
+      const quote = xml[pos++];
       let value = '';
       while (pos < xml.length && xml[pos] !== quote) value += xml[pos++];
-      pos++; // skip closing quote
+      pos++;
       attrs.push({ name, value });
     }
 
-    // parse children and text
     while (pos < xml.length) {
       skipWhitespace();
       if (xml[pos] === '<' && xml[pos + 1] === '/') {
-        // closing tag
         pos += 2;
         while (pos < xml.length && xml[pos] !== '>') pos++;
-        pos++; // skip >
+        pos++;
         break;
       }
       if (xml[pos] === '<') {
@@ -96,10 +89,7 @@ function parseXml(xml: string): ParsedElement {
   return parseElement();
 }
 
-/**
- * Normalize a numeric value for comparison.
- * Java uses doubles ("60.0"), TS may use "60". We compare as numbers.
- */
+/** Java writes doubles ("60.0") where TS may write "60", so numerics compare as numbers. */
 function normalizeNumericValue(v: string): number | null {
   const n = parseFloat(v);
   return isNaN(n) ? null : n;
@@ -115,9 +105,7 @@ const SKIP_ATTRS = new Set([
 /** Attributes whose values are random (imprecision) — skip value comparison */
 const RANDOM_ATTRS = new Set(['tuning.offset']);
 
-/**
- * Compare two parsed elements recursively, reporting all differences.
- */
+/** Compares recursively, accumulating every difference into `diffs` rather than throwing. */
 function compareElements(
   tsEl: ParsedElement,
   refEl: ParsedElement,
@@ -125,7 +113,6 @@ function compareElements(
   diffs: string[],
   tolerance = 0.001,
 ): void {
-  // Compare tag
   if (tsEl.tag !== refEl.tag) {
     diffs.push(`${path}: tag mismatch: TS="${tsEl.tag}" vs Java="${refEl.tag}"`);
     return;
@@ -133,25 +120,22 @@ function compareElements(
 
   const fullPath = `${path}/${tsEl.tag}`;
 
-  // Compare attributes
   const tsAttrMap = new Map(tsEl.attrs.map((a) => [a.name, a.value]));
   const refAttrMap = new Map(refEl.attrs.map((a) => [a.name, a.value]));
 
-  // Check all reference attributes exist in TS
   for (const [name, refValue] of refAttrMap) {
     if (SKIP_ATTRS.has(name)) continue;
     if (RANDOM_ATTRS.has(name)) continue;
 
     const tsValue = tsAttrMap.get(name);
     if (tsValue === undefined) {
-      // Some attributes may use namespace prefix in one but not the other
+      // One side may spell an id with the namespace prefix where the other does not.
       const altName = name === 'id' ? 'xml:id' : name === 'xml:id' ? 'id' : null;
       if (altName && tsAttrMap.has(altName)) continue;
       diffs.push(`${fullPath}: missing attribute "${name}" (Java has "${refValue}")`);
       continue;
     }
 
-    // Compare values
     const refNum = normalizeNumericValue(refValue);
     const tsNum = normalizeNumericValue(tsValue);
 
@@ -162,16 +146,13 @@ function compareElements(
         );
       }
     } else if (tsValue !== refValue) {
-      // String comparison for non-numeric values
-      if (refValue === '' && tsValue === '') continue; // both empty
+      if (refValue === '' && tsValue === '') continue;
       diffs.push(`${fullPath}@${name}: TS="${tsValue}" vs Java="${refValue}"`);
     }
   }
 
-  // An attribute the reference does not have is a difference from the reference. This loop
-  // used to have an EMPTY BODY — it iterated, found the extras, and dropped them, under a
-  // comment saying they were "not necessarily an error". Measured: adding a bogus attribute
-  // to every <note> of a reference file leaves this comparator green. It is an error now.
+  // An attribute the reference does not have is a difference from the reference: the loop
+  // above only walks the reference's own attributes.
   for (const [name, tsValue] of tsAttrMap) {
     if (SKIP_ATTRS.has(name) || RANDOM_ATTRS.has(name)) continue;
     if (refAttrMap.has(name)) continue;
@@ -179,12 +160,9 @@ function compareElements(
     diffs.push(`${fullPath}: extra attribute "${name}"="${tsValue}" (Java has none)`);
   }
 
-  // ...and the ORDER of the attributes, which nothing checked either. Reversing the
-  // attribute order on every <note> of a reference file also left this comparator green,
-  // because both sides go into a `Map` keyed on name and only the reference's is iterated.
-  // Order is byte-visible in the output and, on this corpus, it encodes which render passes
-  // touched a note: a note under a rubato instruction gets `date.end.perf` earlier than one
-  // that is not. Measured green across all 16 fixtures at the time of writing.
+  // Attribute order is byte-visible in the output and, on this corpus, encodes which render
+  // passes touched a note: a note under a rubato instruction gets `date.end.perf` earlier
+  // than one that is not.
   const orderOf = (attrs: readonly { name: string; value: string }[]): string[] =>
     attrs.map((a) => a.name).filter((n) => !SKIP_ATTRS.has(n) && !RANDOM_ATTRS.has(n));
   const tsOrder = orderOf(tsEl.attrs);
@@ -195,27 +173,22 @@ function compareElements(
     );
   }
 
-  // Text content. The parser has always filled `ParsedElement.text` and nothing ever read it
-  // — parsed data that no assertion depended on. Measured: not one of the 16
-  // performance-reference documents carries any element text, because an augmented MSM is all
-  // attributes, so this cannot fire on today's corpus and is insurance rather than a fix. It
-  // is worth the three lines because the failure it guards is silent: a serializer that began
-  // emitting text where Java emits none would otherwise pass this suite unchanged.
+  // Not one of the 16 performance-reference documents carries element text — an augmented MSM
+  // is all attributes — so this cannot fire on today's corpus. It guards a silent failure: a
+  // serializer that began emitting text where Java emits none would otherwise pass unchanged.
   // (`cross-validation` does check text, by string equality, and its MPM fixtures do carry
   // `<author>` and `<comment>` content.)
   if (tsEl.text.trim() !== refEl.text.trim()) {
     diffs.push(`${fullPath}: text "${tsEl.text.trim()}" vs Java "${refEl.text.trim()}"`);
   }
 
-  // Compare children count
   if (tsEl.children.length !== refEl.children.length) {
     diffs.push(
       `${fullPath}: child count mismatch: TS=${tsEl.children.length} vs Java=${refEl.children.length}`,
     );
-    // Still try to compare what we can
   }
 
-  // Compare children pairwise
+  // A count mismatch is already reported; the pairwise walk covers the common prefix.
   const maxChildren = Math.min(tsEl.children.length, refEl.children.length);
   for (let i = 0; i < maxChildren; i++) {
     compareElements(tsEl.children[i], refEl.children[i], `${fullPath}[${i}]`, diffs, tolerance);
@@ -236,9 +209,6 @@ function canonicalizeUuids(xml: string): string {
   });
 }
 
-/**
- * Run the TS pipeline and compare full augmented MSM against Java reference.
- */
 function runFullComparison(fixture: string): { diffs: string[]; tsXml: string; refXml: string } {
   const meiXml = readFileSync(join(MEI_DIR, `${fixture}.mei`), 'utf-8');
   const mei = Mei.fromXml(meiXml);
@@ -263,7 +233,7 @@ function runFullComparison(fixture: string): { diffs: string[]; tsXml: string; r
   return { diffs, tsXml, refXml };
 }
 
-// Auto-discover all MEI fixtures; every fixture MUST have a Java reference (missing = failure, not skip)
+// Every fixture must have a Java reference: a missing one is a failure, not a skip.
 const fixtures = readdirSync(MEI_DIR)
   .filter((f) => f.endsWith('.mei'))
   .map((f) => f.replace(/\.mei$/, ''))
@@ -290,7 +260,6 @@ describe('Full XML equivalence: augmented MSM (TS vs Java)', () => {
 
 describe('Attribute-level coverage audit', () => {
   it('should verify all performance-specific attributes are present on notes', () => {
-    // Check that the TS output actually produces all expected performance attributes
     const expectedNoteAttrs = [
       'date',
       'midi.pitch',
@@ -320,7 +289,6 @@ describe('Attribute-level coverage audit', () => {
       const augmented = perf.perform(msm);
       const tsTree = parseXml(augmented.getRootElement()!.toXML());
 
-      // Find all note elements in the tree
       function findNotes(el: ParsedElement): ParsedElement[] {
         const notes: ParsedElement[] = [];
         if (el.tag === 'note') notes.push(el);
@@ -344,7 +312,6 @@ describe('Attribute-level coverage audit', () => {
   });
 
   it('should verify channelVolumeMap is present when dynamics are rendered', () => {
-    // dynamics and comprehensive fixtures should have a channelVolumeMap
     for (const fixture of ['dynamics', 'comprehensive']) {
       const refPath = join(PERF_REF_DIR, `${fixture}_augmented.msm`);
       expect(existsSync(refPath), `missing Java reference for ${fixture}`).toBe(true);
@@ -384,7 +351,6 @@ describe('Attribute-level coverage audit', () => {
       const augmented = perf.perform(msm);
       const tsTree = parseXml(augmented.getRootElement()!.toXML());
 
-      // Find sectionMap > section elements in global
       function findSections(el: ParsedElement): ParsedElement[] {
         const sections: ParsedElement[] = [];
         if (el.tag === 'section') sections.push(el);

@@ -36,7 +36,6 @@ describe('MIDI export pipeline', () => {
       expect(bytes).not.toBeNull();
       expect(bytes).toBeInstanceOf(Uint8Array);
       expect(bytes!.length).toBeGreaterThan(14); // at least MThd header
-      // Check MThd header
       expect(String.fromCharCode(bytes![0], bytes![1], bytes![2], bytes![3])).toBe('MThd');
     });
 

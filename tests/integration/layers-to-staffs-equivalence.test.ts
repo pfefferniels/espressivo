@@ -40,23 +40,11 @@ function canonicalizeUuids(xml: string): string {
 }
 
 /**
- * Kept in step with `cross-validation.test.ts`'s function of the same name — which it had
- * stopped being.
- *
- * That suite shed four normalisers as the defects they were hiding got fixed: the XML
- * declaration hardcoded with `encoding="UTF-8"`, the default-namespace declaration re-emitted
- * on every namespaced element, a `<comment>` normaliser masking exactly zero, and a trailing
- * `.trim()` covering a missing final newline. This one kept all four, and its comment claiming
- * otherwise is how that went unnoticed.
- *
- * Measured before removing them: each of the four can be deleted on its own with all 48 tests
- * still green, and all four together likewise. They were masking nothing here either — the
- * serializer fixes reached this suite too, it just never dropped the scaffolding.
- *
- * What is left is what `cross-validation` kept, and for the same reasons: UUIDs canonicalised
- * by first-occurrence order rather than deleted, so `goto/@target.id` to `marker/@xml:id`
- * wiring stays checkable; resource URIs, which are file paths; and `="720.0"` versus `="720"`,
- * the one examined and accepted difference from Java's `Double.toString`.
+ * Kept in step with `cross-validation.test.ts`'s function of the same name: UUIDs
+ * canonicalised by first-occurrence order rather than deleted, so `goto/@target.id` to
+ * `marker/@xml:id` wiring stays checkable; resource URIs, which are file paths; and
+ * `="720.0"` versus `="720"`, the one examined and accepted difference from Java's
+ * `Double.toString`. That suite's comment carries the reasoning.
  */
 function normalizeXml(xml: string): string {
   return canonicalizeUuids(xml)
