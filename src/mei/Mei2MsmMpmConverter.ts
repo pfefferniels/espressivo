@@ -3045,7 +3045,12 @@ export class Mei2MsmMpmConverter {
         }
         articulationStyle.addDef(def.value);
       }
-      articulationMap.addArticulation(date, artic, noteid === null ? null : `#${noteid}`, id);
+      articulationMap.addArticulation({
+        date,
+        nameRef: artic,
+        ...(noteid !== null && { noteid: `#${noteid}` }),
+        ...(id !== null && { id }),
+      });
     }
   }
 
