@@ -5,12 +5,43 @@ import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { type Result } from '../../../prelude/index.js';
 import { type MpmParseError } from '../parseError.js';
-import { MovementData } from './data/MovementData.js';
-import { movementSegment, resolveMovement, type Movement } from './data/movement.js';
+import {
+  DEFAULT_CONTROLLER,
+  movementSegment,
+  resolveMovement,
+  type Movement,
+} from './data/movement.js';
 import { mapPresent, unwrapOr } from '../../../prelude/index.js';
 import { DEFAULT_MOVEMENT_SAMPLE_MAX_STEP } from '../../RenderOptions.js';
 import type { RenderContext } from '../../RenderOptions.js';
 import type { Normalized } from '../../../units.js';
+
+/**
+ * Everything a `<movement>` element can say, for {@link MovementMap.addMovement} (RULE F5's
+ * named-parameter shape, applied inside the library).
+ *
+ * Optional properties are `?:` and never `null` (RULE N1): an attribute nobody supplied is an
+ * attribute that is not written, and {@link resolveMovement} then applies its default — 0.4
+ * for `curvature`, 0.0 for `protraction`, and for an absent `transition.to` the constant arm.
+ * Absent `position` is the one that is not merely a default: the reader inherits it from the
+ * preceding movement's `transition.to`, and rejects the instruction where there is none.
+ */
+export interface AddMovementOptions {
+  /** `@date`, in ticks. Always written. */
+  readonly date: number;
+  /** `@position`, normalized 0..1. */
+  readonly position?: Normalized;
+  /** `@transition.to`, normalized 0..1; absent means a constant movement. */
+  readonly transitionTo?: Normalized;
+  /** `@curvature`. */
+  readonly curvature?: number;
+  /** `@protraction`. */
+  readonly protraction?: number;
+  /** `@controller` — the MIDI controller the movement drives. Always written. */
+  readonly controller?: string;
+  /** `xml:id` of the movement element. */
+  readonly id?: string;
+}
 
 /**
  * An MPM `movementMap`: continuous controller movement, most commonly the sustain
@@ -41,49 +72,32 @@ export class MovementMap extends GenericMap {
   }
 
   /**
-   * Add a `<movement>` from a {@link MovementData}.
+   * Add a `<movement>`.
    *
-   * Only this writer emits `curvature` and `protraction`, and it emits its attributes in a
-   * different order from {@link addMovement}. Attribute order is byte-visible, so which of
-   * the two a call selects is not a detail.
+   * Attribute order is `date`, `position`, `transition.to`, `curvature`, `protraction`,
+   * `controller`, `xml:id`, each omitted where the caller supplied nothing. Order is
+   * byte-visible; `controller` in particular goes after `protraction` and before `xml:id`
+   * (MovementMap.java:120-121).
+   *
+   * `date` and `controller` are unconditional, `controller` defaulting to `sustain` — which is
+   * also {@link resolveMovement}'s default for an absent one, so writing it out and leaving it
+   * off render the same.
    */
-  addMovementData(data: MovementData): number {
+  addMovement(movement: AddMovementOptions): number {
     const e = new Element('movement', MPM_NAMESPACE);
-    e.addAttribute(new Attribute('date', String(data.startDate)));
-    if (data.position !== null) e.addAttribute(new Attribute('position', String(data.position)));
-    if (data.transitionTo !== null)
-      e.addAttribute(new Attribute('transition.to', String(data.transitionTo)));
-    if (data.curvature !== null) e.addAttribute(new Attribute('curvature', String(data.curvature)));
-    if (data.protraction !== null)
-      e.addAttribute(new Attribute('protraction', String(data.protraction)));
-    // Serialized since 2026-08-08 (MovementMap.java:120-121); before that this writer
-    // silently dropped the controller, so a round-tripped movement always came back as
-    // "sustain". Attribute order is byte-visible: after protraction, before xml:id.
-    // Java guards on `data.controller != null`; the field is non-nullable here.
-    e.addAttribute(new Attribute('controller', data.controller));
-    if (data.xmlId !== null)
-      e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', data.xmlId));
-    return this.insertElement(new KeyValue(data.startDate, e), false);
-  }
-
-  /**
-   * Add a `<movement>` from its values. {@link addMovementData} is the other writer; see
-   * there for how the two differ.
-   */
-  addMovement(
-    date: number,
-    controller: string,
-    position: number,
-    transitionTo: number,
-    id: string,
-  ): number {
-    const e = new Element('movement', MPM_NAMESPACE);
-    e.addAttribute(new Attribute('date', String(date)));
-    e.addAttribute(new Attribute('position', String(position)));
-    e.addAttribute(new Attribute('transition.to', String(transitionTo)));
-    e.addAttribute(new Attribute('controller', controller));
-    e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id));
-    return this.insertElement(new KeyValue(date, e), false);
+    e.addAttribute(new Attribute('date', String(movement.date)));
+    if (movement.position !== undefined)
+      e.addAttribute(new Attribute('position', String(movement.position)));
+    if (movement.transitionTo !== undefined)
+      e.addAttribute(new Attribute('transition.to', String(movement.transitionTo)));
+    if (movement.curvature !== undefined)
+      e.addAttribute(new Attribute('curvature', String(movement.curvature)));
+    if (movement.protraction !== undefined)
+      e.addAttribute(new Attribute('protraction', String(movement.protraction)));
+    e.addAttribute(new Attribute('controller', movement.controller ?? DEFAULT_CONTROLLER));
+    if (movement.id !== undefined)
+      e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', movement.id));
+    return this.insertElement(new KeyValue(movement.date, e), false);
   }
 
   /**

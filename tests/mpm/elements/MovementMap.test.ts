@@ -7,7 +7,6 @@ import { Performance } from '../../../src/mpm/elements/Performance.js';
 import { Part } from '../../../src/mpm/elements/Part.js';
 import { TempoMap } from '../../../src/mpm/elements/maps/TempoMap.js';
 import { MovementMap } from '../../../src/mpm/elements/maps/MovementMap.js';
-import { MovementData } from '../../../src/mpm/elements/maps/data/MovementData.js';
 import {
   movementSegment,
   positionAt,
@@ -85,14 +84,26 @@ describe('MovementMap', () => {
   describe('addMovement', () => {
     it('should add a movement instruction with all parameters', () => {
       const map = MovementMap.createMovementMap()!;
-      const index = map.addMovement(0, 'sustain', 0, 1, 'mov-1');
+      const index = map.addMovement({
+        date: 0,
+        controller: 'sustain',
+        position: norm(0),
+        transitionTo: norm(1),
+        id: 'mov-1',
+      });
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
     });
 
     it('should store attributes correctly', () => {
       const map = MovementMap.createMovementMap()!;
-      const index = map.addMovement(0, 'sustain', 0.5, 1.0, 'mov-1');
+      const index = map.addMovement({
+        date: 0,
+        controller: 'sustain',
+        position: norm(0.5),
+        transitionTo: norm(1.0),
+        id: 'mov-1',
+      });
       const elem = map.getElement(index)!;
 
       expect(elem.getAttributeValue('date')).toBe('0');
@@ -101,23 +112,36 @@ describe('MovementMap', () => {
       expect(elem.getAttributeValue('controller')).toBe('sustain');
     });
 
-    it('should add a movement from MovementData', () => {
+    it('should add a movement that names no controller and no id', () => {
       const map = MovementMap.createMovementMap()!;
-      const md = new MovementData();
-      md.startDate = 0;
-      md.position = norm(0.0);
-      md.transitionTo = norm(1.0);
-
-      const index = map.addMovementData(md);
+      const index = map.addMovement({ date: 0, position: norm(0.0), transitionTo: norm(1.0) });
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
     });
 
     it('should maintain sorted order when adding out of order', () => {
       const map = MovementMap.createMovementMap()!;
-      map.addMovement(960, 'sustain', 0.5, 1.0, 'mov-3');
-      map.addMovement(0, 'sustain', 0.0, 0.5, 'mov-1');
-      map.addMovement(480, 'sustain', 0.3, 0.7, 'mov-2');
+      map.addMovement({
+        date: 960,
+        controller: 'sustain',
+        position: norm(0.5),
+        transitionTo: norm(1.0),
+        id: 'mov-3',
+      });
+      map.addMovement({
+        date: 0,
+        controller: 'sustain',
+        position: norm(0.0),
+        transitionTo: norm(0.5),
+        id: 'mov-1',
+      });
+      map.addMovement({
+        date: 480,
+        controller: 'sustain',
+        position: norm(0.3),
+        transitionTo: norm(0.7),
+        id: 'mov-2',
+      });
 
       expect(map.size()).toBe(3);
       expect(map.getElement(0)!.getAttributeValue('date')).toBe('0');
@@ -134,13 +158,25 @@ describe('MovementMap', () => {
 
     it('should return null for negative index', () => {
       const map = MovementMap.createMovementMap()!;
-      map.addMovement(0, 'sustain', 0, 1, 'mov-1');
+      map.addMovement({
+        date: 0,
+        controller: 'sustain',
+        position: norm(0),
+        transitionTo: norm(1),
+        id: 'mov-1',
+      });
       expect(map.getMovementDataOf(-1)).toBeNull();
     });
 
-    it('should return MovementData for a valid movement', () => {
+    it('should return a resolved Movement for a valid movement', () => {
       const map = MovementMap.createMovementMap()!;
-      map.addMovement(0, 'sustain', 0.0, 1.0, 'mov-1');
+      map.addMovement({
+        date: 0,
+        controller: 'sustain',
+        position: norm(0.0),
+        transitionTo: norm(1.0),
+        id: 'mov-1',
+      });
 
       const md = map.getMovementDataOf(0);
       expect(md).not.toBeNull();
@@ -154,7 +190,13 @@ describe('MovementMap', () => {
 
     it('should set endDate to MAX_VALUE for the last movement', () => {
       const map = MovementMap.createMovementMap()!;
-      map.addMovement(0, 'sustain', 0, 1, 'mov-1');
+      map.addMovement({
+        date: 0,
+        controller: 'sustain',
+        position: norm(0),
+        transitionTo: norm(1),
+        id: 'mov-1',
+      });
 
       const md = map.getMovementDataOf(0)!;
       expect(md.endDate).toBe(Number.MAX_VALUE);
@@ -162,8 +204,20 @@ describe('MovementMap', () => {
 
     it('should set endDate to the start of the next movement', () => {
       const map = MovementMap.createMovementMap()!;
-      map.addMovement(0, 'sustain', 0, 1, 'mov-1');
-      map.addMovement(960, 'sustain', 1, 0, 'mov-2');
+      map.addMovement({
+        date: 0,
+        controller: 'sustain',
+        position: norm(0),
+        transitionTo: norm(1),
+        id: 'mov-1',
+      });
+      map.addMovement({
+        date: 960,
+        controller: 'sustain',
+        position: norm(1),
+        transitionTo: norm(0),
+        id: 'mov-2',
+      });
 
       const md = map.getMovementDataOf(0)!;
       expect(md.endDate).toBe(960);
@@ -171,7 +225,13 @@ describe('MovementMap', () => {
 
     it('should handle out-of-bounds index by clamping', () => {
       const map = MovementMap.createMovementMap()!;
-      map.addMovement(0, 'sustain', 0, 1, 'mov-1');
+      map.addMovement({
+        date: 0,
+        controller: 'sustain',
+        position: norm(0),
+        transitionTo: norm(1),
+        id: 'mov-1',
+      });
 
       const md = map.getMovementDataOf(100);
       expect(md).not.toBeNull();
@@ -179,33 +239,15 @@ describe('MovementMap', () => {
     });
   });
 
-  describe('MovementData', () => {
-    it('should have correct default values', () => {
-      const md = new MovementData();
-      expect(md.startDate).toBe(0.0);
-      expect(md.position).toBe(0.0);
-      expect(md.transitionTo).toBeNull();
-      expect(md.controller).toBe('sustain');
-      expect(md.curvature).toBe(0.4);
-      expect(md.protraction).toBe(0.0);
-      expect(md.xmlId).toBeNull();
-    });
-
+  describe('addMovement: what is written and what is left out', () => {
     /**
      * Each null in the write payload means "emit no attribute", which is the difference
      * between a `<movement>` the reader treats as constant and one it rejects for having no
      * position at all.
      */
-    it('omits every attribute the payload leaves null', () => {
+    it('writes only date and controller when only those are given', () => {
       const map = MovementMap.createMovementMap()!;
-      const md = new MovementData();
-      md.startDate = 100;
-      md.position = null;
-      md.transitionTo = null;
-      md.curvature = null;
-      md.protraction = null;
-
-      const elem = map.getElement(map.addMovementData(md))!;
+      const elem = map.getElement(map.addMovement({ date: 100 }))!;
       expect(elem.getAttributeValue('date')).toBe('100');
       expect(elem.getAttribute('position')).toBeNull();
       expect(elem.getAttribute('transition.to')).toBeNull();
@@ -215,25 +257,26 @@ describe('MovementMap', () => {
       expect(elem.getAttributeValue('controller')).toBe('sustain');
     });
 
-    it('writes every attribute the payload does supply', () => {
+    it('writes every attribute it is given', () => {
       const map = MovementMap.createMovementMap()!;
-      const md = new MovementData();
-      md.startDate = 100;
-      md.position = norm(0.3);
-      md.transitionTo = norm(0.8);
-      md.controller = 'expression';
-      md.curvature = 0.6;
-      md.protraction = 0.2;
-      md.xmlId = 'mov-clone';
-
-      const elem = map.getElement(map.addMovementData(md))!;
+      const elem = map.getElement(
+        map.addMovement({
+          date: 100,
+          position: norm(0.3),
+          transitionTo: norm(0.8),
+          controller: 'expression',
+          curvature: 0.6,
+          protraction: 0.2,
+          id: 'mov-full',
+        }),
+      )!;
       expect(elem.getAttributeValue('position')).toBe('0.3');
       expect(elem.getAttributeValue('transition.to')).toBe('0.8');
       expect(elem.getAttributeValue('curvature')).toBe('0.6');
       expect(elem.getAttributeValue('protraction')).toBe('0.2');
       expect(elem.getAttributeValue('controller')).toBe('expression');
       expect(elem.getAttribute('id', 'http://www.w3.org/XML/1998/namespace')!.getValue()).toBe(
-        'mov-clone',
+        'mov-full',
       );
     });
 
@@ -634,8 +677,20 @@ describe('MovementMap', () => {
       const map = MovementMap.createMovementMap()!;
       // Need at least two movement instructions for generation to happen
       // (movementIndex < this.size() - 1)
-      map.addMovement(0, 'sustain', 0, 1, 'mov-1');
-      map.addMovement(1000, 'sustain', 1, 0, 'mov-2');
+      map.addMovement({
+        date: 0,
+        controller: 'sustain',
+        position: norm(0),
+        transitionTo: norm(1),
+        id: 'mov-1',
+      });
+      map.addMovement({
+        date: 1000,
+        controller: 'sustain',
+        position: norm(1),
+        transitionTo: norm(0),
+        id: 'mov-2',
+      });
 
       const result = map.renderMovementToMap();
       expect(result).not.toBeNull();
@@ -649,8 +704,20 @@ describe('MovementMap', () => {
 
     it('static renderMovementToMap delegates correctly', () => {
       const map = MovementMap.createMovementMap()!;
-      map.addMovement(0, 'sustain', 0, 1, 'mov-1');
-      map.addMovement(1000, 'sustain', 1, 0, 'mov-2');
+      map.addMovement({
+        date: 0,
+        controller: 'sustain',
+        position: norm(0),
+        transitionTo: norm(1),
+        id: 'mov-1',
+      });
+      map.addMovement({
+        date: 1000,
+        controller: 'sustain',
+        position: norm(1),
+        transitionTo: norm(0),
+        id: 'mov-2',
+      });
 
       const result = MovementMap.renderMovementToMap(map);
       expect(result).not.toBeNull();
@@ -661,8 +728,20 @@ describe('MovementMap', () => {
   describe('GenericMap operations', () => {
     it('should support removeElement by index', () => {
       const map = MovementMap.createMovementMap()!;
-      map.addMovement(0, 'sustain', 0, 1, 'mov-1');
-      map.addMovement(960, 'sustain', 1, 0, 'mov-2');
+      map.addMovement({
+        date: 0,
+        controller: 'sustain',
+        position: norm(0),
+        transitionTo: norm(1),
+        id: 'mov-1',
+      });
+      map.addMovement({
+        date: 960,
+        controller: 'sustain',
+        position: norm(1),
+        transitionTo: norm(0),
+        id: 'mov-2',
+      });
 
       map.removeElementAt(0);
       expect(map.size()).toBe(1);
@@ -720,18 +799,21 @@ describe('MovementMap', () => {
       expect(map.getMovementDataOf(0)!.controller).toBe('sustain');
     });
 
-    it('addMovement(MovementData) serializes controller after protraction, before xml:id', () => {
+    it('addMovement serializes controller after protraction, before xml:id', () => {
       const map = MovementMap.createMovementMap()!;
-      const md = new MovementData();
-      md.startDate = 0;
-      md.position = norm(0.2);
-      md.transitionTo = norm(0.9);
-      md.curvature = 0.8;
-      md.protraction = 0.5;
-      md.controller = 'soft';
-      md.xmlId = 'mov-1';
-
-      const xml = map.getElement(map.addMovementData(md))!.toXML();
+      const xml = map
+        .getElement(
+          map.addMovement({
+            date: 0,
+            position: norm(0.2),
+            transitionTo: norm(0.9),
+            curvature: 0.8,
+            protraction: 0.5,
+            controller: 'soft',
+            id: 'mov-1',
+          }),
+        )!
+        .toXML();
       expect(xml).toContain('controller="soft"');
       // Attribute order is byte-visible in the serialized MPM.
       expect(xml.indexOf('protraction=')).toBeLessThan(xml.indexOf('controller='));
@@ -740,14 +822,14 @@ describe('MovementMap', () => {
 
     it('getMovementDataOf parses curvature, protraction and controller back out', () => {
       const map = MovementMap.createMovementMap()!;
-      const md = new MovementData();
-      md.startDate = 0;
-      md.position = norm(0.2);
-      md.transitionTo = norm(0.9);
-      md.curvature = 0.8;
-      md.protraction = 0.5;
-      md.controller = 'soft';
-      map.addMovementData(md);
+      map.addMovement({
+        date: 0,
+        position: norm(0.2),
+        transitionTo: norm(0.9),
+        curvature: 0.8,
+        protraction: 0.5,
+        controller: 'soft',
+      });
 
       const parsed = map.getMovementDataOf(0)!;
       expect(parsed.curvature).toBe(0.8);
@@ -755,7 +837,7 @@ describe('MovementMap', () => {
       expect(parsed.controller).toBe('soft');
     });
 
-    it('getMovementDataOf falls back to the MovementData defaults when attributes are absent', () => {
+    it('getMovementDataOf falls back to the reader defaults when attributes are absent', () => {
       const map = MovementMap.createMovementMap()!;
       const e = new Element('movement');
       e.addAttribute(new Attribute('date', '0.0'));
@@ -794,11 +876,10 @@ describe('MovementMap', () => {
       return msm;
     }
 
-    /** `curvature`/`protraction` null means "no attribute written", i.e. the defaults apply. */
+    /** An absent `curvature`/`protraction` writes no attribute, so the reader defaults apply. */
     function buildMpm(
-      curvature: number | null,
-      protraction: number | null,
       controller: string,
+      shape?: { readonly curvature: number; readonly protraction: number },
     ): Mpm {
       const mpm = Mpm.createMpm();
       const perf = okValue(Performance.fromName('perf', 720));
@@ -809,23 +890,22 @@ describe('MovementMap', () => {
       perf.getGlobal()!.getDated()!.addMap(tempoMap);
 
       const movMap = MovementMap.createMovementMap()!;
-      const md = new MovementData();
-      md.startDate = 0;
-      md.position = norm(0.2);
-      md.transitionTo = norm(0.9);
-      md.controller = controller;
-      md.curvature = curvature;
-      md.protraction = protraction;
-      movMap.addMovementData(md);
+      movMap.addMovement({
+        date: 0,
+        position: norm(0.2),
+        transitionTo: norm(0.9),
+        controller,
+        ...shape,
+      });
       // Two terminating instructions: the last entry of a movementMap is never rendered,
       // it only marks where the preceding transition aims.
-      for (const startDate of [2880, 5760]) {
-        const term = new MovementData();
-        term.startDate = startDate;
-        term.position = norm(0.9);
-        term.transitionTo = norm(0.9);
-        term.controller = controller;
-        movMap.addMovementData(term);
+      for (const date of [2880, 5760]) {
+        movMap.addMovement({
+          date,
+          position: norm(0.9),
+          transitionTo: norm(0.9),
+          controller,
+        });
       }
       perf.getGlobal()!.getDated()!.addMap(movMap);
       perf.addPart(okValue(Part.fromValues('Piano', 1, 0, 0)));
@@ -870,7 +950,7 @@ describe('MovementMap', () => {
     }
 
     it('renders identically in memory and after a serialize/re-parse round-trip', () => {
-      const mpm = buildMpm(0.8, 0.5, 'soft');
+      const mpm = buildMpm('soft', { curvature: 0.8, protraction: 0.5 });
       const inMemory = render(mpm, buildMsm());
       const reParsed = render(new Mpm(mpm.toXML()), new Msm(buildMsm().toXML()));
 
@@ -880,14 +960,17 @@ describe('MovementMap', () => {
     });
 
     it('preserves the controller through the serialize/re-parse round-trip', () => {
-      const mpm = buildMpm(0.8, 0.5, 'soft');
+      const mpm = buildMpm('soft', { curvature: 0.8, protraction: 0.5 });
       expect(controllerOf(render(mpm, buildMsm()))).toBe('soft');
       expect(controllerOf(render(new Mpm(mpm.toXML()), new Msm(buildMsm().toXML())))).toBe('soft');
     });
 
     it('curvature and protraction actually take effect (differ from the defaults render)', () => {
-      const shaped = render(new Mpm(buildMpm(0.8, 0.5, 'soft').toXML()), buildMsm());
-      const defaults = render(new Mpm(buildMpm(null, null, 'soft').toXML()), buildMsm());
+      const shaped = render(
+        new Mpm(buildMpm('soft', { curvature: 0.8, protraction: 0.5 }).toXML()),
+        buildMsm(),
+      );
+      const defaults = render(new Mpm(buildMpm('soft').toXML()), buildMsm());
 
       expect(positionsOf(shaped)).not.toEqual(positionsOf(defaults));
     });
@@ -899,8 +982,20 @@ describe('MovementMap', () => {
       expect(DEFAULT_MOVEMENT_SAMPLE_MAX_STEP).toBe(0.1);
 
       const map = MovementMap.createMovementMap()!;
-      map.addMovement(0, 'sustain', 0, 1, 'mov-1');
-      map.addMovement(1000, 'sustain', 1, 0, 'mov-2');
+      map.addMovement({
+        date: 0,
+        controller: 'sustain',
+        position: norm(0),
+        transitionTo: norm(1),
+        id: 'mov-1',
+      });
+      map.addMovement({
+        date: 1000,
+        controller: 'sustain',
+        position: norm(1),
+        transitionTo: norm(0),
+        id: 'mov-2',
+      });
       const atDefault = map.renderMovementToMap()!.size();
       expect(atDefault).toBeGreaterThan(0);
 
@@ -917,8 +1012,20 @@ describe('MovementMap', () => {
 
     it('the static renderMovementToMap passes the context through', () => {
       const map = MovementMap.createMovementMap()!;
-      map.addMovement(0, 'sustain', 0, 1, 'mov-1');
-      map.addMovement(1000, 'sustain', 1, 0, 'mov-2');
+      map.addMovement({
+        date: 0,
+        controller: 'sustain',
+        position: norm(0),
+        transitionTo: norm(1),
+        id: 'mov-1',
+      });
+      map.addMovement({
+        date: 1000,
+        controller: 'sustain',
+        position: norm(1),
+        transitionTo: norm(0),
+        id: 'mov-2',
+      });
 
       expect(
         MovementMap.renderMovementToMap(map, ctx({ movementSampleMaxStep: 0.5 }))!.size(),

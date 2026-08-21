@@ -5,9 +5,26 @@ import { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { type Result } from '../../../prelude/index.js';
 import { type MpmParseError } from '../parseError.js';
-import { RubatoData } from './data/RubatoData.js';
-import { resolveRubato, type Rubato } from './data/rubato.js';
-import { elementAt, mapPresent } from '../../../prelude/index.js';
+import { resolveRubato, type Rubato, type RubatoDeclaration } from './data/rubato.js';
+import { elementAt, mapPresent, optional } from '../../../prelude/index.js';
+
+/**
+ * Everything a `<rubato>` element can say, for {@link RubatoMap.addRubato} (RULE F5's
+ * named-parameter shape, applied inside the library).
+ *
+ * Optional properties are `?:` and never `null` (RULE N1): an attribute nobody supplied is an
+ * attribute that is not written, and the `rubatoDef` named by {@link nameRef} then supplies it.
+ * Mentioning `intensity`, `lateStart` or `earlyEnd` at all overrides the def for that
+ * parameter, including where the value given is the identity warp.
+ */
+export interface AddRubatoOptions extends RubatoDeclaration {
+  /** `@date`, in ticks. Always written. */
+  readonly date: number;
+  /** `@name.ref` — the `rubatoDef` in the style currently in scope, to inherit from. */
+  readonly nameRef?: string;
+  /** `xml:id` of the rubato element. */
+  readonly id?: string;
+}
 
 /**
  * An MPM `rubatoMap`: expressive push and pull of the timing, applied as a repeating
@@ -39,59 +56,29 @@ export class RubatoMap extends GenericMap {
   }
 
   /**
-   * Add a `<rubato>` that declares its own warp window.
+   * Add a `<rubato>`.
    *
-   * One of three ways in, distinguished by what they write: this one a frame,
-   * {@link addRubatoRef} a `name.ref`, {@link addRubatoData} a whole payload.
+   * Attribute order is `date`, `name.ref`, `frameLength`, `intensity`, `lateStart`,
+   * `earlyEnd`, `loop`, `xml:id`, each omitted where the caller supplied nothing. `date` and
+   * `loop` are unconditional; `loop` defaults to false, which is also what
+   * {@link resolveRubato} falls back to for an absent one.
    */
-  addRubatoWindow(
-    date: number,
-    frameLength: number,
-    intensity: number,
-    lateStart: number,
-    earlyEnd: number,
-    loop: boolean,
-  ): number {
+  addRubato(rubato: AddRubatoOptions): number {
     const e = new Element('rubato', MPM_NAMESPACE);
-    e.addAttribute(new Attribute('date', String(date)));
-    e.addAttribute(new Attribute('frameLength', String(frameLength)));
-    e.addAttribute(new Attribute('intensity', String(intensity)));
-    e.addAttribute(new Attribute('lateStart', String(lateStart)));
-    e.addAttribute(new Attribute('earlyEnd', String(earlyEnd)));
-    e.addAttribute(new Attribute('loop', String(loop)));
-    return this.insertElement(new KeyValue(date, e), false);
-  }
-
-  /**
-   * Add a `<rubato>` that refers to a `rubatoDef` by name. See {@link addRubatoWindow}.
-   */
-  addRubatoRef(date: number, rubatoDefName: string, loop: boolean): number {
-    const e = new Element('rubato', MPM_NAMESPACE);
-    e.addAttribute(new Attribute('date', String(date)));
-    e.addAttribute(new Attribute('name.ref', rubatoDefName));
-    e.addAttribute(new Attribute('loop', String(loop)));
-    return this.insertElement(new KeyValue(date, e), false);
-  }
-
-  /**
-   * Add a `<rubato>` from a {@link RubatoData} — the only form that can write a `name.ref`
-   * AND a window on the same instruction, and the only one that may omit either.
-   * See {@link addRubatoWindow}.
-   */
-  addRubatoData(data: RubatoData): number {
-    const e = new Element('rubato', MPM_NAMESPACE);
-    e.addAttribute(new Attribute('date', String(data.startDate)));
-    if (data.rubatoDefString !== null)
-      e.addAttribute(new Attribute('name.ref', data.rubatoDefString));
-    if (data.frameLength !== null)
-      e.addAttribute(new Attribute('frameLength', String(data.frameLength)));
-    if (data.intensity !== null) e.addAttribute(new Attribute('intensity', String(data.intensity)));
-    if (data.lateStart !== null) e.addAttribute(new Attribute('lateStart', String(data.lateStart)));
-    if (data.earlyEnd !== null) e.addAttribute(new Attribute('earlyEnd', String(data.earlyEnd)));
-    e.addAttribute(new Attribute('loop', String(data.loop)));
-    if (data.xmlId !== null)
-      e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', data.xmlId));
-    return this.insertElement(new KeyValue(data.startDate, e), false);
+    e.addAttribute(new Attribute('date', String(rubato.date)));
+    if (rubato.nameRef !== undefined) e.addAttribute(new Attribute('name.ref', rubato.nameRef));
+    if (rubato.frameLength !== undefined)
+      e.addAttribute(new Attribute('frameLength', String(rubato.frameLength)));
+    if (rubato.intensity !== undefined)
+      e.addAttribute(new Attribute('intensity', String(rubato.intensity)));
+    if (rubato.lateStart !== undefined)
+      e.addAttribute(new Attribute('lateStart', String(rubato.lateStart)));
+    if (rubato.earlyEnd !== undefined)
+      e.addAttribute(new Attribute('earlyEnd', String(rubato.earlyEnd)));
+    e.addAttribute(new Attribute('loop', String(rubato.loop ?? false)));
+    if (rubato.id !== undefined)
+      e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', rubato.id));
+    return this.insertElement(new KeyValue(rubato.date, e), false);
   }
 
   /**
@@ -120,21 +107,23 @@ export class RubatoMap extends GenericMap {
     const def =
       style === null || nameRef === null ? null : (style.getDef(nameRef.getValue()) ?? null);
 
-    const declaredFloat = (name: string): number | null =>
-      mapPresent(attribute(name, e), (a) => parseFloat(a.getValue()));
+    const declaredFloat = (name: string): number | undefined =>
+      optional(mapPresent(attribute(name, e), (a) => parseFloat(a.getValue())));
+
+    const declared: RubatoDeclaration = {
+      frameLength: declaredFloat('frameLength'),
+      intensity: declaredFloat('intensity'),
+      lateStart: declaredFloat('lateStart'),
+      earlyEnd: declaredFloat('earlyEnd'),
+      loop: optional(mapPresent(attribute('loop', e), (a) => a.getValue() === 'true')),
+    };
 
     return resolveRubato(
       {
         startDate: entry.getKey(),
         endDate: this.nextDateOfType(i, 'rubato'),
       },
-      {
-        frameLength: declaredFloat('frameLength'),
-        intensity: declaredFloat('intensity'),
-        lateStart: declaredFloat('lateStart'),
-        earlyEnd: declaredFloat('earlyEnd'),
-        loop: mapPresent(attribute('loop', e), (a) => a.getValue() === 'true'),
-      },
+      declared,
       def,
     );
   }

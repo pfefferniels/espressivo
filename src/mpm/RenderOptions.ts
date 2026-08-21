@@ -21,7 +21,7 @@ export interface RenderOptions {
 
   /**
    * Largest value step tolerated between two consecutive sampled `<position>` events, in
-   * the **normalized 0..1** domain {@link MovementData.getMovementSegment} subdivides
+   * the **normalized 0..1** domain `movementSegment` (`mpm/elements/maps/data/movement.ts`) subdivides
    * against — not the 0..127 domain it scales into. Raising it subdivides less and emits
    * fewer events for a long ramp; lowering it emits more. Defaults to
    * {@link DEFAULT_MOVEMENT_SAMPLE_MAX_STEP}.

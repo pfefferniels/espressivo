@@ -116,7 +116,7 @@ const DEFAULT_CURVATURE = 0.4;
 /** `@protraction`'s default. */
 const DEFAULT_PROTRACTION = 0.0;
 /** `@controller`'s default. */
-const DEFAULT_CONTROLLER = 'sustain';
+export const DEFAULT_CONTROLLER = 'sustain';
 
 /**
  * Fill in what the element left out, derive the control points, and pick the arm.

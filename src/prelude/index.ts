@@ -48,6 +48,7 @@ export {
   compact,
   presentOrError,
   normalize,
+  optional,
 } from './option.js';
 
 export type { NonEmptyArray } from './seq.js';

@@ -81,10 +81,23 @@ export function presentOrError<T, E>(x: T | null, makeError: () => E): Result<T,
 }
 
 /**
- * Collapse `undefined` into `null` — the one place the two spellings may meet, where an
+ * Collapse `undefined` into `null` — one of the two places the spellings may meet, where an
  * optional parameter ("not supplied") becomes stored state ("nothing here"). Named rather than
  * spelled `?? null` so those boundaries can be grepped for.
  */
 export function normalize<T>(x: T | null | undefined): T | null {
   return x ?? null;
+}
+
+/**
+ * Collapse `null` into `undefined` — the read direction of {@link normalize}, where an absent
+ * attribute (`src/xml/**` answers null, RULE N2) becomes an unsupplied property of a
+ * declaration record (`?:`, RULE N1).
+ *
+ * `??`, so a `NaN` parsed out of a present-but-malformed attribute survives: the difference
+ * between absent and unusable decides whether a `rubatoDef` is inherited from
+ * (`mpm/elements/maps/data/rubato.ts`).
+ */
+export function optional<T>(x: T | null | undefined): T | undefined {
+  return x ?? undefined;
 }
