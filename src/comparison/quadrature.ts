@@ -88,13 +88,13 @@ const GAUSS_LEGENDRE_10_POSITIVE_WEIGHTS: readonly number[] = [
 
 /** The ten nodes in increasing order, negatives first — the evaluation order the sum uses. */
 export const GAUSS_LEGENDRE_10_NODES: readonly number[] = [
-  ...[...GAUSS_LEGENDRE_10_POSITIVE_NODES].reverse().map((node) => -node),
+  ...GAUSS_LEGENDRE_10_POSITIVE_NODES.toReversed().map((node) => -node),
   ...GAUSS_LEGENDRE_10_POSITIVE_NODES,
 ];
 
 /** The ten weights, index-aligned with {@link GAUSS_LEGENDRE_10_NODES}. */
 export const GAUSS_LEGENDRE_10_WEIGHTS: readonly number[] = [
-  ...[...GAUSS_LEGENDRE_10_POSITIVE_WEIGHTS].reverse(),
+  ...GAUSS_LEGENDRE_10_POSITIVE_WEIGHTS.toReversed(),
   ...GAUSS_LEGENDRE_10_POSITIVE_WEIGHTS,
 ];
 

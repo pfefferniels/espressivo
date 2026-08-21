@@ -6,7 +6,7 @@ import { Performance } from '../../src/mpm/elements/Performance.js';
 
 /** A real {@link Performance}: a `<performance name="…">` with the `<global>` child. */
 function performance(name: string): Performance {
-  return okValue(Performance.createPerformance(name));
+  return okValue(Performance.fromName(name));
 }
 
 describe('Mpm', () => {

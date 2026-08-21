@@ -535,15 +535,11 @@ export function maximalScoringRuns(
       // which is equivalent on well-behaved input but costs log n probes where this costs one,
       // and assumes a sortedness `NaN` destroys: `cumulative` is a running sum over `scores`,
       // so one `NaN` cell poisons every later `leftTotal` and `leftTotal_k < candidate.leftTotal`
-      // stops being monotone in `k`. The scan just takes the last element that qualifies. Cell
-      // scores arrive here from an integral, and `remainderUnderflow` exists because those
-      // integrals are not assumed to be well behaved.
-      let j = -1;
-      for (let k = runs.length - 1; k >= 0; --k)
-        if (elementAt(runs, k, RUNS).leftTotal < candidate.leftTotal) {
-          j = k;
-          break;
-        }
+      // stops being monotone in `k` — the bisection is then unsound, not merely slower.
+      // `findLastIndex` assumes no ordering: it reads every element, takes the last that
+      // qualifies, and answers `-1` for none. Cell scores arrive here from an integral, and
+      // `remainderUnderflow` exists because those integrals are not assumed to be well behaved.
+      const j = runs.findLastIndex((run) => run.leftTotal < candidate.leftTotal);
       if (j < 0) break;
       const absorbed = elementAt(runs, j, RUNS);
       if (absorbed.rightTotal >= candidate.rightTotal) break;

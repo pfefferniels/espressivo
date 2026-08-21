@@ -33,31 +33,33 @@ export class Author extends AbstractXmlSubtree {
   }
 
   /**
-   * Read an `<author>` element, or build one from a name (with optional number and `xml:id`).
-   * Reports the reason rather than printing it — see `elements/parseError.ts`.
+   * Read an `<author>` element. Reports the reason rather than printing it — see
+   * `elements/parseError.ts`.
    */
-  static createAuthor(xml: Element | null): Result<Author, MpmParseError>;
-  static createAuthor(
+  static fromXml(xml: Element | null): Result<Author, MpmParseError> {
+    if (xml === null) return err({ kind: 'noElement', what: 'Author' });
+    return attemptParse('Author', () => {
+      const a = new Author();
+      a.parseData(xml);
+      return a;
+    });
+  }
+
+  /**
+   * Build an `<author>` from a name. A null `number` or `id` leaves that attribute off the
+   * element entirely, rather than writing it empty.
+   */
+  static fromName(
     name: string,
     number: number | null,
     id: string | null,
-  ): Result<Author, MpmParseError>;
-  static createAuthor(
-    xmlOrName: Element | string | null,
-    number?: number | null,
-    id?: string | null,
   ): Result<Author, MpmParseError> {
-    if (xmlOrName === null) return err({ kind: 'noElement', what: 'Author' });
     return attemptParse('Author', () => {
       const a = new Author();
-      if (typeof xmlOrName === 'string') {
-        a.parseData(new Element('author', MPM_NAMESPACE));
-        a.setName(xmlOrName);
-        a.setNumber(number ?? null);
-        a.setId(id ?? null);
-      } else {
-        a.parseData(xmlOrName);
-      }
+      a.parseData(new Element('author', MPM_NAMESPACE));
+      a.setName(name);
+      a.setNumber(number);
+      a.setId(id);
       return a;
     });
   }

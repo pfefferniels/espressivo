@@ -37,9 +37,9 @@ function scoreNotes(msm: Msm): Element[] {
 }
 
 describe('Performance', () => {
-  describe('createPerformance', () => {
+  describe('fromName / fromXml', () => {
     it('should create a performance with the given name', () => {
-      const p = okValue(Performance.createPerformance('My Performance'));
+      const p = okValue(Performance.fromName('My Performance'));
 
       expect(p).not.toBeNull();
       expect(p.getName()).toBe('My Performance');
@@ -47,30 +47,30 @@ describe('Performance', () => {
     });
 
     it('should default the resolution to 720 pulses per quarter', () => {
-      expect(okValue(Performance.createPerformance('P')).getPulsesPerQuarter()).toBe(720);
+      expect(okValue(Performance.fromName('P')).getPulsesPerQuarter()).toBe(720);
     });
 
     it('should accept an explicit resolution', () => {
-      const p = okValue(Performance.createPerformance('P', 480));
+      const p = okValue(Performance.fromName('P', 480));
 
       expect(p.getPPQ()).toBe(480);
       expect(p.getXml()!.getAttributeValue('pulsesPerQuarter')).toBe('480');
     });
 
     it('should accept an explicit id', () => {
-      const p = okValue(Performance.createPerformance('P', 480, 'perf-1'));
+      const p = okValue(Performance.fromName('P', 480, 'perf-1'));
       expect(p.getId()).toBe('perf-1');
     });
 
     it('should create a global environment', () => {
-      const p = okValue(Performance.createPerformance('P'));
+      const p = okValue(Performance.fromName('P'));
 
       expect(p.getGlobal()).not.toBeNull();
       expect(p.getXml()!.getFirstChildElement('global')).not.toBeNull();
     });
 
     it('should start with no parts', () => {
-      const p = okValue(Performance.createPerformance('P'));
+      const p = okValue(Performance.fromName('P'));
 
       expect(p.size()).toBe(0);
       expect(p.getAllParts()).toEqual([]);
@@ -78,7 +78,7 @@ describe('Performance', () => {
 
     it('should name the missing attribute when there is no name', () => {
       const xml = new Element('performance', Mpm.MPM_NAMESPACE);
-      expect(errOf(Performance.createPerformance(xml))).toEqual({
+      expect(errOf(Performance.fromXml(xml))).toEqual({
         kind: 'missingAttribute',
         what: 'Performance',
         attribute: 'name',
@@ -89,7 +89,7 @@ describe('Performance', () => {
       const xml = new Element('performance', Mpm.MPM_NAMESPACE);
       xml.addAttribute(new Attribute('name', ''));
 
-      expect(errOf(Performance.createPerformance(xml))).toEqual({
+      expect(errOf(Performance.fromXml(xml))).toEqual({
         kind: 'missingAttribute',
         what: 'Performance',
         attribute: 'name',
@@ -97,7 +97,7 @@ describe('Performance', () => {
     });
 
     it('should report a null xml element rather than printing it', () => {
-      expect(errOf(Performance.createPerformance(null))).toEqual({
+      expect(errOf(Performance.fromXml(null))).toEqual({
         kind: 'noElement',
         what: 'Performance',
       });
@@ -113,7 +113,7 @@ describe('Performance', () => {
       partXml.addAttribute(new Attribute('midi.port', '0'));
       xml.appendChild(partXml);
 
-      const p = okValue(Performance.createPerformance(xml));
+      const p = okValue(Performance.fromXml(xml));
 
       expect(p.size()).toBe(1);
       expect(p.getAllParts()[0].getName()).toBe('Piano');
@@ -137,11 +137,11 @@ describe('Performance', () => {
         return e;
       };
       xml.appendChild(part({ name: 'Before', number: '1', 'midi.channel': '0', 'midi.port': '0' }));
-      // No `number`: `Part.createPart` refuses it, and the performance must not go with it.
+      // No `number`: `Part.fromXml` refuses it, and the performance must not go with it.
       xml.appendChild(part({ name: 'Bad', 'midi.channel': '1', 'midi.port': '0' }));
       xml.appendChild(part({ name: 'After', number: '3', 'midi.channel': '2', 'midi.port': '0' }));
 
-      const p = okValue(Performance.createPerformance(xml));
+      const p = okValue(Performance.fromXml(xml));
 
       expect(p.size()).toBe(2);
       expect(p.getAllParts().map((q) => q.getName())).toEqual(['Before', 'After']);
@@ -153,7 +153,7 @@ describe('Performance', () => {
 
   describe('name and resolution', () => {
     it('should update the name attribute', () => {
-      const p = okValue(Performance.createPerformance('Old'));
+      const p = okValue(Performance.fromName('Old'));
       p.setName('New');
 
       expect(p.getName()).toBe('New');
@@ -161,7 +161,7 @@ describe('Performance', () => {
     });
 
     it('should update the resolution attribute via setPPQ', () => {
-      const p = okValue(Performance.createPerformance('P'));
+      const p = okValue(Performance.fromName('P'));
       p.setPPQ(960);
 
       expect(p.getPPQ()).toBe(960);
@@ -171,11 +171,11 @@ describe('Performance', () => {
 
   describe('setId / getId', () => {
     it('should be null by default', () => {
-      expect(okValue(Performance.createPerformance('P')).getId()).toBeNull();
+      expect(okValue(Performance.fromName('P')).getId()).toBeNull();
     });
 
     it('should add an xml:id attribute when set for the first time', () => {
-      const p = okValue(Performance.createPerformance('P'));
+      const p = okValue(Performance.fromName('P'));
       p.setId('perf-1');
 
       expect(p.getId()).toBe('perf-1');
@@ -183,7 +183,7 @@ describe('Performance', () => {
     });
 
     it('should overwrite an existing id in place', () => {
-      const p = okValue(Performance.createPerformance('P', 720, 'first'));
+      const p = okValue(Performance.fromName('P', 720, 'first'));
       p.setId('second');
 
       expect(p.getId()).toBe('second');
@@ -191,7 +191,7 @@ describe('Performance', () => {
     });
 
     it('should remove the attribute when set to null', () => {
-      const p = okValue(Performance.createPerformance('P', 720, 'perf-1'));
+      const p = okValue(Performance.fromName('P', 720, 'perf-1'));
       p.setId(null);
 
       expect(p.getId()).toBeNull();
@@ -199,7 +199,7 @@ describe('Performance', () => {
     });
 
     it('should tolerate setting null when there is no id', () => {
-      const p = okValue(Performance.createPerformance('P'));
+      const p = okValue(Performance.fromName('P'));
 
       expect(() => p.setId(null)).not.toThrow();
       expect(p.getId()).toBeNull();
@@ -208,10 +208,10 @@ describe('Performance', () => {
 
   describe('parts', () => {
     function threePartPerformance(): Performance {
-      const p = okValue(Performance.createPerformance('P'));
-      p.addPart(okValue(Part.createPart('Piano', 1, 0, 0)));
-      p.addPart(okValue(Part.createPart('Violin', 2, 1, 0)));
-      p.addPart(okValue(Part.createPart('Cello', 3, 2, 1)));
+      const p = okValue(Performance.fromName('P'));
+      p.addPart(okValue(Part.fromValues('Piano', 1, 0, 0)));
+      p.addPart(okValue(Part.fromValues('Violin', 2, 1, 0)));
+      p.addPart(okValue(Part.fromValues('Cello', 3, 2, 1)));
       return p;
     }
 
@@ -223,8 +223,8 @@ describe('Performance', () => {
     });
 
     it('should refuse to add the same part twice', () => {
-      const p = okValue(Performance.createPerformance('P'));
-      const part = okValue(Part.createPart('Piano', 1, 0, 0));
+      const p = okValue(Performance.fromName('P'));
+      const part = okValue(Part.fromValues('Piano', 1, 0, 0));
 
       expect(p.addPart(part)).toBe(true);
       expect(p.addPart(part)).toBe(false);
@@ -283,7 +283,7 @@ describe('Performance', () => {
 
       p.removePartByNumber(99);
       p.removePartByName('Tuba');
-      p.removePart(okValue(Part.createPart('Foreign', 9, 9, 9)));
+      p.removePart(okValue(Part.fromValues('Foreign', 9, 9, 9)));
 
       expect(p.size()).toBe(3);
     });
@@ -291,28 +291,28 @@ describe('Performance', () => {
 
   describe('getCorrespondingPart', () => {
     it('should match an MSM part by number', () => {
-      const p = okValue(Performance.createPerformance('P'));
-      p.addPart(okValue(Part.createPart('DifferentName', 1, 0, 0)));
+      const p = okValue(Performance.fromName('P'));
+      p.addPart(okValue(Part.fromValues('DifferentName', 1, 0, 0)));
 
       const msmPart = Msm.makePart('Piano', 1, 0, 0);
       expect(p.getCorrespondingPart(msmPart)!.getNumber()).toBe(1);
     });
 
     it('should fall back to the name when the number does not match', () => {
-      const p = okValue(Performance.createPerformance('P'));
-      p.addPart(okValue(Part.createPart('Piano', 7, 0, 0)));
+      const p = okValue(Performance.fromName('P'));
+      p.addPart(okValue(Part.fromValues('Piano', 7, 0, 0)));
 
       const msmPart = Msm.makePart('Piano', 1, 0, 0);
       expect(p.getCorrespondingPart(msmPart)!.getNumber()).toBe(7);
     });
 
     it('should return null for a null msm part', () => {
-      expect(okValue(Performance.createPerformance('P')).getCorrespondingPart(null)).toBeNull();
+      expect(okValue(Performance.fromName('P')).getCorrespondingPart(null)).toBeNull();
     });
 
     it('should return null when nothing corresponds', () => {
-      const p = okValue(Performance.createPerformance('P'));
-      p.addPart(okValue(Part.createPart('Violin', 2, 1, 0)));
+      const p = okValue(Performance.fromName('P'));
+      p.addPart(okValue(Part.fromValues('Violin', 2, 1, 0)));
 
       expect(p.getCorrespondingPart(Msm.makePart('Piano', 1, 0, 0))).toBeNull();
     });
@@ -321,8 +321,8 @@ describe('Performance', () => {
   describe('perform', () => {
     it('should return a clone and leave the original MSM untouched', () => {
       const msm = makeMsm();
-      const p = okValue(Performance.createPerformance('P'));
-      p.addPart(okValue(Part.createPart('Piano', 1, 0, 0)));
+      const p = okValue(Performance.fromName('P'));
+      p.addPart(okValue(Part.fromValues('Piano', 1, 0, 0)));
 
       const performed = p.perform(msm);
 
@@ -333,8 +333,8 @@ describe('Performance', () => {
 
     it('should convert the MSM to the performance resolution', () => {
       const msm = makeMsm(360);
-      const p = okValue(Performance.createPerformance('P', 720));
-      p.addPart(okValue(Part.createPart('Piano', 1, 0, 0)));
+      const p = okValue(Performance.fromName('P', 720));
+      p.addPart(okValue(Part.fromValues('Piano', 1, 0, 0)));
 
       const performed = p.perform(msm);
 
@@ -344,16 +344,16 @@ describe('Performance', () => {
 
     it('should give every note a velocity when there is no dynamicsMap', () => {
       const msm = makeMsm();
-      const p = okValue(Performance.createPerformance('P'));
-      p.addPart(okValue(Part.createPart('Piano', 1, 0, 0)));
+      const p = okValue(Performance.fromName('P'));
+      p.addPart(okValue(Part.fromValues('Piano', 1, 0, 0)));
 
       for (const note of scoreNotes(p.perform(msm))) expect(num(note, 'velocity')).toBe(100);
     });
 
     it('should map dates to milliseconds one-to-one when there is no tempoMap', () => {
       const msm = makeMsm(720);
-      const p = okValue(Performance.createPerformance('P', 720));
-      p.addPart(okValue(Part.createPart('Piano', 1, 0, 0)));
+      const p = okValue(Performance.fromName('P', 720));
+      p.addPart(okValue(Part.fromValues('Piano', 1, 0, 0)));
 
       const notes = scoreNotes(p.perform(msm));
 
@@ -365,7 +365,7 @@ describe('Performance', () => {
 
     it('should still perform when no MPM part corresponds to the MSM part', () => {
       const msm = makeMsm();
-      const p = okValue(Performance.createPerformance('P')); // no parts at all
+      const p = okValue(Performance.fromName('P')); // no parts at all
 
       const notes = scoreNotes(p.perform(msm));
 
@@ -376,7 +376,7 @@ describe('Performance', () => {
     it('should rename the output file after the performance', () => {
       const msm = makeMsm();
       msm.setFile('/tmp/piece.msm');
-      const p = okValue(Performance.createPerformance('Expressive'));
+      const p = okValue(Performance.fromName('Expressive'));
 
       expect(p.perform(msm).getFile()).toBe('/tmp/piece_Expressive.msm');
     });
@@ -391,7 +391,7 @@ describe('Performance', () => {
       marker.addAttribute(new Attribute('date', '720'));
       markerMap.appendChild(marker);
 
-      const p = okValue(Performance.createPerformance('P'));
+      const p = okValue(Performance.fromName('P'));
       const performed = p.perform(msm);
 
       const performedMarker = performed
@@ -410,7 +410,7 @@ describe('Performance', () => {
       orphan.removeChild(orphan.getFirstChildElement('dated')!);
       msm.addPart(orphan);
 
-      const p = okValue(Performance.createPerformance('P'));
+      const p = okValue(Performance.fromName('P'));
 
       expect(() => p.perform(msm)).not.toThrow();
     });
@@ -419,8 +419,8 @@ describe('Performance', () => {
     describe('ornament milliseconds offsets', () => {
       /** A performance whose part carries an empty ornamentationMap, so the modifiers run. */
       function performanceWithOrnamentationMap(): Performance {
-        const p = okValue(Performance.createPerformance('P', 720));
-        const part = okValue(Part.createPart('Piano', 1, 0, 0));
+        const p = okValue(Performance.fromName('P', 720));
+        const part = okValue(Part.fromValues('Piano', 1, 0, 0));
         part.getDated()!.addMapByType(Mpm.ORNAMENTATION_MAP);
         p.addPart(part);
         return p;
@@ -476,8 +476,8 @@ describe('Performance', () => {
         const msm = makeMsm(720);
         scoreNotes(msm)[1].addAttribute(new Attribute('ornament.milliseconds.date.offset', '-50'));
 
-        const p = okValue(Performance.createPerformance('P', 720));
-        p.addPart(okValue(Part.createPart('Piano', 1, 0, 0)));
+        const p = okValue(Performance.fromName('P', 720));
+        p.addPart(okValue(Part.fromValues('Piano', 1, 0, 0)));
 
         expect(num(scoreNotes(p.perform(msm))[1], 'milliseconds.date')).toBe(720);
       });
@@ -488,9 +488,9 @@ describe('Performance', () => {
     describe('global ornamentationMap', () => {
       it('should perform normally when a global ornamentationMap is present', () => {
         const msm = makeMsm(720);
-        const p = okValue(Performance.createPerformance('P', 720));
+        const p = okValue(Performance.fromName('P', 720));
         p.getGlobal()!.getDated()!.addMapByType(Mpm.ORNAMENTATION_MAP);
-        p.addPart(okValue(Part.createPart('Piano', 1, 0, 0)));
+        p.addPart(okValue(Part.fromValues('Piano', 1, 0, 0)));
 
         const notes = scoreNotes(p.perform(msm));
 
@@ -502,9 +502,9 @@ describe('Performance', () => {
         const msm = makeMsm(720);
         scoreNotes(msm)[1].addAttribute(new Attribute('ornament.milliseconds.date.offset', '-50'));
 
-        const p = okValue(Performance.createPerformance('P', 720));
+        const p = okValue(Performance.fromName('P', 720));
         p.getGlobal()!.getDated()!.addMapByType(Mpm.ORNAMENTATION_MAP);
-        p.addPart(okValue(Part.createPart('Piano', 1, 0, 0)));
+        p.addPart(okValue(Part.fromValues('Piano', 1, 0, 0)));
 
         expect(num(scoreNotes(p.perform(msm))[1], 'milliseconds.date')).toBe(670);
       });
@@ -526,12 +526,12 @@ describe('Performance', () => {
 
         scoreNotes(msm)[1].addAttribute(new Attribute('ornament.milliseconds.date.offset', '-50'));
 
-        const p = okValue(Performance.createPerformance('P', 720));
+        const p = okValue(Performance.fromName('P', 720));
         p.getGlobal()!.getDated()!.addMapByType(Mpm.ORNAMENTATION_MAP);
-        const pianoPart = okValue(Part.createPart('Piano', 1, 0, 0));
+        const pianoPart = okValue(Part.fromValues('Piano', 1, 0, 0));
         pianoPart.getDated()!.addMapByType(Mpm.ORNAMENTATION_MAP); // local map -> excluded from the global one
         p.addPart(pianoPart);
-        p.addPart(okValue(Part.createPart('Violin', 2, 1, 0)));
+        p.addPart(okValue(Part.fromValues('Violin', 2, 1, 0)));
 
         const performed = p.perform(msm);
 
@@ -554,7 +554,7 @@ describe('Performance', () => {
 
       it('should tolerate a global ornamentationMap when the performance has no parts', () => {
         const msm = makeMsm(720);
-        const p = okValue(Performance.createPerformance('P', 720));
+        const p = okValue(Performance.fromName('P', 720));
         p.getGlobal()!.getDated()!.addMapByType(Mpm.ORNAMENTATION_MAP);
 
         expect(() => p.perform(msm)).not.toThrow();
@@ -603,7 +603,7 @@ describe('Performance', () => {
 
       /** Global imprecision maps in the domains named, none seeded, so `options.seed` governs. */
       function performanceWithImprecision(...domains: string[]): Performance {
-        const p = okValue(Performance.createPerformance('P', 720));
+        const p = okValue(Performance.fromName('P', 720));
         for (const domain of domains) {
           const map = ImprecisionMap.createImprecisionMap(domain)!;
           map.addDistributionUniform(0, -30, 30);
@@ -697,7 +697,7 @@ describe('Performance', () => {
           globalPedal.appendChild(pedal);
         }
 
-        const p = okValue(Performance.createPerformance('P', 720));
+        const p = okValue(Performance.fromName('P', 720));
         const asynchrony = AsynchronyMap.createAsynchronyMap()!;
         asynchrony.addAsynchrony(0, 25);
         p.getGlobal()!.getDated()!.addMap(asynchrony);

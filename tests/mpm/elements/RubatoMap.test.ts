@@ -32,14 +32,14 @@ describe('RubatoMap', () => {
   describe('addRubato', () => {
     it('should add a rubato with full numeric parameters', () => {
       const map = RubatoMap.createRubatoMap();
-      const index = map.addRubato(0, 720, 2.0, 0.0, 1.0, true);
+      const index = map.addRubatoWindow(0, 720, 2.0, 0.0, 1.0, true);
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
     });
 
     it('should add a rubato with name.ref (def name) and loop', () => {
       const map = RubatoMap.createRubatoMap();
-      const index = map.addRubato(0, 'myRubatoDef', true);
+      const index = map.addRubatoRef(0, 'myRubatoDef', true);
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
 
@@ -58,14 +58,14 @@ describe('RubatoMap', () => {
       rd.earlyEnd = 1.0;
       rd.loop = true;
 
-      const index = map.addRubato(rd);
+      const index = map.addRubatoData(rd);
       expect(index).toBeGreaterThanOrEqual(0);
       expect(map.size()).toBe(1);
     });
 
     it('should store attributes correctly for numeric rubato', () => {
       const map = RubatoMap.createRubatoMap();
-      const index = map.addRubato(0, 720, 2.0, 0.1, 0.9, false);
+      const index = map.addRubatoWindow(0, 720, 2.0, 0.1, 0.9, false);
       const elem = map.getElement(index)!;
 
       expect(elem.getAttributeValue('date')).toBe('0');
@@ -78,9 +78,9 @@ describe('RubatoMap', () => {
 
     it('should maintain sorted order when adding out of order', () => {
       const map = RubatoMap.createRubatoMap();
-      map.addRubato(960, 720, 1.0, 0.0, 1.0, true);
-      map.addRubato(0, 720, 2.0, 0.0, 1.0, true);
-      map.addRubato(480, 720, 0.5, 0.0, 1.0, true);
+      map.addRubatoWindow(960, 720, 1.0, 0.0, 1.0, true);
+      map.addRubatoWindow(0, 720, 2.0, 0.0, 1.0, true);
+      map.addRubatoWindow(480, 720, 0.5, 0.0, 1.0, true);
 
       expect(map.size()).toBe(3);
       expect(map.getElement(0)!.getAttributeValue('date')).toBe('0');
@@ -99,7 +99,7 @@ describe('RubatoMap', () => {
       rd.loop = false;
       rd.xmlId = 'rubato-1';
 
-      const index = map.addRubato(rd);
+      const index = map.addRubatoData(rd);
       const elem = map.getElement(index)!;
       const idAttr = elem.getAttribute('id', 'http://www.w3.org/XML/1998/namespace');
       expect(idAttr).not.toBeNull();
@@ -116,13 +116,13 @@ describe('RubatoMap', () => {
 
     it('should return null for negative index', () => {
       const map = RubatoMap.createRubatoMap();
-      map.addRubato(0, 720, 1.0, 0.0, 1.0, true);
+      map.addRubatoWindow(0, 720, 1.0, 0.0, 1.0, true);
       expect(map.getRubatoDataOf(-1)).toBeNull();
     });
 
     it('should return RubatoData for a valid rubato instruction', () => {
       const map = RubatoMap.createRubatoMap();
-      map.addRubato(0, 720, 2.0, 0.1, 0.9, true);
+      map.addRubatoWindow(0, 720, 2.0, 0.1, 0.9, true);
 
       const rd = map.getRubatoDataOf(0);
       expect(rd).not.toBeNull();
@@ -136,7 +136,7 @@ describe('RubatoMap', () => {
 
     it('should set endDate to MAX_VALUE for the last rubato instruction', () => {
       const map = RubatoMap.createRubatoMap();
-      map.addRubato(0, 720, 1.0, 0.0, 1.0, true);
+      map.addRubatoWindow(0, 720, 1.0, 0.0, 1.0, true);
 
       const rd = map.getRubatoDataOf(0)!;
       expect(rd.endDate).toBe(Number.MAX_VALUE);
@@ -144,8 +144,8 @@ describe('RubatoMap', () => {
 
     it('should set endDate to the start of the next rubato instruction', () => {
       const map = RubatoMap.createRubatoMap();
-      map.addRubato(0, 720, 1.0, 0.0, 1.0, true);
-      map.addRubato(1440, 720, 2.0, 0.0, 1.0, true);
+      map.addRubatoWindow(0, 720, 1.0, 0.0, 1.0, true);
+      map.addRubatoWindow(1440, 720, 2.0, 0.0, 1.0, true);
 
       const rd = map.getRubatoDataOf(0)!;
       expect(rd.endDate).toBe(1440);
@@ -153,7 +153,7 @@ describe('RubatoMap', () => {
 
     it('should handle out-of-bounds index by clamping', () => {
       const map = RubatoMap.createRubatoMap();
-      map.addRubato(0, 720, 2.0, 0.0, 1.0, true);
+      map.addRubatoWindow(0, 720, 2.0, 0.0, 1.0, true);
 
       const rd = map.getRubatoDataOf(100);
       expect(rd).not.toBeNull();
@@ -162,7 +162,7 @@ describe('RubatoMap', () => {
 
     it('round-trip: addRubato -> getRubatoDataOf preserves values', () => {
       const map = RubatoMap.createRubatoMap();
-      map.addRubato(100, 360, 0.5, 0.2, 0.8, false);
+      map.addRubatoWindow(100, 360, 0.5, 0.2, 0.8, false);
 
       const rd = map.getRubatoDataOf(0)!;
       expect(rd.startDate).toBe(100);
@@ -188,7 +188,7 @@ describe('RubatoMap', () => {
     });
 
     /**
-     * A `<rubato>` that names a def spells out none of the four numbers, so `addRubato` must
+     * A `<rubato>` that names a def spells out none of the four numbers, so `addRubatoData` must
      * emit no attribute for each one the payload leaves null.
      */
     it('omits every attribute the payload leaves null', () => {
@@ -201,7 +201,7 @@ describe('RubatoMap', () => {
       rd.lateStart = null;
       rd.earlyEnd = null;
 
-      const elem = map.getElement(map.addRubato(rd))!;
+      const elem = map.getElement(map.addRubatoData(rd))!;
       expect(elem.getAttributeValue('date')).toBe('100');
       expect(elem.getAttributeValue('name.ref')).toBe('myRubatoDef');
       expect(elem.getAttribute('frameLength')).toBeNull();
@@ -223,7 +223,7 @@ describe('RubatoMap', () => {
       rd.loop = true;
       rd.xmlId = 'rubato-clone';
 
-      const elem = map.getElement(map.addRubato(rd))!;
+      const elem = map.getElement(map.addRubatoData(rd))!;
       expect(elem.getAttributeValue('frameLength')).toBe('720');
       expect(elem.getAttributeValue('intensity')).toBe('2');
       expect(elem.getAttributeValue('lateStart')).toBe('0.1');
@@ -251,7 +251,13 @@ describe('RubatoMap', () => {
     };
 
     const def = (frameLength: number, intensity: number, lateStart: number, earlyEnd: number) =>
-      okValue(RubatoDef.createRubatoDef('d', frameLength, intensity, lateStart, earlyEnd));
+      okValue(
+        RubatoDef.fromName('d', frameLength, {
+          intensity: intensity,
+          lateStart: lateStart,
+          earlyEnd: earlyEnd,
+        }),
+      );
 
     it('rejects an instruction with no frame from either source', () => {
       expect(resolveRubato(span, absent, null)).toBeNull();
@@ -362,7 +368,7 @@ describe('RubatoMap', () => {
       //       * frameLength
       // and the entry moves by d - localDate. Intensity 1 over the full window is the identity.
       const rubatoMap = RubatoMap.createRubatoMap();
-      rubatoMap.addRubato(0, 720, 1.0, 0.0, 1.0, true);
+      rubatoMap.addRubatoWindow(0, 720, 1.0, 0.0, 1.0, true);
 
       const map = createTestMap([0, 180, 360, 540, 720]);
       rubatoMap.renderRubatoToMap(map);
@@ -376,7 +382,7 @@ describe('RubatoMap', () => {
     it('quadratic acceleration: intensity=2.0 compresses first half, expands second', () => {
       // d = pow(localDate/720, 2) * 720, so 0 -> 0, 180 -> 45, 360 -> 180, 540 -> 405.
       const rubatoMap = RubatoMap.createRubatoMap();
-      rubatoMap.addRubato(0, 720, 2.0, 0.0, 1.0, true);
+      rubatoMap.addRubatoWindow(0, 720, 2.0, 0.0, 1.0, true);
 
       const map = createTestMap([0, 180, 360, 540]);
       rubatoMap.renderRubatoToMap(map);
@@ -390,7 +396,7 @@ describe('RubatoMap', () => {
     it('square root deceleration: intensity=0.5 expands first half, compresses second', () => {
       // d = pow(localDate/720, 0.5) * 720, so 180 -> 360 and 360 -> 509.117.
       const rubatoMap = RubatoMap.createRubatoMap();
-      rubatoMap.addRubato(0, 720, 0.5, 0.0, 1.0, true);
+      rubatoMap.addRubatoWindow(0, 720, 0.5, 0.0, 1.0, true);
 
       const map = createTestMap([0, 180, 360]);
       rubatoMap.renderRubatoToMap(map);
@@ -405,7 +411,7 @@ describe('RubatoMap', () => {
       // its endDate, here MAX_VALUE, so the date is warped rather than skipped — and the wrap
       // makes localDate 0, hence an offset of 0.
       const rubatoMap = RubatoMap.createRubatoMap();
-      rubatoMap.addRubato(0, 720, 2.0, 0.0, 1.0, true);
+      rubatoMap.addRubatoWindow(0, 720, 2.0, 0.0, 1.0, true);
 
       const map = createTestMap([720]);
       rubatoMap.renderRubatoToMap(map);
@@ -417,7 +423,7 @@ describe('RubatoMap', () => {
       // pow(0, intensity) is 0 whatever the intensity, and lateStart is 0, so d = 0.
       for (const intensity of [0.1, 0.5, 1.0, 2.0, 5.0]) {
         const rubatoMap = RubatoMap.createRubatoMap();
-        rubatoMap.addRubato(0, 720, intensity, 0.0, 1.0, true);
+        rubatoMap.addRubatoWindow(0, 720, intensity, 0.0, 1.0, true);
 
         const map = createTestMap([0]);
         rubatoMap.renderRubatoToMap(map);
@@ -429,7 +435,7 @@ describe('RubatoMap', () => {
     it('with lateStart and earlyEnd: linear rubato shifts start and end proportionally', () => {
       // d = ((localDate/720) * 0.8 + 0.1) * 720, so 0 -> 72 and 360 -> 360.
       const rubatoMap = RubatoMap.createRubatoMap();
-      rubatoMap.addRubato(0, 720, 1.0, 0.1, 0.9, true);
+      rubatoMap.addRubatoWindow(0, 720, 1.0, 0.1, 0.9, true);
 
       const map = createTestMap([0, 360]);
       rubatoMap.renderRubatoToMap(map);
@@ -441,7 +447,7 @@ describe('RubatoMap', () => {
     it('concrete calculation: halfway with intensity=2.0', () => {
       // pow(0.5, 2) * 720 = 180.
       const rubatoMap = RubatoMap.createRubatoMap();
-      rubatoMap.addRubato(0, 720, 2.0, 0.0, 1.0, true);
+      rubatoMap.addRubatoWindow(0, 720, 2.0, 0.0, 1.0, true);
 
       const map = createTestMap([360]);
       rubatoMap.renderRubatoToMap(map);
@@ -452,7 +458,7 @@ describe('RubatoMap', () => {
     it('concrete calculation: three-quarters with intensity=2.0', () => {
       // pow(0.75, 2) * 720 = 405.
       const rubatoMap = RubatoMap.createRubatoMap();
-      rubatoMap.addRubato(0, 720, 2.0, 0.0, 1.0, true);
+      rubatoMap.addRubatoWindow(0, 720, 2.0, 0.0, 1.0, true);
 
       const map = createTestMap([540]);
       rubatoMap.renderRubatoToMap(map);
@@ -462,7 +468,7 @@ describe('RubatoMap', () => {
 
     it('loop=false: rubato only applies within one frame from startDate', () => {
       const rubatoMap = RubatoMap.createRubatoMap();
-      rubatoMap.addRubato(0, 720, 2.0, 0.0, 1.0, false);
+      rubatoMap.addRubatoWindow(0, 720, 2.0, 0.0, 1.0, false);
 
       const map = createTestMap([0, 360, 720, 1080]);
       rubatoMap.renderRubatoToMap(map);
@@ -480,7 +486,7 @@ describe('RubatoMap', () => {
     it('loop=true: rubato repeats across multiple frames', () => {
       // localDate = 900 % 720 = 180, d = 45, so 900 + 45 - 180 = 765.
       const rubatoMap = RubatoMap.createRubatoMap();
-      rubatoMap.addRubato(0, 720, 2.0, 0.0, 1.0, true);
+      rubatoMap.addRubatoWindow(0, 720, 2.0, 0.0, 1.0, true);
 
       const map = createTestMap([900]);
       rubatoMap.renderRubatoToMap(map);
@@ -491,7 +497,7 @@ describe('RubatoMap', () => {
     it('non-zero startDate shifts the frame origin', () => {
       // localDate = (840 - 480) % 720 = 360, d = 180, so 840 - 180 = 660.
       const rubatoMap = RubatoMap.createRubatoMap();
-      rubatoMap.addRubato(480, 720, 2.0, 0.0, 1.0, true);
+      rubatoMap.addRubatoWindow(480, 720, 2.0, 0.0, 1.0, true);
 
       const map = createTestMap([840]);
       rubatoMap.renderRubatoToMap(map);
@@ -501,7 +507,7 @@ describe('RubatoMap', () => {
 
     it('dates before rubato startDate are not affected', () => {
       const rubatoMap = RubatoMap.createRubatoMap();
-      rubatoMap.addRubato(480, 720, 2.0, 0.0, 1.0, true);
+      rubatoMap.addRubatoWindow(480, 720, 2.0, 0.0, 1.0, true);
 
       const map = createTestMap([0, 240]);
       rubatoMap.renderRubatoToMap(map);
@@ -522,13 +528,13 @@ describe('RubatoMap', () => {
 
     it('null map is handled gracefully', () => {
       const rubatoMap = RubatoMap.createRubatoMap();
-      rubatoMap.addRubato(0, 720, 2.0, 0.0, 1.0, true);
+      rubatoMap.addRubatoWindow(0, 720, 2.0, 0.0, 1.0, true);
       rubatoMap.renderRubatoToMap(null);
     });
 
     it('static renderRubatoToMap delegates correctly', () => {
       const rubatoMap = RubatoMap.createRubatoMap();
-      rubatoMap.addRubato(0, 720, 2.0, 0.0, 1.0, true);
+      rubatoMap.addRubatoWindow(0, 720, 2.0, 0.0, 1.0, true);
 
       const map = createTestMap([360]);
       RubatoMap.renderRubatoToMap(map, rubatoMap);
@@ -545,7 +551,7 @@ describe('RubatoMap', () => {
     it('intensity=3.0: cubic acceleration', () => {
       // pow(0.5, 3) * 720 = 90.
       const rubatoMap = RubatoMap.createRubatoMap();
-      rubatoMap.addRubato(0, 720, 3.0, 0.0, 1.0, true);
+      rubatoMap.addRubatoWindow(0, 720, 3.0, 0.0, 1.0, true);
 
       const map = createTestMap([360]);
       rubatoMap.renderRubatoToMap(map);
@@ -556,7 +562,7 @@ describe('RubatoMap', () => {
     it('combined lateStart=0.1, earlyEnd=0.9, intensity=2.0', () => {
       // d = (0.25 * 0.8 + 0.1) * 720 = 216.
       const rubatoMap = RubatoMap.createRubatoMap();
-      rubatoMap.addRubato(0, 720, 2.0, 0.1, 0.9, true);
+      rubatoMap.addRubatoWindow(0, 720, 2.0, 0.1, 0.9, true);
 
       const map = createTestMap([360]);
       rubatoMap.renderRubatoToMap(map);
@@ -586,8 +592,8 @@ describe('RubatoMap', () => {
      */
     it('the deferred end-date drain stops at the first end past the frame (prefix, not filter)', () => {
       const rubatoMap = RubatoMap.createRubatoMap();
-      rubatoMap.addRubato(0, 480, 2.0, 0.0, 1.0, false);
-      rubatoMap.addRubato(500, 2000, 2.0, 0.0, 1.0, false);
+      rubatoMap.addRubatoWindow(0, 480, 2.0, 0.0, 1.0, false);
+      rubatoMap.addRubatoWindow(500, 2000, 2.0, 0.0, 1.0, false);
 
       const map = okValue(GenericMap.createGenericMap('positionMap'));
       const note = (date: number, duration: number): Element => {
@@ -615,8 +621,8 @@ describe('RubatoMap', () => {
   describe('GenericMap operations', () => {
     it('should support removeElement by index', () => {
       const map = RubatoMap.createRubatoMap();
-      map.addRubato(0, 720, 1.0, 0.0, 1.0, true);
-      map.addRubato(960, 720, 2.0, 0.0, 1.0, true);
+      map.addRubatoWindow(0, 720, 1.0, 0.0, 1.0, true);
+      map.addRubatoWindow(960, 720, 2.0, 0.0, 1.0, true);
 
       map.removeElementAt(0);
       expect(map.size()).toBe(1);

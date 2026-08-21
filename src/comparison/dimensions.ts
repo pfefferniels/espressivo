@@ -224,13 +224,13 @@ function coveredLength(
   startTicks: number,
   endTicks: number,
 ): number {
-  const clipped = [
-    ...filterMap(intervals, (interval) => {
-      const low = Math.max(interval.startTicks, startTicks);
-      const high = Math.min(interval.endTicks, endTicks);
-      return high > low ? { low, high } : null;
-    }),
-  ].sort((x, y) => x.low - y.low);
+  // Intervals the clip empties are dropped here, so the sweep below sees only positive spans and
+  // its `total +=` order is fixed by `low` alone.
+  const clipped = filterMap(intervals, (interval) => {
+    const low = Math.max(interval.startTicks, startTicks);
+    const high = Math.min(interval.endTicks, endTicks);
+    return high > low ? { low, high } : null;
+  }).toSorted((x, y) => x.low - y.low);
 
   let total = 0;
   let reach = startTicks;

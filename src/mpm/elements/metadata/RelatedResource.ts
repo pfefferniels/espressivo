@@ -31,40 +31,33 @@ export class RelatedResource extends AbstractXmlSubtree {
     this.type = new Attribute('type', '');
   }
 
-  /** As {@link Author.createAuthor}: the reason is returned rather than printed. */
-  static createRelatedResource(xml: Element | null): Result<RelatedResource, MpmParseError>;
-  static createRelatedResource(
-    uri: string,
-    type: string | null,
-  ): Result<RelatedResource, MpmParseError>;
-  static createRelatedResource(
-    xmlOrUri: Element | string | null,
-    type?: string | null,
-  ): Result<RelatedResource, MpmParseError> {
-    if (xmlOrUri === null) return err({ kind: 'noElement', what: 'RelatedResource' });
-    if (typeof xmlOrUri !== 'string')
-      return attemptParse('RelatedResource', () => {
-        const r = new RelatedResource();
-        r.parseData(xmlOrUri);
-        return r;
-      });
-
-    // Bound to a `const` so the narrowing survives into the closure below. `null` and
-    // `undefined` are one answer here: Java refuses BOTH a null uri and a null type in this
-    // form (`RelatedResource.java:47-49`).
-    const resourceType = type ?? null;
-    if (resourceType === null)
-      return err({ kind: 'missingArgument', what: 'RelatedResource', argument: 'type' });
+  /** As {@link Author.fromXml}: the reason is returned rather than printed. */
+  static fromXml(xml: Element | null): Result<RelatedResource, MpmParseError> {
+    if (xml === null) return err({ kind: 'noElement', what: 'RelatedResource' });
     return attemptParse('RelatedResource', () => {
       const r = new RelatedResource();
-      r.parseData(new Element('resource', MPM_NAMESPACE));
-      r.setUri(xmlOrUri);
-      r.setType(resourceType);
+      r.parseData(xml);
       return r;
     });
   }
 
-  /** The `xml === null` guard now lives in {@link createRelatedResource}, its only caller. */
+  /**
+   * Build a `<resource>` from a uri and a type. A null `type` is refused rather than
+   * defaulted to empty, as in Java, which refuses both a null uri and a null type in this
+   * form (`RelatedResource.java:47-49`).
+   */
+  static fromUri(uri: string, type: string | null): Result<RelatedResource, MpmParseError> {
+    if (type === null)
+      return err({ kind: 'missingArgument', what: 'RelatedResource', argument: 'type' });
+    return attemptParse('RelatedResource', () => {
+      const r = new RelatedResource();
+      r.parseData(new Element('resource', MPM_NAMESPACE));
+      r.setUri(uri);
+      r.setType(type);
+      return r;
+    });
+  }
+
   protected parseData(xml: Element): void {
     this.setXml(xml);
     const declaredUri = attribute('uri', xml);
@@ -88,8 +81,8 @@ export class RelatedResource extends AbstractXmlSubtree {
    *
    * PARITY NOTE: JavaScript's `\s` also matches non-ASCII whitespace (NBSP, U+2028, …)
    * where Java's default `\s` is the six ASCII characters only, so a type containing exotic
-   * whitespace would be stripped here and kept there. No fixture reaches it; same family as
-   * the `parseFloat` vs `Double.parseDouble` divergences logged under [T6].
+   * whitespace would be stripped here and kept there. No fixture reaches it; frozen as a
+   * divergence in PARITY.md §2, "`RelatedResource.setType` whitespace class".
    */
   setType(type: string): void {
     this.type.setValue(type.replace(/\s+/g, ''));

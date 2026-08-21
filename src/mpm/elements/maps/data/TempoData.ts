@@ -1,6 +1,6 @@
 /**
  * A tempo instruction on its way *into* a `tempoMap` — the argument
- * {@link TempoMap.addTempo} serializes, and nothing else.
+ * {@link TempoMap.addTempoData} serializes, and nothing else.
  *
  * ## Why this is not {@link ../data/tempo.ts Tempo}
  *
@@ -19,7 +19,7 @@
  * `parseTempo` assembles it across some sixty lines of branching — `@mm`, then `@midi.bpm`,
  * then `@midi.mspb`, then the element's text, then `@label`, each overwriting the last — and
  * `addTempoToMpm` then rewrites `bpmString` again from the *preceding* instruction's
- * `@transition.to`. The nulls are genuine optionality on the write side: `addTempo` branches
+ * `@transition.to`. The nulls are genuine optionality on the write side: `addTempoData` branches
  * on every one of them and omits the attribute it cannot fill.
  *
  * Port of the write half of meico.mpm.elements.maps.data.TempoData.
@@ -31,7 +31,7 @@ export class TempoData {
   /** `@date`, in ticks. */
   startDate = 0.0;
   /**
-   * Where the instruction stops. Not serialized by `addTempo` — the MEI converter reads it
+   * Where the instruction stops. Not serialized by `addTempoData` — the MEI converter reads it
    * back and writes `@date.end` itself, falling through to `@tstamp2` or `@endid` when it
    * is null, which is why null has to stay expressible.
    */

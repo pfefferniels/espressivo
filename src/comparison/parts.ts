@@ -21,7 +21,7 @@
  * ## Which parts exist at all
  *
  * `Part.parseData:90-105` throws when `@number`, `@midi.channel` or `@midi.port` is missing or
- * empty, `Part.createPart` turns that into null, and `Performance.parseData:213-219` `continue`s
+ * empty, `Part.fromXml` turns that into a failure, and `Performance.parseData:213-219` `continue`s
  * past it. Such a `<part>` is never performed, and charging a document for material the renderer
  * discards is what §5.0 rules out in the neighbouring case: a global-vs-part-local encoding
  * difference with identical resolved curves "is distance 0 plus a structural note — which is
@@ -50,7 +50,7 @@ export interface ComparisonScope {
   /** `@name`, or null when absent. Note the raw read: the renderer would write `""`. */
   readonly name: string | null;
   /**
-   * Whether `Part.createPart` would have produced a part at all.
+   * Whether `Part.fromXml` would have produced a part at all.
    *
    * Always true for the global scope. False means the renderer drops this `<part>` whole,
    * and it is reported as a structural note rather than compared.

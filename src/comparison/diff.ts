@@ -305,7 +305,7 @@ function buildDiff(options: InteriorDiffOptions): DiffReport {
       matched: pairing.matched,
     })),
     scopes: { rule: scopes.rule, count: scopes.sides.length },
-    scripts: [...scripts].sort(compareScripts),
+    scripts: scripts.toSorted(compareScripts),
     dimensions,
     notes: sortNotes(notes),
   };
@@ -424,31 +424,31 @@ function attributeDeltas(
   const elementB = step.b?.entry.element ?? null;
   const localName = (elementA ?? elementB)?.getLocalName() ?? '';
 
-  return [
-    ...filterMap(rows, (row) => {
-      // An op's two elements can differ in local name — a `<style>` substituted for an
-      // `<articulation>` is a legal DP move — so a row applies where it names either side's
-      // element, and the absent side reads `⊥` exactly as an absent attribute does.
-      if (
-        row.element !== localName &&
-        row.element !== elementA?.getLocalName() &&
-        row.element !== elementB?.getLocalName()
-      )
-        return null;
-      const rawA = elementA === null ? null : readAttributeValue(elementA, row.attribute);
-      const rawB = elementB === null ? null : readAttributeValue(elementB, row.attribute);
-      if (rawA === null && rawB === null) return null;
-      if (rawA === rawB) return null;
+  // The three guards precede `localDistance`, the only arithmetic here, so a row no guard admits
+  // is never priced.
+  return filterMap(rows, (row) => {
+    // An op's two elements can differ in local name — a `<style>` substituted for an
+    // `<articulation>` is a legal DP move — so a row applies where it names either side's
+    // element, and the absent side reads `⊥` exactly as an absent attribute does.
+    if (
+      row.element !== localName &&
+      row.element !== elementA?.getLocalName() &&
+      row.element !== elementB?.getLocalName()
+    )
+      return null;
+    const rawA = elementA === null ? null : readAttributeValue(elementA, row.attribute);
+    const rawB = elementB === null ? null : readAttributeValue(elementB, row.attribute);
+    if (rawA === null && rawB === null) return null;
+    if (rawA === rawB) return null;
 
-      return {
-        key: row.key,
-        name: row.attribute,
-        valueA: rawA === null ? null : (readValue(elementA, row) ?? rawA),
-        valueB: rawB === null ? null : (readValue(elementB, row) ?? rawB),
-        deltaJnd: localDistance(row, readValued(elementA, row), readValued(elementB, row)).distance,
-      };
-    }),
-  ].sort((x, y) => y.deltaJnd - x.deltaJnd);
+    return {
+      key: row.key,
+      name: row.attribute,
+      valueA: rawA === null ? null : (readValue(elementA, row) ?? rawA),
+      valueB: rawB === null ? null : (readValue(elementB, row) ?? rawB),
+      deltaJnd: localDistance(row, readValued(elementA, row), readValued(elementB, row)).distance,
+    };
+  }).toSorted((x, y) => y.deltaJnd - x.deltaJnd);
 }
 
 /** The row's value as a number, or null where the attribute is absent or not numeric. */

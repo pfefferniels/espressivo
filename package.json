@@ -31,7 +31,7 @@
     "./package.json": "./package.json"
   },
   "engines": {
-    "node": ">=18.18.0"
+    "node": ">=22.0.0"
   },
   "files": [
     "dist",
@@ -59,7 +59,8 @@
     "strict:check": "node scripts/strict-ratchet.mjs --check",
     "strict:save": "node scripts/strict-ratchet.mjs --save && prettier --write scripts/strict-baseline.json",
     "verify": "npm run build && npm run typecheck:tests && npm run strict:check && npm run lint:check && vitest run",
-    "lint:check": "node scripts/lint-ratchet.mjs --check"
+    "lint:check": "node scripts/lint-ratchet.mjs --check",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.9.8",
@@ -70,13 +71,14 @@
     "@eslint/js": "^9.39.5",
     "@types/node": "^22.0.0",
     "@types/uuid": "^10.0.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "@vitest/coverage-v8": "^3.2.7",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^10.1.8",
     "eslint-import-resolver-typescript": "^4.4.5",
     "eslint-plugin-import": "^2.32.0",
     "prettier": "^3.9.6",
-    "typescript": "^5.7.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-eslint": "^8.66.0",
     "vitest": "^3.0.0"
   }

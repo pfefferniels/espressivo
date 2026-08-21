@@ -1,6 +1,6 @@
 /**
  * A rubato instruction on its way *into* a `rubatoMap` — the argument
- * {@link RubatoMap.addRubato} serializes, and nothing else.
+ * {@link RubatoMap.addRubatoData} serializes, and nothing else.
  *
  * ## Why this is not {@link ../data/rubato.ts Rubato}
  *
@@ -8,7 +8,7 @@
  * requirements, and the Java class that does both pays for it with nullable fields that no
  * single caller fills in. On the way *out*, null is meaningful and load-bearing: a
  * `<rubato name.ref="myDef" loop="true"/>` is a complete, legal instruction that spells out
- * none of the four numbers, because they come from the def. `addRubato` therefore branches
+ * none of the four numbers, because they come from the def. `addRubatoData` therefore branches
  * on each field and omits the attribute it has nothing for.
  *
  * On the way *in*, none of them can be null — `frameLength` is resolved from the element or
@@ -16,7 +16,7 @@
  * identity warp. That half is `rubato.ts`, and it has one null in the whole type: the
  * `Rubato | null` that `resolveRubato` returns.
  *
- * There is no end date to carry: `addRubato` never serializes one, since a rubato's span is
+ * There is no end date to carry: `addRubatoData` never serializes one, since a rubato's span is
  * defined by the *next* instruction rather than by an attribute.
  *
  * Port of the write half of meico.mpm.elements.maps.data.RubatoData.

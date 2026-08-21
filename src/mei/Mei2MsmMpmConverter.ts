@@ -10,6 +10,7 @@ import {
   cloneElement,
   descendantElements,
   firstChildElement,
+  firstChildElementOf,
   requireAttribute,
   requireAttributeValue,
   requireFirstChildElement,
@@ -207,7 +208,7 @@ function requireGlobalDatedMap(ctx: WalkContext, name: string): Element {
 
 /**
  * The MPM performance's global `header`, where the styles this converter authors live.
- * `Performance.createPerformance` builds `global`, its `header` and its `dated` together, so
+ * `Performance.fromName` builds `global`, its `header` and its `dated` together, so
  * neither can be absent once a performance exists.
  */
 function globalHeader(ctx: WalkContext): Header {
@@ -268,7 +269,7 @@ type ElementHandler = (c: Mei2MsmMpmConverter, e: Element, ctx: WalkContext) => 
  * "null map, nothing to do".
  */
 function datedMap(container: Element, name: string): Element | null {
-  return firstChildElement(requireFirstChildElement(container, 'dated'), name);
+  return firstChildElementOf(requireFirstChildElement(container, 'dated'), name);
 }
 
 /**
@@ -315,7 +316,7 @@ function advancePartClock(part: Element, ticks: number): void {
 }
 
 /**
- * An MPM part's `dated`, where the part-local maps live. `Part.createPart` builds a part's
+ * An MPM part's `dated`, where the part-local maps live. `Part.fromValues` builds a part's
  * `header` and `dated` in one go and nothing removes either. The counterpart of
  * {@link globalDated}, which does the same for the performance's global section.
  */
@@ -330,7 +331,7 @@ function mpmDated(part: MpmPart): Dated {
  * The element an MPM map holds at `index`, where the index came from the map itself.
  *
  * `GenericMap.getElement` answers null for an out-of-range index, which cannot happen at the
- * call sites: each was handed the index by `addDynamicsFromData`, `addTempo`,
+ * call sites: each was handed the index by `addDynamicsFromData`, `addTempoData`,
  * `addOrnamentFromData` or the map's own `size()`. Java dereferences the same lookup unguarded
  * and would NPE; this names what was missing instead.
  */
@@ -459,26 +460,23 @@ export class Mei2MsmMpmConverter {
     return this.mei;
   }
 
-  constructor(ppq: number);
+  /**
+   * Java overloads this constructor — `(ppq)` for the default settings, `(ppq, …)` for the full
+   * set. Here every setting other than `ppq` is a parameter default, and those defaults are the
+   * field initialisers above spelled a second time; the two have to be kept in step.
+   */
   constructor(
     ppq: number,
-    dontUseChannel10: boolean,
-    ignoreExpansions: boolean,
-    cleanup: boolean,
-    expandOrnaments?: boolean,
-  );
-  constructor(
-    ppq: number,
-    dontUseChannel10?: boolean,
-    ignoreExpansions?: boolean,
-    cleanup?: boolean,
-    expandOrnaments?: boolean,
+    dontUseChannel10 = true,
+    ignoreExpansions = false,
+    cleanup = true,
+    expandOrnaments = false,
   ) {
     this.ppq = ppq;
-    this.dontUseChannel10 = dontUseChannel10 ?? true;
-    this.ignoreExpansions = ignoreExpansions ?? false;
-    this.cleanup = cleanup ?? true;
-    this.expandOrnaments = expandOrnaments ?? false;
+    this.dontUseChannel10 = dontUseChannel10;
+    this.ignoreExpansions = ignoreExpansions;
+    this.cleanup = cleanup;
+    this.expandOrnaments = expandOrnaments;
   }
 
   /**
@@ -567,7 +565,9 @@ export class Mei2MsmMpmConverter {
         const onlyMpm = head(mpms);
         const msmFile = onlyMsm.getFile();
         if (msmFile !== null) {
-          const msmRelatedResource = RelatedResource.createRelatedResource(msmFile, 'msm');
+          // `fromUri` cannot fail here — both arguments are non-null strings — and the `isOk`
+          // check below is what says so, in place of an `!`.
+          const msmRelatedResource = RelatedResource.fromUri(msmFile, 'msm');
           if (isOk(msmRelatedResource))
             onlyMpm.getMetadata()?.addRelatedResource(msmRelatedResource.value);
         }
@@ -965,30 +965,31 @@ export class Mei2MsmMpmConverter {
 
     // None of the three metadata factories below can fail — every argument is a non-null
     // string — so their reasons are flattened to null with `unwrapOr` and the array keeps its
-    // nullable element type. The null must be propagated rather than skipped: `Mpm.addMetadata`
-    // passes the array to `Metadata.createMetadata`, which treats a null element as a caller
-    // error and refuses to build the metadata at all, so skipping one would emit a metadata
-    // block the Java reference does not.
+    // nullable element type. A null must be propagated rather than skipped: `Mpm.addMetadata`
+    // passes the array to `Metadata.fromParts`, which treats a null element as a caller error
+    // and refuses to build the metadata at all, so skipping one would emit a metadata block the
+    // Java reference does not.
     const relatedResources: (RelatedResource | null)[] = [];
     const meiFile = this.requireMei().getFile();
-    const meicoAuthor = (): Author | null =>
-      unwrapOr(Author.createAuthor('meico', null, null), null);
+    const meicoAuthor = (): Author | null => unwrapOr(Author.fromName('meico', null, null), null);
     if (meiFile !== null) {
-      relatedResources.push(unwrapOr(RelatedResource.createRelatedResource(meiFile, 'mei'), null));
-      const comment = Comment.createComment(
+      relatedResources.push(unwrapOr(RelatedResource.fromUri(meiFile, 'mei'), null));
+      const comment = Comment.fromText(
         `This MPM has been generated from '${meiFile}' using the meico MEI converter v${VERSION}.`,
         null,
       );
       mpm.addMetadata(meicoAuthor(), unwrapOr(comment, null), relatedResources);
     } else {
-      const comment = Comment.createComment(
+      const comment = Comment.fromText(
         `This MPM has been generated from MEI code using the meico MEI converter v${VERSION}.`,
         null,
       );
       mpm.addMetadata(meicoAuthor(), unwrapOr(comment, null), null);
     }
 
-    const created = Performance.createPerformance('MEI export performance');
+    // The failure arm returns before any {@link MovementContext} is built, which is why every
+    // context the walk below sees carries a performance.
+    const created = Performance.fromName('MEI export performance');
     if (isErr(created)) {
       console.error(
         `Failed to generate an instance of Performance. Skipping mdiv ${titleString}. ${describeMpmParseError(created.error)}`,
@@ -1128,7 +1129,7 @@ export class Mei2MsmMpmConverter {
             globalTempoMap?.addStyleSwitch(0.0, 'MEI export');
           }
           tempoData.startDate = 0.0;
-          globalTempoMap?.addTempo(tempoData);
+          globalTempoMap?.addTempoData(tempoData);
         }
       }
     }
@@ -1350,9 +1351,9 @@ export class Mei2MsmMpmConverter {
   }
 
   private processApp(app: Element, ctx: WalkContext): void {
-    let takeThisReading = firstChildElement(app, 'lem');
+    let takeThisReading = firstChildElementOf(app, 'lem');
     if (takeThisReading === null) {
-      takeThisReading = firstChildElement(app, 'rdg');
+      takeThisReading = firstChildElementOf(app, 'rdg');
       if (takeThisReading === null) {
         return;
       }
@@ -1365,7 +1366,7 @@ export class Mei2MsmMpmConverter {
 
     let c: Element | null = null;
     for (const preferred of prefOrder) {
-      c = firstChildElement(choice, preferred);
+      c = firstChildElementOf(choice, preferred);
       if (c !== null) break;
     }
 
@@ -1488,7 +1489,7 @@ export class Mei2MsmMpmConverter {
 
     // `source` is the MEI element a Goto was read from; there is none here because this goto is
     // synthesised, and Goto only ever stores the field, never reads it, so null is safe.
-    const gotoObj = new Goto(
+    const gotoObj = Goto.fromValues(
       dateOfGoto,
       startDate,
       markerId,
@@ -2046,8 +2047,9 @@ export class Mei2MsmMpmConverter {
 
     requireMovement(ctx).msm.appendChild(part);
 
-    // the matching MPM part; a movement always has a performance, so this is unconditional
-    const performancePart = MpmPart.createPart(label, parseInt(number), midiChannel, midiPort);
+    // The matching MPM part. {@link MovementContext} carries the performance beside the MSM, so
+    // a walk context that has a movement has a performance too and this is unconditional.
+    const performancePart = MpmPart.fromValues(label, parseInt(number), midiChannel, midiPort);
     if (isOk(performancePart)) {
       requirePerformance(ctx).addPart(performancePart.value);
       if (xmlId !== null) performancePart.value.setId(xmlId.getValue());
@@ -2843,7 +2845,7 @@ export class Mei2MsmMpmConverter {
       }
     }
 
-    const index = tempoMap.addTempo(tempoData);
+    const index = tempoMap.addTempoData(tempoData);
     if (index < 0) return index;
     const tempoElement = mapElement(tempoMap, index);
     if (tempoData.endDate !== null) {
@@ -3824,28 +3826,28 @@ export class Mei2MsmMpmConverter {
       case 't': {
         // The note this tie continues, looked for from the end of the part's score backwards:
         // the first one at the same pitch that ends exactly where this one starts.
-        // {@link reverseDescendantElements} is lazy, so for a tie whose partner is the note
-        // just before it the search stops immediately.
-        const ps = reverseDescendantElements(
+        // {@link reverseDescendantElements} is lazy and `.find` stops pulling at the first hit,
+        // so a tie whose partner is the note just before it costs one step. Materialising the
+        // walk instead makes this quadratic in the notes converted so far.
+        const partner = reverseDescendantElements(
           requirePartDatedMap(ctx, 'score'),
           (element) => element.getLocalName() === 'note' && element.getAttribute('tie') !== null,
-        );
-        for (const p of ps) {
-          if (
+        ).find(
+          (p) =>
             p.getAttributeValue('midi.pitch') === s.getAttributeValue('midi.pitch') &&
             parseFloat(requireAttributeValue('date', p)) +
               parseFloat(requireAttributeValue('duration', p)) ===
-              date
-          ) {
-            p.addAttribute(
-              new Attribute(
-                'duration',
-                String(parseFloat(requireAttributeValue('duration', p)) + dur),
-              ),
-            );
-            if (tie === 't') p.removeAttribute(requireAttribute('tie', p));
-            return;
-          }
+              date,
+        );
+        if (partner !== undefined) {
+          partner.addAttribute(
+            new Attribute(
+              'duration',
+              String(parseFloat(requireAttributeValue('duration', partner)) + dur),
+            ),
+          );
+          if (tie === 't') partner.removeAttribute(requireAttribute('tie', partner));
+          return;
         }
       }
     }
@@ -4100,7 +4102,7 @@ export class Mei2MsmMpmConverter {
           const tempoDef =
             tempoData.bpmString === null
               ? TempoDef.createDefaultTempoDef(descriptor)
-              : TempoDef.createTempoDef(descriptor, parseFloat(tempoData.bpmString));
+              : TempoDef.fromNameValue(descriptor, parseFloat(tempoData.bpmString));
           if (isOk(tempoDef)) tempoStyle.addDef(tempoDef.value);
         }
         tempoData.bpmString = descriptor;

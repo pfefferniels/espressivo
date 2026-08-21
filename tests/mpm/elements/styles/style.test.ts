@@ -252,7 +252,7 @@ describe('Style, whatever the kind', () => {
   describe('def management', () => {
     it('adds a def and appends its xml as a child', () => {
       const gs = createStyle('tempo', 'myStyle');
-      const td = okValue(TempoDef.createTempoDef('Allegro', 147.0));
+      const td = okValue(TempoDef.fromNameValue('Allegro', 147.0));
       gs.addDef(td);
 
       expect(gs.size()).toBe(1);
@@ -264,8 +264,8 @@ describe('Style, whatever the kind', () => {
 
     it('replaces a def of the same name, in the map and in the xml', () => {
       const gs = createStyle('tempo', 'myStyle');
-      const first = okValue(TempoDef.createTempoDef('Allegro', 147.0));
-      const second = okValue(TempoDef.createTempoDef('Allegro', 132.0));
+      const first = okValue(TempoDef.fromNameValue('Allegro', 147.0));
+      const second = okValue(TempoDef.fromNameValue('Allegro', 132.0));
       gs.addDef(first);
       gs.addDef(second);
 
@@ -277,8 +277,8 @@ describe('Style, whatever the kind', () => {
 
     it('keeps defs with different names side by side', () => {
       const gs = createStyle('tempo', 'myStyle');
-      gs.addDef(okValue(TempoDef.createTempoDef('Allegro', 147.0)));
-      gs.addDef(okValue(TempoDef.createTempoDef('Largo', 50.0)));
+      gs.addDef(okValue(TempoDef.fromNameValue('Allegro', 147.0)));
+      gs.addDef(okValue(TempoDef.fromNameValue('Largo', 50.0)));
       expect(gs.size()).toBe(2);
       expect(gs.getAllDefs().size).toBe(2);
       expect(gs.getXml()!.getChildElements().size()).toBe(2);
@@ -300,8 +300,8 @@ describe('Style, whatever the kind', () => {
 
     it('removes a def from the map and the xml', () => {
       const gs = createStyle('tempo', 'myStyle');
-      gs.addDef(okValue(TempoDef.createTempoDef('Allegro', 147.0)));
-      gs.addDef(okValue(TempoDef.createTempoDef('Largo', 50.0)));
+      gs.addDef(okValue(TempoDef.fromNameValue('Allegro', 147.0)));
+      gs.addDef(okValue(TempoDef.fromNameValue('Largo', 50.0)));
       gs.removeDef('Allegro');
 
       expect(gs.size()).toBe(1);
@@ -312,7 +312,7 @@ describe('Style, whatever the kind', () => {
 
     it('ignores removal of an unknown def name', () => {
       const gs = createStyle('tempo', 'myStyle');
-      gs.addDef(okValue(TempoDef.createTempoDef('Allegro', 147.0)));
+      gs.addDef(okValue(TempoDef.fromNameValue('Allegro', 147.0)));
       gs.removeDef('nope');
       expect(gs.size()).toBe(1);
     });
@@ -373,7 +373,7 @@ describe("Style<'tempo'>", () => {
   describe('numericBpmValue', () => {
     function style() {
       const ts = createStyle('tempo', 'default');
-      ts.addDef(okValue(TempoDef.createTempoDef('Allegro', 147.0)));
+      ts.addDef(okValue(TempoDef.fromNameValue('Allegro', 147.0)));
       return ts;
     }
 
@@ -391,7 +391,7 @@ describe("Style<'tempo'>", () => {
 
     it('prefers the def over a numeric reading of the same string', () => {
       const ts = createStyle('tempo', 'default');
-      ts.addDef(okValue(TempoDef.createTempoDef('60', 90.0)));
+      ts.addDef(okValue(TempoDef.fromNameValue('60', 90.0)));
       expect(numericBpmValue('60', ts)).toBe(90.0);
     });
 
@@ -452,7 +452,7 @@ describe("Style<'dynamics'>", () => {
   describe('numericDynamicsValue', () => {
     function style() {
       const ds = createStyle('dynamics', 'default');
-      ds.addDef(okValue(DynamicsDef.createDynamicsDef('ff', 111.0)));
+      ds.addDef(okValue(DynamicsDef.fromNameValue('ff', 111.0)));
       return ds;
     }
 

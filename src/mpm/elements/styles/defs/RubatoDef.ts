@@ -65,8 +65,8 @@ export class RubatoDef extends AbstractXmlSubtree {
   /**
    * NOT read-only, as the class comment says: three attributes are ADDED to the caller's element
    * where they are absent, and out-of-range values are clamped in place. The `@name` check
-   * happens in {@link createRubatoDef} before the object exists, so a `rubatoDef` with no
-   * `@name` is refused before anything is written to it.
+   * happens in {@link fromXml} before the object exists, so a `rubatoDef` with no `@name` is
+   * refused before anything is written to it.
    */
   protected parseData(xml: Element): void {
     this.setXml(xml);
@@ -110,41 +110,30 @@ export class RubatoDef extends AbstractXmlSubtree {
   }
 
   /**
-   * Create a def from a name plus frame length (optionally with the full shape), or by parsing
-   * an existing element. Reports the reason — a missing `frameLength`, say — instead of
-   * throwing. Passing `intensity` also requires `lateStart` and `earlyEnd`, which is why they
-   * travel as one 5-argument overload.
+   * Create a def from a name plus frame length, optionally with the full warp window: the
+   * three window values travel as one object because supplying `intensity` without
+   * `lateStart` and `earlyEnd` is not a legal def. Reports the reason — a missing
+   * `frameLength`, say — instead of throwing.
    */
-  static createRubatoDef(name: string, frameLength: number): Result<RubatoDef, MpmParseError>;
-  static createRubatoDef(
+  static fromName(
     name: string,
     frameLength: number,
-    intensity: number,
-    lateStart: number,
-    earlyEnd: number,
-  ): Result<RubatoDef, MpmParseError>;
-  static createRubatoDef(xml: Element): Result<RubatoDef, MpmParseError>;
-  static createRubatoDef(
-    nameOrXml: string | Element,
-    frameLength?: number,
-    intensity?: number,
-    lateStart?: number,
-    earlyEnd?: number,
+    window?: { intensity: number; lateStart: number; earlyEnd: number },
   ): Result<RubatoDef, MpmParseError> {
+    const xml = new Element('rubatoDef', MPM_NAMESPACE);
+    xml.addAttribute(new Attribute('name', name));
+    xml.addAttribute(new Attribute('frameLength', String(frameLength)));
+    if (window !== undefined) {
+      xml.addAttribute(new Attribute('intensity', String(window.intensity)));
+      xml.addAttribute(new Attribute('lateStart', String(window.lateStart)));
+      xml.addAttribute(new Attribute('earlyEnd', String(window.earlyEnd)));
+    }
+    return RubatoDef.fromXml(xml);
+  }
+
+  /** Create a def by parsing an existing `rubatoDef` element. See {@link fromName}. */
+  static fromXml(xml: Element): Result<RubatoDef, MpmParseError> {
     try {
-      let xml: Element;
-      if (typeof nameOrXml === 'string') {
-        xml = new Element('rubatoDef', MPM_NAMESPACE);
-        xml.addAttribute(new Attribute('name', nameOrXml));
-        xml.addAttribute(new Attribute('frameLength', String(frameLength)));
-        if (intensity !== undefined) {
-          xml.addAttribute(new Attribute('intensity', String(intensity)));
-          xml.addAttribute(new Attribute('lateStart', String(lateStart)));
-          xml.addAttribute(new Attribute('earlyEnd', String(earlyEnd)));
-        }
-      } else {
-        xml = nameOrXml;
-      }
       const nameAttr = requireDefName(xml, 'RubatoDef');
       // Read ahead of construction, like the name: it is required and written through by
       // `setFrameLength`, and nothing is written to the element before this point.

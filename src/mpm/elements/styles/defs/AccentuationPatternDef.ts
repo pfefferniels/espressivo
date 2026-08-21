@@ -5,7 +5,7 @@ import { KeyValue } from '../../../../supplementary/KeyValue.js';
 import { parseJavaDouble } from '../../../../supplementary/parseJavaDouble.js';
 import { AbstractXmlSubtree } from '../../../../xml/AbstractXmlSubtree.js';
 import { requireDefName, skipMalformedDef } from './defName.js';
-import { ok, type Result } from '../../../../prelude/index.js';
+import { isOk, ok, type Result } from '../../../../prelude/index.js';
 import { type MpmParseError } from '../../parseError.js';
 import { elementAt, head, isNonEmpty, last } from '../../../../prelude/index.js';
 
@@ -120,32 +120,30 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
   }
 
   /**
-   * Create a pattern from a name and length (optionally with an id), or by parsing an existing
-   * element. Reports the reason instead of throwing.
+   * Create a pattern from a name and length, optionally with an id. Reports the reason
+   * instead of throwing. See {@link fromXml} for the parsing form.
    */
-  static createAccentuationPatternDef(
+  static fromNameLength(
     name: string,
     length: number,
     id?: string,
-  ): Result<AccentuationPatternDef, MpmParseError>;
-  static createAccentuationPatternDef(xml: Element): Result<AccentuationPatternDef, MpmParseError>;
-  static createAccentuationPatternDef(
-    nameOrXml: string | Element,
-    length?: number,
-    id?: string,
   ): Result<AccentuationPatternDef, MpmParseError> {
+    const xml = new Element('accentuationPatternDef', MPM_NAMESPACE);
+    xml.addAttribute(new Attribute('name', name));
+    xml.addAttribute(new Attribute('length', String(length)));
+    const built = AccentuationPatternDef.fromXml(xml);
+    if (isOk(built) && id !== undefined) built.value.setId(id);
+    return built;
+  }
+
+  /**
+   * Create a pattern by parsing an existing `accentuationPatternDef` element. Reports the
+   * reason rather than throwing. See {@link fromNameLength}.
+   */
+  static fromXml(xml: Element): Result<AccentuationPatternDef, MpmParseError> {
     try {
-      let xml: Element;
-      if (typeof nameOrXml === 'string') {
-        xml = new Element('accentuationPatternDef', MPM_NAMESPACE);
-        xml.addAttribute(new Attribute('name', nameOrXml));
-        xml.addAttribute(new Attribute('length', String(length)));
-      } else {
-        xml = nameOrXml;
-      }
       const apd = new AccentuationPatternDef(requireDefName(xml, 'AccentuationPatternDef'));
       apd.parseData(xml);
-      if (typeof nameOrXml === 'string' && id !== undefined) apd.setId(id);
       return ok(apd);
     } catch (e) {
       return skipMalformedDef(e, 'AccentuationPatternDef');
@@ -234,14 +232,13 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
    * @returns the index it was inserted at, which is also the XML child index to use
    */
   private addAccentuationToArrayList(accentuation: AccentuationTuple, xml: Element): number {
-    for (let j = this.accentuations.length - 1; j >= 0; --j) {
-      if (accentuation[0] >= elementAt(this.accentuations, j, 'accentuation').getKey()[0]) {
-        this.accentuations.splice(j + 1, 0, new KeyValue(accentuation, xml));
-        return j + 1;
-      }
-    }
-    this.accentuations.splice(0, 0, new KeyValue(accentuation, xml));
-    return 0;
+    // `findLastIndex` (ES2023) is the backwards scan, and its `-1` for "nothing qualifies"
+    // becomes the front insertion under the same `+ 1`. That collapses what were two splices
+    // and two returns — the loop body and the fall-through — into one of each, which is what
+    // makes it evident that both always agreed on the index.
+    const index = this.accentuations.findLastIndex((kv) => accentuation[0] >= kv.getKey()[0]) + 1;
+    this.accentuations.splice(index, 0, new KeyValue(accentuation, xml));
+    return index;
   }
 
   /**

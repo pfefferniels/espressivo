@@ -553,7 +553,7 @@ export function editScript<I extends EditableInstruction, S>(
   }
   traced.reverse();
 
-  const ordered = [...traced].sort(compareDelivery);
+  const ordered = traced.toSorted(compareDelivery);
 
   const removedA = new Array<boolean>(n).fill(false);
   const addedB = new Array<boolean>(m).fill(false);
@@ -667,7 +667,7 @@ export function invertSteps<I extends EditableInstruction>(
       free: step.free,
     }));
 
-  const ordered = [...flipped].sort(compareDelivery);
+  const ordered = flipped.toSorted(compareDelivery);
   const ranks = invertPermutation(rankByCostDescending(ordered.map((step) => step.cost)));
 
   return ordered.map((step, index) => ({

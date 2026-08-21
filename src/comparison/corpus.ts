@@ -168,7 +168,7 @@ function collisions(items: readonly ExpandedItem[]): ReadonlyMap<string, readonl
 /** The median of a list, or null for an empty one — §8's `normalizationConstants` (AD-25.5). */
 function median(values: readonly number[]): number | null {
   if (values.length === 0) return null;
-  const sorted = [...values].sort((x, y) => x - y);
+  const sorted = values.toSorted((x, y) => x - y);
   const middle = sorted.length >> 1;
   const upper = elementAt(sorted, middle, SAMPLE);
   return sorted.length % 2 === 1 ? upper : (elementAt(sorted, middle - 1, SAMPLE) + upper) / 2;
@@ -690,7 +690,7 @@ function contextOf(aggregate: readonly number[], n: number): CorpusReport['conte
   const offDiagonal: number[] = [];
   for (let i = 0; i < n; ++i)
     for (let j = i + 1; j < n; ++j) offDiagonal.push(numberAt(aggregate, i * n + j, MATRIX));
-  const sorted = [...offDiagonal].sort((x, y) => x - y);
+  const sorted = offDiagonal.toSorted((x, y) => x - y);
 
   const percentile = new Array<number>(n * n).fill(0);
   for (let i = 0; i < n; ++i)

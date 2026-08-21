@@ -35,7 +35,7 @@ function xmlBeats(def: AccentuationPatternDef): string[] {
 describe('AccentuationPatternDef', () => {
   describe('createAccentuationPatternDef', () => {
     it('creates an empty pattern from name and length', () => {
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('4/4', 4.0));
       expect(apd.getName()).toBe('4/4');
       expect(apd.getLength()).toBe(4.0);
       expect(apd.size()).toBe(0);
@@ -45,22 +45,20 @@ describe('AccentuationPatternDef', () => {
     });
 
     it('accepts an id as third argument', () => {
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('3/4', 3.0, 'ap-1'));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('3/4', 3.0, 'ap-1'));
       expect(apd.getId()).toBe('ap-1');
     });
 
     it('defaults the length to 4.0 and writes it back when the attribute is absent', () => {
       const xml = patternElement({ name: '4/4' });
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef(xml));
+      const apd = okValue(AccentuationPatternDef.fromXml(xml));
       expect(apd.getLength()).toBe(4.0);
       expect(xml.getAttributeValue('length')).toBe('4');
     });
 
     it('reports a missing name attribute rather than printing it', () => {
       expect(
-        errOf(
-          AccentuationPatternDef.createAccentuationPatternDef(patternElement({ length: '4.0' })),
-        ),
+        errOf(AccentuationPatternDef.fromXml(patternElement({ length: '4.0' }))),
       ).toMatchObject({
         kind: 'malformedDef',
         what: 'AccentuationPatternDef',
@@ -68,9 +66,7 @@ describe('AccentuationPatternDef', () => {
     });
 
     it('reports a null element rather than printing it', () => {
-      expect(
-        errOf(AccentuationPatternDef.createAccentuationPatternDef(null as unknown as Element)),
-      ).toMatchObject({
+      expect(errOf(AccentuationPatternDef.fromXml(null as unknown as Element))).toMatchObject({
         kind: 'malformedDef',
         what: 'AccentuationPatternDef',
       });
@@ -82,7 +78,7 @@ describe('AccentuationPatternDef', () => {
       const xml = patternElement({ name: '3/4', length: '3.0' }, [
         accentuation({ beat: '1.0', value: '1.0' }),
       ]);
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef(xml));
+      const apd = okValue(AccentuationPatternDef.fromXml(xml));
 
       expect(apd.getName()).toBe('3/4');
       expect(apd.getLength()).toBe(3.0);
@@ -102,7 +98,7 @@ describe('AccentuationPatternDef', () => {
       // Parsing writes `length="4"` onto an element without one (the class header calls this
       // out). `setLength` has to write through that same node, or it would update nothing.
       const xml = patternElement({ name: 'nolength' }, []);
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef(xml));
+      const apd = okValue(AccentuationPatternDef.fromXml(xml));
       expect(xml.getAttributeValue('length')).toBe('4');
       expect(apd.getLength()).toBe(4.0);
 
@@ -122,7 +118,7 @@ describe('AccentuationPatternDef', () => {
           'transition.to': '0.2',
         }),
       ]);
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef(xml));
+      const apd = okValue(AccentuationPatternDef.fromXml(xml));
       expect(apd.size()).toBe(1);
       expect(apd.getAccentuationAttributes(0)).toEqual([1.0, 1.0, 0.5, 0.2]);
     });
@@ -131,7 +127,7 @@ describe('AccentuationPatternDef', () => {
       const xml = patternElement({ name: '4/4', length: '4.0' }, [
         accentuation({ beat: '1.0', value: '0.8' }),
       ]);
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef(xml));
+      const apd = okValue(AccentuationPatternDef.fromXml(xml));
       expect(apd.getAccentuationAttributes(0)).toEqual([1.0, 0.8, 0.8, 0.8]);
     });
 
@@ -139,13 +135,13 @@ describe('AccentuationPatternDef', () => {
       const xml = patternElement({ name: '4/4', length: '4.0' }, [
         accentuation({ beat: '1.0', value: '0.8', 'transition.from': '0.3' }),
       ]);
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef(xml));
+      const apd = okValue(AccentuationPatternDef.fromXml(xml));
       expect(apd.getAccentuationAttributes(0)).toEqual([1.0, 0.8, 0.3, 0.3]);
     });
 
     it('leaves value at 0 when the value attribute is absent', () => {
       const xml = patternElement({ name: '4/4', length: '4.0' }, [accentuation({ beat: '2.0' })]);
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef(xml));
+      const apd = okValue(AccentuationPatternDef.fromXml(xml));
       expect(apd.getAccentuationAttributes(0)).toEqual([2.0, 0.0, 0.0, 0.0]);
     });
 
@@ -154,7 +150,7 @@ describe('AccentuationPatternDef', () => {
         accentuation({ value: '1.0' }),
         accentuation({ beat: '1.0', value: '1.0' }),
       ]);
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef(xml));
+      const apd = okValue(AccentuationPatternDef.fromXml(xml));
       expect(apd.size()).toBe(1);
       expect(apd.getAccentuationAttributes(0)![0]).toBe(1.0);
     });
@@ -165,7 +161,7 @@ describe('AccentuationPatternDef', () => {
         accentuation({ beat: '1.0', value: '1.0' }),
         accentuation({ beat: '2.0', value: '0.2' }),
       ]);
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef(xml));
+      const apd = okValue(AccentuationPatternDef.fromXml(xml));
       expect(apd.getAllAccentuations().map((kv) => kv.getKey()[0])).toEqual([1.0, 2.0, 3.0]);
       expect(xmlBeats(apd)).toEqual(['1.0', '2.0', '3.0']);
     });
@@ -190,7 +186,7 @@ describe('AccentuationPatternDef', () => {
         foreign('b'),
         accentuation({ beat: '2.0', value: '0.2' }),
       ]);
-      okValue(AccentuationPatternDef.createAccentuationPatternDef(xml));
+      okValue(AccentuationPatternDef.fromXml(xml));
 
       const kids = xml.getChildElements();
       const shape: string[] = [];
@@ -214,7 +210,7 @@ describe('AccentuationPatternDef', () => {
         accentuation({ beat: '2.0', value: '0.22' }),
         accentuation({ beat: '2.0', value: '0.23' }),
       ]);
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef(xml));
+      const apd = okValue(AccentuationPatternDef.fromXml(xml));
 
       expect(apd.getAllAccentuations().map((kv) => kv.getKey()[1])).toEqual([
         0.11, 0.21, 0.22, 0.23,
@@ -231,7 +227,7 @@ describe('AccentuationPatternDef', () => {
         accentuation({ value: '0.99' }),
         accentuation({ beat: '1.0', value: '0.1' }),
       ]);
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef(xml));
+      const apd = okValue(AccentuationPatternDef.fromXml(xml));
 
       expect(apd.size()).toBe(2);
       const kids = xml.getChildElements();
@@ -258,14 +254,14 @@ describe('AccentuationPatternDef', () => {
         for (let sample = 0; sample < 3; ++sample) {
           const xml = build(n);
           const before = performance.now();
-          AccentuationPatternDef.createAccentuationPatternDef(xml);
+          AccentuationPatternDef.fromXml(xml);
           best = Math.min(best, performance.now() - before);
         }
         return best;
       };
 
-      AccentuationPatternDef.createAccentuationPatternDef(build(100)); // warm the shapes
-      AccentuationPatternDef.createAccentuationPatternDef(build(800));
+      AccentuationPatternDef.fromXml(build(100)); // warm the shapes
+      AccentuationPatternDef.fromXml(build(800));
 
       // Eightfold input. One `sortXml` leaves the parse quadratic (both `removeChild` and the
       // insertion sort are linear per element), so ~64 is the band to expect; a `sortXml()`
@@ -278,14 +274,14 @@ describe('AccentuationPatternDef', () => {
 
   describe('addAccentuation', () => {
     it('appends and reports the insertion index', () => {
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('4/4', 4.0));
       expect(apd.addAccentuation(1.0, 1.0, 1.0, 1.0)).toBe(0);
       expect(apd.addAccentuation(2.0, 0.3, 0.3, 0.3)).toBe(1);
       expect(apd.size()).toBe(2);
     });
 
     it('inserts out-of-order beats at their sorted position', () => {
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('4/4', 4.0));
       apd.addAccentuation(3.0, 0.5, 0.5, 0.5);
       apd.addAccentuation(1.0, 1.0, 1.0, 1.0);
       const index = apd.addAccentuation(2.0, 0.2, 0.2, 0.2);
@@ -295,14 +291,14 @@ describe('AccentuationPatternDef', () => {
     });
 
     it('places a beat before all existing ones at index 0', () => {
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('4/4', 4.0));
       apd.addAccentuation(2.0, 0.2, 0.2, 0.2);
       expect(apd.addAccentuation(1.0, 1.0, 1.0, 1.0)).toBe(0);
       expect(xmlBeats(apd)).toEqual(['1', '2']);
     });
 
     it('writes all four attributes onto the new element', () => {
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('4/4', 4.0));
       const index = apd.addAccentuation(1.0, 0.9, 0.4, 0.1);
       const elt = apd.getAccentuationXml(index)!;
       expect(elt.getLocalName()).toBe('accentuation');
@@ -314,7 +310,7 @@ describe('AccentuationPatternDef', () => {
     });
 
     it('adds an xml:id when one is given', () => {
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('4/4', 4.0));
       const index = apd.addAccentuation(1.0, 1.0, 1.0, 1.0, 'acc-1');
       const idAtt = apd
         .getAccentuationXml(index)!
@@ -324,7 +320,7 @@ describe('AccentuationPatternDef', () => {
     });
 
     it('adds no xml:id when none is given', () => {
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('4/4', 4.0));
       const index = apd.addAccentuation(1.0, 1.0, 1.0, 1.0);
       expect(
         apd.getAccentuationXml(index)!.getAttribute('id', 'http://www.w3.org/XML/1998/namespace'),
@@ -334,7 +330,7 @@ describe('AccentuationPatternDef', () => {
 
   describe('addAccentuationFromXml', () => {
     it('parses and inserts a prebuilt accentuation element', () => {
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('4/4', 4.0));
       const index = apd.addAccentuationFromXml(
         accentuation({
           beat: '1.0',
@@ -349,19 +345,19 @@ describe('AccentuationPatternDef', () => {
     });
 
     it('applies the same transition defaulting as the parser', () => {
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('4/4', 4.0));
       apd.addAccentuationFromXml(accentuation({ beat: '1.0', value: '0.6' }));
       expect(apd.getAccentuationAttributes(0)).toEqual([1.0, 0.6, 0.6, 0.6]);
     });
 
     it('returns -1 and adds nothing when the beat attribute is missing', () => {
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('4/4', 4.0));
       expect(apd.addAccentuationFromXml(accentuation({ value: '1.0' }))).toBe(-1);
       expect(apd.size()).toBe(0);
     });
 
     it('inserts at the sorted position', () => {
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('4/4', 4.0));
       apd.addAccentuation(3.0, 0.3, 0.3, 0.3);
       expect(apd.addAccentuationFromXml(accentuation({ beat: '1.0', value: '1.0' }))).toBe(0);
       expect(xmlBeats(apd)).toEqual(['1.0', '3']);
@@ -370,14 +366,14 @@ describe('AccentuationPatternDef', () => {
 
   describe('accessors', () => {
     it('returns null for an out-of-range index', () => {
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('4/4', 4.0));
       apd.addAccentuation(1.0, 1.0, 1.0, 1.0);
       expect(apd.getAccentuationAttributes(1)).toBeNull();
       expect(apd.getAccentuationXml(1)).toBeNull();
     });
 
     it('exposes the accentuation list with its xml elements', () => {
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('4/4', 4.0));
       const index = apd.addAccentuation(1.0, 1.0, 1.0, 1.0);
       const all = apd.getAllAccentuations();
       expect(all.length).toBe(1);
@@ -385,7 +381,7 @@ describe('AccentuationPatternDef', () => {
     });
 
     it('setLength updates the field and the xml attribute', () => {
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('4/4', 4.0));
       apd.setLength(3.0);
       expect(apd.getLength()).toBe(3.0);
       expect(apd.getXml()!.getAttributeValue('length')).toBe('3');
@@ -394,7 +390,7 @@ describe('AccentuationPatternDef', () => {
 
   describe('removeAccentuation', () => {
     it('drops the entry from the list and the xml', () => {
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('4/4', 4.0));
       apd.addAccentuation(1.0, 1.0, 1.0, 1.0);
       apd.addAccentuation(2.0, 0.2, 0.2, 0.2);
       apd.removeAccentuation(0);
@@ -404,7 +400,7 @@ describe('AccentuationPatternDef', () => {
     });
 
     it('ignores an out-of-range index', () => {
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('4/4', 4.0));
       apd.addAccentuation(1.0, 1.0, 1.0, 1.0);
       apd.removeAccentuation(5);
       expect(apd.size()).toBe(1);
@@ -414,7 +410,7 @@ describe('AccentuationPatternDef', () => {
   describe('getAccentuationAt', () => {
     function fourFour(): AccentuationPatternDef {
       // A 4/4 pattern with a strong first beat that fades out towards the next one.
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('4/4', 4.0));
       apd.addAccentuation(1.0, 1.0, 0.0, 1.0);
       apd.addAccentuation(3.0, 0.5, 0.5, 0.5);
       return apd;
@@ -431,7 +427,7 @@ describe('AccentuationPatternDef', () => {
     });
 
     it('returns the last transition.to at or beyond length + 1', () => {
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('4/4', 4.0));
       apd.addAccentuation(1.0, 1.0, 1.0, 1.0);
       apd.addAccentuation(3.0, 0.5, 0.5, 0.25);
       expect(apd.getAccentuationAt(5.0)).toBe(0.25);
@@ -444,7 +440,7 @@ describe('AccentuationPatternDef', () => {
       // Here the only accentuation is also the last one: beat 1, transition.from 0.0,
       // transition.to 1.0, length 4 => segmentEnd 5.
       // at 2.0: ((2-1) * (1-0)) / (5-1) + 0 = 0.25
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('4/4', 4.0));
       apd.addAccentuation(1.0, 1.0, 0.0, 1.0);
       expect(apd.getAccentuationAt(2.0)).toBeCloseTo(0.25, 10);
       expect(apd.getAccentuationAt(3.0)).toBeCloseTo(0.5, 10);
@@ -465,14 +461,14 @@ describe('AccentuationPatternDef', () => {
       // Beat 4 lies after the last accentuation (beat 3), so that one's ramp applies and its
       // segmentEnd is the pattern end: transition.from 0.5, transition.to 0.1, segmentEnd 5 =>
       // ((4-3) * (0.1-0.5)) / (5-3) + 0.5 = -0.2 + 0.5 = 0.3
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('4/4', 4.0));
       apd.addAccentuation(1.0, 1.0, 1.0, 1.0);
       apd.addAccentuation(3.0, 0.5, 0.5, 0.1);
       expect(apd.getAccentuationAt(4.0)).toBeCloseTo(0.3, 10);
     });
 
     it('yields a flat value when transition.from equals transition.to', () => {
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('4/4', 4.0));
       apd.addAccentuation(1.0, 1.0, 0.7, 0.7);
       expect(apd.getAccentuationAt(2.5)).toBeCloseTo(0.7, 10);
     });
@@ -484,9 +480,7 @@ describe('AccentuationPatternDef', () => {
       // Every expected value below is hand-computed from Java's formula
       // (AccentuationPatternDef.java:324), not read off the TypeScript.
       function referencePattern(): AccentuationPatternDef {
-        const apd = okValue(
-          AccentuationPatternDef.createAccentuationPatternDef('4/4 pattern', 2880.0),
-        );
+        const apd = okValue(AccentuationPatternDef.fromNameLength('4/4 pattern', 2880.0));
         apd.addAccentuation(0.0, 20.0, 0.0, 1.0);
         apd.addAccentuation(720.0, -10.0, 0.0, 1.0);
         apd.addAccentuation(1440.0, 10.0, 0.0, 1.0);
@@ -534,11 +528,7 @@ describe('AccentuationPatternDef', () => {
   describe('malformed numeric attributes', () => {
     it('refuses the def when length is not a number, and says so', () => {
       expect(
-        errOf(
-          AccentuationPatternDef.createAccentuationPatternDef(
-            patternElement({ name: '4/4', length: 'four' }),
-          ),
-        ),
+        errOf(AccentuationPatternDef.fromXml(patternElement({ name: '4/4', length: 'four' }))),
       ).toMatchObject({
         kind: 'malformedDef',
         what: 'AccentuationPatternDef',
@@ -557,7 +547,7 @@ describe('AccentuationPatternDef', () => {
         attributes[attributeName] = 'abc';
         expect(
           errOf(
-            AccentuationPatternDef.createAccentuationPatternDef(
+            AccentuationPatternDef.fromXml(
               patternElement({ name: '4/4', length: '4.0' }, [accentuation(attributes)]),
             ),
           ),
@@ -570,7 +560,7 @@ describe('AccentuationPatternDef', () => {
 
     it('still parses a well-formed neighbour', () => {
       const apd = okValue(
-        AccentuationPatternDef.createAccentuationPatternDef(
+        AccentuationPatternDef.fromXml(
           patternElement({ name: '4/4', length: '4.0' }, [
             accentuation({ beat: '1.0', value: '1.0' }),
           ]),
@@ -583,7 +573,7 @@ describe('AccentuationPatternDef', () => {
     // out of addAccentuation(Element) (AccentuationPatternDef.java:198-212), so it reaches
     // the caller here too.
     it('throws out of addAccentuationFromXml rather than storing NaN', () => {
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('4/4', 4.0));
       expect(() => apd.addAccentuationFromXml(accentuation({ beat: 'abc' }))).toThrow(
         NumberFormatError,
       );
@@ -591,7 +581,7 @@ describe('AccentuationPatternDef', () => {
     });
 
     it('still returns -1 for an accentuation with no beat at all', () => {
-      const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
+      const apd = okValue(AccentuationPatternDef.fromNameLength('4/4', 4.0));
       expect(apd.addAccentuationFromXml(accentuation({ value: '1.0' }))).toBe(-1);
     });
   });

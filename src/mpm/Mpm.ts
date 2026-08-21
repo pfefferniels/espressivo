@@ -99,13 +99,12 @@ export class Mpm extends AbstractMsm {
     const root = this.requireRootElement();
 
     const metadataElement = firstChildElement('metadata', root);
-    if (metadataElement !== null)
-      this.metadata = unwrapOr(Metadata.createMetadata(metadataElement), null);
+    if (metadataElement !== null) this.metadata = unwrapOr(Metadata.fromXml(metadataElement), null);
 
     const perfs: Element[] = allChildElements(root, 'performance');
 
     for (const perf of perfs) {
-      const p = Performance.createPerformance(perf);
+      const p = Performance.fromXml(perf);
       if (isErr(p)) continue;
       this.performances.push(p.value);
     }
@@ -221,7 +220,7 @@ export class Mpm extends AbstractMsm {
       return true;
     }
 
-    this.metadata = unwrapOr(Metadata.createMetadata(author, comment, relatedResources), null);
+    this.metadata = unwrapOr(Metadata.fromParts(author, comment, relatedResources), null);
     if (this.metadata === null) return false;
 
     this.requireRootElement().appendChild(this.metadata.getXml());
@@ -268,28 +267,15 @@ export class Mpm extends AbstractMsm {
     return this.performances;
   }
 
-  /** @returns success. Duplicate names are allowed; {@link getPerformanceByName} takes the
-   * first. */
-  addPerformance(performance: Performance | null): boolean;
-  /** Generate a performance and add it. @returns the created Performance, or null */
-  addPerformance(name: string): Performance | null;
-  addPerformance(performanceOrName: Performance | string | null): boolean | Performance | null {
-    if (typeof performanceOrName === 'string') {
-      const performance = Performance.createPerformance(performanceOrName);
-      if (isErr(performance)) return null;
-      this.addPerformanceObject(performance.value);
-      return performance.value;
-    } else {
-      return this.addPerformanceObject(performanceOrName);
-    }
-  }
-
   /**
-   * Java guards `performance.getXml() != null` before appending. Here it cannot be null: a
-   * `Performance` only escapes its factory after `readFrom` has called `setXml`. The guard an
-   * untyped caller CAN reach is {@link addPerformance}'s own null check, which Java also has.
+   * Add a performance to this mpm. Duplicate names are allowed; {@link getPerformanceByName}
+   * then answers only the first of them.
+   *
+   * Java additionally guards `performance.getXml() != null` before appending. Here it cannot
+   * be null: a `Performance` only escapes its factory after `readFrom` has called `setXml`.
+   * The null check below, which Java also has, is the one an untyped caller CAN reach.
    */
-  private addPerformanceObject(performance: Performance | null): boolean {
+  addPerformance(performance: Performance | null): boolean {
     if (performance === null) return false;
     this.requireRootElement().appendChild(performance.getXml());
     this.performances.push(performance);
@@ -302,6 +288,7 @@ export class Mpm extends AbstractMsm {
       const p = elementAt(this.performances, i, 'performance');
       if (p.getName() === name) {
         this.performances.splice(i, 1);
+        // No `getXml() != null` guard, for the reason given on {@link addPerformance}.
         this.requireRootElement().removeChild(p.getXml());
       }
     }

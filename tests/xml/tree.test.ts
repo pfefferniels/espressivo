@@ -16,6 +16,9 @@ import {
   requireAttribute,
   requireFirstChildElement,
   requireParentElement,
+  firstChildElementOf,
+  immediateNextSiblingElement,
+  immediatePreviousSiblingElement,
 } from '../../src/xml/tree.js';
 import { MeicoError, MissingNodeError } from '../../src/xml/errors.js';
 import { Element, Attribute } from '../../src/xml/XomTypes.js';
@@ -105,14 +108,14 @@ describe('firstChildElement', () => {
     const child2 = new Element('note');
     parent.appendChild(child1);
     parent.appendChild(child2);
-    const result = firstChildElement(parent);
+    const result = firstChildElementOf(parent);
     expect(result).not.toBeNull();
     expect(result!.getLocalName()).toBe('layer');
   });
 
   it('should return null when no children exist (no filter)', () => {
     const parent = new Element('staff');
-    expect(firstChildElement(parent)).toBeNull();
+    expect(firstChildElementOf(parent)).toBeNull();
   });
 
   it('answers null for a null element — the guard no typed caller can reach', () => {
@@ -122,7 +125,7 @@ describe('firstChildElement', () => {
     // @ts-expect-error the parameter is non-nullable; this is the untyped-caller path
     expect(firstChildElement(null)).toBeNull();
     // …and the reachable spelling of "nothing to return", which is what callers actually hit
-    expect(firstChildElement(new Element('staff'))).toBeNull();
+    expect(firstChildElementOf(new Element('staff'))).toBeNull();
   });
 
   it('should find first child by name using (Element, string) overload', () => {
@@ -130,7 +133,7 @@ describe('firstChildElement', () => {
     parent.appendChild(new Element('rest'));
     parent.appendChild(new Element('note'));
     parent.appendChild(new Element('note'));
-    const result = firstChildElement(parent, 'note');
+    const result = firstChildElementOf(parent, 'note');
     expect(result).not.toBeNull();
     expect(result!.getLocalName()).toBe('note');
   });
@@ -138,7 +141,7 @@ describe('firstChildElement', () => {
   it('should return null when no child matches (Element, string)', () => {
     const parent = new Element('layer');
     parent.appendChild(new Element('rest'));
-    expect(firstChildElement(parent, 'note')).toBeNull();
+    expect(firstChildElementOf(parent, 'note')).toBeNull();
   });
 
   it('should find first child by name using (string, Element) overload', () => {
@@ -151,7 +154,9 @@ describe('firstChildElement', () => {
   });
 
   it('answers null for (string, null) — same guard, name-first form', () => {
-    // @ts-expect-error the parameter is non-nullable; this is the untyped-caller path
+    // No `@ts-expect-error` any more: the split promoted the overload set's permissive
+    // implementation signature to the published one, so `ofThis` now declares the null this
+    // asserts on instead of hiding it behind a suppression.
     expect(firstChildElement('note', null)).toBeNull();
     expect(firstChildElement('note', new Element('layer'))).toBeNull();
   });
@@ -270,12 +275,12 @@ describe('getNextSiblingElement', () => {
     const c = el('note', { n: '2' });
     tree('layer', [a, b, c]);
 
-    expect(getNextSiblingElement(a)!.getLocalName()).toBe('rest');
-    expect(getNextSiblingElement(c)).toBeNull();
+    expect(immediateNextSiblingElement(a)!.getLocalName()).toBe('rest');
+    expect(immediateNextSiblingElement(c)).toBeNull();
   });
 
   it('should return null for an element without a parent', () => {
-    expect(getNextSiblingElement(new Element('note'))).toBeNull();
+    expect(immediateNextSiblingElement(new Element('note'))).toBeNull();
     // @ts-expect-error the parameter is non-nullable; this is the untyped-caller path
     expect(getNextSiblingElement(null)).toBeNull();
   });
@@ -295,7 +300,7 @@ describe('getNextSiblingElement', () => {
 
   it('should return null for the named overload without a parent', () => {
     expect(getNextSiblingElement('note', new Element('note'))).toBeNull();
-    // @ts-expect-error the parameter is non-nullable; this is the untyped-caller path
+    // see the note in the firstChildElement block on why no directive is needed
     expect(getNextSiblingElement('note', null)).toBeNull();
   });
 });
@@ -307,12 +312,12 @@ describe('getPreviousSiblingElement', () => {
     const c = el('note', { n: '2' });
     tree('layer', [a, b, c]);
 
-    expect(getPreviousSiblingElement(c)!.getLocalName()).toBe('rest');
-    expect(getPreviousSiblingElement(a)).toBeNull();
+    expect(immediatePreviousSiblingElement(c)!.getLocalName()).toBe('rest');
+    expect(immediatePreviousSiblingElement(a)).toBeNull();
   });
 
   it('should return null for an element without a parent', () => {
-    expect(getPreviousSiblingElement(new Element('note'))).toBeNull();
+    expect(immediatePreviousSiblingElement(new Element('note'))).toBeNull();
     // @ts-expect-error the parameter is non-nullable; this is the untyped-caller path
     expect(getPreviousSiblingElement(null)).toBeNull();
   });
@@ -332,7 +337,7 @@ describe('getPreviousSiblingElement', () => {
 
   it('should return null for the named overload without a parent', () => {
     expect(getPreviousSiblingElement('note', new Element('note'))).toBeNull();
-    // @ts-expect-error the parameter is non-nullable; this is the untyped-caller path
+    // see the note in the firstChildElement block on why no directive is needed
     expect(getPreviousSiblingElement('note', null)).toBeNull();
   });
 });
@@ -426,14 +431,14 @@ describe('require* accessors', () => {
     const layer = tree('layer', [note]);
     expect(requireFirstChildElement(layer)).toBe(note);
     expect(requireFirstChildElement(layer, 'note')).toBe(note);
-    expect(requireFirstChildElement('note', layer)).toBe(note);
+    expect(requireFirstChildElement(layer, 'note')).toBe(note);
   });
 
   it('requireFirstChildElement throws MissingNodeError where firstChildElement returns null', () => {
     const layer = tree('layer', [el('rest')]);
-    expect(firstChildElement(layer, 'note')).toBeNull();
+    expect(firstChildElementOf(layer, 'note')).toBeNull();
     expect(() => requireFirstChildElement(layer, 'note')).toThrow(MissingNodeError);
-    expect(() => requireFirstChildElement('note', layer)).toThrow(MissingNodeError);
+    expect(() => requireFirstChildElement(layer, 'note')).toThrow(MissingNodeError);
     expect(() => requireFirstChildElement(new Element('layer'))).toThrow(MissingNodeError);
   });
 

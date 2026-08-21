@@ -101,7 +101,8 @@ describe('accentuationAt agrees with the renderer, bit for bit', () => {
   it.each(PATTERNS)('matches getAccentuationAt across a beat sweep: %s', (_label, xml) => {
     const element = parseDef(xml);
     const mine = readAccentuationPattern(element);
-    const renderer = okValue(AccentuationPatternDef.createAccentuationPatternDef(element.copy()));
+    // copy(): building the def adds @length and reorders children of the element it is given.
+    const renderer = okValue(AccentuationPatternDef.fromXml(element.copy()));
 
     for (let beat = 0; beat <= 6.02; beat += 0.01) {
       const position = Math.round(beat * 100) / 100;

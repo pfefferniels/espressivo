@@ -7,6 +7,7 @@ import {
   attribute,
   descendantElements,
   firstChildElement,
+  firstChildElementOf,
   getAttributeValue,
 } from '../xml/tree.js';
 import { foldl } from '../prelude/index.js';
@@ -93,31 +94,31 @@ export interface StaffProvenance {
  */
 export class Mei extends XmlBase {
   /**
-   * An already parsed document (taken over, not copied), or — with no argument at all — an
-   * empty MEI built from the {@link MINIMAL_MEI} template.
-   */
-  constructor(mei?: Document);
-  /** parse MEI from an XML string */
-  constructor(xml: string, isXmlString: true);
-  /**
+   * Three things to start from: nothing, an already parsed document, or XML source.
+   *
+   * A `Document` is taken over, not copied; with no argument at all the instance is an empty
+   * MEI built from the {@link MINIMAL_MEI} template. `Document` and `string` are disjoint
+   * types, so `instanceof` and `typeof` separate the two source forms without a discriminating
+   * flag, and a lone string is the parse form — {@link XmlBase} parses it rather than ignoring
+   * it. The final `else` is the untyped-caller arm: a plain-JS caller passing neither gets an
+   * empty instance. `Mpm` keeps the identical arm.
+   *
    * Java has eight constructors here; the five that take `File`, `InputStream` or a validation
    * schema have no counterpart in this port.
    */
-  constructor(arg?: Document | string, isXmlString?: true) {
-    if (arg === undefined) {
-      super(MINIMAL_MEI, true);
-    } else if (arg instanceof Document) {
-      super(arg);
-    } else if (typeof arg === 'string' && isXmlString) {
-      super(arg, true);
+  constructor(source?: Document | string) {
+    if (source === undefined) {
+      super(MINIMAL_MEI);
+    } else if (source instanceof Document || typeof source === 'string') {
+      super(source);
     } else {
       super();
     }
   }
 
-  /** the readable spelling of `new Mei(xml, true)` */
+  /** the readable spelling of `new Mei(xml)` */
   static fromXml(xml: string): Mei {
-    return new Mei(xml, true);
+    return new Mei(xml);
   }
 
   /**
@@ -614,13 +615,13 @@ export class Mei extends XmlBase {
     if (plist !== null) {
       const childHash = new Map<string, Element>();
 
-      let child = firstChildElement(regularizedRoot);
+      let child = firstChildElementOf(regularizedRoot);
       while (child !== null) {
         child.detach();
         // `getAttributeValue` answers `''` rather than null for an absent `@xml:id`, so Java's
         // `id != null` guard here skipped nothing: an unidentified child is keyed under `''`.
         childHash.set(getAttributeValue('id', child), child);
-        child = firstChildElement(regularizedRoot);
+        child = firstChildElementOf(regularizedRoot);
       }
 
       for (const plistEntry of plist) {

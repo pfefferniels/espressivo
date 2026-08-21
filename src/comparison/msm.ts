@@ -140,16 +140,15 @@ function readTimeSignatures(root: Element, ppq: number): readonly TimeSignatureE
   if (map === null) return [];
 
   // Sorted on date only: two `<timeSignature>` entries at one date keep document order, which is
-  // what the renderer's own forward walk sees. One document, so no orientation leaks (W3 MINOR-7).
-  return [
-    ...filterMap(map.getChildElements('timeSignature'), (element) => {
-      const date = readNumericAttributeValue(element, 'date');
-      const numerator = readNumericAttributeValue(element, 'numerator');
-      const denominator = readNumericAttributeValue(element, 'denominator');
-      if (!Number.isFinite(date) || !(numerator > 0) || !(denominator > 0)) return null;
-      return { startQuarters: date / ppq, numerator, denominator };
-    }),
-  ].sort((x, y) => x.startQuarters - y.startQuarters);
+  // what the renderer's own forward walk sees. One document, so no orientation leaks. The sort is
+  // `toSorted` because `filterMap` returns a `ReadonlyArray`, which carries no in-place `sort`.
+  return filterMap(map.getChildElements('timeSignature'), (element) => {
+    const date = readNumericAttributeValue(element, 'date');
+    const numerator = readNumericAttributeValue(element, 'numerator');
+    const denominator = readNumericAttributeValue(element, 'denominator');
+    if (!Number.isFinite(date) || !(numerator > 0) || !(denominator > 0)) return null;
+    return { startQuarters: date / ppq, numerator, denominator };
+  }).toSorted((x, y) => x.startQuarters - y.startQuarters);
 }
 
 /** A time signature's measure length, in quarters: `numerator · 4 / denominator`. */

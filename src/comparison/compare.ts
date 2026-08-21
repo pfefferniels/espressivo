@@ -645,7 +645,7 @@ export function scopeSides(
  *
  * The name fallback is the renderer's second lookup and it is why a score whose parts carry no
  * `@number` still performs against an MPM that names its parts. Non-renderable `<part>`s are
- * already absent from the scope list (`parts.ts`), which is `Part.createPart` returning null.
+ * already absent from the scope list (`parts.ts`), which is `Part.fromXml` failing.
  */
 function correspondingScope(
   document: ComparisonPair['a'],

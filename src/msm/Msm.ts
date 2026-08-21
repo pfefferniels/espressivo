@@ -11,6 +11,7 @@ import {
   firstChildElement,
   getAttributeValue,
   getNextSiblingElement,
+  immediateNextSiblingElement,
   requireAttribute,
   requireFirstChildElement,
   requireParentElement,
@@ -47,9 +48,9 @@ function getFilenameWithoutExtension(filename: string): string {
  * Rename `copy`'s `xml:id` to `meico_repetition_<reps>_<baseId>` and record the step in the
  * old-id → new-id chain. No-op for a copy with no `xml:id`.
  *
- * `repetitionIDs` is a chain, not a base-id index: `base → rep1 → rep2 → …`. The backwards walk
- * follows it from the base id to the id of the previous iteration, which is the key the new
- * entry belongs under, so a caller can follow any old id forward to its current one.
+ * `repetitionIDs` is a chain, not a base-id index: `base → rep1 → rep2 → …`. The backwards
+ * walk follows it from the base id to the id of the previous iteration, which is the key the
+ * new entry belongs under, so a caller can follow any old id forward to its current one.
  *
  * The chain cannot be broken from inside this module: an element reaching `reps` has passed
  * through here `reps - 1` times already, each of those wrote the entry this step reads, and
@@ -605,7 +606,7 @@ export class Msm extends AbstractMsm {
     // a `<goto>` that does not parse is reported and dropped; see Goto.initFromElement
     const gotos = filterMap(gs, (g) => {
       try {
-        return new Goto(g);
+        return Goto.fromElement(g);
       } catch (e) {
         console.error(e);
         return null;
@@ -624,11 +625,11 @@ export class Msm extends AbstractMsm {
         for (
           let e = Msm.getElementAtAfter(currentDate, map);
           e !== null;
-          e = getNextSiblingElement(e)
+          e = immediateNextSiblingElement(e)
         ) {
-          // `getElementAtAfter` yields only dated elements, but `getNextSiblingElement` steps
-          // to the next sibling of any name, so an undated one can arrive here. It throws,
-          // naming `date` at the point the map's ordering invariant is broken.
+          // `getElementAtAfter` yields only dated elements, but `immediateNextSiblingElement`
+          // steps to the next sibling whatever its name, so an undated one can arrive here.
+          // It throws, naming `date` at the point the map's ordering invariant is broken.
           const dateAttribute = requireAttribute('date', e);
           currentDate = parseFloat(dateAttribute.getValue());
           if (currentDate >= gt.date) break; // at or after the goto: do not copy further
@@ -664,7 +665,7 @@ export class Msm extends AbstractMsm {
     for (
       let e = Msm.getElementAtAfter(currentDate, map);
       e !== null;
-      e = getNextSiblingElement(e)
+      e = immediateNextSiblingElement(e)
     ) {
       const dateAttribute = requireAttribute('date', e); // see the note in the loop above
       currentDate = parseFloat(dateAttribute.getValue());
@@ -727,29 +728,17 @@ export class Msm extends AbstractMsm {
    * Render this MSM as plain, non-expressive MIDI: symbolic dates as MIDI ticks, one
    * initial tempo event, a fixed velocity of 100 for every note.
    *
+   * @param bpm tempo of that one initial tempo event, in beats per minute
    * @param generateProgramChanges if true (the default), a program change is generated
    *   per part from its `name` attribute — useful for MIR and as a cheap piano reduction,
    *   but it will not un-set a channel your synth already has on another instrument
    * @returns the Midi object, or null if this MSM is empty
+   *
+   * Java's boolean-first overload — `exportMidi(true)`, meaning default tempo with program
+   * changes — has no counterpart here; `exportMidi(undefined, true)` is the same call.
    */
-  exportMidi(generateProgramChanges: boolean): Midi | null;
-  /**
-   * Render this MSM as plain, non-expressive MIDI.
-   * @param bpm the tempo of the midi track; 120 by default
-   * @param generateProgramChanges see the boolean overload; true by default
-   * @returns the Midi object, or null if this MSM is empty
-   */
-  exportMidi(bpm?: number, generateProgramChanges?: boolean): Midi | null;
-  exportMidi(bpmOrGenPC?: number | boolean, generateProgramChanges?: boolean): Midi | null {
-    let bpm = 120.0;
-    let genPC = true;
-    if (typeof bpmOrGenPC === 'number') {
-      bpm = bpmOrGenPC;
-      if (generateProgramChanges !== undefined) genPC = generateProgramChanges;
-    } else if (typeof bpmOrGenPC === 'boolean') {
-      genPC = bpmOrGenPC;
-    }
-    return this.renderMidi(bpm, genPC, false);
+  exportMidi(bpm = 120.0, generateProgramChanges = true): Midi | null {
+    return this.renderMidi(bpm, generateProgramChanges, false);
   }
 
   /**

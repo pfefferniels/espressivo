@@ -18,7 +18,7 @@ function dynamicsDefElement(attributes: Record<string, string>): Element {
 describe('DynamicsDef', () => {
   describe('createDynamicsDef from name and value', () => {
     it('stores name and value and builds a dynamicsDef element', () => {
-      const dd = okValue(DynamicsDef.createDynamicsDef('forte', 97.0));
+      const dd = okValue(DynamicsDef.fromNameValue('forte', 97.0));
       expect(dd.getName()).toBe('forte');
       expect(dd.getValue()).toBe(97.0);
       expect(dd.getXml()!.getLocalName()).toBe('dynamicsDef');
@@ -29,34 +29,28 @@ describe('DynamicsDef', () => {
 
   describe('createDynamicsDef from xml', () => {
     it('reads name and value off the element', () => {
-      const dd = okValue(
-        DynamicsDef.createDynamicsDef(dynamicsDefElement({ name: 'pp', value: '36.0' })),
-      );
+      const dd = okValue(DynamicsDef.fromXml(dynamicsDefElement({ name: 'pp', value: '36.0' })));
       expect(dd.getName()).toBe('pp');
       expect(dd.getValue()).toBe(36.0);
       expect(dd.getId()).toBeNull();
     });
 
     it('reports a missing value attribute rather than printing it', () => {
-      expect(
-        errOf(DynamicsDef.createDynamicsDef(dynamicsDefElement({ name: 'pp' }))),
-      ).toMatchObject({
+      expect(errOf(DynamicsDef.fromXml(dynamicsDefElement({ name: 'pp' })))).toMatchObject({
         kind: 'malformedDef',
         what: 'DynamicsDef',
       });
     });
 
     it('reports a missing name attribute rather than printing it', () => {
-      expect(
-        errOf(DynamicsDef.createDynamicsDef(dynamicsDefElement({ value: '36.0' }))),
-      ).toMatchObject({
+      expect(errOf(DynamicsDef.fromXml(dynamicsDefElement({ value: '36.0' })))).toMatchObject({
         kind: 'malformedDef',
         what: 'DynamicsDef',
       });
     });
 
     it('reports a null element rather than printing it', () => {
-      expect(errOf(DynamicsDef.createDynamicsDef(null as unknown as Element))).toMatchObject({
+      expect(errOf(DynamicsDef.fromXml(null as unknown as Element))).toMatchObject({
         kind: 'malformedDef',
         what: 'DynamicsDef',
       });
@@ -66,7 +60,7 @@ describe('DynamicsDef', () => {
   describe('the identity attributes are bound at construction', () => {
     it('writes through the very attribute nodes the parse read', () => {
       const xml = dynamicsDefElement({ name: 'pp', value: '36.0' });
-      const dd = okValue(DynamicsDef.createDynamicsDef(xml));
+      const dd = okValue(DynamicsDef.fromXml(xml));
       expect(dd.getXml()).toBe(xml);
       const nameNode = xml.getAttribute('name')!;
       const valueNode = xml.getAttribute('value')!;
@@ -83,7 +77,7 @@ describe('DynamicsDef', () => {
 
   describe('setValue', () => {
     it('updates the field and the xml attribute', () => {
-      const dd = okValue(DynamicsDef.createDynamicsDef('forte', 97.0));
+      const dd = okValue(DynamicsDef.fromNameValue('forte', 97.0));
       dd.setValue(101.5);
       expect(dd.getValue()).toBe(101.5);
       expect(dd.getXml()!.getAttributeValue('value')).toBe('101.5');
@@ -156,19 +150,17 @@ describe('DynamicsDef', () => {
   // factory return null rather than yielding a def whose value is NaN.
   describe('malformed value attribute', () => {
     it('refuses a NaN-valued def, and says the value would not parse', () => {
-      const dd = DynamicsDef.createDynamicsDef(dynamicsDefElement({ name: 'x', value: 'loud' }));
+      const dd = DynamicsDef.fromXml(dynamicsDefElement({ name: 'x', value: 'loud' }));
       expect(defCause(dd)).toBeInstanceOf(NumberFormatError);
     });
 
     it('rejects a value parseFloat would have silently truncated', () => {
-      const dd = DynamicsDef.createDynamicsDef(dynamicsDefElement({ name: 'x', value: '97dB' }));
+      const dd = DynamicsDef.fromXml(dynamicsDefElement({ name: 'x', value: '97dB' }));
       expect(defCause(dd)).toBeInstanceOf(NumberFormatError);
     });
 
     it('still parses a well-formed neighbour', () => {
-      const dd = okValue(
-        DynamicsDef.createDynamicsDef(dynamicsDefElement({ name: 'x', value: '97' })),
-      );
+      const dd = okValue(DynamicsDef.fromXml(dynamicsDefElement({ name: 'x', value: '97' })));
       expect(dd.getValue()).toBe(97);
     });
   });

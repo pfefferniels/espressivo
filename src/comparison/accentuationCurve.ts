@@ -146,8 +146,11 @@ export function neutralAccentuationCurve(): AccentuationCurve {
 export function readAccentuationPattern(def: Element): AccentuationPattern {
   const rawLength = readNumericAttributeValue(def, 'length');
 
-  const points: readonly PatternPoint[] = [
-    ...filterMap(def.getChildElements('accentuation'), (child) => {
+  // The sort is on `@beat` alone, so the tie order is one document's own and no a/b orientation
+  // can reach the result.
+  const points: readonly PatternPoint[] = filterMap(
+    def.getChildElements('accentuation'),
+    (child) => {
       const beat = readNumericAttributeValue(child, 'beat');
       if (Number.isNaN(beat)) return null;
       const value = readNumericAttributeValue(child, 'value');
@@ -161,8 +164,8 @@ export function readAccentuationPattern(def: Element): AccentuationPattern {
         transitionFrom: resolvedFrom,
         transitionTo: Number.isNaN(to) ? resolvedFrom : to,
       };
-    }),
-  ].sort((a, b) => a.beat - b.beat);
+    },
+  ).toSorted((a, b) => a.beat - b.beat);
 
   return {
     length: Number.isFinite(rawLength) ? rawLength : DEFAULT_PATTERN_LENGTH,

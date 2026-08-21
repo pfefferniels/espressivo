@@ -162,7 +162,7 @@ export function resolveTempo(
   const meanTempoAt = parseFloat(meanTempoAtString);
   // <= 0: the mean tempo is reached before the span begins, so the instruction is the
   // target tempo, in force from the start. Note that this is the one branch that changes
-  // which string survives — `addTempo` would write the target back out as `@bpm`.
+  // which string survives — `addTempoData` would write the target back out as `@bpm`.
   if (meanTempoAt <= 0.0) return constantTempo(span, transitionToString, transitionTo);
   // >= 1: the mean tempo is never reached, so the instruction never leaves `@bpm`.
   if (meanTempoAt >= 1.0) return constantTempo(span, bpmString, bpm);

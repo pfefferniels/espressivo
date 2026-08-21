@@ -18,7 +18,7 @@ function rubatoDefElement(attributes: Record<string, string>): Element {
 describe('RubatoDef', () => {
   describe('createRubatoDef from name and frameLength', () => {
     it('applies the documented defaults for the optional attributes', () => {
-      const rd = okValue(RubatoDef.createRubatoDef('rubato1', 720.0));
+      const rd = okValue(RubatoDef.fromName('rubato1', 720.0));
       expect(rd.getName()).toBe('rubato1');
       expect(rd.getFrameLength()).toBe(720.0);
       expect(rd.getIntensity()).toBe(1.0);
@@ -27,7 +27,7 @@ describe('RubatoDef', () => {
     });
 
     it('writes the defaulted attributes into the xml', () => {
-      const rd = okValue(RubatoDef.createRubatoDef('rubato1', 720.0));
+      const rd = okValue(RubatoDef.fromName('rubato1', 720.0));
       const xml = rd.getXml()!;
       expect(xml.getLocalName()).toBe('rubatoDef');
       expect(xml.getNamespaceURI()).toBe(Mpm.MPM_NAMESPACE);
@@ -40,7 +40,9 @@ describe('RubatoDef', () => {
 
   describe('createRubatoDef from all five values', () => {
     it('keeps values that are already within their boundaries', () => {
-      const rd = okValue(RubatoDef.createRubatoDef('rubato2', 360.0, 2.0, 0.1, 0.9));
+      const rd = okValue(
+        RubatoDef.fromName('rubato2', 360.0, { intensity: 2.0, lateStart: 0.1, earlyEnd: 0.9 }),
+      );
       expect(rd.getFrameLength()).toBe(360.0);
       expect(rd.getIntensity()).toBe(2.0);
       expect(rd.getLateStart()).toBe(0.1);
@@ -50,18 +52,18 @@ describe('RubatoDef', () => {
 
   describe('createRubatoDef from xml', () => {
     it('requires the frameLength attribute', () => {
-      const rd = RubatoDef.createRubatoDef(rubatoDefElement({ name: 'r' }));
+      const rd = RubatoDef.fromXml(rubatoDefElement({ name: 'r' }));
       expect(defCause(rd)).toBeInstanceOf(MissingNodeError);
     });
 
     it('requires the name attribute', () => {
-      const rd = RubatoDef.createRubatoDef(rubatoDefElement({ frameLength: '720' }));
+      const rd = RubatoDef.fromXml(rubatoDefElement({ frameLength: '720' }));
       expect(defCause(rd)).toBeInstanceOf(MissingNodeError);
     });
 
     it('adds the missing optional attributes to the element it was given', () => {
       const xml = rubatoDefElement({ name: 'r', frameLength: '720' });
-      const rd = okValue(RubatoDef.createRubatoDef(xml));
+      const rd = okValue(RubatoDef.fromXml(xml));
       expect(rd.getXml()).toBe(xml);
       expect(xml.getAttributeValue('intensity')).toBe('1');
       expect(xml.getAttributeValue('lateStart')).toBe('0');
@@ -71,11 +73,11 @@ describe('RubatoDef', () => {
     it('reads an existing xml:id', () => {
       const xml = rubatoDefElement({ name: 'r', frameLength: '720' });
       xml.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', 'rub-1'));
-      expect(okValue(RubatoDef.createRubatoDef(xml)).getId()).toBe('rub-1');
+      expect(okValue(RubatoDef.fromXml(xml)).getId()).toBe('rub-1');
     });
 
     it('reports a null element rather than printing it', () => {
-      expect(errOf(RubatoDef.createRubatoDef(null as unknown as Element))).toMatchObject({
+      expect(errOf(RubatoDef.fromXml(null as unknown as Element))).toMatchObject({
         kind: 'malformedDef',
         what: 'RubatoDef',
       });
@@ -87,7 +89,7 @@ describe('RubatoDef', () => {
       const foreign = new Element('somethingElse', Mpm.MPM_NAMESPACE);
       foreign.addAttribute(new Attribute('name', 'r'));
       foreign.addAttribute(new Attribute('frameLength', '720'));
-      const rd = okValue(RubatoDef.createRubatoDef(foreign));
+      const rd = okValue(RubatoDef.fromXml(foreign));
       expect(rd.getName()).toBe('r');
       expect(rd.getFrameLength()).toBe(720.0);
     });
@@ -102,7 +104,7 @@ describe('RubatoDef', () => {
         lateStart: '0.2',
         earlyEnd: '0.7',
       });
-      const rd = okValue(RubatoDef.createRubatoDef(xml));
+      const rd = okValue(RubatoDef.fromXml(xml));
       expect(rd.getXml()).toBe(xml);
       expect(rd.getName()).toBe('other');
       expect(rd.getFrameLength()).toBe(360.0);
@@ -135,7 +137,7 @@ describe('RubatoDef', () => {
       // (the class header calls this out). The nodes the setters write through have to be
       // those same three, or a later set would silently update nothing in the document.
       const xml = rubatoDefElement({ name: 'plain', frameLength: '360' });
-      const rd = okValue(RubatoDef.createRubatoDef(xml));
+      const rd = okValue(RubatoDef.fromXml(xml));
       expect(xml.getAttributeCount()).toBe(5);
 
       rd.setIntensity(2.5);
@@ -150,14 +152,14 @@ describe('RubatoDef', () => {
   describe('intensity boundaries while parsing', () => {
     it('replaces an intensity of 0 by 0.01', () => {
       const xml = rubatoDefElement({ name: 'r', frameLength: '720', intensity: '0.0' });
-      const rd = okValue(RubatoDef.createRubatoDef(xml));
+      const rd = okValue(RubatoDef.fromXml(xml));
       expect(rd.getIntensity()).toBe(0.01);
       expect(xml.getAttributeValue('intensity')).toBe('0.01');
     });
 
     it('inverts a negative intensity', () => {
       const xml = rubatoDefElement({ name: 'r', frameLength: '720', intensity: '-2.5' });
-      const rd = okValue(RubatoDef.createRubatoDef(xml));
+      const rd = okValue(RubatoDef.fromXml(xml));
       expect(rd.getIntensity()).toBe(2.5);
       expect(xml.getAttributeValue('intensity')).toBe('2.5');
     });
@@ -171,7 +173,7 @@ describe('RubatoDef', () => {
         lateStart: '-0.3',
         earlyEnd: '0.8',
       });
-      const rd = okValue(RubatoDef.createRubatoDef(xml));
+      const rd = okValue(RubatoDef.fromXml(xml));
       expect(rd.getLateStart()).toBe(0.0);
       expect(rd.getEarlyEnd()).toBe(0.8);
       expect(xml.getAttributeValue('lateStart')).toBe('0');
@@ -184,7 +186,7 @@ describe('RubatoDef', () => {
         lateStart: '0.2',
         earlyEnd: '1.5',
       });
-      const rd = okValue(RubatoDef.createRubatoDef(xml));
+      const rd = okValue(RubatoDef.fromXml(xml));
       expect(rd.getLateStart()).toBe(0.2);
       expect(rd.getEarlyEnd()).toBe(1.0);
       expect(xml.getAttributeValue('earlyEnd')).toBe('1');
@@ -197,13 +199,15 @@ describe('RubatoDef', () => {
         lateStart: '0.9',
         earlyEnd: '0.4',
       });
-      const rd = okValue(RubatoDef.createRubatoDef(xml));
+      const rd = okValue(RubatoDef.fromXml(xml));
       expect(rd.getLateStart()).toBe(0.0);
       expect(rd.getEarlyEnd()).toBe(1.0);
     });
 
     it('resets both when lateStart equals earlyEnd', () => {
-      const rd = okValue(RubatoDef.createRubatoDef('r', 720.0, 1.0, 0.5, 0.5));
+      const rd = okValue(
+        RubatoDef.fromName('r', 720.0, { intensity: 1.0, lateStart: 0.5, earlyEnd: 0.5 }),
+      );
       expect(rd.getLateStart()).toBe(0.0);
       expect(rd.getEarlyEnd()).toBe(1.0);
     });
@@ -211,14 +215,14 @@ describe('RubatoDef', () => {
 
   describe('setFrameLength', () => {
     it('stores the value in the field and the xml', () => {
-      const rd = okValue(RubatoDef.createRubatoDef('r', 720.0));
+      const rd = okValue(RubatoDef.fromName('r', 720.0));
       rd.setFrameLength(480.0);
       expect(rd.getFrameLength()).toBe(480.0);
       expect(rd.getXml()!.getAttributeValue('frameLength')).toBe('480');
     });
 
     it('clamps a negative frameLength to 0', () => {
-      const rd = okValue(RubatoDef.createRubatoDef('r', 720.0));
+      const rd = okValue(RubatoDef.fromName('r', 720.0));
       rd.setFrameLength(-100.0);
       expect(rd.getFrameLength()).toBe(0.0);
       expect(rd.getXml()!.getAttributeValue('frameLength')).toBe('0');
@@ -227,14 +231,14 @@ describe('RubatoDef', () => {
 
   describe('setIntensity', () => {
     it('stores a valid intensity', () => {
-      const rd = okValue(RubatoDef.createRubatoDef('r', 720.0));
+      const rd = okValue(RubatoDef.fromName('r', 720.0));
       rd.setIntensity(3.0);
       expect(rd.getIntensity()).toBe(3.0);
       expect(rd.getXml()!.getAttributeValue('intensity')).toBe('3');
     });
 
     it('applies the same boundary rules as the parser', () => {
-      const rd = okValue(RubatoDef.createRubatoDef('r', 720.0));
+      const rd = okValue(RubatoDef.fromName('r', 720.0));
       rd.setIntensity(0.0);
       expect(rd.getIntensity()).toBe(0.01);
       rd.setIntensity(-4.0);
@@ -244,21 +248,23 @@ describe('RubatoDef', () => {
 
   describe('setLateStart', () => {
     it('stores a lateStart that is before earlyEnd', () => {
-      const rd = okValue(RubatoDef.createRubatoDef('r', 720.0));
+      const rd = okValue(RubatoDef.fromName('r', 720.0));
       rd.setLateStart(0.25);
       expect(rd.getLateStart()).toBe(0.25);
       expect(rd.getXml()!.getAttributeValue('lateStart')).toBe('0.25');
     });
 
     it('refuses a lateStart at or beyond earlyEnd and leaves the value untouched', () => {
-      const rd = okValue(RubatoDef.createRubatoDef('r', 720.0, 1.0, 0.1, 0.6));
+      const rd = okValue(
+        RubatoDef.fromName('r', 720.0, { intensity: 1.0, lateStart: 0.1, earlyEnd: 0.6 }),
+      );
       rd.setLateStart(0.6);
       expect(rd.getLateStart()).toBe(0.1);
       expect(rd.getXml()!.getAttributeValue('lateStart')).toBe('0.1');
     });
 
     it('lifts a negative lateStart to 0', () => {
-      const rd = okValue(RubatoDef.createRubatoDef('r', 720.0));
+      const rd = okValue(RubatoDef.fromName('r', 720.0));
       rd.setLateStart(-0.5);
       expect(rd.getLateStart()).toBe(0.0);
     });
@@ -266,20 +272,24 @@ describe('RubatoDef', () => {
 
   describe('setEarlyEnd', () => {
     it('stores an earlyEnd that is after lateStart', () => {
-      const rd = okValue(RubatoDef.createRubatoDef('r', 720.0));
+      const rd = okValue(RubatoDef.fromName('r', 720.0));
       rd.setEarlyEnd(0.75);
       expect(rd.getEarlyEnd()).toBe(0.75);
       expect(rd.getXml()!.getAttributeValue('earlyEnd')).toBe('0.75');
     });
 
     it('refuses an earlyEnd at or below lateStart and leaves the value untouched', () => {
-      const rd = okValue(RubatoDef.createRubatoDef('r', 720.0, 1.0, 0.4, 0.9));
+      const rd = okValue(
+        RubatoDef.fromName('r', 720.0, { intensity: 1.0, lateStart: 0.4, earlyEnd: 0.9 }),
+      );
       rd.setEarlyEnd(0.4);
       expect(rd.getEarlyEnd()).toBe(0.9);
     });
 
     it('caps an earlyEnd above 1 at 1', () => {
-      const rd = okValue(RubatoDef.createRubatoDef('r', 720.0, 1.0, 0.0, 0.5));
+      const rd = okValue(
+        RubatoDef.fromName('r', 720.0, { intensity: 1.0, lateStart: 0.0, earlyEnd: 0.5 }),
+      );
       rd.setEarlyEnd(2.0);
       expect(rd.getEarlyEnd()).toBe(1.0);
     });
@@ -287,7 +297,7 @@ describe('RubatoDef', () => {
 
   describe('setLateStartAndEarlyEnd', () => {
     it('sets both values at once', () => {
-      const rd = okValue(RubatoDef.createRubatoDef('r', 720.0));
+      const rd = okValue(RubatoDef.fromName('r', 720.0));
       rd.setLateStartAndEarlyEnd(0.2, 0.8);
       expect(rd.getLateStart()).toBe(0.2);
       expect(rd.getEarlyEnd()).toBe(0.8);
@@ -298,21 +308,25 @@ describe('RubatoDef', () => {
     it('accepts a swap that setLateStart alone would reject', () => {
       // 0.7 is beyond the current earlyEnd of 0.5, which setLateStart would refuse,
       // but the combined setter validates the new pair as a whole.
-      const rd = okValue(RubatoDef.createRubatoDef('r', 720.0, 1.0, 0.1, 0.5));
+      const rd = okValue(
+        RubatoDef.fromName('r', 720.0, { intensity: 1.0, lateStart: 0.1, earlyEnd: 0.5 }),
+      );
       rd.setLateStartAndEarlyEnd(0.7, 0.95);
       expect(rd.getLateStart()).toBe(0.7);
       expect(rd.getEarlyEnd()).toBe(0.95);
     });
 
     it('falls back to 0 and 1 for an inconsistent pair', () => {
-      const rd = okValue(RubatoDef.createRubatoDef('r', 720.0, 1.0, 0.2, 0.8));
+      const rd = okValue(
+        RubatoDef.fromName('r', 720.0, { intensity: 1.0, lateStart: 0.2, earlyEnd: 0.8 }),
+      );
       rd.setLateStartAndEarlyEnd(0.9, 0.3);
       expect(rd.getLateStart()).toBe(0.0);
       expect(rd.getEarlyEnd()).toBe(1.0);
     });
 
     it('clamps each value independently before comparing them', () => {
-      const rd = okValue(RubatoDef.createRubatoDef('r', 720.0));
+      const rd = okValue(RubatoDef.fromName('r', 720.0));
       rd.setLateStartAndEarlyEnd(-0.5, 3.0);
       expect(rd.getLateStart()).toBe(0.0);
       expect(rd.getEarlyEnd()).toBe(1.0);
@@ -321,7 +335,7 @@ describe('RubatoDef', () => {
 
   describe('id handling', () => {
     it('round-trips an id', () => {
-      const rd = okValue(RubatoDef.createRubatoDef('r', 720.0));
+      const rd = okValue(RubatoDef.fromName('r', 720.0));
       expect(rd.getId()).toBeNull();
       rd.setId('rub-7');
       expect(rd.getId()).toBe('rub-7');
@@ -344,7 +358,7 @@ describe('RubatoDef', () => {
           earlyEnd: '1.0',
         };
         attributes[attributeName] = 'abc';
-        expect(errOf(RubatoDef.createRubatoDef(rubatoDefElement(attributes)))).toMatchObject({
+        expect(errOf(RubatoDef.fromXml(rubatoDefElement(attributes)))).toMatchObject({
           kind: 'malformedDef',
           what: 'RubatoDef',
         });
@@ -353,7 +367,7 @@ describe('RubatoDef', () => {
 
     it('rejects a value parseFloat would have silently truncated', () => {
       expect(
-        errOf(RubatoDef.createRubatoDef(rubatoDefElement({ name: 'x', frameLength: '360ticks' }))),
+        errOf(RubatoDef.fromXml(rubatoDefElement({ name: 'x', frameLength: '360ticks' }))),
       ).toMatchObject({
         kind: 'malformedDef',
         what: 'RubatoDef',
@@ -361,9 +375,7 @@ describe('RubatoDef', () => {
     });
 
     it('still parses a well-formed neighbour', () => {
-      const rd = okValue(
-        RubatoDef.createRubatoDef(rubatoDefElement({ name: 'x', frameLength: '360.0' })),
-      );
+      const rd = okValue(RubatoDef.fromXml(rubatoDefElement({ name: 'x', frameLength: '360.0' })));
       expect(rd.getFrameLength()).toBe(360.0);
     });
   });

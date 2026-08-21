@@ -24,8 +24,8 @@ import type { OrnamentNote } from './data/OrnamentNote.js';
 import type { PreparedOrnament } from './ornamentInstantiation.js';
 
 /**
- * Everything an MPM v3 `<ornament>` can say, for {@link OrnamentationMap.addOrnament}'s
- * options form (RULE F5's named-parameter shape, applied inside the library).
+ * Everything an MPM v3 `<ornament>` can say, for {@link OrnamentationMap.addOrnamentV3}
+ * (RULE F5's named-parameter shape, applied inside the library).
  *
  * Optional properties are `?:` and never `null` (RULE N1): absence is "the caller did not
  * supply this", and each has a documented default.
@@ -38,14 +38,15 @@ export interface AddOrnamentOptions {
   /**
    * Scaling factor of the def's dynamics gradient. Defaults to `0.0`, the spec's default
    * (`ornament.xml:36-44`), which means "no dynamics effect" — and is always written, see
-   * {@link OrnamentationMap.addOrnament}.
+   * {@link OrnamentationMap.addOrnamentV3}.
    */
   readonly scale?: number;
   /**
    * `note.order`. A string is written verbatim, which is how the v3 grammar (chords
    * `[ … ]`, repeat groups `|: … :|`) gets in — build it with `formatNoteOrder` from
-   * `noteOrder.ts`. An array is the v2 shape and is written exactly as the v2 overload
-   * writes it: `#`-prefixed ids, or a bare pitch keyword.
+   * `noteOrder.ts`. An array is the v2 shape and is written exactly as
+   * {@link OrnamentationMap.addOrnamentV2} writes it: `#`-prefixed ids, or a bare pitch
+   * keyword.
    */
   readonly noteOrder?: string | readonly string[];
   /** `noteid` — the principal note, written exactly as given (DESIGN.md D7). */
@@ -132,39 +133,20 @@ export class OrnamentationMap extends GenericMap {
   }
 
   /**
-   * Add an ornament entry, in v2 or in v3 form.
+   * Add an ornament entry in v2 form. BYTE-FROZEN against the Java fixtures — `date`,
+   * `name.ref`, `scale` (only when it differs from `1.0`), `note.order`, `xml:id` (only when
+   * non-empty), in that order.
    *
-   * The positional form is v2 and is BYTE-FROZEN — `date`, `name.ref`, `scale` (only when it
-   * differs from `1.0`), `note.order`, `xml:id` (only when non-empty), in that order. The
-   * options form is v3 (DESIGN.md D12) and is the only one that can write a note pool,
-   * `repetitions` or `noteid`; see {@link AddOrnamentOptions}.
+   * {@link addOrnamentV3} writes the other serialisation version. The two disagree on bytes
+   * by design — see there for the two deliberate differences — so which one a call wants is
+   * spelled at the call site.
    */
-  addOrnament(
+  addOrnamentV2(
     date: number,
     nameRef: string,
-    scale?: number,
-    noteOrder?: string[] | null,
-    id?: string | null,
-  ): number;
-  addOrnament(options: AddOrnamentOptions): number;
-  addOrnament(
-    dateOrOptions: number | AddOrnamentOptions,
-    nameRef = '',
     scale = 1.0,
     noteOrder: string[] | null = null,
     id: string | null = null,
-  ): number {
-    if (typeof dateOrOptions !== 'number') return this.addOrnamentV3(dateOrOptions);
-    return this.addOrnamentV2(dateOrOptions, nameRef, scale, noteOrder, id);
-  }
-
-  /** The v2 writer. Frozen against the Java fixtures. */
-  private addOrnamentV2(
-    date: number,
-    nameRef: string,
-    scale: number,
-    noteOrder: string[] | null,
-    id: string | null,
   ): number {
     const ornament = new Element('ornament', MPM_NAMESPACE);
     ornament.addAttribute(new Attribute('date', String(date)));
@@ -197,7 +179,7 @@ export class OrnamentationMap extends GenericMap {
    * byte-visible (CHARTER §79-80); no Java reference writes these attributes, so nothing
    * external binds the choice.
    */
-  private addOrnamentV3(options: AddOrnamentOptions): number {
+  addOrnamentV3(options: AddOrnamentOptions): number {
     const ornament = new Element('ornament', MPM_NAMESPACE);
     ornament.addAttribute(new Attribute('date', String(options.date)));
     ornament.addAttribute(new Attribute('name.ref', options.nameRef));
@@ -240,7 +222,7 @@ export class OrnamentationMap extends GenericMap {
     }
     const nameRef = data.ornamentDefName;
     if (data.notes.length > 0 || data.repetitions !== 0 || data.noteid !== null)
-      return this.addOrnament({
+      return this.addOrnamentV3({
         date: data.date,
         nameRef,
         scale: data.scale,
@@ -252,7 +234,7 @@ export class OrnamentationMap extends GenericMap {
         notes: data.notes,
         id: data.xmlId ?? undefined,
       });
-    return this.addOrnament(data.date, nameRef, data.scale, data.noteOrder, data.xmlId);
+    return this.addOrnamentV2(data.date, nameRef, data.scale, data.noteOrder, data.xmlId);
   }
 
   /**

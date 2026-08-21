@@ -8,7 +8,7 @@ import { Element, Attribute, Nodes } from '../xml/XomTypes.js';
  * A goto names its destination twice over: `target.date` is the date to jump to and `target.id`
  * references the `xml:id` of a `<marker>` in the markerMap. The reference is written MEI-style
  * with a leading `#`, which is stripped on the way in, and the marker element itself is
- * resolved eagerly in the constructor (see {@link target}). Either one suffices: with no
+ * resolved eagerly by {@link fromElement} (see {@link target}). Either one suffices: with no
  * `target.date` the date is read off the resolved marker instead, and a goto with neither is
  * rejected. The two can disagree — nothing checks that `target.date` equals the marker's own
  * `date`, and when both are present the attribute wins and the marker is never consulted.
@@ -32,61 +32,59 @@ export class Goto {
   public targetId = '';
   /** the marker element `targetId` resolves to, if it was found; never re-resolved */
   public target: Element | null = null;
-  /** the goto element this was read from; null when built from parameters */
+  /** the `<goto>` element handed to {@link fromValues}; {@link fromElement} leaves it null */
   public source: Element | null = null;
   /** per-pass on/off pattern of `1`/`0` characters; see the class comment */
   public activity = '1';
   /** how many passes have been consumed — the cursor into {@link activity} */
   public counter = 0;
 
+  /** Private so that {@link fromElement} and {@link fromValues} are the only ways in. */
+  private constructor() {
+    // Every field is initialised at its declaration above; the factories fill in the rest.
+  }
+
   /**
-   * Build from individual parameters; the element form is safer and more convenient.
+   * Build from a `<goto>` element; the safer and more convenient of the two factories.
+   * @throws when the element cannot describe a jump — see {@link initFromElement}.
+   */
+  static fromElement(gt: Element): Goto {
+    const g = new Goto();
+    g.initFromElement(gt);
+    return g;
+  }
+
+  /**
+   * Build from individual parameters; {@link fromElement} is safer and more convenient.
    *
    * Ported bug, do not "fix": the `#` stripping here is `substring(1, length - 1)`, which drops
-   * the last character as well as the first, where the element constructor gets it right with
+   * the last character as well as the first, where {@link fromElement} gets it right with
    * `substring(1, length)`. Java has exactly this asymmetry (`Goto.java:40` vs `Goto.java:57`).
    *
    * It is latent at the only production call site — `Mei2MsmMpmConverter.processEnding` passes
    * an `endingMarker_…` id, which never starts with `#`. The round trip is lossy in principle
    * all the same: {@link toElement} writes `target.id` with a leading `#`, so feeding that value
-   * back through this constructor loses a character where the element constructor would not.
+   * back through here loses a character where {@link fromElement} would not.
    */
-  constructor(
+  static fromValues(
     date: number,
     targetDate: number,
     targetId: string | null,
     activity: string,
     source: Element,
-  );
-  /** Build from a `<goto>` element. */
-  constructor(gt: Element);
-  constructor(
-    ...args:
-      | [gt: Element]
-      | [
-          date: number,
-          targetDate: number,
-          targetId: string | null,
-          activity: string,
-          source: Element,
-        ]
-  ) {
-    if (args.length === 1) {
-      this.initFromElement(args[0]);
-      return;
-    }
-
-    const [date, targetDate, targetId, activity, source] = args;
-    this.date = date;
-    this.source = source;
-    this.activity = activity;
-    this.targetDate = targetDate;
+  ): Goto {
+    const g = new Goto();
+    g.date = date;
+    g.source = source;
+    g.activity = activity;
+    g.targetDate = targetDate;
 
     if (targetId !== null) {
       let tid = targetId;
       if (tid.startsWith('#')) tid = tid.substring(1, tid.length - 1);
-      this.targetId = tid;
+      g.targetId = tid;
     }
+    return g;
   }
 
   /**
@@ -163,8 +161,8 @@ export class Goto {
   /**
    * The goto as a `<goto>` element. All four attributes are written unconditionally and in this
    * order — `date`, `activity`, `target.date`, `target.id` — which is the serialised attribute
-   * order. The `#` is put back on `target.id` here; see the parameter constructor for the
-   * asymmetric round trip.
+   * order. The `#` is put back on `target.id` here; see {@link fromValues} for the asymmetric
+   * round trip.
    */
   toElement(): Element {
     const gt = new Element('goto');

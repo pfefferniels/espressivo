@@ -61,15 +61,12 @@ export function orderedEntries(map: Element): readonly DatedEntry[] {
     if (element.getLocalName() === 'style' && attribute('name.ref', element) === null) continue;
 
     const date = parseFloat(dateAttribute.getValue());
-    // Linear from the end rather than a bisection, for the NaN reason in this module's doc: a
-    // bisection would split on a partition point that is false on both sides.
-    let index = 0;
-    for (let j = entries.length - 1; j >= 0; --j) {
-      if (date >= elementAt(entries, j, 'dated entry').date) {
-        index = j + 1;
-        break;
-      }
-    }
+    // Linear from the end rather than a bisection, and it must stay that way to agree with
+    // `GenericMap.insertionIndexFor`: `parseFloat` answers NaN for a malformed `@date`, NaN
+    // compares false against everything, so such an entry lands at 0 and every later one steps
+    // over it — where a bisection would split on a partition point false on both sides.
+    // `findLastIndex` is that backwards scan, its `-1` for no match mapping to 0 under the `+ 1`.
+    const index = entries.findLastIndex((entry) => date >= entry.date) + 1;
     entries.splice(index, 0, { element, date, documentIndex });
   }
   return entries;

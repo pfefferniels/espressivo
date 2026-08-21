@@ -32,22 +32,26 @@ export class XmlBase {
   protected isValidFlag = false;
 
   /**
-   * Empty, around an already-parsed {@link Document}, or around XML source. The string form
-   * is a separate overload because its second argument is what distinguishes it.
+   * Empty, around an already-parsed {@link Document}, or around XML source.
+   *
+   * Java marks the string form with a boolean flag (`XmlBase(String, boolean)`). There is none
+   * here: `Document` and `string` are disjoint, so `instanceof` tells the arms apart and a lone
+   * string parses.
+   *
+   * @param source the data as a XOM {@link Document}, or xml code as a UTF8 string, or
+   *   nothing for an empty instance
    */
-  constructor(document?: Document);
-  constructor(xml: string, isXmlString: true);
-  constructor(arg?: Document | string, isXmlString?: true) {
-    if (arg === undefined) {
+  constructor(source?: Document | string) {
+    if (source === undefined) {
       this.file = null;
       this.data = null;
       this.isValidFlag = false;
-    } else if (arg instanceof Document) {
+    } else if (source instanceof Document) {
       this.file = null;
-      this.data = arg;
+      this.data = source;
       this.isValidFlag = false;
-    } else if (typeof arg === 'string' && isXmlString) {
-      this.parseXmlString(arg);
+    } else {
+      this.parseXmlString(source);
     }
   }
 

@@ -48,7 +48,11 @@ export function head<T>(xs: NonEmptyArray<T>): T {
 }
 
 export function last<T>(xs: NonEmptyArray<T>): T {
-  return xs[xs.length - 1] as T;
+  // `at(-1)`, not `xs[xs.length - 1]`: the negative index IS "from the end", so there is no
+  // length arithmetic left to get wrong. The cast is unchanged and is the one the note above
+  // covers — `at` returns `T | undefined` for the same reason `[]` does, and `NonEmptyArray`
+  // is the proof it cannot be `undefined` here.
+  return xs.at(-1) as T;
 }
 
 /**
@@ -135,16 +139,24 @@ export function numberAt(
   return value;
 }
 
-/** The last element satisfying the predicate, or `null`. A backwards scan, named. */
+/**
+ * The last element satisfying the predicate, or `null`. A backwards scan, named.
+ *
+ * The scan is `Array.prototype.findLast` (ES2023) rather than the descending `for` loop this
+ * used to hold. That loop had to write `if (x !== undefined && predicate(x))` — a guard that
+ * `noUncheckedIndexedAccess` demanded and that could never fire, because `i` was bounded by
+ * `xs.length`. Handing the index back to the engine deletes the index, so it deletes the
+ * guard with it, and the element type no longer has to promise it is non-nullish to keep the
+ * two absences apart.
+ *
+ * What survives is the `?? null`: the platform reports a miss as `undefined` and this module
+ * reports it as `null`, which is the convention every option combinator here is built on.
+ */
 export function findLast<T extends NonNullable<unknown>>(
   xs: readonly T[],
   predicate: (x: T) => boolean,
 ): T | null {
-  for (let i = xs.length - 1; i >= 0; --i) {
-    const x = xs[i];
-    if (x !== undefined && predicate(x)) return x;
-  }
-  return null;
+  return xs.findLast(predicate) ?? null;
 }
 
 /** Remove and return `xs[index]`, or `null` where the index misses. Mutates. */
@@ -199,14 +211,17 @@ export function partitionWith<A>(
  * and a caller reading a group's first element needs no guard.
  */
 export function groupBy<A, K>(xs: Iterable<A>, key: (a: A) => K): ReadonlyMap<K, NonEmptyArray<A>> {
-  const out = new Map<K, A[]>();
-  for (const x of xs) {
-    const k = key(x);
-    const bucket = out.get(k);
-    if (bucket === undefined) out.set(k, [x]);
-    else bucket.push(x);
-  }
-  return out as unknown as ReadonlyMap<K, NonEmptyArray<A>>;
+  // `Map.groupBy` (ES2024) is this function, in the engine. Both orders documented above are
+  // its specified behaviour and not an accident of this implementation: it appends within a
+  // bucket and creates a bucket on first sight of the key, so encounter order holds inside a
+  // group and first-seen order holds across them. Keys are compared by SameValueZero, exactly
+  // as `Map.prototype.set` did in the loop this replaces, so a `NaN` key still buckets with
+  // itself and `0`/`-0` still collapse.
+  //
+  // The cast is the one the note at the top of this file describes, and it is now the only
+  // thing this function does: a bucket the engine creates is created as `[x]` and only ever
+  // grown, so it cannot be empty, and `NonEmptyArray` is how that reaches the call sites.
+  return Map.groupBy(xs, key) as unknown as ReadonlyMap<K, NonEmptyArray<A>>;
 }
 
 /** Left fold, so that a loop whose only job is to accumulate stops looking like control flow. */

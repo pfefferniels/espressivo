@@ -32,82 +32,94 @@ import { MissingNodeError } from './errors.js';
  */
 
 /**
- * Get the first child element of an xml element, optionally filtered by local name.
+ * The first child element of `ofThis` with local name `name`, or null.
  *
- * XOM's `getFirstChild(String)` sometimes doesn't seem to work even though an XPath query
- * finds something. For those situations this method can be used as a workaround.
+ * This function became necessary because the XOM methods sometimes do not seem to work for
+ * whatever reason.
  *
+ * This and {@link firstChildElementOf} were one overloaded name until the lean pass, told
+ * apart at runtime by `typeof arg1` — `(name, ofThis)` here, `(ofThis, localname?)` there.
+ * They are still TWO IMPLEMENTATIONS and are still not merged: this one walks
+ * `getChildElements()`, the other asks `getFirstChildElement()`, and they disagree on an
+ * empty name (see the note on {@link firstChildElementOf}). RULE M2a forbids merging two
+ * navigation implementations without a behavioural probe; splitting the overload into two
+ * names changes no behaviour at all, and `tests/xml/overloadArmDifferences.test.ts` is the
+ * probe that pins where the two answers part company.
+ *
+ * What the split buys, beyond one fewer overload: the two forms took their arguments in
+ * opposite orders under one name, so a transposed call type-checked and silently selected the
+ * other implementation. It is now a compile error.
+ *
+ * `ofThis` is nullable and the body guards it, which is the overload set's permissive
+ * IMPLEMENTATION signature promoted to the published one. The old narrow arms only ever hid
+ * a null the body already handled and three tests already pinned; saying so in the type is
+ * what {@link attribute} in this same file has always done, and it keeps the guard honest
+ * rather than making it a condition the linter can prove is dead.
+ *
+ * @param name the local name to match
+ * @param ofThis the parent to search, or null
+ * @return the first child element with the given name or null
+ */
+export function firstChildElement(name: string, ofThis: Element | null): Element | null {
+  if (ofThis == null) return null;
+
+  // `getChildElements()` and not `getFirstChildElement(name)`, which would be the same answer
+  // by the same comparison: RULE M2a forbids merging the two navigation implementations
+  // without a behavioural probe.
+  for (const child of ofThis.getChildElements()) {
+    if (child.getLocalName() === name) return child;
+  }
+  return null;
+}
+
+/**
+ * The first child element of `ofThis`, optionally filtered by local name.
+ *
+ * A workaround for XOM's `getFirstChild(String)`, which sometimes finds nothing where an XPath
+ * query does.
+ *
+ * The subject-first sibling of {@link firstChildElement}, and the only one of the two that can
+ * ask for the first child of ANY name, which is what the optional parameter is for. The two
+ * implementations stay apart under RULE M2a.
+ *
+ * @param ofThis the parent to search
  * @param localname restrict to the first child with this local name; omit for the first
  *   child element of any name
  * @return the first matching child element or null
  */
-export function firstChildElement(ofThis: Element, localname?: string): Element | null;
-/**
- * this function became necessary because the XOM methods sometimes do not seem to work for
- * whatever reason
- * @return the first child element with the given name or null
- */
-export function firstChildElement(name: string, ofThis: Element): Element | null;
-/**
- * The two named forms do not share an implementation: `(name, ofThis)` walks
- * `getChildElements()` directly, `(ofThis, localname)` asks `getFirstChildElement()`. They
- * agree on the result, except that the second returns null for an empty `localname` where the
- * first would search for a child literally named `''`. Do not collapse them: merging
- * navigation implementations is forbidden without a behavioural probe (ARCHITECTURE.md
- * RULE M2a, §9).
- */
-export function firstChildElement(
-  arg1: Element | string | null,
-  arg2?: Element | string | null,
-): Element | null {
-  if (arg1 == null) return null;
+export function firstChildElementOf(ofThis: Element | null, localname?: string): Element | null {
+  if (ofThis == null) return null;
 
-  if (typeof arg1 === 'string') {
-    const name = arg1;
-    const ofThis = arg2 as Element | null;
-    if (ofThis == null) return null;
-
-    // `getChildElements()` and not `getFirstChildElement(name)`, which would be the same
-    // answer by the same comparison: RULE M2a forbids merging the two implementations.
-    for (const child of ofThis.getChildElements()) {
-      if (child.getLocalName() === name) return child;
-    }
-    return null;
-  } else {
-    const ofThis = arg1;
-    if (arg2 === undefined || arg2 === null) {
-      const es = ofThis.getChildElements();
-      if (es.size() === 0) return null;
-      return es.get(0);
-    } else {
-      const localname = arg2 as string;
-      // The empty name answers null here, where the walking form above would look for a
-      // child literally named `''`.
-      if (localname === '') return null;
-      return ofThis.getFirstChildElement(localname);
-    }
+  // `== null` and not `=== undefined`: an untyped caller passing an explicit null is asking
+  // for the first child of any name.
+  if (localname == null) {
+    const es = ofThis.getChildElements();
+    if (es.size() === 0) return null;
+    return es.get(0);
   }
+
+  // An empty localname answers null here, where {@link firstChildElement} would search for a
+  // child literally named `''`. That is the only case in which the two disagree.
+  if (localname === '') return null;
+  return ofThis.getFirstChildElement(localname);
 }
 
 /**
- * The throwing sibling of {@link firstChildElement} (ARCHITECTURE.md RULE N2a): same lookup,
- * but a missing child is a {@link MissingNodeError} instead of a `null` the caller has to
- * assert away with `!`.
+ * The throwing sibling of {@link firstChildElementOf} (ARCHITECTURE.md RULE N2a): the same
+ * lookup, but a missing child is a {@link MissingNodeError} rather than a `null` the caller
+ * has to assert away with `!`. It delegates to that form, so an empty `localname` reaches the
+ * error rather than searching.
  *
  * Use it only where the child's presence is guaranteed by the local code — an assignment
- * earlier in the same function, or the shape of a document this port itself built. On a
- * path where absence is possible, keep {@link firstChildElement} and handle the null.
+ * earlier in the same function, or the shape of a document this port itself built. Where
+ * absence is possible, use {@link firstChildElementOf} and handle the null.
+ *
  * @param localname restrict to the first child with this local name; omit for the first
  *   child element of any name
  */
-export function requireFirstChildElement(ofThis: Element, localname?: string): Element;
-export function requireFirstChildElement(name: string, ofThis: Element): Element;
-export function requireFirstChildElement(arg1: Element | string, arg2?: Element | string): Element {
-  const found = firstChildElement(arg1 as Element, arg2 as string);
-  if (found === null) {
-    const name = typeof arg1 === 'string' ? arg1 : typeof arg2 === 'string' ? arg2 : '*';
-    throw new MissingNodeError(`no child element '${name}' found`);
-  }
+export function requireFirstChildElement(ofThis: Element, localname?: string): Element {
+  const found = firstChildElementOf(ofThis, localname);
+  if (found === null) throw new MissingNodeError(`no child element '${localname ?? '*'}' found`);
   return found;
 }
 
@@ -273,103 +285,126 @@ export function getAllDescendantsWithAttribute(
   return children;
 }
 
-/** get the next sibling element of ofThis irrespective of its name */
-export function getNextSiblingElement(ofThis: Element): Element | null;
-/** get the next sibling element of ofThis with the given name */
-export function getNextSiblingElement(name: string, ofThis: Element): Element | null;
 /**
- * The named form returns the *nearest following* sibling element with that name, and null
- * when there is none — including when `ofThis` is not among its own parent's children at
- * all, which is how the text-node-adjacent cases resolve.
+ * The *nearest following* sibling element of `ofThis` with that name, and null when there is
+ * none — including when `ofThis` is not among its own parent's children at all, which is how
+ * the text-node-adjacent cases resolve.
  *
- * The unnamed form is a plain index step and therefore returns null when the immediate
- * next node is a text node, rather than skipping over it. The two forms are thus not
- * "the same thing with a filter": only the named one skips non-elements.
+ * Not {@link immediateNextSiblingElement} with a name filter applied: this one scans forward
+ * over every node, stepping over text nodes and differently-named elements, where the
+ * immediate form takes a single index step and stops at whatever it finds.
+ * `tests/xml/overloadArmDifferences.test.ts` pins both differences.
+ *
+ * @param name the local name to match
+ * @param ofThis the element to start from
+ * @return the nearest following sibling element with that name, or null
  */
-export function getNextSiblingElement(
-  arg1: Element | string | null,
-  arg2?: Element | null,
-): Element | null {
-  if (arg1 == null) return null;
+export function getNextSiblingElement(name: string, ofThis: Element | null): Element | null {
+  if (ofThis == null) return null;
 
-  if (typeof arg1 === 'string') {
-    const name = arg1;
-    const ofThis = arg2 as Element | null;
-    if (ofThis == null) return null;
+  const parent = ofThis.getParent();
+  if (parent == null) return null;
 
-    const parent = ofThis.getParent();
-    if (parent == null) return null;
+  // Forward scan from `ofThis`'s own position. Identical result to the backward
+  // "remember the last candidate" walk this replaces — both name the *nearest
+  // following* element sibling with that name, and both yield null when `ofThis` is
+  // not in the list at all (there, `indexOf` returns -1 and the loop never starts).
+  // The difference is cost: the backward form materialised the whole child-element
+  // list and walked it end-to-front on every step, so a `for (n = first; n; n =
+  // getNextSiblingElement(name, n))` traversal of a score was quadratic in its length.
+  const index = parent.indexOf(ofThis);
+  if (index < 0) return null;
 
-    // Forward scan from `ofThis`'s own position: `indexOf` returns -1 when `ofThis` is not
-    // among its parent's children at all, and the loop then never starts.
-    const index = parent.indexOf(ofThis);
-    if (index < 0) return null;
-
-    const count = parent.getChildCount();
-    for (let i = index + 1; i < count; ++i) {
-      const sibling = parent.getChild(i);
-      if (sibling instanceof Element && sibling.getLocalName() === name) return sibling;
-    }
-
-    return null;
-  } else {
-    const ofThis = arg1;
-    const parent = ofThis.getParent();
-    if (parent == null) return null;
-
-    const index = parent.indexOf(ofThis);
-    if (index >= parent.getChildCount() - 1) return null;
-
-    const nextChild = parent.getChild(index + 1);
-    if (nextChild instanceof Element) {
-      return nextChild;
-    }
-    return null;
+  const count = parent.getChildCount();
+  for (let i = index + 1; i < count; ++i) {
+    const sibling = parent.getChild(i);
+    if (sibling instanceof Element && sibling.getLocalName() === name) return sibling;
   }
+
+  return null;
 }
 
-/** get the previous sibling element of ofThis irrespective of its name */
-export function getPreviousSiblingElement(ofThis: Element): Element | null;
-/** get the previous sibling element of ofThis with a specific name */
-export function getPreviousSiblingElement(name: string, ofThis: Element): Element | null;
-/** the mirror image of {@link getNextSiblingElement}: the nearest *preceding* match */
-export function getPreviousSiblingElement(
-  arg1: Element | string | null,
-  arg2?: Element | null,
-): Element | null {
-  if (arg1 == null) return null;
+/**
+ * The sibling element immediately after `ofThis`, irrespective of its name, or null.
+ *
+ * A plain index step: null when the immediately next node is a text node rather than skipping
+ * over it, and whatever element is adjacent rather than one of a given name.
+ * {@link getNextSiblingElement} is the named scan.
+ *
+ * @param ofThis the element to step from
+ * @return the immediately following sibling if it is an element, else null
+ */
+export function immediateNextSiblingElement(ofThis: Element | null): Element | null {
+  if (ofThis == null) return null;
 
-  if (typeof arg1 === 'string') {
-    const name = arg1;
-    const ofThis = arg2 as Element | null;
-    if (ofThis == null) return null;
+  const parent = ofThis.getParent();
+  if (parent == null) return null;
 
-    const parent = ofThis.getParent();
-    if (parent == null) return null;
+  const index = parent.indexOf(ofThis);
+  if (index >= parent.getChildCount() - 1) return null;
 
-    const index = parent.indexOf(ofThis);
-    if (index < 0) return null;
-
-    for (let i = index - 1; i >= 0; --i) {
-      const sibling = parent.getChild(i);
-      if (sibling instanceof Element && sibling.getLocalName() === name) return sibling;
-    }
-
-    return null;
-  } else {
-    const ofThis = arg1;
-    const parent = ofThis.getParent();
-    if (parent == null) return null;
-
-    const index = parent.indexOf(ofThis);
-    if (index === 0) return null;
-
-    const prevChild = parent.getChild(index - 1);
-    if (prevChild instanceof Element) {
-      return prevChild;
-    }
-    return null;
+  const nextChild = parent.getChild(index + 1);
+  if (nextChild instanceof Element) {
+    return nextChild;
   }
+  return null;
+}
+
+/**
+ * The mirror image of {@link getNextSiblingElement}: the nearest *preceding* sibling element
+ * of `ofThis` with that name, or null.
+ *
+ * Distinct from {@link immediatePreviousSiblingElement} in the same way
+ * {@link getNextSiblingElement} is from its immediate form: only this one steps over text
+ * nodes and differently-named elements.
+ *
+ * @param name the local name to match
+ * @param ofThis the element to start from
+ * @return the nearest preceding sibling element with that name, or null
+ */
+export function getPreviousSiblingElement(name: string, ofThis: Element | null): Element | null {
+  if (ofThis == null) return null;
+
+  const parent = ofThis.getParent();
+  if (parent == null) return null;
+
+  // The mirror of the forward scan in {@link getNextSiblingElement}, and equivalent to
+  // the front-to-back "last match wins" walk it replaces, for the same reasons.
+  const index = parent.indexOf(ofThis);
+  if (index < 0) return null;
+
+  for (let i = index - 1; i >= 0; --i) {
+    const sibling = parent.getChild(i);
+    if (sibling instanceof Element && sibling.getLocalName() === name) return sibling;
+  }
+
+  return null;
+}
+
+/**
+ * The sibling element immediately before `ofThis`, irrespective of its name, or null.
+ *
+ * The mirror of {@link immediateNextSiblingElement}, and a plain index step in the same way:
+ * null when the immediately preceding node is a text node, and whatever element is adjacent
+ * otherwise.
+ *
+ * @param ofThis the element to step from
+ * @return the immediately preceding sibling if it is an element, else null
+ */
+export function immediatePreviousSiblingElement(ofThis: Element | null): Element | null {
+  if (ofThis == null) return null;
+
+  const parent = ofThis.getParent();
+  if (parent == null) return null;
+
+  const index = parent.indexOf(ofThis);
+  if (index === 0) return null;
+
+  const prevChild = parent.getChild(index - 1);
+  if (prevChild instanceof Element) {
+    return prevChild;
+  }
+  return null;
 }
 
 /**

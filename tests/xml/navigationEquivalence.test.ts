@@ -25,7 +25,7 @@ import { Element, Attribute, type XomNode } from '../../src/xml/XomTypes.js';
 import {
   allChildElements,
   descendantElements,
-  firstChildElement,
+  firstChildElementOf,
   getNextSiblingElement,
   getPreviousSiblingElement,
   reverseDescendantElements,
@@ -314,7 +314,7 @@ describe('the child-axis helpers agree with the XPath they replaced', () => {
         for (const localName of new Set(allChildElements(element).map((e) => e.getLocalName()))) {
           const viaXpath = element.query(`child::*[local-name()='${localName}']`);
           const expected = viaXpath.size() === 0 ? null : (viaXpath.get(0) as Element);
-          expect(firstChildElement(element, localName) === expected).toBe(true);
+          expect(firstChildElementOf(element, localName) === expected).toBe(true);
         }
       }
     }
@@ -323,7 +323,7 @@ describe('the child-axis helpers agree with the XPath they replaced', () => {
   it('still returns null for an empty localname, as the query form did', () => {
     const parent = new Element('dated');
     parent.appendChild(new Element(''));
-    expect(firstChildElement(parent, '')).toBeNull();
+    expect(firstChildElementOf(parent, '')).toBeNull();
   });
 });
 
@@ -595,7 +595,7 @@ describe('the rewritten primitives are linear in the size of the document', () =
     const ratio = bestGrowthRatio(
       () =>
         growth((score) => {
-          let note = firstChildElement(score, 'note');
+          let note = firstChildElementOf(score, 'note');
           let seen = 0;
           while (note !== null) {
             seen++;

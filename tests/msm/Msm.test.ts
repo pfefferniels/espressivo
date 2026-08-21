@@ -765,7 +765,7 @@ describe('Msm', () => {
 
     it('should suppress program changes when asked to', () => {
       const seq = msmWithNotes(720, [[0, 720, 60]])
-        .exportMidi(false)!
+        .exportMidi(undefined, false)!
         .getSequence();
       expect(shortMessages(seq, PROGRAM_CHANGE).length).toBe(0);
     });

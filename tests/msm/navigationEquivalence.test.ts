@@ -33,6 +33,7 @@ import {
   firstChildElement,
   getAttributeValue,
   getNextSiblingElement,
+  immediateNextSiblingElement,
 } from '../../src/xml/tree.js';
 import { addUUID } from '../../src/xml/ids.js';
 import { getFilenameWithoutExtension as musicGetFilenameWithoutExtension } from '../../src/music/text.js';
@@ -493,7 +494,7 @@ describe('Msm.getNextSiblingElement is xml/tree.getNextSiblingElement', () => {
   it('agrees for every element in the corpus, unnamed form', () => {
     const mismatches: string[] = [];
     for (const element of corpus) {
-      if (getNextSiblingElement(element) !== msmGetNextSiblingElement(element))
+      if (immediateNextSiblingElement(element) !== msmGetNextSiblingElement(element))
         mismatches.push(`after <${element.getLocalName()}>`);
     }
     expectAgreement(mismatches);
@@ -514,7 +515,7 @@ describe('Msm.getNextSiblingElement is xml/tree.getNextSiblingElement', () => {
     const mismatches: string[] = [];
     for (const { what, root } of adversarialTrees()) {
       for (const element of everyElement(root)) {
-        if (getNextSiblingElement(element) !== msmGetNextSiblingElement(element))
+        if (immediateNextSiblingElement(element) !== msmGetNextSiblingElement(element))
           mismatches.push(`${what}: unnamed`);
         for (const name of ELEMENT_NAMES) {
           if (getNextSiblingElement(name, element) !== msmGetNextSiblingElement(name, element))
@@ -530,7 +531,7 @@ describe('Msm.getNextSiblingElement is xml/tree.getNextSiblingElement', () => {
     const score = textBetween!.root;
     const firstNote = score.getChild(0) as Element;
     expect(msmGetNextSiblingElement(firstNote)).toBeNull();
-    expect(getNextSiblingElement(firstNote)).toBeNull();
+    expect(immediateNextSiblingElement(firstNote)).toBeNull();
     expect(msmGetNextSiblingElement('rest', firstNote)?.getLocalName()).toBe('rest');
     expect(getNextSiblingElement('rest', firstNote)?.getLocalName()).toBe('rest');
   });

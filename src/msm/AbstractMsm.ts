@@ -1,4 +1,4 @@
-import { Element, Attribute, Elements, Document } from '../xml/XomTypes.js';
+import { Element, Attribute, Elements } from '../xml/XomTypes.js';
 import { XmlBase } from '../xml/XmlBase.js';
 import { descendantElements, requireParentElement } from '../xml/tree.js';
 
@@ -16,20 +16,6 @@ import { descendantElements, requireParentElement } from '../xml/tree.js';
  * @author Axel Berndt.
  */
 export abstract class AbstractMsm extends XmlBase {
-  /**
-   * @param source the data as a XOM {@link Document}, or xml code as a UTF8 string, or
-   *   nothing for an empty instance
-   */
-  constructor(source?: Document | string) {
-    if (source === undefined) {
-      super();
-    } else if (source instanceof Document) {
-      super(source);
-    } else {
-      super(source, true);
-    }
-  }
-
   /**
    * Build a raw `<part>` with its attributes and empty `<header>` and `<dated>` children. The
    * caller is responsible for putting it into a document; this does not.

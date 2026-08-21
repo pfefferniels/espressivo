@@ -29,9 +29,31 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE = join(ROOT, 'scripts/strict-baseline.json');
 const FLAGS = ['--noUncheckedIndexedAccess'];
 
-/** Errors per test directory, for one flag. */
+/**
+ * Errors per test directory, for one flag.
+ *
+ * **The guard below is the load-bearing part of this function.** The counts come from
+ * scraping the compiler's stderr with a regex, and the whole ratchet rests on that regex
+ * matching. If it ever stops matching — a compiler that prefixes paths differently, emits
+ * colour codes, or changes the literal `error TS` token — every directory reports zero and
+ * `--check` passes trivially. That failure does not crash and does not warn: it reads
+ * exactly like a clean sweep, and a `--save` in that state bakes an all-zero baseline in,
+ * after which every genuine finding looks like a regression.
+ *
+ * So: a non-zero exit with no parsed lines is a parser failure, not a clean tree, and it
+ * throws. `tsc` exiting non-zero means it had something to say; if we understood none of it,
+ * we do not get to report a number.
+ *
+ * This was checked rather than assumed when `npx tsc` became TypeScript 7 (the native Go
+ * compiler): TS 7.0.2 and TS 6.0.3 produce byte-identical diagnostic formatting AND an
+ * identical finding set here — 397 findings under `--noUncheckedIndexedAccess`, same files,
+ * same positions, same codes — so the baseline stayed comparable across the switch and did
+ * not need re-saving. The guard exists for the next compiler change, which will not
+ * necessarily be as kind.
+ */
 function measure(flag) {
   let out = '';
+  let failed = false;
   try {
     execSync(`npx tsc -p tsconfig.tests.json --noEmit ${flag}`, {
       cwd: ROOT,
@@ -39,14 +61,25 @@ function measure(flag) {
       stdio: 'pipe',
     });
   } catch (e) {
+    failed = true;
     out = `${e.stdout ?? ''}${e.stderr ?? ''}`;
   }
   const counts = {};
+  let parsed = 0;
   for (const line of out.split('\n')) {
     const m = /^(tests\/.*)\([0-9]+,[0-9]+\): error TS/.exec(line);
     if (m === null) continue;
+    parsed++;
     const dir = m[1].slice(0, m[1].lastIndexOf('/'));
     counts[dir] = (counts[dir] ?? 0) + 1;
+  }
+  if (failed && parsed === 0) {
+    throw new Error(
+      `strict-ratchet: \`tsc ${flag}\` failed but produced no diagnostic this script could ` +
+        `parse, so its findings cannot be counted. Reporting zero here would read as a clean ` +
+        `sweep, which is why this throws instead. First 400 characters of the output:\n` +
+        out.slice(0, 400),
+    );
   }
   return counts;
 }

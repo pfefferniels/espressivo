@@ -241,7 +241,7 @@ export function gaussianLaw(
 
 /** The empirical law of `values`; null for an empty list, which the renderer cannot draw. */
 export function listLaw(values: readonly number[]): DeltaLaw | ListLaw | null {
-  const sorted = [...values].sort((a, b) => a - b);
+  const sorted = values.toSorted((a, b) => a - b);
   if (!isNonEmpty(sorted)) return null;
   const lo = head(sorted);
   const hi = last(sorted);
