@@ -988,21 +988,23 @@ No `.msm` reference moved, because no fixture's asynchrony instruction has an id
 replaced: those two are nondeterministic in Java itself, so a diff there is expected and carries no
 information.
 
-**The same misspelling survives at two upstream sites** — `ArticulationMap.java:293` and
-`OrnamentationMap.java:200` — where `ArticulationData.xmlId` and `OrnamentData.xmlId` are never
-populated. Those are Axel Berndt's code, and both fields are written back out as `xml:id`
-attributes on generated elements, so repairing them moves far more output than these two did. Left
-alone; it belongs upstream and needs its own regeneration.
+**The same misspelling survives at `ArticulationMap.java:293`** — `ArticulationData.xmlId` is
+never populated, because `ArticulationMap.ts`'s read (`attribute('xml:id', e)`) faithfully
+reproduces the same three-namespace miss. That's Axel Berndt's code, and the field is written
+back out as an `xml:id` attribute on generated elements, so repairing it moves far more output
+than the two `68ccd3b8` sites did. Left alone; it belongs upstream and needs its own
+regeneration. Tracked as #14.
+
+`OrnamentationMap.java:200` has the identical misspelling upstream, but the port does not
+reproduce it: `OrnamentationMap.ts`'s two `OrnamentData.xmlId` reads both ask `attribute('id',
+xml)`, not `'xml:id'`, and so resolve correctly through `attribute()`'s third lookup (pinned by
+`tests/mpm/elements/OrnamentationMap.test.ts`, "should parse the xml:id from XML"). That's a
+deliberate divergence from the Java fork, predating #14 — MPM v3's `ornament.ref` /
+`ornament.anchor` provenance depends on reading a real id — not an unfixed carryover.
 
 **The lesson worth keeping.** The byte gate compares against a fork, and a fork can be wrong. Where
 a divergence sits on a feature the fork _added_, "Java does X" is not an argument — it is the thing
 to check.
-
-### `TempoData.clone` omits `startDateMilliseconds`
-
-Java's `TempoData.clone()` omits it too. It is scratch space that `TempoMap.renderTempoToMap`
-fills in per rendering pass, so a clone is expected to start out without it; copying it would
-diverge.
 
 ---
 
