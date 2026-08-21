@@ -8,6 +8,7 @@ import { type Result } from '../../../prelude/index.js';
 import { type MpmParseError } from '../parseError.js';
 import {
   resolveTempo,
+  tempoAt,
   type ConstantTempo,
   type Tempo,
   type TransitioningTempo,
@@ -165,14 +166,13 @@ export class TempoMap extends GenericMap {
    * The exponent is computed once, at read time: {@link resolveTempo} puts one on every
    * {@link TransitioningTempo} it builds, so it is not re-derived at each of Simpson's
    * sample points.
+   *
+   * The non-null arm is {@link tempoAt}, made public and pure so a reader outside this class
+   * can evaluate one already-resolved `Tempo` without a map to ask.
    */
   private static getTempoAtStatic(date: number, tempo: Tempo | null): number {
     if (tempo === null) return 100.0;
-    if (tempo.kind === 'constant') return tempo.bpm;
-    if (date === tempo.endDate) return tempo.transitionTo;
-    let result = (date - tempo.startDate) / (tempo.endDate - tempo.startDate);
-    result = Math.pow(result, tempo.exponent);
-    return result * (tempo.transitionTo - tempo.bpm) + tempo.bpm;
+    return tempoAt(tempo, date);
   }
 
   /**

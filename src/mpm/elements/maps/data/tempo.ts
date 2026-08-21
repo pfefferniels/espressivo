@@ -177,3 +177,18 @@ export function resolveTempo(
     exponent: computeExponent(meanTempoAt),
   };
 }
+
+/**
+ * The instantaneous tempo, in bpm, this instruction calls for at `date`.
+ *
+ * RENDERING MATH — do not reorder. Mirrors `TempoMap.getTempoAtStatic`'s non-null arm, which
+ * now delegates here; {@link dynamicsAt} in `./dynamics.js` is the sibling this makes
+ * symmetric, and reads the same way.
+ */
+export function tempoAt(tempo: Tempo, date: number): number {
+  if (tempo.kind === 'constant') return tempo.bpm;
+  if (date === tempo.endDate) return tempo.transitionTo;
+  let result = (date - tempo.startDate) / (tempo.endDate - tempo.startDate);
+  result = Math.pow(result, tempo.exponent);
+  return result * (tempo.transitionTo - tempo.bpm) + tempo.bpm;
+}

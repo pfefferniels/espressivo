@@ -8,6 +8,7 @@ paragraph on each of the things espressivo adds to meico. These are the long ver
 | [`ornamentation.md`](ornamentation.md)       | The MPM v3 ornamentation model: signs become sounding notes, the provenance every generated note carries, the two switches |
 | [`expression.md`](expression.md)             | `exaggerateMpm` / `spotlightMpm` — MPM in, MPM out; what `s` means, what is guaranteed, building a slider                  |
 | [`comparison.md`](comparison.md)             | `compareMpm` / `diffMpm` / `compareMpmCorpus` / scapes — the metric, the decomposition, the cookbook, and the three limits |
+| [`reading.md`](reading.md)                   | Reading an MPM as data — the object model, resolved instructions, charting one instruction's curve                         |
 | [`layers-to-staffs.md`](layers-to-staffs.md) | `Mei.layersToStaffs()` — one MSM part, channel and instrument per MEI layer                                                |
 | [`equivalence.md`](equivalence.md)           | How "produces what meico produces" is enforced, and the eight deliberate departures                                        |
 

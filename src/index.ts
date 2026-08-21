@@ -205,6 +205,181 @@ export { Goto } from './msm/Goto.js';
 // MPM
 export { Mpm } from './mpm/Mpm.js';
 
+// ---------------------------------------------------------------------------
+// The MPM object model — reading a performance as a document (docs/reading.md)
+// ---------------------------------------------------------------------------
+//
+// `Mpm` alone was not a usable reading API. Every navigation step off it —
+// `getPerformance(0)`, `getGlobal()`, `getDated()`, `getMapOfKind(TEMPO_MAP)` — answered a
+// type no consumer could name, so reading an MPM for display meant either deep-importing
+// past `dist/` or re-parsing the document with a second library. The methods were always
+// public; what follows makes their types nameable, which is the whole of the change.
+//
+// This is deliberately the object model and NOT a second plain-data facade. `src/api/**`
+// (RULE F1/F2) is where XML crosses as text and results are `structuredClone`-safe, and it
+// stays the entry point for converting, performing and rendering. A viewer that wants to
+// *draw the document it was given* needs the tree, the ids in it, and the numbers the
+// renderer resolves from it — three things a plain-data boundary would have to re-invent
+// one accessor at a time. So: the facade for pipelines, the object model for readers.
+//
+// Two cautions a reader should have before walking it. `new Mpm(text)` REPAIRS as it parses
+// — `GenericMap.parseData` ends in a `sortXml()`, `rubatoDef` gains attributes,
+// `accentuationPatternDef` gains `length="4"` — so the tree is not byte-faithful to the
+// input; `src/expression/mpmDocument.ts` documents the full list. And the resolved data
+// below is the RENDERER's arithmetic, which is not the same object as the ideal curves
+// `compareMpm` integrates (see `docs/comparison.md` §5.0).
+
+// The environments a performance is read through: `<performance>` → `<global>` / `<part>`,
+// each with its `<header>` of definitions and `<dated>` of instruction maps.
+export { Performance } from './mpm/elements/Performance.js';
+export { Global } from './mpm/elements/Global.js';
+export { Part } from './mpm/elements/Part.js';
+export { Header } from './mpm/elements/Header.js';
+export { Dated } from './mpm/elements/Dated.js';
+export { Metadata } from './mpm/elements/metadata/Metadata.js';
+
+// The instruction maps. `GenericMap` carries the whole read surface a viewer needs —
+// `getAllElements()`, `getElementByID(id)`, `getElementBeforeAt(date)`, `getStyleAt(date,
+// kind)`, `size()` — and the nine subclasses add the `get*DataOf(index)` accessor that
+// resolves one instruction into the records below.
+export { GenericMap } from './mpm/elements/maps/GenericMap.js';
+export { TempoMap, type AddTempoOptions } from './mpm/elements/maps/TempoMap.js';
+export { DynamicsMap, type AddDynamicsOptions } from './mpm/elements/maps/DynamicsMap.js';
+export {
+  ArticulationMap,
+  type AddArticulationOptions,
+} from './mpm/elements/maps/ArticulationMap.js';
+export { MovementMap, type AddMovementOptions } from './mpm/elements/maps/MovementMap.js';
+export { RubatoMap, type AddRubatoOptions } from './mpm/elements/maps/RubatoMap.js';
+export { OrnamentationMap, type AddOrnamentOptions } from './mpm/elements/maps/OrnamentationMap.js';
+export { MetricalAccentuationMap } from './mpm/elements/maps/MetricalAccentuationMap.js';
+export { AsynchronyMap } from './mpm/elements/maps/AsynchronyMap.js';
+export { ImprecisionMap, type DistributionSpan } from './mpm/elements/maps/ImprecisionMap.js';
+
+// `Dated.getMapOfKind(kind)` is typed through `MapOfKind`, so a caller needs the key type to
+// hold a kind in a variable. `mapOfKind` is the same narrowing applied to a map you already
+// hold — a checked test, not a cast; see its doc for why the two differ.
+export { MAP_KINDS, isMapKind, mapOfKind } from './mpm/elements/maps/map.js';
+export type { MapKind, MapOfKind } from './mpm/elements/maps/map.js';
+
+// The style collections a map resolves symbolic levels against: `volume="forte"` and
+// `bpm="Allegro"` are names looked up in a `<styleDef>`, local header first, global second.
+export {
+  Style,
+  styleOfKind,
+  styleKindOfCollection,
+  collectionNameOfKind,
+  numericBpmValue,
+  numericDynamicsValue,
+} from './mpm/elements/styles/style.js';
+export type {
+  StyleKind,
+  DefOfStyleKind,
+  AnyStyle,
+  StyleOfKind,
+  TempoStyle,
+  DynamicsStyle,
+  ArticulationStyle,
+  MetricalAccentuationStyle,
+  RubatoStyle,
+  OrnamentationStyle,
+} from './mpm/elements/styles/style.js';
+
+// The defs themselves. `AccentuationPatternDef.getLength()` is the one a metrical-accentuation
+// reader cannot do without: an `<accentuationPattern>`'s span is `length` bars, and the length
+// lives on the def its `@name.ref` points at, not on the instruction.
+export { TempoDef } from './mpm/elements/styles/defs/TempoDef.js';
+export { DynamicsDef } from './mpm/elements/styles/defs/DynamicsDef.js';
+export { ArticulationDef } from './mpm/elements/styles/defs/ArticulationDef.js';
+export { RubatoDef } from './mpm/elements/styles/defs/RubatoDef.js';
+export {
+  AccentuationPatternDef,
+  type AccentuationTuple,
+} from './mpm/elements/styles/defs/AccentuationPatternDef.js';
+export { OrnamentDef } from './mpm/elements/styles/defs/OrnamentDef.js';
+export { TemporalSpread } from './mpm/elements/styles/defs/TemporalSpread.js';
+export { DynamicsGradient } from './mpm/elements/styles/defs/DynamicsGradient.js';
+export { matchDef } from './mpm/elements/styles/defs/def.js';
+export type { Def, DefKind } from './mpm/elements/styles/defs/def.js';
+
+// One instruction, resolved the way the renderer resolves it: every style-relative name
+// already a number, every absent attribute already defaulted, spans already closed against
+// the next instruction of the same name (`Number.MAX_VALUE` where there is none). These are
+// `readonly` records of numbers and strings — no Element, no getters — so they cross a
+// worker boundary unchanged even though they are not part of the `src/api/**` facade.
+//
+// `tempoAt` / `dynamicsAt` / `positionAt` evaluate one such record at a date. They are the
+// renderer's own arithmetic, shared with it rather than reimplemented beside it, and they
+// carry its RENDERING MATH ordering constraints — do not algebraically "simplify" them.
+export { resolveTempo, tempoAt } from './mpm/elements/maps/data/tempo.js';
+export type {
+  Tempo,
+  TempoSpan,
+  ConstantTempo,
+  TransitioningTempo,
+} from './mpm/elements/maps/data/tempo.js';
+export {
+  resolveDynamics,
+  dynamicsAt,
+  isConstantDynamics,
+  subNoteDynamicsSegment,
+} from './mpm/elements/maps/data/dynamics.js';
+export type { Dynamics, DeclaredDynamics } from './mpm/elements/maps/data/dynamics.js';
+export {
+  resolveMovement,
+  positionAt,
+  movementSegment,
+  DEFAULT_CONTROLLER,
+} from './mpm/elements/maps/data/movement.js';
+export type {
+  Movement,
+  ConstantMovement,
+  TransitioningMovement,
+  DeclaredMovement,
+} from './mpm/elements/maps/data/movement.js';
+export { resolveRubato } from './mpm/elements/maps/data/rubato.js';
+export type { Rubato, RubatoSpan, RubatoDeclaration } from './mpm/elements/maps/data/rubato.js';
+export {
+  articulateNote,
+  NEUTRAL_ARTICULATION_MODIFIERS,
+} from './mpm/elements/maps/data/articulation.js';
+export type { Articulation } from './mpm/elements/maps/data/articulation.js';
+export type { MetricalAccentuation } from './mpm/elements/maps/data/metricalAccentuation.js';
+export { principalNoteId } from './mpm/elements/maps/data/ornament.js';
+export type { Ornament, OrnamentGeneration } from './mpm/elements/maps/data/ornament.js';
+export {
+  parseDistribution,
+  minAndMaxOfDistributionList,
+} from './mpm/elements/maps/data/distribution.js';
+export type {
+  Distribution,
+  DistributionKind,
+  UniformDistribution,
+  GaussianDistribution,
+  TriangularDistribution,
+  BrownianNoiseDistribution,
+  CompensatingTriangleDistribution,
+  ListDistribution,
+  MinAndMax,
+} from './mpm/elements/maps/data/distribution.js';
+
+// The cubic-Bézier machinery `<dynamics>` and `<movement>` are shaped by. A viewer drawing a
+// transition wants `innerControlPointsXPositions` (what `@curvature`/`@protraction` mean as
+// geometry) and `sampleSegment` (adaptive subdivision, the same one the renderer samples
+// sub-note dynamics with) rather than a hand-rolled polyline.
+export {
+  innerControlPointsXPositions,
+  bezierPoint,
+  sampleSegment,
+  tForDate,
+} from './mpm/elements/maps/data/bezier.js';
+export type { CurvePoint } from './mpm/elements/maps/data/bezier.js';
+
+// The `<dated>` child and `<header>` collection names, as `Dated.getMapOfKind` and
+// `Header.getStyleDef` key on them. `Mpm` re-exports these as statics (RULE M3); the
+// constants are the same values and are what `MapKind` is defined over.
+export * from './mpm/names.js';
+
 // MIDI
 export { Midi } from './midi/Midi.js';
 export { EventMaker } from './midi/EventMaker.js';
