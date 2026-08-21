@@ -144,13 +144,9 @@ export class TempoMap extends GenericMap {
   /**
    * The tempo governing `date`: the nearest preceding entry that yields usable tempo
    * data, skipping style switches and malformed entries.
-   *
-   * PARITY NOTE — the loop runs down to `-1`, not to `0` (TempoMap.java:181). The extra
-   * round calls {@link getTempoDataOf} with -1, which returns null immediately, so it is
-   * one wasted call rather than a bug. Kept as-is for parity.
    */
   private getTempoDataAt(date: number): Tempo | null {
-    for (let i = this.getElementIndexBefore(date); i >= -1; --i) {
+    for (let i = this.getElementIndexBefore(date); i >= 0; --i) {
       const td = this.getTempoDataOf(i);
       if (td !== null) return td;
     }

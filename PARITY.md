@@ -702,6 +702,23 @@ fix moves no reference byte. The round trip was lossy in principle all the same:
 opposed to `fromElement`) lost a character — a loaded gun rather than an active one, same shape as
 the `GenericMap.sort()` entry above.
 
+### `TempoMap.getTempoDataAt` no longer scans down to `-1`
+
+|            |                                                       |
+| ---------- | ----------------------------------------------------- |
+| Item       | GH issue #4, fixed 2026-08-21                         |
+| Java       | `TempoMap.java:181` (`for (int i = …; i >= -1; --i)`) |
+| TypeScript | `src/mpm/elements/maps/TempoMap.ts`, `getTempoDataAt` |
+
+Confirmed as an isolated typo, not a convention: Java's five sibling `…DataAt` loops
+(`DynamicsMap.java:284`, `MetricalAccentuationMap.java:165`, `MovementMap.java:136`,
+`RubatoMap.java:221`, `ImprecisionMap.java:517`) all stop at `i >= 0`; `TempoMap` alone reaches one
+index further. `getTempoDataOf` (`TempoMap.java:196`) returns null unconditionally for
+`index < 0`, before touching any element data, so the extra round at `-1` can never resolve to
+usable tempo data — proven from the guard, not inferred from output. Tightened to `i >= 0` here: a
+provably dead iteration removed, not a behavior change, so no reference fixture byte moves and no
+Java-fork patch is needed for this one.
+
 ## 2. Frozen divergences
 
 Known, journaled, and deliberately **not** repaired. Three are reachable on input a caller can
@@ -927,16 +944,13 @@ to sit at the call site said so. The two `!`s that spelled it are gone; the thro
 builds such a header and pins both aborts, so neither half can be "tidied" into agreement with
 the other by accident.
 
-### Off-by-one loop bounds, both kept
+### An off-by-one loop bound, kept
 
-- `MovementMap.getPreviousPosition` runs `j > 0`, not `j >= 0`, so **entry 0 is never
-  examined**: a movement inheriting its position from the very first entry in the map gets 0
-  instead of that entry's `transition.to` (`MovementMap.java:200`). Untouched by §1's P2 fix,
-  which changes only what happens when the entry that _is_ examined has no `transition.to`, and
-  pinned by its own test so the two cannot be confused.
-- `TempoMap.getTempoDataAt` runs down to `-1`, not to `0` (`TempoMap.java:181`). The extra round
-  calls `getTempoDataOf(-1)`, which returns null immediately — one wasted call rather than a
-  bug, kept for parity.
+`MovementMap.getPreviousPosition` runs `j > 0`, not `j >= 0`, so **entry 0 is never
+examined**: a movement inheriting its position from the very first entry in the map gets 0
+instead of that entry's `transition.to` (`MovementMap.java:200`). Untouched by §1's P2 fix,
+which changes only what happens when the entry that _is_ examined has no `transition.to`, and
+pinned by its own test so the two cannot be confused.
 
 ### `attribute()` matched qualified names — and the divergence was Java's bug, not ours
 
