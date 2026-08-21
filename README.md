@@ -355,9 +355,11 @@ full; [PARITY.md](PARITY.md) for the complete ledger, with Java line citations.
   Berndt; its v3 ornamentation model by Lars Engeln and Axel Berndt, and others who contributed
   to the specification's development.
 - **Reference used for verification**: the fork
-  [pfefferniels/meico](https://github.com/pfefferniels/meico), specifically commit **`1d662105`**
-  ("Fix getAccentuationAt segment-end selection (dead condition)"). All current ground-truth
-  fixtures reproduce from that commit. The `reference/` and `performance-reference/` sets were
+  [pfefferniels/meico](https://github.com/pfefferniels/meico). Most ground-truth fixtures
+  reproduce from commit **`1d662105`** ("Fix getAccentuationAt segment-end selection (dead
+  condition)"); the 24 `_raw.mid` files under `performance-reference/` and `all-maps-reference/`
+  were regenerated from **`68ccd3b8`** ("Fix xml:id lookup"), which is `1d662105` plus the
+  one-line repair described under _Two deviations from standard meico_ below. The `reference/` and `performance-reference/` sets were
   generated at its parent **`1b3711f0`** ("Fix movementMap XML round-trip and rendering fidelity")
   and are unaffected by the segment-end fix — no MEI fixture reaches an accentuation pattern, which
   the pipeline probe confirms by moving only the two all-maps entries.
