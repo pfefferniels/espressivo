@@ -53,7 +53,7 @@ function msmText(): string {
 function mpmTextOf(...maps: GenericMap[]): string {
   const performance = okValue(Performance.fromName('facade test', PPQ));
   const tempoMap = TempoMap.createTempoMap()!;
-  tempoMap.addTempo(0, '120', 0.25);
+  tempoMap.addConstantTempo(0, '120', 0.25);
   performance.getGlobal()!.getDated()!.addMap(tempoMap);
   for (const map of maps) performance.getGlobal()!.getDated()!.addMap(map);
   performance.addPart(okValue(Part.fromValues('Piano', 1, 0, 0)));
@@ -77,13 +77,13 @@ function movementMpm(): string {
   ramp.startDate = 0;
   ramp.position = 0.0 as Normalized;
   ramp.transitionTo = 1.0 as Normalized;
-  map.addMovement(ramp);
+  map.addMovementData(ramp);
   // The last entry of a movementMap is never rendered; it marks where the transition aims.
   const terminator = new MovementData();
   terminator.startDate = 5760;
   terminator.position = 1.0 as Normalized;
   terminator.transitionTo = 1.0 as Normalized;
-  map.addMovement(terminator);
+  map.addMovementData(terminator);
   return mpmTextOf(map);
 }
 

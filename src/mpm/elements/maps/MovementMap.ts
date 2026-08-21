@@ -44,50 +44,56 @@ export class MovementMap extends GenericMap {
       : GenericMap.makeMap(xml, 'MovementMap', (elt) => new MovementMap(elt));
   }
 
+  /**
+   * Add a `<movement>` from a {@link MovementData}.
+   *
+   * This and {@link addMovement} were one overloaded name whose arms both returned `number`,
+   * so the overload said nothing at the type level while hiding a real difference: only this
+   * form writes `curvature` and `protraction`, and the two write their attributes in
+   * different orders. Attribute order is byte-visible, so which writer a call selects is not
+   * a detail — and it used to be selected by whether the first argument happened to be a
+   * number.
+   */
+  addMovementData(data: MovementData): number {
+    const e = new Element('movement', MPM_NAMESPACE);
+    e.addAttribute(new Attribute('date', String(data.startDate)));
+    if (data.position !== null) e.addAttribute(new Attribute('position', String(data.position)));
+    if (data.transitionTo !== null)
+      e.addAttribute(new Attribute('transition.to', String(data.transitionTo)));
+    if (data.curvature !== null) e.addAttribute(new Attribute('curvature', String(data.curvature)));
+    if (data.protraction !== null)
+      e.addAttribute(new Attribute('protraction', String(data.protraction)));
+    // Serialized since 2026-08-08 (MovementMap.java:120-121); before that this overload
+    // silently dropped the controller, so a round-tripped movement always came back as
+    // "sustain". Attribute order is byte-visible: after protraction, before xml:id.
+    // Java guards on `data.controller != null`; the field is non-nullable here.
+    e.addAttribute(new Attribute('controller', data.controller));
+    if (data.xmlId !== null)
+      e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', data.xmlId));
+    return this.insertElement(new KeyValue(data.startDate, e), false);
+  }
+
+  /**
+   * Add a `<movement>` from its values. See {@link addMovementData} for the other writer and
+   * why they are two names.
+   *
+   * The five parameters are all required and now say so. They were `controller?`,
+   * `position?`, `transitionTo?`, `id?` in the implementation signature only because the
+   * data-holder arm shared it, which is also why `String(controller)` needed a comment
+   * explaining that it was not a disguised `controller!`. It no longer needs one.
+   */
   addMovement(
     date: number,
     controller: string,
     position: number,
     transitionTo: number,
     id: string,
-  ): number;
-  addMovement(data: MovementData): number;
-  addMovement(
-    dateOrData: number | MovementData,
-    controller?: string,
-    position?: number,
-    transitionTo?: number,
-    id?: string,
   ): number {
-    if (typeof dateOrData !== 'number') {
-      const data = dateOrData;
-      const e = new Element('movement', MPM_NAMESPACE);
-      e.addAttribute(new Attribute('date', String(data.startDate)));
-      if (data.position !== null) e.addAttribute(new Attribute('position', String(data.position)));
-      if (data.transitionTo !== null)
-        e.addAttribute(new Attribute('transition.to', String(data.transitionTo)));
-      if (data.curvature !== null)
-        e.addAttribute(new Attribute('curvature', String(data.curvature)));
-      if (data.protraction !== null)
-        e.addAttribute(new Attribute('protraction', String(data.protraction)));
-      // Serialized since 2026-08-08 (MovementMap.java:120-121); before that this overload
-      // silently dropped the controller, so a round-tripped movement always came back as
-      // "sustain". Attribute order is byte-visible: after protraction, before xml:id.
-      // Java guards on `data.controller != null`; the field is non-nullable here.
-      e.addAttribute(new Attribute('controller', data.controller));
-      if (data.xmlId !== null)
-        e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', data.xmlId));
-      return this.insertElement(new KeyValue(data.startDate, e), false);
-    }
-    const date = dateOrData;
     const e = new Element('movement', MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
     e.addAttribute(new Attribute('position', String(position)));
     e.addAttribute(new Attribute('transition.to', String(transitionTo)));
-    // `String(controller)` and not `controller!`: the numeric overload declares it
-    // required, so it is present on every reachable call, and the sibling lines already
-    // spell the same fact as `String(position)` / `String(transitionTo)`.
-    e.addAttribute(new Attribute('controller', String(controller)));
+    e.addAttribute(new Attribute('controller', controller));
     e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id));
     return this.insertElement(new KeyValue(date, e), false);
   }

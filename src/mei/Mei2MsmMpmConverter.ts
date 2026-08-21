@@ -1283,7 +1283,7 @@ export class Mei2MsmMpmConverter {
             globalTempoMap?.addStyleSwitch(0.0, 'MEI export');
           }
           tempoData.startDate = 0.0;
-          globalTempoMap?.addTempo(tempoData);
+          globalTempoMap?.addTempoData(tempoData);
         }
       }
     }
@@ -3101,7 +3101,7 @@ export class Mei2MsmMpmConverter {
       }
     }
 
-    const index = tempoMap.addTempo(tempoData);
+    const index = tempoMap.addTempoData(tempoData);
     if (index < 0) return index;
     const tempoElement = mapElement(tempoMap, index);
     if (tempoData.endDate !== null) {

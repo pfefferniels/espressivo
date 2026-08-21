@@ -53,62 +53,74 @@ export class TempoMap extends GenericMap {
       : GenericMap.makeMap(xml, 'TempoMap', (elt) => new TempoMap(elt));
   }
 
-  addTempo(date: number, bpm: string, beatLength: number): number;
-  addTempo(
+  /**
+   * Add a constant `<tempo>`: one `bpm`, no transition.
+   *
+   * `addTempo` was three overload arms — this, {@link addTempoTransition} and
+   * {@link addTempoData} — all returning `number`, so the set discriminated nothing and had
+   * to tell the two positional arms apart at runtime by asking whether the THIRD argument
+   * was a string. That is the dispatch this class's own header warns about in another form:
+   * a `<tempo>` is either constant or a transition, and which one a call writes is exactly
+   * the thing a reader wants to see in its name.
+   */
+  addConstantTempo(date: number, bpm: string, beatLength: number): number {
+    const e = new Element('tempo', MPM_NAMESPACE);
+    e.addAttribute(new Attribute('date', String(date)));
+    e.addAttribute(new Attribute('bpm', bpm));
+    e.addAttribute(new Attribute('beatLength', String(beatLength)));
+    return this.insertElement(new KeyValue(date, e), false);
+  }
+
+  /**
+   * Add a transitioning `<tempo>`: `bpm` bending to `transitionTo`, with `meanTempoAt` as
+   * the exponent of the power curve. See {@link addConstantTempo}.
+   *
+   * Attribute order is byte-visible and unchanged: date, bpm, transition.to, beatLength,
+   * meanTempoAt, xml:id.
+   */
+  addTempoTransition(
     date: number,
     bpm: string,
     transitionTo: string,
     beatLength: number,
     meanTempoAt: number,
     id?: string,
-  ): number;
-  addTempo(data: TempoData): number;
-  addTempo(
-    dateOrData: number | TempoData,
-    bpm?: string,
-    transitionToOrBeatLength?: string | number,
-    beatLength?: number,
-    meanTempoAt?: number,
-    id?: string,
   ): number {
-    if (typeof dateOrData !== 'number') {
-      const data = dateOrData;
-      const e = new Element('tempo', MPM_NAMESPACE);
-      e.addAttribute(new Attribute('date', String(data.startDate)));
-      if (data.bpmString !== null) e.addAttribute(new Attribute('bpm', data.bpmString));
-      else if (data.bpm !== null) e.addAttribute(new Attribute('bpm', String(data.bpm)));
-      else {
-        console.error('Cannot add tempo, bpm not specified.');
-        return -1;
-      }
-      if (data.transitionToString !== null)
-        e.addAttribute(new Attribute('transition.to', data.transitionToString));
-      else if (data.transitionTo !== null)
-        e.addAttribute(new Attribute('transition.to', String(data.transitionTo)));
-      if (data.meanTempoAt !== null)
-        e.addAttribute(new Attribute('meanTempoAt', String(data.meanTempoAt)));
-      e.addAttribute(new Attribute('beatLength', String(data.beatLength)));
-      if (data.xmlId !== null)
-        e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', data.xmlId));
-      return this.insertElement(new KeyValue(data.startDate, e), false);
-    }
-    const date = dateOrData;
     const e = new Element('tempo', MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
-    // `String(bpm)` and not `bpm!`: both numeric overloads declare `bpm` required, so it is
-    // present on every reachable call, and the three sibling lines below already spell the
-    // same fact as `String(beatLength)` / `String(meanTempoAt)` / `String(...)`.
-    e.addAttribute(new Attribute('bpm', String(bpm)));
-    if (typeof transitionToOrBeatLength === 'string') {
-      e.addAttribute(new Attribute('transition.to', transitionToOrBeatLength));
-      e.addAttribute(new Attribute('beatLength', String(beatLength)));
-      e.addAttribute(new Attribute('meanTempoAt', String(meanTempoAt)));
-      if (id !== undefined)
-        e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id));
-    } else {
-      e.addAttribute(new Attribute('beatLength', String(transitionToOrBeatLength)));
-    }
+    e.addAttribute(new Attribute('bpm', bpm));
+    e.addAttribute(new Attribute('transition.to', transitionTo));
+    e.addAttribute(new Attribute('beatLength', String(beatLength)));
+    e.addAttribute(new Attribute('meanTempoAt', String(meanTempoAt)));
+    if (id !== undefined)
+      e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id));
     return this.insertElement(new KeyValue(date, e), false);
+  }
+
+  /**
+   * Add a `<tempo>` from a {@link TempoData}. The only form that can take its `bpm` and
+   * `transition.to` as numbers rather than strings, and the only one that reports a missing
+   * `bpm` instead of writing `undefined`. See {@link addConstantTempo}.
+   */
+  addTempoData(data: TempoData): number {
+    const e = new Element('tempo', MPM_NAMESPACE);
+    e.addAttribute(new Attribute('date', String(data.startDate)));
+    if (data.bpmString !== null) e.addAttribute(new Attribute('bpm', data.bpmString));
+    else if (data.bpm !== null) e.addAttribute(new Attribute('bpm', String(data.bpm)));
+    else {
+      console.error('Cannot add tempo, bpm not specified.');
+      return -1;
+    }
+    if (data.transitionToString !== null)
+      e.addAttribute(new Attribute('transition.to', data.transitionToString));
+    else if (data.transitionTo !== null)
+      e.addAttribute(new Attribute('transition.to', String(data.transitionTo)));
+    if (data.meanTempoAt !== null)
+      e.addAttribute(new Attribute('meanTempoAt', String(data.meanTempoAt)));
+    e.addAttribute(new Attribute('beatLength', String(data.beatLength)));
+    if (data.xmlId !== null)
+      e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', data.xmlId));
+    return this.insertElement(new KeyValue(data.startDate, e), false);
   }
 
   /**

@@ -42,56 +42,64 @@ export class RubatoMap extends GenericMap {
       : GenericMap.makeMap(xml, 'RubatoMap', (elt) => new RubatoMap(elt));
   }
 
-  addRubato(
+  /**
+   * Add a `<rubato>` that declares its own warp window.
+   *
+   * `addRubato` was three overload arms — this, {@link addRubatoRef} and
+   * {@link addRubatoData} — all returning `number`. The two positional arms were told apart
+   * by asking whether the SECOND argument was a string, which meant `addRubato(0, 720, ...)`
+   * and `addRubato(0, 'myDef', true)` were the same call to the reader and different
+   * instructions to the document: one writes a frame, the other a `name.ref`. Splitting them
+   * puts that difference in the name.
+   */
+  addRubatoWindow(
     date: number,
     frameLength: number,
     intensity: number,
     lateStart: number,
     earlyEnd: number,
     loop: boolean,
-  ): number;
-  addRubato(date: number, rubatoDefName: string, loop: boolean): number;
-  addRubato(data: RubatoData): number;
-  addRubato(
-    dateOrData: number | RubatoData,
-    arg2?: number | string,
-    arg3?: number | boolean,
-    arg4?: number,
-    arg5?: number,
-    arg6?: boolean,
   ): number {
-    if (typeof dateOrData !== 'number') {
-      const data = dateOrData;
-      const e = new Element('rubato', MPM_NAMESPACE);
-      e.addAttribute(new Attribute('date', String(data.startDate)));
-      if (data.rubatoDefString !== null)
-        e.addAttribute(new Attribute('name.ref', data.rubatoDefString));
-      if (data.frameLength !== null)
-        e.addAttribute(new Attribute('frameLength', String(data.frameLength)));
-      if (data.intensity !== null)
-        e.addAttribute(new Attribute('intensity', String(data.intensity)));
-      if (data.lateStart !== null)
-        e.addAttribute(new Attribute('lateStart', String(data.lateStart)));
-      if (data.earlyEnd !== null) e.addAttribute(new Attribute('earlyEnd', String(data.earlyEnd)));
-      e.addAttribute(new Attribute('loop', String(data.loop)));
-      if (data.xmlId !== null)
-        e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', data.xmlId));
-      return this.insertElement(new KeyValue(data.startDate, e), false);
-    }
-    const date = dateOrData;
     const e = new Element('rubato', MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
-    if (typeof arg2 === 'string') {
-      e.addAttribute(new Attribute('name.ref', arg2));
-      e.addAttribute(new Attribute('loop', String(arg3)));
-    } else {
-      e.addAttribute(new Attribute('frameLength', String(arg2)));
-      e.addAttribute(new Attribute('intensity', String(arg3)));
-      e.addAttribute(new Attribute('lateStart', String(arg4)));
-      e.addAttribute(new Attribute('earlyEnd', String(arg5)));
-      e.addAttribute(new Attribute('loop', String(arg6)));
-    }
+    e.addAttribute(new Attribute('frameLength', String(frameLength)));
+    e.addAttribute(new Attribute('intensity', String(intensity)));
+    e.addAttribute(new Attribute('lateStart', String(lateStart)));
+    e.addAttribute(new Attribute('earlyEnd', String(earlyEnd)));
+    e.addAttribute(new Attribute('loop', String(loop)));
     return this.insertElement(new KeyValue(date, e), false);
+  }
+
+  /**
+   * Add a `<rubato>` that refers to a `rubatoDef` by name. See {@link addRubatoWindow}.
+   */
+  addRubatoRef(date: number, rubatoDefName: string, loop: boolean): number {
+    const e = new Element('rubato', MPM_NAMESPACE);
+    e.addAttribute(new Attribute('date', String(date)));
+    e.addAttribute(new Attribute('name.ref', rubatoDefName));
+    e.addAttribute(new Attribute('loop', String(loop)));
+    return this.insertElement(new KeyValue(date, e), false);
+  }
+
+  /**
+   * Add a `<rubato>` from a {@link RubatoData} — the only form that can write a `name.ref`
+   * AND a window on the same instruction, and the only one that may omit either.
+   * See {@link addRubatoWindow}.
+   */
+  addRubatoData(data: RubatoData): number {
+    const e = new Element('rubato', MPM_NAMESPACE);
+    e.addAttribute(new Attribute('date', String(data.startDate)));
+    if (data.rubatoDefString !== null)
+      e.addAttribute(new Attribute('name.ref', data.rubatoDefString));
+    if (data.frameLength !== null)
+      e.addAttribute(new Attribute('frameLength', String(data.frameLength)));
+    if (data.intensity !== null) e.addAttribute(new Attribute('intensity', String(data.intensity)));
+    if (data.lateStart !== null) e.addAttribute(new Attribute('lateStart', String(data.lateStart)));
+    if (data.earlyEnd !== null) e.addAttribute(new Attribute('earlyEnd', String(data.earlyEnd)));
+    e.addAttribute(new Attribute('loop', String(data.loop)));
+    if (data.xmlId !== null)
+      e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', data.xmlId));
+    return this.insertElement(new KeyValue(data.startDate, e), false);
   }
 
   /**

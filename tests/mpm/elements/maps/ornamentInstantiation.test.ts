@@ -173,7 +173,7 @@ describe('MPM v3 ornament instantiation', () => {
           noteOffShift: NoteOffShift.Monophonic,
         }),
       ]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'turn',
         noteid: '#P',
@@ -232,7 +232,7 @@ describe('MPM v3 ornament instantiation', () => {
     it('writes note.order.perf onto the ornament element', () => {
       const score = makeScore([makeNote('P', 0, 64)]);
       const map = makeMap([makeDef('turn', { frameLength: { value: 50, domain: 'relative' } })]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'turn',
         noteid: '#P',
@@ -276,7 +276,7 @@ describe('MPM v3 ornament instantiation', () => {
           alignment: 'at end',
         }),
       ]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'turn',
         noteid: '#P',
@@ -393,7 +393,7 @@ describe('MPM v3 ornament instantiation', () => {
           frameLength: { value: 50, domain: 'relative' },
         }),
       ]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'trill',
         noteid: '#P',
@@ -513,7 +513,7 @@ describe('MPM v3 ornament instantiation', () => {
           noteOffShift: NoteOffShift.True,
         }),
       ]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'spreadMs',
         noteid: '#P',
@@ -548,7 +548,7 @@ describe('MPM v3 ornament instantiation', () => {
           intensity: 2,
         }),
       ]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'spreadMs',
         noteid: '#P',
@@ -584,7 +584,7 @@ describe('MPM v3 ornament instantiation', () => {
           alignment: 'at end',
         }),
       ]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'spreadMsEnd',
         noteid: '#P',
@@ -660,7 +660,7 @@ describe('MPM v3 ornament instantiation', () => {
             alignment: 'at end',
           }),
         ]);
-        map.addOrnament({
+        map.addOrnamentV3({
           date: 0,
           nameRef: 'spreadMsEndFlat',
           noteid: '#P',
@@ -694,7 +694,7 @@ describe('MPM v3 ornament instantiation', () => {
             frameLength: { value: 60, domain: 'milliseconds' },
           }),
         ]);
-        map.addOrnament({
+        map.addOrnamentV3({
           date: 0,
           nameRef: 'spreadMs',
           noteid: '#P',
@@ -793,7 +793,7 @@ describe('MPM v3 ornament instantiation', () => {
           noteOffShift: shift,
         }),
       ]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'fig',
         noteid: '#P',
@@ -834,7 +834,7 @@ describe('MPM v3 ornament instantiation', () => {
           gradient: [-1, 1],
         }),
       ]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'fig',
         scale: 2,
@@ -860,7 +860,7 @@ describe('MPM v3 ornament instantiation', () => {
     }) => {
       const score = makeScore([makeNote('a', 0, 60), makeNote('b', 0, 67)]);
       const map = makeMap([makeDef('fig', { frameLength: { value: 100, domain: 'relative' } })]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'fig',
         noteid: options.noteid,
@@ -900,7 +900,7 @@ describe('MPM v3 ornament instantiation', () => {
           frameLength: { value: 480, domain: 'ticks' },
         }),
       ]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'fig',
         noteOrder: '#n1 #n2',
@@ -926,7 +926,7 @@ describe('MPM v3 ornament instantiation', () => {
           frameLength: { value: 480, domain: 'ticks' },
         }),
       ]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'fig',
         noteOrder: '#n1',
@@ -960,14 +960,14 @@ describe('MPM v3 ornament instantiation', () => {
       // The principal-less one is added FIRST, so document order alone would put it first —
       // which is exactly what makes the assertion below about the phases rather than about
       // the order the ornaments were encountered in.
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'fig',
         noteOrder: '#n1',
         notes: [new OrnamentNote('n1', { kind: 'midi', value: 72 })],
         id: 'ornOrphan',
       });
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'fig',
         noteid: '#a',
@@ -1002,7 +1002,7 @@ describe('MPM v3 ornament instantiation', () => {
         const score = makeScore([makeNote('P', 0, 64)]);
         const map = makeMap([makeDef('fig', { frameLength: { value: 25, domain: 'relative' } })]);
         for (const id of ['o1', 'o2'])
-          map.addOrnament({
+          map.addOrnamentV3({
             date: 0,
             nameRef: 'fig',
             noteid: '#P',
@@ -1027,7 +1027,7 @@ describe('MPM v3 ornament instantiation', () => {
         const score = makeScore([makeNote('P', 0, 64)]);
         const map = makeMap([makeDef('fig', { frameLength: { value: 100, domain: 'relative' } })]);
         for (const id of ['o1', 'o2'])
-          map.addOrnament({
+          map.addOrnamentV3({
             date: 0,
             nameRef: 'fig',
             noteid: '#P',
@@ -1053,7 +1053,7 @@ describe('MPM v3 ornament instantiation', () => {
           makeDef('back', { frameLength: { value: 25, domain: 'relative' }, alignment: 'at end' }),
         ]);
         for (const nameRef of ['front', 'back'])
-          map.addOrnament({
+          map.addOrnamentV3({
             date: 0,
             nameRef,
             noteid: '#P',
@@ -1080,7 +1080,7 @@ describe('MPM v3 ornament instantiation', () => {
           }),
         ]);
         for (const nameRef of ['tickFig', 'msFig'])
-          map.addOrnament({
+          map.addOrnamentV3({
             date: 0,
             nameRef,
             noteid: '#P',
@@ -1115,7 +1115,7 @@ describe('MPM v3 ornament instantiation', () => {
           noteOffShift: NoteOffShift.True,
         }),
       ]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'fig',
         noteid: '#P',
@@ -1140,7 +1140,7 @@ describe('MPM v3 ornament instantiation', () => {
           noteOffShift: NoteOffShift.True,
         }),
       ]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'fig',
         noteid: '#P',
@@ -1199,7 +1199,7 @@ describe('MPM v3 ornament instantiation', () => {
           noteOffShift: NoteOffShift.Monophonic,
         }),
       ]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'fig',
         noteid: '#P',
@@ -1264,7 +1264,7 @@ describe('MPM v3 ornament instantiation', () => {
           noteOffShift: NoteOffShift.Monophonic,
         }),
       ]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'degenerate',
         noteid: '#P',
@@ -1337,7 +1337,7 @@ describe('MPM v3 ornament instantiation', () => {
           intensity: Number.NaN,
         }),
       ]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'unreadable',
         noteid: '#P',
@@ -1384,7 +1384,7 @@ describe('MPM v3 ornament instantiation', () => {
     const renderWithFrame = (frameLength: TemporalValue) => {
       const score = makeScore([makeNote('P', 0, 64)]);
       const map = makeMap([makeDef('fill', { frameLength })]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'fill',
         noteid: '#P',
@@ -1455,7 +1455,7 @@ describe('MPM v3 ornament instantiation', () => {
         const references = 2000;
         const score = makeScore([makeNote('P', 0, 64)]);
         const map = makeMap([makeDef('fig', { frameLength: { value: 50, domain: 'relative' } })]);
-        map.addOrnament({
+        map.addOrnamentV3({
           date: 0,
           nameRef: 'fig',
           noteid: '#P',
@@ -1543,7 +1543,7 @@ describe('MPM v3 ornament instantiation', () => {
       // carrying ornament.date.offset −22 / 0 / +22 and no generated note anywhere
       const score = makeScore([makeNote('a', 0, 60), makeNote('b', 0, 64), makeNote('c', 0, 67)]);
       const map = makeMap([makeDef('arpeggio', { v2FrameStart: -22, v2FrameLength: 44 })]);
-      map.addOrnament(0, 'arpeggio', 1.0, ['a', 'b', 'c'], 'orn1');
+      map.addOrnamentV2(0, 'arpeggio', 1.0, ['a', 'b', 'c'], 'orn1');
       map.renderOrnamentationToMap(score);
       const notes = score.getAllElementsOfType('note').map((entry) => entry.getValue());
       expect(notes).toHaveLength(3);
@@ -1603,7 +1603,7 @@ describe('MPM v3 ornament instantiation', () => {
       const score = scoreInPart([1, 1]);
       score.addElement(makeNote('P', 0, 66));
       const map = makeMap([makeDef('fig', { frameLength: { value: 100, domain: 'relative' } })]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'fig',
         noteid: '#P',
@@ -1662,7 +1662,7 @@ describe('MPM v3 ornament instantiation', () => {
       const map = makeGlobalMap([
         makeDef('fig', { frameLength: { value: 100, domain: 'relative' } }),
       ]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'fig',
         noteid: '#a1',
@@ -1670,7 +1670,7 @@ describe('MPM v3 ornament instantiation', () => {
         notes: [new OrnamentNote('n1', chromatic(1))],
         id: 'ornA',
       });
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'fig',
         noteid: '#b1',
@@ -1712,7 +1712,7 @@ describe('MPM v3 ornament instantiation', () => {
       const map = makeGlobalMap([
         makeDef('fig', { frameLength: { value: 100, domain: 'relative' } }),
       ]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'fig',
         noteid: '#p1',
@@ -1748,7 +1748,7 @@ describe('MPM v3 ornament instantiation', () => {
       // principal's pitch), and dedup collapses the boundary P|n1? no — 64 then 65, distinct.
       const score = makeScore([makeNote('P', 0, 64)]);
       const map = makeMap([makeDef('trill', { frameLength: { value: 100, domain: 'relative' } })]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'trill',
         noteid: '#P',
@@ -1783,7 +1783,7 @@ describe('MPM v3 ornament instantiation', () => {
       // generated note — but every note still points home through ornament.anchor)
       const score = makeScore([makeNote('P', 0, 64)]);
       const map = makeMap([makeDef('fig', { frameLength: { value: 100, domain: 'relative' } })]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'fig',
         noteid: '#P',
@@ -1804,7 +1804,7 @@ describe('MPM v3 ornament instantiation', () => {
           frameLength: { value: 480, domain: 'ticks' },
         }),
       ]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'fig',
         noteOrder: '#n1 #n2',
@@ -1842,7 +1842,7 @@ describe('MPM v3 ornament instantiation', () => {
       first.addAttribute(new Attribute('ornament.pass', '9'));
       const score = makeScore([first]);
       const map = makeMap([makeDef('fig', { frameLength: { value: 100, domain: 'relative' } })]);
-      map.addOrnament({
+      map.addOrnamentV3({
         date: 0,
         nameRef: 'fig',
         noteid: '#P',
