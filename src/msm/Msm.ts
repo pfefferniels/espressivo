@@ -8,6 +8,7 @@ import {
   allChildElements,
   attribute,
   cloneElement,
+  descendantElements,
   firstChildElement,
   getAttributeValue,
   getNextSiblingElement,
@@ -231,7 +232,17 @@ export class Msm extends AbstractMsm {
    *
    * Order-dependent: the log line reads the old resolution, so it must run before `setPPQ`, and
    * the factor is captured before the attribute is overwritten. `milliseconds.date` and friends
-   * are deliberately not in the XPath — they are absolute times and do not scale with ppq.
+   * are deliberately not scaled — they are absolute times and do not depend on ppq.
+   *
+   * The walk was an `Element.query` XPath until it was measured: `query` serializes the whole
+   * subtree, re-parses it with `DOMParser`, and maps each hit back by sibling-index path, so the
+   * three attributes cost a full document round trip (7x–60x this loop, per fixture). The early
+   * return above is why nothing noticed — every document in the corpus already has the target
+   * resolution, and `Performance.perform` is the caller that would otherwise pay it per render.
+   *
+   * `getAttribute(name, '')` is what `@name` meant: local name, no namespace. Deliberately not
+   * `attribute()`, which also tries the element's own namespace and the XML one and so would
+   * match more than the expression did.
    */
   convertPPQ(ppq: number): void {
     const ppqOld = this.getPPQ();
@@ -243,12 +254,11 @@ export class Msm extends AbstractMsm {
 
     this.setPPQ(ppq);
 
-    const atts: Nodes = this.requireRootElement().query(
-      'descendant::*[attribute::date]/attribute::date | descendant::*[attribute::date.end]/attribute::date.end | descendant::*[attribute::duration]/attribute::duration',
-    );
-    for (const node of atts) {
-      if (!(node instanceof Attribute)) continue;
-      node.setValue(String((parseFloat(node.getValue()) * ppq) / ppqOld));
+    for (const e of descendantElements(this.requireRootElement(), () => true)) {
+      for (const name of ['date', 'date.end', 'duration']) {
+        const a = e.getAttribute(name, '');
+        if (a !== null) a.setValue(String((parseFloat(a.getValue()) * ppq) / ppqOld));
+      }
     }
   }
 
