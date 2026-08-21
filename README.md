@@ -418,11 +418,13 @@ lookup missed and returned `""` every time, for every element. `@modified` recor
 every text event was written zero-length. Fixed in the fork at **`68ccd3b8`** and here at the same
 time; the affected `_raw.mid` references were regenerated from the fixed fork.
 
-The same misspelling remains at two upstream sites, `ArticulationMap.java:293` and
-`OrnamentationMap.java:200`, where `ArticulationData.xmlId` and `OrnamentData.xmlId` are likewise
-never populated. Those are Axel Berndt's code rather than the fork's, and repairing them moves
-considerably more output — both fields are written back out as `xml:id` attributes — so they are
-left alone and belong upstream.
+The same misspelling sat at two further sites, both in Axel Berndt's upstream code rather than the
+fork's own additions. `ArticulationMap.java:293` left `ArticulationData.xmlId` unpopulated, so an
+articulation that moved a note never named itself in `@modified`; it was fixed in the fork at
+**`c1f3fffd`** and here on 2026-08-22, and it moved no reference byte — no fixture articulation
+carries a local modifier, which is what a `@modified` write is guarded by. `OrnamentationMap.java:200`
+still has it upstream, but this port never reproduced it: MPM v3's ornament provenance needs a real
+id, so `OrnamentationMap.ts` has always read `id`. PARITY.md §1 and §3 carry both.
 
 ### Scope
 

@@ -225,6 +225,82 @@ describe('ArticulationMap', () => {
       const ad = map.getArticulationDataOf(0)!;
       expect(ad.date).toBe(240);
       expect(ad.articulationDefName).toBe('legato');
+      // The half of the round-trip that used to be missing: `addArticulation` wrote the
+      // `xml:id` and the read did not find it again. See the xml:id block below.
+      expect(ad.xmlId).toBe('art-5');
+    });
+  });
+
+  // GH espressivo#14 / PARITY.md §1. Java asks `Helper.getAttribute("xml:id", e)` at
+  // `ArticulationMap.java:293`, and all three of that helper's lookups match a LOCAL name —
+  // the attribute's local name is `id`, so it missed every time and `ArticulationData.xmlId`
+  // was never populated, for any input. Fixed in the fork at `meico@c1f3fffd` and mirrored
+  // here. Reverting the read to `'xml:id'` reds every test in this block.
+  describe('getArticulationDataOf reads the xml:id', () => {
+    const parseMap = (articulations: string): ArticulationMap =>
+      okValue(
+        ArticulationMap.createArticulationMap(
+          new Builder()
+            .build(
+              `<articulationMap xmlns="${Mpm.MPM_NAMESPACE}">${articulations}</articulationMap>`,
+            )
+            .getRootElement(),
+        ),
+      );
+
+    it('reads a namespaced xml:id off a parsed articulation', () => {
+      const ad = parseMap(
+        '<articulation xmlns:xml="http://www.w3.org/XML/1998/namespace" date="0.0"' +
+          ' name.ref="stacc" noteid="#n1" xml:id="n1" />',
+      ).getArticulationDataOf(0)!;
+
+      expect(ad.xmlId).toBe('n1');
+      expect(ad.noteid).toBe('n1');
+    });
+
+    it('leaves xmlId null when the articulation carries no id', () => {
+      const ad = parseMap('<articulation date="0.0" name.ref="stacc" />').getArticulationDataOf(0)!;
+
+      expect(ad.xmlId).toBeNull();
+    });
+
+    it('records the id in @modified, which is what the field is for', () => {
+      // The observable consequence, and the one the Java probes measured: an articulation
+      // that moves a note names itself in the note's `@modified` list. With the id lost at
+      // the read, `addToListAttribute` was handed null and dropped it, so an instruction
+      // that demonstrably changed the note recorded nothing.
+      const ad = parseMap(
+        '<articulation xmlns:xml="http://www.w3.org/XML/1998/namespace" date="0.0"' +
+          ' relativeDuration="0.9" xml:id="n1" />',
+      ).getArticulationDataOf(0)!;
+
+      const note = new Element('note', Mpm.MPM_NAMESPACE);
+      note.addAttribute(new Attribute('date.perf', '0'));
+      note.addAttribute(new Attribute('duration.perf', '720'));
+      note.addAttribute(new Attribute('modified', '')); // Performance.java:659 seeds this
+
+      articulateNote(ad, note);
+
+      expect(parseFloat(note.getAttributeValue('duration.perf')!)).toBeCloseTo(648, 5);
+      expect(note.getAttributeValue('modified')).toBe('n1');
+    });
+
+    it('an articulation with no id still leaves @modified empty', () => {
+      // The complement, so "records the id" cannot decay into "records something": with no
+      // id there is nothing to record, and an empty entry would be worse than none.
+      const ad = parseMap(
+        '<articulation date="0.0" relativeDuration="0.9" />',
+      ).getArticulationDataOf(0)!;
+
+      const note = new Element('note', Mpm.MPM_NAMESPACE);
+      note.addAttribute(new Attribute('date.perf', '0'));
+      note.addAttribute(new Attribute('duration.perf', '720'));
+      note.addAttribute(new Attribute('modified', ''));
+
+      articulateNote(ad, note);
+
+      expect(parseFloat(note.getAttributeValue('duration.perf')!)).toBeCloseTo(648, 5);
+      expect(note.getAttributeValue('modified')).toBe('');
     });
   });
 

@@ -721,6 +721,63 @@ usable tempo data — proven from the guard, not inferred from output. Tightened
 provably dead iteration removed, not a behavior change, so no reference fixture byte moves and no
 Java-fork patch is needed for this one.
 
+### `ArticulationData.xmlId` — the third and last `xml:id` misspelling
+
+|                           |                                                                           |
+| ------------------------- | ------------------------------------------------------------------------- |
+| Item                      | GH issue #14, fixed 2026-08-22                                            |
+| Java                      | `ArticulationMap.java:293`, fixed in the fork at `meico@c1f3fffd`         |
+| TypeScript                | `src/mpm/elements/maps/ArticulationMap.ts`, `getArticulationDataOf`       |
+| Guard tests               | `tests/mpm/elements/ArticulationMap.test.ts`, the `xml:id` block          |
+| Reachable from a fixture? | No — every fixture articulation carries `name.ref`/`noteid`/`xml:id` only |
+
+The last of the three sites `68ccd3b8` opened, and the one that entry left standing. Java asks
+`Helper.getAttribute("xml:id", e)`; all three of that helper's lookups match a **local** name, the
+attribute's local name is `id`, so it missed every time and `ArticulationData.xmlId` stayed at its
+`null` default — always, for every articulation, regardless of input. The port reproduced it with
+`attribute('xml:id', e)`. Both now ask for `'id'`, which resolves through the third lookup.
+
+**Why the framing "upstream, so not automatically wrong" did not survive the check.** The line is
+Axel Berndt's, unchanged since `701d2cf9` (v0.7.0, 2019), so unlike `@modified` and the text event
+it is not a fork addition whose emptiness could be called its contract. What settles it is that the
+same class disagrees with itself: two methods away, `ArticulationData`'s own XML constructor reads
+the identical attribute correctly (`ArticulationData.java:147`,
+`xml.getAttribute("id", "http://www.w3.org/XML/1998/namespace")`). One of the two spellings is a
+typo, and the one that never matches is the typo. The field is live, not decorative —
+`getArticulationDataOf` is on the render path (`ArticulationMap.java:401`), and
+`addArticulation(ArticulationData)` writes the field back out as an `xml:id`
+(`ArticulationMap.java:166-167`), so a read/modify/write round-trip through the data class dropped
+the id.
+
+**The cost the issue asked for, measured rather than argued: zero reference bytes.** All three
+reference families — 120 files — were regenerated from scratch builds of `meico@c1f3fffd` and its
+parent `b04a2747`. After canonicalizing generated UUIDs, exactly two files differ:
+`imprecision_timing_augmented.msm` and `imprecision_timing_expressive.mid`. Running the **same**
+build twice differs in exactly those two, which is the documented Java-side nondeterminism (§4), so
+the patched-vs-unpatched diff sits precisely on the noise floor. No fixture was regenerated,
+because none moved.
+
+**Why the corpus does not reach it**, stated so the zero is not mistaken for the change being
+inert. The eleven `@modified` writes in `articulateNote` each sit inside a branch guarded by a
+**local** modifier being non-neutral, and every fixture articulation carries `name.ref`, `noteid`
+and `xml:id` and nothing else — the referenced `articulationDef` does the work, and
+`ArticulationDef.articulateNote` has no `@modified` bookkeeping to reach. Add one local modifier and
+the change appears immediately. Two Java probes measured it, run against builds of both commits:
+
+    direct read, on <articulation … xml:id="art1" relativeDuration="0.5">
+      unpatched   xmlId null   modified ""
+      patched     xmlId art1   modified "art1"
+
+    full MEI => augmented MSM pipeline, articulations.mei with relativeDuration="0.9"
+    added to the first articulation
+      unpatched   modified values seen [""]
+      patched     modified values seen ["", "n1"]
+
+The port's guard tests are the same two cases plus their complements; reverting the read to
+`'xml:id'` reds three of them. The `addArticulation` → `getArticulationDataOf` round-trip test that
+already existed asserted date and def name but **not** the id, which is how a broken round-trip
+stayed green — it now asserts the id too.
+
 ## 2. Frozen divergences
 
 Known, journaled, and deliberately **not** repaired. Three are reachable on input a caller can
@@ -988,12 +1045,12 @@ No `.msm` reference moved, because no fixture's asynchrony instruction has an id
 replaced: those two are nondeterministic in Java itself, so a diff there is expected and carries no
 information.
 
-**The same misspelling survives at `ArticulationMap.java:293`** — `ArticulationData.xmlId` is
-never populated, because `ArticulationMap.ts`'s read (`attribute('xml:id', e)`) faithfully
-reproduces the same three-namespace miss. That's Axel Berndt's code, and the field is written
-back out as an `xml:id` attribute on generated elements, so repairing it moves far more output
-than the two `68ccd3b8` sites did. Left alone; it belongs upstream and needs its own
-regeneration. Tracked as #14.
+**The third site, `ArticulationMap.java:293`, is now fixed too** — `meico@c1f3fffd` and the
+matching read in `ArticulationMap.ts`, closing #14. It was left standing here on the expectation
+that it would move far more output than the two `68ccd3b8` sites; measuring it rather than
+estimating it returned **zero moved reference bytes**, because no fixture articulation carries a
+local modifier and so no `@modified` write is ever reached. §1 carries the entry, the measurement
+and the two probes.
 
 `OrnamentationMap.java:200` has the identical misspelling upstream, but the port does not
 reproduce it: `OrnamentationMap.ts`'s two `OrnamentData.xmlId` reads both ask `attribute('id',
