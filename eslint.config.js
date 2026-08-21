@@ -7,16 +7,14 @@ import importPlugin from 'eslint-plugin-import';
  * Flat ESLint config for meico-ts.
  *
  * Baseline: typescript-eslint `strict` + `stylistic` (non-type-checked presets), plus the
- * three type-aware rules ARCHITECTURE.md RULE N6 names, enabled by T21 over `src/` only.
- * The *presets* stay non-type-checked: N6 rejected `recommendedTypeChecked` explicitly,
- * because hundreds of findings over parity-frozen code would drown a gate that is
- * deliberately outside `npm run verify`. `docs/history/refactor/lint-debt.md` records the measured
- * preview those numbers came from.
+ * three type-aware rules ARCHITECTURE.md RULE N6 names, over `src/` only. The presets stay
+ * non-type-checked because N6 rejects `recommendedTypeChecked`: hundreds of findings over
+ * parity-frozen code would drown the gate. `docs/history/refactor/lint-debt.md` records the
+ * measured preview.
  *
- * The architecture rules of ARCHITECTURE.md §1.2 are enforced at the bottom of this file
- * (item T18): `import/no-cycle` for the cycle ban, and per-layer `no-restricted-imports`
- * zones for RULE M1's dependency directions. Both were green at zero violations when
- * added; they exist so the tree cannot drift back.
+ * ARCHITECTURE.md §1.2 is enforced at the bottom of this file: `import/no-cycle` for the cycle
+ * ban, and per-layer `no-restricted-imports` zones for RULE M1's dependency directions. Both
+ * sit at zero violations and exist so the tree cannot drift back.
  *
  * Formatting is Prettier's job alone; `prettierConfig` must stay last so it can
  * switch off every stylistic rule that would fight the formatter.
@@ -135,27 +133,22 @@ const LAYER_ZONES = [
     //     `sideEffects` list — that glob is `./dist/mpm/elements/maps/*.js` and the compiled
     //     module is one directory deeper, so bundlers are told it is side-effect-free.
     //
-    // THE STAIRCASE IS NOT DECORATION. This rule matches with gitignore semantics (ESLint
-    // builds an `ignore` matcher from the group, `no-restricted-imports.js:311`), and
-    // gitignore cannot re-include a file whose parent directory is excluded. DESIGN §9.7
-    // specifies the carve-out as one negation, `!**/mpm/elements/maps/data/bezier.js`, and
-    // that form is silently INERT: `**/mpm/**` excludes `mpm/elements` as a directory, so the
-    // negation never fires and the import stays blocked. Re-including each ancestor and
-    // re-excluding its contents is gitignore's own idiom for "everything under here except
-    // this one file". Verified by negative control: with the single negation the bezier
-    // import errored; with the staircase it is allowed while `mpm/Mpm.js`,
-    // `mpm/elements/GenericMap.js`, `mpm/elements/maps/TempoMap.js` and
-    // `mpm/elements/maps/data/TempoData.js` all still error.
+    // The staircase of alternating negations is required, not decorative. This rule matches
+    // with gitignore semantics (`no-restricted-imports.js:311`), and gitignore cannot
+    // re-include a file whose parent directory is excluded: the single negation DESIGN §9.7
+    // writes, `!**/mpm/elements/maps/data/bezier.js`, is silently inert under `**/mpm/**`.
+    // Re-including each ancestor and re-excluding its contents is gitignore's own idiom for
+    // "everything under here except this one file". Verified by negative control: the bezier
+    // import is allowed while `mpm/Mpm.js`, `mpm/elements/GenericMap.js`,
+    // `mpm/elements/maps/TempoMap.js` and `mpm/elements/maps/data/TempoData.js` still error.
     forbidden: [
       '**/api/**',
       '**/midi/**',
       '**/msm/**',
       '**/mei/**',
       '**/musicxml/**',
-      // `**/music/**` and `src/units.ts` were named by the `why` below as outside the zone and
-      // were absent from this list, so the stated zone and the enforced one disagreed (W3
-      // MINOR-7). Zero live violations either way — which is exactly why nothing would have
-      // caught the drift until an import turned it into a defect.
+      // Named here as well as in the `why` below: a zone that is stated but not enforced
+      // drifts silently, since nothing catches it until an import turns it into a defect.
       '**/music/**',
       '**/units.js',
       '**/mpm/**',
@@ -216,14 +209,10 @@ export default tseslint.config(
       sourceType: 'module',
     },
     rules: {
-      // --- Style decisions codified for the refactor (see docs/history/refactor/state.json T2) ---
-
-      // `===` everywhere, except `x == null`. T12 settled the null-vs-undefined policy
-      // (ARCHITECTURE.md RULE N5) and blessed that one idiom: in TypeScript it is the
-      // correct test for "null or undefined", and it is load-bearing here because the XOM
-      // layer returns `null` on some paths and `undefined` on others. Rewriting any of
-      // these to `=== null` introduces a bug. T14 applied the relaxation and edited not one
-      // comparison.
+      // `===` everywhere, except `x == null`, which ARCHITECTURE.md RULE N5 blesses: it is
+      // TypeScript's correct test for "null or undefined", and it is load-bearing because the
+      // XOM layer returns `null` on some paths and `undefined` on others. Rewriting one of
+      // those to `=== null` introduces a bug.
       eqeqeq: ['error', 'always', { null: 'ignore' }],
 
       'no-var': 'error',
