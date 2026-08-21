@@ -29,9 +29,7 @@ function gotoElement(atts: Record<string, string>): Element {
 }
 
 describe('Goto', () => {
-  // ---------------------------------------------------------------
-  // Construction from an XML element (Goto.java:49-82)
-  // ---------------------------------------------------------------
+  // Goto.java:49-82
   describe('constructor from element', () => {
     it('should read date and target.date', () => {
       const gt = gotoElement({ date: '1440', 'target.date': '0' });
@@ -90,9 +88,7 @@ describe('Goto', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // target.id resolution (Goto.java:56-64)
-  // ---------------------------------------------------------------
+  // Goto.java:56-64
   describe('target.id resolution', () => {
     it('should strip a leading # and resolve the target element among its siblings', () => {
       const target = marker('480', 'rptstart1');
@@ -220,9 +216,7 @@ describe('Goto', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Parameter constructor (Goto.java:32-43)
-  // ---------------------------------------------------------------
+  // Goto.java:32-43
   describe('constructor from parameters', () => {
     it('should assign all fields', () => {
       const source = new Element('goto');
@@ -250,9 +244,7 @@ describe('Goto', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // isActive (Goto.java:102-110)
-  // ---------------------------------------------------------------
+  // Goto.java:102-110
   describe('isActive', () => {
     function makeGoto(activity: string): Goto {
       return new Goto(1440, 0, null, activity, new Element('goto'));
@@ -308,9 +300,7 @@ describe('Goto', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // toElement (Goto.java:88-95)
-  // ---------------------------------------------------------------
+  // Goto.java:88-95
   describe('toElement', () => {
     it('should create a goto element carrying all four attributes', () => {
       const g = new Goto(1440, 0, 'rptstart1', '10', new Element('goto'));

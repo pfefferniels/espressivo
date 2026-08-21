@@ -24,13 +24,9 @@ import { RandomNumberProvider } from '../../../src/supplementary/RandomNumberPro
 import { Mpm } from '../../../src/mpm/Mpm.js';
 
 /**
- * Narrow inside a test without an `!` or a cast.
- *
- * `expect(...)` cannot narrow a type, so a suite that reads a discriminated union either
- * asserts its way past the discriminant or restates it. This states it once: the call is a
- * real runtime check (a wrong `kind` fails the test here rather than as a confusing
- * `undefined` three lines later) *and* a type guard, so the arm's own fields are reachable
- * with no assertion at all.
+ * Narrow inside a test without an `!` or a cast: `expect(...)` cannot narrow a type, so this
+ * is both a runtime check — a wrong `kind` fails here rather than as an `undefined` three
+ * lines later — and a type guard onto the union arm's own fields.
  */
 function assume(condition: boolean, message = 'assumption failed'): asserts condition {
   if (!condition) throw new Error(message);
@@ -49,9 +45,6 @@ function distributionOf(map: ImprecisionMap, index: number): Distribution {
 }
 
 describe('ImprecisionMap', () => {
-  // ---------------------------------------------------------------
-  // Create an imprecision map
-  // ---------------------------------------------------------------
   describe('createImprecisionMap', () => {
     it('should create an imprecision map with timing domain', () => {
       const map = ImprecisionMap.createImprecisionMap('timing');
@@ -100,9 +93,6 @@ describe('ImprecisionMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Detune unit
-  // ---------------------------------------------------------------
   describe('detuneUnit', () => {
     it('should set and get detune unit', () => {
       const map = ImprecisionMap.createImprecisionMap('tuning');
@@ -122,9 +112,6 @@ describe('ImprecisionMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Add distribution - uniform
-  // ---------------------------------------------------------------
   describe('addDistributionUniform', () => {
     it('should add a uniform distribution', () => {
       const map = ImprecisionMap.createImprecisionMap('timing');
@@ -161,9 +148,6 @@ describe('ImprecisionMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Add distribution - gaussian
-  // ---------------------------------------------------------------
   describe('addDistributionGaussian', () => {
     it('should add a gaussian distribution', () => {
       const map = ImprecisionMap.createImprecisionMap('timing');
@@ -193,9 +177,6 @@ describe('ImprecisionMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Add distribution - triangular
-  // ---------------------------------------------------------------
   describe('addDistributionTriangular', () => {
     it('should add a triangular distribution', () => {
       const map = ImprecisionMap.createImprecisionMap('timing');
@@ -227,9 +208,6 @@ describe('ImprecisionMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Add distribution - brownian noise
-  // ---------------------------------------------------------------
   describe('addDistributionBrownianNoise', () => {
     it('should add a brownian noise distribution', () => {
       const map = ImprecisionMap.createImprecisionMap('timing');
@@ -259,9 +237,6 @@ describe('ImprecisionMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Add distribution - compensating triangle
-  // ---------------------------------------------------------------
   describe('addDistributionCompensatingTriangle', () => {
     it('should add a compensating triangle distribution', () => {
       const map = ImprecisionMap.createImprecisionMap('timing');
@@ -289,14 +264,10 @@ describe('ImprecisionMap', () => {
       const index = map.addDistributionCompensatingTriangle(0, -0.5, -10, 10, -5, 5, 200);
       const elem = map.getElement(index)!;
 
-      // Math.max(-0.5, 0) = 0
       expect(elem.getAttributeValue('degreeOfCorrelation')).toBe('0');
     });
   });
 
-  // ---------------------------------------------------------------
-  // Add distribution - list
-  // ---------------------------------------------------------------
   describe('addDistributionList', () => {
     it('should add a list distribution', () => {
       const map = ImprecisionMap.createImprecisionMap('timing');
@@ -317,9 +288,6 @@ describe('ImprecisionMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // distributionAt
-  // ---------------------------------------------------------------
   describe('distributionAt', () => {
     it('should fail with `noEntry` for an empty map', () => {
       const map = ImprecisionMap.createImprecisionMap('timing');
@@ -478,14 +446,6 @@ describe('ImprecisionMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // parseDistribution
-  //
-  // What the retired `new DistributionData()` no-argument constructor used to pin — that
-  // every numeric parameter starts out null — is pinned here against the case that
-  // actually occurs, an element that declares nothing. The old test could only observe the
-  // field initialisers; this observes the parser.
-  // ---------------------------------------------------------------
   describe('parseDistribution', () => {
     const bare = (localName: string): Element => new Element(localName, Mpm.MPM_NAMESPACE);
 
@@ -560,14 +520,9 @@ describe('ImprecisionMap', () => {
    */
   const elementFromXml = (xml: string): Element => new Builder().build(xml).getRootElement();
 
-  // ---------------------------------------------------------------
-  // providerFor
-  //
-  // Six positional factory signatures, transcribed six times. Nothing downstream would
-  // notice a triangular built with its `mode` and `clip.lower` the wrong way round — it
-  // still draws plausible numbers — so the parameters are read straight back off the
-  // provider here rather than inferred from a rendered date.
-  // ---------------------------------------------------------------
+  // Six positional factory signatures. Nothing downstream notices a triangular built with
+  // its `mode` and `clip.lower` the wrong way round — it still draws plausible numbers — so
+  // the parameters are read back off the provider rather than inferred from a rendered date.
   describe('providerFor', () => {
     const provider = (xml: string): RandomNumberProvider => {
       const parsed = parseDistribution(elementFromXml(xml));
@@ -640,12 +595,11 @@ describe('ImprecisionMap', () => {
       expect(p.getValue(2)).toBe(-3);
     });
 
-    // The load-bearing one. An absent parameter must reach the provider as `null`, not as
-    // 0: that null is what makes a clip-less triangular perform exactly no imprecision
-    // (`clip()` returns the null, the write-back's `attValue + null` is `attValue`), and it
-    // is what `src/comparison/imprecisionLaws.ts` tabulates the whole degenerate table from.
-    // `?? 0` at that boundary would also change a strict `upperLimit === lowerLimit` in the
-    // provider's own triangular draw.
+    // An absent parameter must reach the provider as `null`, not as 0: the null is what makes
+    // a clip-less triangular perform exactly no imprecision (`clip()` returns it, and the
+    // write-back's `attValue + null` is `attValue`), and it is what
+    // `src/comparison/imprecisionLaws.ts` tabulates its degenerate table from. `?? 0` here
+    // would also change a strict `upperLimit === lowerLimit` in the triangular draw.
     it('hands an absent parameter through as null, not as 0', () => {
       const p = provider('<distribution.triangular limit.lower="-20" limit.upper="20"/>');
       expect(p.getMode()).toBeNull();
@@ -656,13 +610,9 @@ describe('ImprecisionMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // resolveTimingBasis
-  //
-  // Tested here and not through a rendered date because the comparison module keeps its
-  // own independent copy of this derivation (`src/comparison/imprecisionLaws.ts`), and a
-  // test that reads a timing basis through that reader cannot see a mistake in this one.
-  // ---------------------------------------------------------------
+  // Tested here rather than through a rendered date: the comparison module keeps its own
+  // independent copy of this derivation (`src/comparison/imprecisionLaws.ts`), so a test that
+  // reads a timing basis through that reader cannot see a mistake in this one.
   describe('resolveTimingBasis', () => {
     const basisOf = (xml: string, isTiming = true): number => {
       const parsed = parseDistribution(elementFromXml(xml));
@@ -735,9 +685,6 @@ describe('ImprecisionMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // minAndMaxOfDistributionList
-  // ---------------------------------------------------------------
   describe('minAndMaxOfDistributionList', () => {
     it('with an empty list returns null', () => {
       expect(minAndMaxOfDistributionList([])).toBeNull();
@@ -767,34 +714,25 @@ describe('ImprecisionMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // renderImprecisionToMap
-  // ---------------------------------------------------------------
   describe('renderImprecisionToMap', () => {
-    // -------------------------------------------------------------
-    // The predecessor asymmetry.
+    // The predecessor asymmetry, inherited from the incumbent.
     //
     // A correlated distribution continues its predecessor's sequence, indexing the draw on
-    // the predecessor's timing basis. Which entry counts as "the predecessor" is not
-    // uniform, and the difference is inherited verbatim from the class this file's subject
-    // replaced: an entry that is not a distribution at all left `dd = ddPrev` standing,
-    // while an unrecognised `distribution.*` name did NOT — it became `ddPrev` itself,
-    // carrying its own unresolved (here: absent) timing basis into the division.
+    // the predecessor's timing basis. Which entry counts as the predecessor is not uniform:
+    // an entry that is not a distribution at all leaves `dd = ddPrev` standing, while an
+    // unrecognised `distribution.*` name becomes `ddPrev` itself and carries its own
+    // unresolved (here absent) timing basis into the division.
     //
-    // Dividing by that absent basis is `x / null`, which is Infinity, which
-    // `RandomNumberProvider.requireUsableIndex` rejects. So the asymmetry is observable as
-    // "throws" versus "does not throw", and these two tests are each other's control.
-    // -------------------------------------------------------------
+    // Dividing by that absent basis is `x / null`, i.e. Infinity, which
+    // `RandomNumberProvider.requireUsableIndex` rejects. The asymmetry is therefore visible
+    // as throws versus does not throw, and the two tests are each other's control.
     const handoverProbe = (middle: 'unknown' | 'style'): (() => void) => {
       const map = ImprecisionMap.createImprecisionMap('timing');
       map.addDistributionBrownianNoise(0, 2, -10, 10, 500, 7);
-      // Both middles go in through `addElement`, which places by date. `addStyleSwitch`
-      // would not do: `insertElement(…, firstAtDate = true)` scans forward for the first
-      // entry at or after the new date and, finding none, falls through to index 0 — so a
-      // style switch later than every existing entry lands FIRST. That is a pre-existing
-      // ordering defect in `GenericMap`, unrelated to this file, and it would silently
-      // move the middle entry out from between the two distributions this probe needs it
-      // between.
+      // Both middles go in through `addElement`, which places by date. `addStyleSwitch` would
+      // not do: its first-at-date insertion falls through to index 0 for a date later than
+      // every existing entry (pinned in GenericMap.test.ts), which would move the middle entry
+      // out from between the two distributions this probe needs it between.
       const middleElement =
         middle === 'unknown'
           ? new Element('distribution.wibble', Mpm.MPM_NAMESPACE)
@@ -832,10 +770,10 @@ describe('ImprecisionMap', () => {
      * splice a *different* entry off the front — one that was never offset — so one note
      * would keep its unperturbed end and another would collect two offsets.
      *
-     * Nothing pinned that. The corpus reaches this drain (removing it fails the
-     * multi-instruction byte test) but never reaches the stop: turning the `break` into a
-     * `continue` passed the whole suite. The shape it needs is two overlapping notes inside
-     * one span, the longer one first, and the corpus has none.
+     * Nothing else pins that. The corpus reaches this drain — removing it fails the
+     * multi-instruction byte test — but never reaches the stop: turning the `break` into a
+     * `continue` leaves the whole suite green. The shape it needs is two overlapping notes
+     * inside one span, the longer one first, and the corpus has none.
      *
      * A one-value `distribution.list` makes every offset exactly +100, so the two arms are
      * arithmetic rather than statistical: 5000 -> 5100 and 500 -> 600 under the prefix rule,
@@ -878,27 +816,21 @@ describe('ImprecisionMap', () => {
     it('null map is handled gracefully', () => {
       const map = ImprecisionMap.createImprecisionMap('timing');
       map.addDistributionUniform(0, -10, 10);
-      // Should not throw
       map.renderImprecisionToMap(null, false);
     });
 
     it('empty map is handled gracefully', () => {
       const map = ImprecisionMap.createImprecisionMap('timing');
       const target = okValue(GenericMap.createGenericMap('positionMap'));
-      // Should not throw
       map.renderImprecisionToMap(target, false);
     });
 
     it('static renderImprecisionToMap with null imprecision map does nothing', () => {
       const target = okValue(GenericMap.createGenericMap('positionMap'));
-      // Should not throw
       ImprecisionMap.renderImprecisionToMap(target, null, false);
     });
   });
 
-  // ---------------------------------------------------------------
-  // GenericMap operations on ImprecisionMap
-  // ---------------------------------------------------------------
   describe('GenericMap operations', () => {
     it('should support removeElement by index', () => {
       const map = ImprecisionMap.createImprecisionMap('timing');

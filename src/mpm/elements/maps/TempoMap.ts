@@ -38,12 +38,8 @@ export class TempoMap extends GenericMap {
   }
 
   /**
-   * A fresh, empty `<tempoMap>`, or one read from an existing element.
-   *
-   * The two overloads return different things and that is the point. Building an empty
-   * map consults nothing the caller supplied, so it cannot fail and says so; reading an
-   * element can, and returns the reason instead of printing it. See
-   * {@link GenericMap.emptyMapElement}.
+   * A fresh, empty `<tempoMap>`, or one read from an existing element. The empty form is
+   * total, the parsing one is not; see {@link GenericMap.emptyMapElement}.
    */
   static createTempoMap(): TempoMap;
   static createTempoMap(xml: Element): Result<TempoMap, MpmParseError>;
@@ -95,9 +91,6 @@ export class TempoMap extends GenericMap {
     const date = dateOrData;
     const e = new Element('tempo', MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
-    // `String(bpm)` and not `bpm!`: both numeric overloads declare `bpm` required, so it is
-    // present on every reachable call, and the three sibling lines below already spell the
-    // same fact as `String(beatLength)` / `String(meanTempoAt)` / `String(...)`.
     e.addAttribute(new Attribute('bpm', String(bpm)));
     if (typeof transitionToOrBeatLength === 'string') {
       e.addAttribute(new Attribute('transition.to', transitionToOrBeatLength));
@@ -119,9 +112,8 @@ export class TempoMap extends GenericMap {
    * The style in scope is found by scanning *backwards* from `index` for the nearest
    * preceding `<style>` — style switches are ordinary dated entries in the same map.
    *
-   * All this method does is pull the four attributes out of the element and hand them to
-   * {@link resolveTempo}, which owns the three normalisations and the choice of arm; the
-   * commentary that used to sit here now sits there, next to the code it describes.
+   * The four attributes are handed to {@link resolveTempo}, which owns the three
+   * normalisations and the choice of arm.
    */
   getTempoDataOf(index: number): Tempo | null {
     const i = this.resolveEntryIndex(index, 'tempo');
@@ -180,12 +172,9 @@ export class TempoMap extends GenericMap {
    * `result * (to - bpm) + bpm` form is not interchangeable with the algebraically equal
    * `bpm * (1 - result) + to * result` in floating point.
    *
-   * The lazy `exponent` fill-in that used to sit between those two lines — "if the
-   * exponent is still null, derive it from `meanTempoAt`, or take 1.0" — is gone, and with
-   * it the mutation of the argument it performed. It was dead: {@link resolveTempo} puts an
-   * exponent on every {@link TransitioningTempo} it builds, and a `TransitioningTempo` is
-   * the only thing that reaches this line. Its stated purpose, not recomputing a logarithm
-   * at each of Simpson's sample points, is served better by computing it once at read time.
+   * The exponent is computed once, at read time: {@link resolveTempo} puts one on every
+   * {@link TransitioningTempo} it builds, so it is not re-derived at each of Simpson's
+   * sample points.
    */
   private static getTempoAtStatic(date: number, tempo: Tempo | null): number {
     if (tempo === null) return 100.0;
@@ -211,17 +200,9 @@ export class TempoMap extends GenericMap {
    * the name), so the running sum in `startDateMilliseconds` is what keeps successive
    * tempi continuous. Do not restructure this into two independent passes.
    *
-   * That running sum used to be written into a `startDateMilliseconds` field on the datum
-   * and pushed onto a `tempi` array whose only ever-read element was its last. It is a
-   * `previous` local now: the same two values, held for the same one iteration, but no
-   * longer a nullable field on a type that has nothing else to do with rendering. Java's
-   * own `clone()` refused to copy it for exactly this reason.
-   *
    * `pendingDurations` exists because a note can start under one tempo and end under a
-   * later one. Such notes are parked and retried against each subsequent instruction;
-   * entries are removed as they resolve, which is why that loop decrements `i` after
-   * splicing. The `continue` for an end date beyond the current span leaves the entry
-   * pending for the next round.
+   * later one. Such notes are parked and retried against each subsequent instruction; an end
+   * date beyond the current span leaves the entry pending for the next round.
    */
   renderTempoToMap(map: GenericMap | null, ppq: number): void {
     if (map === null) return;
@@ -249,7 +230,6 @@ export class TempoMap extends GenericMap {
       return;
     }
 
-    // process the map elements on the basis of this non-empty tempoMap
     let previous: { readonly tempo: Tempo; readonly startDateMilliseconds: number } | null = null;
     const pendingDurations: KeyValue<number, number>[] = [];
 
@@ -257,9 +237,8 @@ export class TempoMap extends GenericMap {
       const td = this.getTempoDataOf(tempoIndex);
       if (td === null) continue;
 
-      // compute the milliseconds date of the tempo instruction. The `: number` is load
-      // bearing for the compiler, not for the reader: `previous` is reassigned from this
-      // very value one line down, so inferring the type here would be circular.
+      // The `: number` is for the compiler: `previous` is reassigned from this very value one
+      // line down, so inferring the type here would be circular.
       const startDateMilliseconds: number =
         previous === null
           ? TempoMap.computeDiffTiming(td.startDate, ppq, null)
@@ -267,7 +246,6 @@ export class TempoMap extends GenericMap {
             previous.startDateMilliseconds;
       previous = { tempo: td, startDateMilliseconds };
 
-      // compute the milliseconds dates of all map elements that fall under this tempo instruction
       let milliseconds: number;
       for (; mapIndex < map.size(); ++mapIndex) {
         const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
@@ -293,17 +271,11 @@ export class TempoMap extends GenericMap {
         }
       }
 
-      // Check pending durations to fall under this tempo instruction, resolving the ones
-      // that do and leaving the rest pending.
+      // Resolve the pending durations that fall under this tempo instruction, packing the
+      // rest back down to the front of the array in their old order.
       //
-      // A remove-if, written as a compaction: every entry is examined, the unresolved ones
-      // are packed back down to the front in their old order and the length is cut to what
-      // survived. The loop this replaces spliced each resolved entry out and stepped `i`
-      // back — the same removals, but each shifting the whole remainder, which is quadratic
-      // in the number of notes still waiting on a later tempo. Note that this one is NOT a
-      // prefix drain like `RubatoMap`'s: `continue` leaves an entry pending and goes on to
-      // the ones behind it, because a note ending past this span may sit in front of one
-      // ending inside it.
+      // NOT a prefix drain like `RubatoMap`'s: every entry is examined, because a note ending
+      // past this span may sit in front of one ending inside it.
       let kept = 0;
       for (const pd of pendingDurations) {
         const endDate = pd.getKey();
@@ -329,9 +301,6 @@ export class TempoMap extends GenericMap {
       return;
     }
     if (map === null) return;
-    // Walking the index directly rather than `map.getElement(i)!` over `0 ..< map.size()`:
-    // same entries in the same order, and no assertion contradicting an accessor about a
-    // range the loop itself established.
     for (const entry of map.getAllElements()) {
       const e = entry.getValue();
       const dateAtt = attribute('date.perf', e);
@@ -356,9 +325,7 @@ export class TempoMap extends GenericMap {
    *
    * The three-way split is the whole reason {@link Tempo} is a sum: a constant tempo is one
    * division, a transition is Simpson's rule over the span, and no tempo at all is MPM's
-   * default 100 quarter-bpm. Dispatching on the arm rather than on an `isConstantTempo()`
-   * predicate also closes the hole that predicate left open — it answered *true* for a
-   * datum whose `bpm` was null, which sent a null into the divisor below.
+   * default 100 quarter-bpm.
    */
   static computeDiffTiming(date: number, ppq: number, tempo: Tempo | null): number {
     if (tempo === null) return TempoMap.computeMillisecondsForNoTempo(date, ppq);

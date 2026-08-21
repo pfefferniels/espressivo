@@ -37,9 +37,6 @@ function scoreNotes(msm: Msm): Element[] {
 }
 
 describe('Performance', () => {
-  // ---------------------------------------------------------------
-  // creation
-  // ---------------------------------------------------------------
   describe('createPerformance', () => {
     it('should create a performance with the given name', () => {
       const p = okValue(Performance.createPerformance('My Performance'));
@@ -123,18 +120,13 @@ describe('Performance', () => {
     });
 
     /**
-     * **This test exists because a negative control came back green.**
+     * `readFrom` promises that `<part>` children which fail to parse are skipped rather than
+     * aborting the whole performance. Nothing else pins that: turning the `continue` into an
+     * abort leaves the whole `tests/mpm` suite and the integration corpus green, because no
+     * fixture contains a malformed `<part>`.
      *
-     * `readFrom`'s docstring has always promised that "`<part>` children that fail to parse
-     * are skipped rather than aborting the whole performance". Turning that `continue` into
-     * an abort — the single most likely way to get this conversion wrong — left all 1924
-     * tests under `tests/mpm` passing, and the integration corpus with it: no fixture
-     * contains a malformed `<part>`, so nothing anywhere pinned the promise. A separate
-     * before/after byte probe over malformed documents caught it; the suite could not.
-     *
-     * Both halves are asserted, because the skip has two observable consequences and either
-     * one alone would still pass an abort: the performance survives, AND the parts either
-     * side of the bad one are the ones that end up in it.
+     * Both halves are asserted, because either one alone would still pass an abort: the
+     * performance survives, and the parts either side of the bad one are the ones in it.
      */
     it('skips a part it cannot read and keeps the rest of the performance', () => {
       const xml = new Element('performance', Mpm.MPM_NAMESPACE);
@@ -159,9 +151,6 @@ describe('Performance', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // name and resolution
-  // ---------------------------------------------------------------
   describe('name and resolution', () => {
     it('should update the name attribute', () => {
       const p = okValue(Performance.createPerformance('Old'));
@@ -180,9 +169,6 @@ describe('Performance', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // id handling (Performance.java setId/getId)
-  // ---------------------------------------------------------------
   describe('setId / getId', () => {
     it('should be null by default', () => {
       expect(okValue(Performance.createPerformance('P')).getId()).toBeNull();
@@ -220,9 +206,6 @@ describe('Performance', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // parts
-  // ---------------------------------------------------------------
   describe('parts', () => {
     function threePartPerformance(): Performance {
       const p = okValue(Performance.createPerformance('P'));
@@ -306,9 +289,6 @@ describe('Performance', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // getCorrespondingPart
-  // ---------------------------------------------------------------
   describe('getCorrespondingPart', () => {
     it('should match an MSM part by number', () => {
       const p = okValue(Performance.createPerformance('P'));
@@ -338,9 +318,6 @@ describe('Performance', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // perform
-  // ---------------------------------------------------------------
   describe('perform', () => {
     it('should return a clone and leave the original MSM untouched', () => {
       const msm = makeMsm();
@@ -438,9 +415,7 @@ describe('Performance', () => {
       expect(() => p.perform(msm)).not.toThrow();
     });
 
-    // -----------------------------------------------------------
-    // ornamentation milliseconds modifiers (Performance.renderMillisecondsModifiersToMap)
-    // -----------------------------------------------------------
+    // `Performance.renderMillisecondsModifiersToMap`.
     describe('ornament milliseconds offsets', () => {
       /** A performance whose part carries an (empty) ornamentationMap, so the modifier pass runs. */
       function performanceWithOrnamentationMap(): Performance {
@@ -508,10 +483,8 @@ describe('Performance', () => {
       });
     });
 
-    // -----------------------------------------------------------
-    // global ornamentationMap (Performance.java: the global map applies to
-    // every MSM part that has no local ornamentationMap of its own)
-    // -----------------------------------------------------------
+    // Per Performance.java, the global map applies to every MSM part that has no local
+    // ornamentationMap of its own.
     describe('global ornamentationMap', () => {
       it('should perform normally when a global ornamentationMap is present', () => {
         const msm = makeMsm(720);
@@ -533,15 +506,12 @@ describe('Performance', () => {
         p.getGlobal()!.getDated()!.addMapByType(Mpm.ORNAMENTATION_MAP);
         p.addPart(okValue(Part.createPart('Piano', 1, 0, 0)));
 
-        // the part falls back to the global ornamentationMap, so the
-        // milliseconds modifiers are applied
         expect(num(scoreNotes(p.perform(msm))[1], 'milliseconds.date')).toBe(670);
       });
 
       it('should exclude parts that bring their own ornamentationMap from the global one', () => {
-        // MSM part 1 has a local ornamentationMap in the MPM, part 2 has not.
-        // Only part 2 is handed to the global map, but both end up with an
-        // ornamentation map, so both get their millisecond offsets applied.
+        // Part 1 has a local ornamentationMap in the MPM and part 2 has not, so only part 2 is
+        // handed to the global map — but both end up with a map, so both get their offsets.
         const msm = makeMsm(720);
         const violin = Msm.makePart('Violin', 2, 1, 0);
         const violinScore = violin.getFirstChildElement('dated')!.getFirstChildElement('score')!;
@@ -591,30 +561,24 @@ describe('Performance', () => {
       });
     });
 
-    // -----------------------------------------------------------
-    // the pipeline's ordering edges
-    // -----------------------------------------------------------
     /**
-     * Six edges of `perform`'s stage order that nothing tested, each found by breaking the
-     * order on purpose and watching the suite stay green.
+     * Six edges of `perform`'s stage order, each found by breaking the order on purpose and
+     * watching the suite stay green.
      *
-     * The byte-equivalence gate cannot see any of them, and for three different reasons —
-     * which is why they are pinned here, structurally, rather than by a fixture:
+     * The byte-equivalence gate cannot see any of them, for three separate reasons, which is
+     * why they are pinned structurally rather than by a fixture:
      *
-     * - **No fixture in `tests/integration/fixtures/` contains a single `<pedal>` element.**
-     *   Every pedalMap in the corpus is empty, so both calls of the global millisecond stage
-     *   and the first two of the part's are no-ops throughout. (T19's verifier found the
-     *   narrower version of this — no fixture puts an asynchronyMap or imprecisionMap in
-     *   `<global>` — and left it open.)
-     * - **The imprecision fixtures are compared with imprecision-affected attributes
-     *   filtered out**, deliberately and correctly: Java's RNG is not this one's. So every
-     *   edge whose only effect is on the order of RNG draws — the cross-part stream ordinal,
-     *   the order of the four imprecision domains — is invisible to the reference comparison
-     *   by construction, and can only be held by assertions like these.
-     * - **No fixture sets `subNoteDynamics`**, so every channelVolumeMap in the corpus has
-     *   exactly one entry, at date 0, where rubato is the identity.
+     * - No fixture in `tests/integration/fixtures/` contains a single `<pedal>` element. Every
+     *   pedalMap in the corpus is empty, so both calls of the global millisecond stage and the
+     *   first two of the part's are no-ops throughout.
+     * - The imprecision fixtures are compared with imprecision-affected attributes filtered
+     *   out, deliberately: Java's RNG is not this one's. Every edge whose only effect is on
+     *   the order of RNG draws — the cross-part stream ordinal, the order of the four
+     *   imprecision domains — is invisible to the reference comparison by construction.
+     * - No fixture sets `subNoteDynamics`, so every channelVolumeMap in the corpus has exactly
+     *   one entry, at date 0, where rubato is the identity.
      *
-     * Each test states an invariant rather than a recorded number, so none of them has to be
+     * Each test states an invariant rather than a recorded number, so none has to be
      * regenerated when an unrelated value moves.
      */
     describe('stage order', () => {

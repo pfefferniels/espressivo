@@ -70,10 +70,10 @@ const DEFAULT_ORNAMENT_SCALE = 0.0;
  * Build a `note.order` attribute value from a list of ids — the v2 spelling, `#`-prefixed and
  * space-separated, or one of the two pitch keywords, which win outright and end the list.
  *
- * FROZEN: extracted verbatim from `addOrnament` so that the v2 and v3 writers cannot drift
- * apart. The `.replace('#', '')` strips only the FIRST `#` (Java's `String.replace(char,char)`
- * would strip all of them, but the TS port has always read this way); the `.trim()` on each id
- * and on the result are both load-bearing for the leading space the loop produces.
+ * FROZEN, and shared by the v2 and v3 writers so they cannot drift apart. The
+ * `.replace('#', '')` strips only the FIRST `#`, a deviation from Java's
+ * `String.replace(char,char)`; the `.trim()` on each id and on the result are both
+ * load-bearing for the leading space the loop produces.
  */
 function noteOrderAttributeValue(noteOrder: readonly string[]): string {
   let noteIdsString = '';
@@ -90,8 +90,8 @@ function noteOrderAttributeValue(noteOrder: readonly string[]): string {
  * An MPM `ornamentationMap`: trills, arpeggios, mordents — ornaments that reshape the
  * dynamics and timing of the notes they touch.
  *
- * Rendering happens in **three** passes spread across the pipeline, and the split is
- * forced by when the information exists:
+ * Rendering happens in three passes spread across the pipeline, and the split is forced by
+ * when the information exists:
  *
  * 1. {@link apply} runs the ornament definitions over the notes. It does not write
  *    performance attributes directly; it writes `ornament.*` markers onto the notes.
@@ -99,8 +99,8 @@ function noteOrderAttributeValue(noteOrder: readonly string[]): string {
  *    (`ornament.dynamics`, `ornament.date.offset`, `ornament.duration`) into `velocity`,
  *    `date.perf`, `duration.perf` and `date.end.perf` — before the tempo map runs.
  * 3. {@link renderMillisecondsModifiersToMap} folds the millisecond-domain markers into
- *    `milliseconds.date` and `milliseconds.date.end` — after it has. **Pass 3 is not the
- *    copy the pipeline runs**; see that method's own note.
+ *    `milliseconds.date` and `milliseconds.date.end` — after it has. Pass 3 is NOT the copy
+ *    the pipeline runs; see that method's own note.
  *
  * `ornament.noteoff.shift` decides, in passes 2 and 3 alike, whether a shifted onset
  * drags the note's end with it (duration preserved) or not (duration absorbs the shift).
@@ -118,12 +118,8 @@ export class OrnamentationMap extends GenericMap {
   }
 
   /**
-   * A fresh, empty `<ornamentationMap>`, or one read from an existing element.
-   *
-   * The two overloads return different things and that is the point. Building an empty
-   * map consults nothing the caller supplied, so it cannot fail and says so; reading an
-   * element can, and returns the reason instead of printing it. See
-   * {@link GenericMap.emptyMapElement}.
+   * A fresh, empty `<ornamentationMap>`, or one read from an existing element. The empty form
+   * is total, the parsing one is not; see {@link GenericMap.emptyMapElement}.
    */
   static createOrnamentationMap(): OrnamentationMap;
   static createOrnamentationMap(xml: Element): Result<OrnamentationMap, MpmParseError>;
@@ -162,7 +158,7 @@ export class OrnamentationMap extends GenericMap {
     return this.addOrnamentV2(dateOrOptions, nameRef, scale, noteOrder, id);
   }
 
-  /** The v2 writer, unchanged. Frozen against the Java fixtures. */
+  /** The v2 writer. Frozen against the Java fixtures. */
   private addOrnamentV2(
     date: number,
     nameRef: string,
@@ -182,8 +178,7 @@ export class OrnamentationMap extends GenericMap {
   }
 
   /**
-   * The v3 writer (DESIGN.md D12): canonical v3, and generation-preserving in the sense that
-   * only a caller who asked for v3 gets it.
+   * The v3 writer (DESIGN.md D12): only a caller who asked for v3 gets it.
    *
    * Two deliberate differences from the v2 writer, both fixing a round-trip asymmetry rather
    * than following it:
@@ -198,10 +193,9 @@ export class OrnamentationMap extends GenericMap {
    *
    * Attribute order extends the v2 order rather than the spec exemplum's (`ornament.xml:66-72`
    * leads with `noteid`): `date` and `name.ref` stay in front so a v2 and a v3 ornament read
-   * alike in a diff, and each new attribute sits next to the one it qualifies — `noteid`
-   * names the note that `name.ref`'s def applies to, `repetitions` multiplies a `note.order`
-   * group. Order is byte-visible (CHARTER §79-80); no Java reference writes these attributes,
-   * so nothing external binds the choice.
+   * alike in a diff, and each new attribute sits next to the one it qualifies. Order is
+   * byte-visible (CHARTER §79-80); no Java reference writes these attributes, so nothing
+   * external binds the choice.
    */
   private addOrnamentV3(options: AddOrnamentOptions): number {
     const ornament = new Element('ornament', MPM_NAMESPACE);
@@ -262,13 +256,12 @@ export class OrnamentationMap extends GenericMap {
   }
 
   /**
-   * Read the ornament at `index` into an {@link OrnamentData}, or null if the entry is
-   * not a resolvable `<ornament>` — it needs a `name.ref`, a style in scope, and a def
-   * that the style knows.
+   * Read the ornament at `index` into an {@link OrnamentData}, or null if the entry is not a
+   * resolvable `<ornament>` — it needs a `name.ref`, a style in scope, and a def that the
+   * style knows.
    *
-   * Note that this is *not* what {@link apply} uses; apply reads the same data inline so
-   * that it can carry the style forward across entries. This accessor exists for callers
-   * outside the rendering path.
+   * Not what {@link apply} uses: apply reads the same data inline so that it can carry the
+   * style forward across entries. This accessor is for callers outside the rendering path.
    */
   getOrnamentDataOf(index: number): OrnamentData | null {
     const i = this.resolveEntryIndex(index, 'ornament');
@@ -385,31 +378,25 @@ export class OrnamentationMap extends GenericMap {
    * entry rebinds `style` for everything after it, and ornaments before the first style
    * switch are skipped entirely, since an ornament with no style cannot resolve its def.
    *
-   * How the target notes are chosen has two branches. An explicit ID list in
-   * `note.order` names the notes and fixes their order. Otherwise every note at the
-   * ornament's date is collected and sorted by pitch, ascending or descending per
-   * `note.order`; `Math.sign(pitch1 - pitch2) * finalNoteOrderAscending` is the
-   * comparator, with the direction captured in a const because the sort callback closes
-   * over it.
+   * The target notes are chosen in one of two ways: an explicit ID list in `note.order` names
+   * them and fixes their order, or every note at the ornament's date is collected and sorted
+   * by pitch, ascending or descending per `note.order`.
    *
    * The `for (const chord of od.apply(...))` loop below is dead on this path — for a v2
    * ornament `apply` always returns an empty list. See {@link OrnamentData.apply}; it is a
-   * contract for note-generating ornaments, not an oversight, and MPM v3 is what fills it.
+   * contract for note-generating ornaments, and MPM v3 is what fills it.
    *
-   * **The v3 branch.** An ornament that uses anything v2 cannot express (`isV3Ornament`, the
-   * DESIGN.md D6 gate: a note pool, `noteid`, `repetitions`, or the `note.order` grouping
-   * syntax) is *prepared* here and *instantiated* after the walk. Everything below the gate is
-   * therefore reached by exactly the ornaments that reached it before, with the same inputs:
-   * generated notes appear in the map only once the walk is over, so a later v2 ornament's
-   * "every note at this date" still collects what it always collected. See
-   * `ornamentInstantiation.ts` for why the deferral is required rather than tidy.
+   * The v3 branch: an ornament that uses anything v2 cannot express (`isV3Ornament`, the
+   * DESIGN.md D6 gate — a note pool, `noteid`, `repetitions`, or the `note.order` grouping
+   * syntax) is *prepared* here and *instantiated* after the walk, so generated notes appear in
+   * the map only once the walk is over and a later v2 ornament's "every note at this date"
+   * still collects what it always collected. See `ornamentInstantiation.ts` for why the
+   * deferral is required rather than tidy.
    *
-   * **`expandOrnaments`** is read here, once per call, and is the only thing the option does:
-   * with it off, an ornament that passes the v3 gate is dropped on the spot instead of being
-   * prepared, so nothing downstream of the gate ever sees it. The read sits *inside* this
-   * method rather than at the facade because the default belongs to `src/mpm/`
-   * (ARCHITECTURE.md §2.4), and it is a single `const` rather than a per-ornament lookup
-   * because `ctx` is per-render and cannot change mid-walk.
+   * `expandOrnaments` is read here, once per call, and is the only thing the option does: with
+   * it off, an ornament that passes the v3 gate is dropped on the spot instead of being
+   * prepared. The read sits inside this method because the default belongs to `src/mpm/`
+   * (ARCHITECTURE.md §2.4).
    */
   private apply(maps: GenericMap[], ctx?: RenderContext): void {
     if (maps.length === 0) return;
@@ -423,7 +410,7 @@ export class OrnamentationMap extends GenericMap {
       return;
     }
 
-    // create a hashmap of all note elements, hashed by their ID, so we have quick access to them later on
+    // Every note of every map, by id — an ornament may name notes in another part.
     const notes = new Map<string, Element>();
     for (const map of maps) {
       for (const note of map.getAllElementsOfType('note')) {
@@ -437,25 +424,18 @@ export class OrnamentationMap extends GenericMap {
     // Built on first use, so that a document with no v3 ornament never walks the notes twice.
     let owners: ReadonlyMap<Element, GenericMap> | null = null;
 
-    // Process each ornament entry in this ornamentationMap.
-    //
-    // Over the entries rather than over an index into them: the body wanted *both* halves
-    // of the entry — `getElement(i)` for the element and `entryAt(i).getKey()` for its date,
-    // a hundred lines apart — and looked each up separately. `getAllElements()` hands back
-    // the live index by reference, so this costs no copy, and the null test the indexed read
-    // needed goes with it: an entry's value is an `Element`, never null. Nothing in the body
-    // adds to or removes from *this* map (it writes into `maps`, which are the score's), so
-    // iterating the live array is safe here in a way it would not be in `addElement`.
+    // `getAllElements()` hands back the live index by reference; nothing in the body adds to
+    // or removes from *this* map — it writes into `maps`, which are the score's — so walking
+    // the live array is safe here.
     for (const entry of this.getAllElements()) {
       const ornamentXml = entry.getValue();
 
-      // get the lookup style for subsequent ornaments
-      //
-      // Deliberately NOT `GenericMap.getStyle`, which does the same two-header lookup: this
-      // one carries `style` over from the previous `<style>` element, so when there is no
-      // local header at all the first branch does not run, `style` keeps its old value, and
-      // the `style === null` guard then skips the global lookup too. `getStyle` would reset
-      // it. That asymmetry is the reference's and it is observable, so it stays put.
+      // The style for subsequent ornaments, and deliberately NOT `GenericMap.getStyle`, which
+      // does the same two-header lookup: this one carries `style` over from the previous
+      // `<style>` element, so with no local header at all the first branch does not run,
+      // `style` keeps its old value, and the `style === null` guard then skips the global
+      // lookup too. `getStyle` would reset it. That asymmetry is the reference's and it is
+      // observable, so it stays put.
       if (ornamentXml.getLocalName() === 'style') {
         const nameRef = getAttributeValue('name.ref', ornamentXml);
         const localHeader = this.getLocalHeader();
@@ -475,7 +455,6 @@ export class OrnamentationMap extends GenericMap {
 
       if (style === null || ornamentXml.getLocalName() !== 'ornament') continue;
 
-      // read all data into an OrnamentData instance
       const od = new OrnamentData();
       od.style = style;
 
@@ -490,8 +469,6 @@ export class OrnamentationMap extends GenericMap {
       const scaleAtt = attribute('scale', ornamentXml);
       if (scaleAtt !== null) od.scale = parseFloat(scaleAtt.getValue());
 
-      // The v3 additions. Read here so that this reader and getOrnamentDataOf see the same
-      // ornament.
       this.readV3OrnamentFields(ornamentXml, od);
 
       // MPM v3 (DESIGN.md D6): an ornament that generates notes leaves the v2 path here. It is
@@ -511,7 +488,6 @@ export class OrnamentationMap extends GenericMap {
           `Warning: the ornament at date ${od.date} names an MPM v3 ornamentDef but uses no v3 feature itself, so it is rendered as a v2 ornament — and a v3 temporalSpread carries no v2 frame, so it will spread nothing. Give the ornament a note pool, a noteid or a v3 note.order.`,
         );
 
-      // determine the note order and collect the notes which the ornament will be applied to
       let noteOrderAscending = 1; // 1 = ascending pitch, -1 = descending pitch, 0 = ID sequence
       let chordSequence: Element[][] | null = null;
       const noteOrderAtt = ornamentXml.getAttribute('note.order');
@@ -550,7 +526,6 @@ export class OrnamentationMap extends GenericMap {
         }
         if (chordSequence.length === 0) continue;
 
-        // sort the chords in the indicated order on the basis of the chord's first note's pitch
         const finalNoteOrderAscending = noteOrderAscending;
         chordSequence.sort((n1, n2) => {
           const pitch1 = parseFloat(getAttributeValue('midi.pitch', elementAt(n1, 0, 'chord')));
@@ -559,7 +534,6 @@ export class OrnamentationMap extends GenericMap {
         });
       }
 
-      // apply the ornament to the notes
       // Generated notes go into the FIRST map, whatever part the principals came from —
       // the reference's choice, kept. Reaching here at all means `chordSequence` was not
       // empty, and every way of filling it reads from `maps`, so there is one.
@@ -618,9 +592,8 @@ export class OrnamentationMap extends GenericMap {
           const dateEndPerfAtt = attribute('date.end.perf', note);
           const durationPerfAtt = attribute('duration.perf', note);
 
-          const ornamentDurationAtt = attribute('ornament.duration', note); // does the ornament set an absolute note duration?
+          const ornamentDurationAtt = attribute('ornament.duration', note);
           if (ornamentDurationAtt !== null) {
-            // apply it to duration.perf and date.end.perf
             if (durationPerfAtt !== null) durationPerfAtt.setValue(ornamentDurationAtt.getValue());
             else note.addAttribute(new Attribute('duration.perf', ornamentDurationAtt.getValue()));
 
@@ -630,16 +603,15 @@ export class OrnamentationMap extends GenericMap {
             if (dateEndPerfAtt !== null) dateEndPerfAtt.setValue(dateEndPerf);
             else note.addAttribute(new Attribute('date.end.perf', dateEndPerf));
           } else {
-            // act according to noteoff.shift
+            // The attribute exists only when it is "true": present shifts `date.end.perf` and
+            // preserves the duration, absent leaves the end and lets the duration absorb it.
             const ornamentNoteoffShiftAtt = attribute('ornament.noteoff.shift', note);
             if (ornamentNoteoffShiftAtt !== null) {
-              // this attribute is only created when its value is "true", so we need to update date.end.perf; thus, duration stays the same
               if (dateEndPerfAtt !== null)
                 dateEndPerfAtt.setValue(
                   String(parseFloat(dateEndPerfAtt.getValue()) + ornamentDateOffset),
                 );
             } else {
-              // ornament.noteoff.shift="false", so we need to update duration.perf; thus, date.end.perf stays the same
               if (durationPerfAtt !== null)
                 durationPerfAtt.setValue(
                   String(parseFloat(durationPerfAtt.getValue()) - ornamentDateOffset),
@@ -663,34 +635,30 @@ export class OrnamentationMap extends GenericMap {
    * amendment): a frame aligned `at end` in the millisecond domain is anchored at a note's
    * millisecond END, which the symbolic phase cannot compute, so it is expressed as a static
    * offset from that end and resolved back into an ordinary onset shift here. Everything after
-   * it is v2, unchanged, and reads the resolved shift. The branch is **character-identical** to
-   * the copy in `Performance.ts` and `tests/mpm/elements/OrnamentationMap.test.ts` pins that —
-   * the one thing the suite could never do for the rest of this method.
+   * it is v2, unchanged, and reads the resolved shift. That branch is character-identical to
+   * the copy in `Performance.ts`, which `tests/mpm/elements/OrnamentationMap.test.ts` pins.
    *
-   * `millisecondsDate` is captured **before** the attribute is overwritten, and the
-   * absolute-duration branch then computes the end as
-   * `millisecondsDate + ornamentMillisecondsDateOffset + duration` from those saved
-   * values — not from the attribute it has just rewritten. `ornamentMillisecondsDateOffset`
-   * stays 0.0 when no offset marker is present, so the same expression serves both cases.
-   * With no absolute duration, `ornament.noteoff.shift` again decides: present (meaning
-   * true) shifts the end by the same offset and preserves the duration; absent leaves the
-   * end alone so the duration absorbs the shift.
+   * `millisecondsDate` is captured BEFORE the attribute is overwritten, and the
+   * absolute-duration branch computes the end as
+   * `millisecondsDate + ornamentMillisecondsDateOffset + duration` from those saved values,
+   * not from the attribute it has just rewritten. `ornamentMillisecondsDateOffset` stays 0.0
+   * when no offset marker is present, so the same expression serves both cases. With no
+   * absolute duration, `ornament.noteoff.shift` again decides: present (meaning true) shifts
+   * the end and preserves the duration; absent leaves the end alone so the duration absorbs
+   * the shift.
    *
-   * FROZEN — this mirrors OrnamentationMap.java:477-509 statement for statement and was
-   * a hard-won parity fix. Every addition's operand order is load-bearing. Do not
-   * refactor, do not extract the repeated sub-expression, do not reorder the attribute
-   * lookups.
+   * FROZEN — mirrors OrnamentationMap.java:477-509 statement for statement. Every addition's
+   * operand order is load-bearing. Do not refactor, do not extract the repeated
+   * sub-expression, do not reorder the attribute lookups.
    *
-   * ⚠ NO FIXTURE REACHES THIS METHOD, and no test does either. `Performance.perform` calls
-   * its own private copy (`Performance.ts`, `private static
-   * renderMillisecondsModifiersToMap`) — a re-implementation that exists because that file
-   * type-imports the map classes and so cannot call their statics. The two bodies are
-   * character-identical today and nothing enforces that; the suite cannot catch a drift
-   * between them, because it never runs this one. Found by the [T7] verifier, re-confirmed
-   * by [T19]'s, and **kept deliberately** by ARCHITECTURE.md §8.10: it is the Java-parity
-   * code path, and deleting it would make a future comparison against
-   * OrnamentationMap.java harder than keeping a second copy is. Collapsing the two is
-   * [T19]'s declined ruling — do not reopen it without the evidence named in
+   * ⚠ NO FIXTURE REACHES THIS METHOD, and no test does either. `Performance.perform` calls its
+   * own private copy (`Performance.ts`, `private static renderMillisecondsModifiersToMap`),
+   * which exists because that file type-imports the map classes and so cannot call their
+   * statics. The two bodies are character-identical today and nothing enforces that; the suite
+   * cannot catch a drift between them, because it never runs this one. Kept deliberately by
+   * ARCHITECTURE.md §8.10: it is the Java-parity code path, and deleting it would make a
+   * future comparison against OrnamentationMap.java harder than keeping a second copy is.
+   * Collapsing the two has been declined — do not reopen it without the evidence named in
    * `Performance.ts`'s class comment.
    */
   static renderMillisecondsModifiersToMap(
@@ -713,10 +681,8 @@ export class OrnamentationMap extends GenericMap {
       // MPM v3 (DESIGN.md D5 amendment): a millisecond frame aligned "at end" is anchored at
       // this note's millisecond END, which the symbolic phase cannot know, so it writes an
       // end-anchored marker instead of an onset offset. Resolving it into
-      // ornamentMillisecondsDateOffset is what keeps the rest of this method v2: the absolute
-      // duration and the note-off shift below go on reading one offset and mean by it exactly
-      // what they meant before. The end is read BEFORE anything writes to it, like every other
-      // value in this loop, and a note without one cannot be placed from its end at all.
+      // ornamentMillisecondsDateOffset keeps the rest of this method v2. The end is read
+      // BEFORE anything writes to it; a note without one cannot be placed from its end at all.
       const ornamentMillisecondsFromEndAtt = attribute(
         'ornament.milliseconds.fromend.offset',
         note,
@@ -733,9 +699,8 @@ export class OrnamentationMap extends GenericMap {
       }
 
       const millisecondsDateEndAtt = attribute('milliseconds.date.end', note);
-      const ornamentMillisecondsDurationAtt = attribute('ornament.milliseconds.duration', note); // does the ornament set an absolute duration?
+      const ornamentMillisecondsDurationAtt = attribute('ornament.milliseconds.duration', note);
       if (ornamentMillisecondsDurationAtt !== null) {
-        // apply it to milliseconds.date.end
         const millisecondsDateEnd = String(
           millisecondsDate +
             ornamentMillisecondsDateOffset +
@@ -744,17 +709,17 @@ export class OrnamentationMap extends GenericMap {
         if (millisecondsDateEndAtt !== null) millisecondsDateEndAtt.setValue(millisecondsDateEnd);
         else note.addAttribute(new Attribute('milliseconds.date.end', millisecondsDateEnd));
       } else {
-        // act according to noteoff.shift
+        // The attribute exists only when it is "true": present shifts the end and preserves
+        // the duration, absent leaves the end unaltered so the duration absorbs the shift.
         const ornamentNoteoffShiftAtt = attribute('ornament.noteoff.shift', note);
         if (ornamentNoteoffShiftAtt !== null) {
-          // this attribute is only created when its value is "true", so we need to update milliseconds.date.end; thus, the duration stays the same
           if (millisecondsDateEndAtt !== null)
             millisecondsDateEndAtt.setValue(
               String(
                 parseFloat(millisecondsDateEndAtt.getValue()) + ornamentMillisecondsDateOffset,
               ),
             );
-        } // else, ornament.noteoff.shift="false", so milliseconds.date.end remains unaltered
+        }
       }
     }
   }

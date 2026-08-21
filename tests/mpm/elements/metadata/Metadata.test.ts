@@ -24,13 +24,6 @@ function element(
   return e;
 }
 
-/**
- * The `quiet()` helper that used to wrap the four failure cases below is gone with the
- * `console.error` it was silencing. It existed because the factories printed the exception
- * they had caught before returning null; each of those tests now reads the reason off the
- * returned `Result`, which is what the silencing was hiding.
- */
-
 describe('Author', () => {
   it('creates an author from name, number and id', () => {
     const a = okValue(Author.createAuthor('Axel Berndt', 1, 'author-1'));
@@ -331,8 +324,6 @@ describe('Metadata', () => {
     });
 
     it('refuses an array holding a resource the caller never checked', () => {
-      // The incumbent reached this through an `r!` that threw a TypeError, which the
-      // factory's catch printed and turned into a bare null. Same refusal, named.
       expect(
         errOf(
           Metadata.createMetadata(null, null, [

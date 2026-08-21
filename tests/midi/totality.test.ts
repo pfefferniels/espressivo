@@ -4,13 +4,10 @@ import { Sequence } from '../../src/midi/MidiTypes.js';
 import { EventMaker } from '../../src/midi/EventMaker.js';
 
 /**
- * The claims that fell out of making `Midi`'s sequence field total, pinned.
- *
- * Three `| null`s came off this class — the field, `cloneSequence`'s return and
- * `exportMidi`'s — and each removal deleted a branch. Two of those are enforced by the
- * compiler and need no test. The third is not: dropping `append`'s
- * `(midi == null) || midi.isEmpty()` guard is only safe if the loops below it are already
- * inert for the argument the guard was rejecting, and that is a claim about behaviour.
+ * `Midi`'s sequence field is total, and `append` carries no `(midi == null) ||
+ * midi.isEmpty()` guard. Doing without one is only safe if `append`'s loops are inert for
+ * the argument such a guard would reject — a claim about behaviour that the compiler cannot
+ * make, so it is pinned here.
  */
 describe('control: append of a track-less Midi is the no-op the deleted guard assumed', () => {
   const withOneNote = () => {
@@ -28,10 +25,9 @@ describe('control: append of a track-less Midi is the no-op the deleted guard as
     expect(Array.from(b.exportMidi())).toEqual(Array.from(a.exportMidi()));
   });
   it('but append is not inert in general, so the test above can fail', () => {
-    // First attempt at this control asserted that a Midi with ONE EMPTY track would differ.
-    // It does not: `this` already has one track so none is created, and an empty source
-    // track copies no events. Two tracks is the smallest input that actually moves bytes —
-    // the while loop has to create a second track to match.
+    // A Midi with one empty track does not move any bytes: `this` already has one track so
+    // none is created, and an empty source track copies no events. Two tracks is the
+    // smallest input that does — the while loop has to create a second track to match.
     const a = withOneNote();
     const b = withOneNote();
     const twoTracks = Midi.empty(480);
@@ -43,11 +39,10 @@ describe('control: append of a track-less Midi is the no-op the deleted guard as
 });
 
 describe('cloneSequence is total', () => {
-  // Its `| null` was unreachable: Java catches `InvalidMidiDataException` from
-  // `new Sequence(divisionType, resolution)`, but this port's Sequence constructor is two
-  // field assignments. That is a proof, not a test — so what is worth testing instead is
-  // the claim the proof rests on, that every division type this class can hold round-trips
-  // through a clone rather than some of them being rejected.
+  // Java catches `InvalidMidiDataException` from `new Sequence(divisionType, resolution)`;
+  // this port's Sequence constructor is two field assignments, so there is nothing to
+  // catch. What that rests on is testable: every division type this class can hold
+  // round-trips through a clone rather than some of them being rejected.
   it.each([
     ['PPQ', Sequence.PPQ, 480],
     ['SMPTE_24', Sequence.SMPTE_24, 40],

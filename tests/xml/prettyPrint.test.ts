@@ -1,11 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { prettyXml } from '../../src/xml/prettyPrint.js';
 
-// Moved verbatim from tests/mei/Helper.test.ts by T14: cosmetic XML re-indentation.
-
-// ---------------------------------------------------------------------------
-// prettyXml
-// ---------------------------------------------------------------------------
 describe('prettyXml', () => {
   it('should return empty string for null', () => {
     expect(prettyXml(null)).toBe('');
@@ -24,13 +19,6 @@ describe('prettyXml', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// pulseDuration2decimal
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// prettyXml – declaration and nesting
-// ---------------------------------------------------------------------------
 describe('prettyXml – declaration and nesting', () => {
   it('should keep an XML declaration unindented on its own line', () => {
     const pretty = prettyXml('<?xml version="1.0" encoding="UTF-8"?><root><child/></root>');
@@ -53,7 +41,3 @@ describe('prettyXml – declaration and nesting', () => {
     expect(prettyXml('   ')).toBe('');
   });
 });
-
-// ---------------------------------------------------------------------------
-// writeStringToFile – guards
-// ---------------------------------------------------------------------------

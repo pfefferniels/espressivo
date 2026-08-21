@@ -54,17 +54,12 @@ export type DistributionEntryProblem =
   | UnknownDistributionFamily;
 
 /**
- * What one distribution leaves behind for the next.
- *
- * A correlated distribution continues its predecessor's sequence rather than starting a
- * fresh one, and the single thing it needs from that predecessor is the grid the
- * predecessor's draws were indexed on. Naming that as its own one-field type, rather than
- * keeping the whole previous `DistributionData` alive to read one field off it, is what
- * makes the handover's actual dependency visible.
+ * What one distribution leaves behind for the next: the grid its draws were indexed on, which
+ * is all a correlated distribution needs to continue its predecessor's sequence.
  *
  * `timingBasisMs` is `number | null` for one reason only: an unrecognised `distribution.*`
- * element becomes a predecessor before any basis has been resolved for it, and null is
- * what the incumbent then divided by. See {@link UnknownDistributionFamily}.
+ * element becomes a predecessor before any basis has been resolved for it, and that null is
+ * what the handover then divides by. See {@link UnknownDistributionFamily}.
  */
 export interface Predecessor {
   readonly timingBasisMs: number | null;
@@ -73,25 +68,20 @@ export interface Predecessor {
 /**
  * A distribution parameter on its way into {@link RandomNumberProvider}.
  *
- * The provider's factories are typed `number`, and for a document that declares every
- * attribute of its family they are. MPM does not require that, and **the port's behaviour
- * for a document that omits one is specified, measured and depended upon**: the `null`
- * reaches the provider's arithmetic, where `null - null` is 0, `d > null` is `d > 0`, and
- * `clip()` can return the `null` itself, which the write-back then adds to an attribute as
- * a no-op (`attValue + null === attValue`). That is how a clip-less triangular performs
- * exactly δ₀ rather than `NaN` — see `src/comparison/imprecisionLaws.ts` for the full
- * nine-case table and `tests/comparison/imprecisionDegenerate.test.ts` for the pin.
+ * The provider's factories are typed `number`, but MPM does not require a document to declare
+ * every attribute of its family, and the behaviour for one that omits an attribute is
+ * specified and depended upon: the `null` reaches the provider's arithmetic, where
+ * `null - null` is 0, `d > null` is `d > 0`, and `clip()` can return the `null` itself, which
+ * the write-back then adds to an attribute as a no-op (`attValue + null === attValue`). That
+ * is how a clip-less triangular performs exactly δ₀ rather than `NaN` — see
+ * `src/comparison/imprecisionLaws.ts` for the full nine-case table and
+ * `tests/comparison/imprecisionDegenerate.test.ts` for the pin.
  *
- * Substituting `0` for the `null` is **not** equivalent, which is why this is a cast and
- * not a `?? 0`: `RandomNumberProvider.triangularDistribution` opens with
+ * Substituting `0` for the `null` is not equivalent, which is why this is a cast and not a
+ * `?? 0`: `RandomNumberProvider.triangularDistribution` opens with
  * `upperLimit === lowerLimit`, a *strict* comparison that separates a declared `0` from an
  * absent limit and takes a different number of draws from the sequence depending on the
  * answer.
- *
- * So this is deliberately not the thirty `!`s it replaces. A `!` claims the value is
- * present, which here is false. This claims something true — that `null` is a legal
- * argument at this boundary, with a defined meaning — and says it once instead of thirty
- * times.
  */
 function asProviderParameter(value: number | null): number {
   return value as number;
@@ -105,10 +95,10 @@ function asProviderParameter(value: number | null): number {
  * own provider exists — the position of that draw is part of the output sequence (see the
  * class's randomness contract).
  *
- * Exported for the tests rather than for callers: this table is six transcriptions of six
- * positional factory signatures, which is precisely the kind of thing that can be wrong in
- * a way no end-to-end assertion notices — swapping a triangular's `mode` and `clip.lower`
- * still renders plausible numbers. The suite reads the parameters back off the provider.
+ * Exported for the tests rather than for callers: six transcriptions of six positional factory
+ * signatures can be wrong in a way no end-to-end assertion notices — swapping a triangular's
+ * `mode` and `clip.lower` still renders plausible numbers — so the suite reads the parameters
+ * back off the provider.
  */
 export function providerFor(
   distribution: Distribution,
@@ -168,13 +158,13 @@ export function providerFor(
  * one — drawn from the *previous* provider at the new distribution's own start date,
  * so the two sequences meet without a discontinuity.
  *
- * Draws from `randomPrev` exactly once, and only when there is a predecessor to draw
- * from. Both the count and the position of that draw are part of the output sequence
- * (class doc). Returns null when there is no predecessor, which
- * {@link applyHandover} then treats as "seed a fresh sequence".
+ * Draws from `randomPrev` exactly once, and only when there is a predecessor to draw from.
+ * Both the count and the position of that draw are part of the output sequence (class doc).
+ * Returns null when there is no predecessor, which {@link applyHandover} then treats as "seed
+ * a fresh sequence".
  *
- * The date is read off the element with the namespace-tolerant `attribute()` rather than
- * from the already-parsed `startDate`, and the two are not the same lookup — that is why
+ * The date is read off the element with the namespace-tolerant `attribute()` rather than from
+ * the already-parsed `startDate`; the two are not the same lookup, which is why
  * {@link Distribution} keeps its source element.
  */
 function handoverValue(
@@ -214,26 +204,23 @@ function applyHandover(value: number | null, random: RandomNumberProvider): void
 /**
  * The sampling grid this distribution's draws are indexed on.
  *
- * A declared `milliseconds.timingBasis` is used verbatim, **including a zero or negative
- * one** — the `<= 0` fallback below guards only the *derived* value, and a declared 0
- * makes the index infinite and the render throw, which is the ⊥ route
- * `src/comparison/imprecisionLaws.ts` documents. Keeping that asymmetry is the reason for
- * the early return rather than one combined test at the end.
+ * A declared `milliseconds.timingBasis` is used verbatim, including a zero or negative one —
+ * the `<= 0` fallback below guards only the *derived* value, and a declared 0 makes the index
+ * infinite and the render throw, which is the ⊥ route `src/comparison/imprecisionLaws.ts`
+ * documents. That asymmetry is why the declared case returns early rather than joining one
+ * combined test at the end.
  *
- * Where nothing is declared, the basis is derived from the family's own spread, and only
- * in the timing domain, where a spread measured in milliseconds means something. Every
- * other domain, and every derivation that comes out at zero or below, falls back to 100.
+ * Where nothing is declared, the basis is derived from the family's own spread, and only in
+ * the timing domain, where a spread measured in milliseconds means something. Every other
+ * domain, and every derivation that comes out at zero or below, falls back to 100.
  *
- * Exported for the tests, for the reason {@link providerFor} gives: the comparison module
- * has its own independent copy of this derivation (`src/comparison/imprecisionLaws.ts`),
- * so a test that reads a timing basis through *that* reader cannot see a mistake in this
- * one.
+ * Exported for the tests, for the reason {@link providerFor} gives: the comparison module has
+ * its own independent copy of this derivation (`src/comparison/imprecisionLaws.ts`), so a test
+ * that reads a timing basis through *that* reader cannot see a mistake in this one.
  *
- * `?? 0` is not a behaviour change from the incumbent's `upperLimit! - lowerLimit!`:
- * subtraction ToNumber-coerces, `Number(null)` is 0, so `null - x`, `x - null` and
- * `null - null` are already `0 - x`, `x - 0` and `0 - 0`. It is spelled out here because
- * the same substitution is *not* safe at {@link asProviderParameter}, and the difference
- * between the two sites is worth being able to see.
+ * `?? 0` is safe here where it would not be at {@link asProviderParameter}: subtraction
+ * ToNumber-coerces and `Number(null)` is 0, so `null - x`, `x - null` and `null - null` are
+ * already `0 - x`, `x - 0` and `0 - 0`.
  */
 export function resolveTimingBasis(distribution: Distribution, isTimingDomain: boolean): number {
   if (distribution.millisecondsTimingBasis !== null) return distribution.millisecondsTimingBasis;
@@ -250,8 +237,8 @@ export function resolveTimingBasis(distribution: Distribution, isTimingDomain: b
       })
     : null;
 
-  // `NaN <= 0` is false, so a malformed limit derives a NaN basis and keeps it — the
-  // incumbent's behaviour, and the one the index guard in `RandomNumberProvider` catches.
+  // `NaN <= 0` is false, so a malformed limit derives a NaN basis and keeps it, which the
+  // index guard in `RandomNumberProvider` catches.
   return derived === null || derived <= 0.0 ? 100.0 : derived;
 }
 
@@ -269,16 +256,15 @@ export function resolveTimingBasis(distribution: Distribution, isTimingDomain: b
  * {@link RandomNumberProvider} is a deterministic sequence, not a stream of independent
  * samples: correlated distributions (brownian noise, compensating triangle) derive each
  * value from the previous one, and `getValue(index)` is what advances that state.
- * Consequently **the number and order of `getValue` calls is part of the output**. One
- * extra draw, one skipped draw, or two draws swapped desynchronises the whole sequence
- * and every subsequent value changes. This constrains ordinary-looking refactors: the
- * `continue`s that skip an entry must keep skipping its draw, the deferred
- * `pendingDurations` pass must stay after the main loop rather than being folded into
- * it, and the handover between successive correlated distributions
+ * Consequently the number and order of `getValue` calls is part of the output. One extra
+ * draw, one skipped draw, or two draws swapped desynchronises the whole sequence and every
+ * subsequent value changes. So the `continue`s that skip an entry must keep skipping its
+ * draw, the deferred `pendingDurations` pass must stay after the main loop rather than being
+ * folded into it, and the handover between successive correlated distributions
  * ({@link handoverValue} / {@link applyHandover}, which draw exactly once) must keep its
- * position. Note also that output is nondeterministic by design where no `seed` is given
- * — docs/history/refactor/CHARTER.md exempts this map from byte comparison for that reason, so the test suite
- * will *not* catch a desync here. Reason it through instead.
+ * position. Output is nondeterministic by design where no `seed` is given —
+ * docs/history/refactor/CHARTER.md exempts this map from byte comparison for that reason, so
+ * the test suite will *not* catch a desync here. Reason it through instead.
  *
  * Port of meico.mpm.elements.maps.ImprecisionMap
  */
@@ -293,28 +279,22 @@ export class ImprecisionMap extends GenericMap {
   }
 
   /**
-   * The one place in the map cluster where a subclass adds a check of its own, and **the
-   * order of it is load-bearing**.
+   * A fresh, empty `imprecisionMap` of one domain, or one read from an existing element —
+   * which must additionally be named `imprecisionMap*`, the one place in the map cluster where
+   * a subclass adds a check of its own.
    *
-   * The check ran, in the incumbent, at the foot of this class's constructor — after
-   * `super(…)` had already indexed and **re-sorted** the element's children. So an element
-   * that passes `GenericMap`'s "is a map" test but fails this one comes back with its
-   * children reordered and no map to show for it. That is visible from outside, so the check
-   * stays after construction here too rather than moving up beside its sibling, where it
-   * would read better and would silently stop touching the caller's element.
-   *
-   * (The history is one step older still: `GenericMap`'s constructor used to end in
-   * `this.parseData(xml)`, dispatching into an override in this class before this class's own
-   * field initialisers had run.)
+   * The order of that check is load-bearing: it runs after construction, by which time
+   * `GenericMap` has indexed and RE-SORTED the element's children. An element that passes
+   * "is a map" but fails this one therefore comes back with its children reordered and no map
+   * to show for it, which is visible from outside.
    */
   static createImprecisionMap(domain: string): ImprecisionMap;
   static createImprecisionMap(xml: Element): Result<ImprecisionMap, MpmParseError>;
   static createImprecisionMap(
     domainOrXml: string | Element | null,
   ): ImprecisionMap | Result<ImprecisionMap, MpmParseError> {
-    // Total for a domain, and for the same reason as the other twelve maps' no-argument
-    // form: the name is built from this class's own prefix, so it passes both checks by
-    // construction — `imprecisionMap` contains "Map", and it contains "imprecisionMap".
+    // Total for a domain: the name is built from this class's own prefix, so it passes both
+    // checks by construction — `imprecisionMap` contains "Map", and contains "imprecisionMap".
     if (typeof domainOrXml === 'string') {
       const name = `imprecisionMap${domainOrXml === '' ? '' : `.${domainOrXml}`}`;
       return new ImprecisionMap(GenericMap.emptyMapElement(name));
@@ -347,9 +327,8 @@ export class ImprecisionMap extends GenericMap {
     }
   }
 
+  /** The domain suffix of the element's local name, or `''` for a bare `imprecisionMap`. */
   getDomain(): string {
-    // `.at(1)` and not `[1]`: the length test it replaces said exactly this, and `at` answers
-    // `undefined` for the missing slot whether or not the strict-index flag is on.
     return this.getXml().getLocalName().split('.').at(1) ?? '';
   }
 
@@ -470,19 +449,17 @@ export class ImprecisionMap extends GenericMap {
    * distribution.
    *
    * The three ways this can fail are three different things, and
-   * {@link renderImprecisionToMap} treats them differently, which is why they are named
-   * arms of {@link DistributionEntryProblem} rather than one `null`. The predecessor a
-   * correlated distribution hands over from is carried past a `notADistribution` entry
-   * unchanged, but is *replaced* by an `unknownFamily` one — behaviour inherited verbatim
-   * from the incumbent, where `dd = ddPrev` ran on the first path and not on the second.
+   * {@link renderImprecisionToMap} treats them differently, which is why they are named arms
+   * of {@link DistributionEntryProblem} rather than one `null`. The predecessor a correlated
+   * distribution hands over from is carried past a `notADistribution` entry unchanged, but is
+   * *replaced* by an `unknownFamily` one.
    */
   distributionAt(index: number): Result<DistributionSpan, DistributionEntryProblem> {
     const i = this.clampEntryIndex(index);
     if (i < 0) return err({ kind: 'noEntry', index });
 
     // `clampEntryIndex` has already answered -1 for an empty map and pulled everything else
-    // into range, so this is never null. Asking rather than asserting costs one comparison and
-    // keeps the "-1 means nothing" contract in the one place that states it.
+    // into range, so this is never null.
     const e = this.getElement(i);
     if (e === null) return err({ kind: 'noEntry', index });
     const localName = e.getLocalName();
@@ -500,24 +477,22 @@ export class ImprecisionMap extends GenericMap {
    * Perturb `map` according to this map's domain and distributions.
    *
    * Offsets are **collected first and applied last**, and that two-phase structure is
-   * required rather than stylistic: `shakeOffsets`/`shakeTimingOffsets` need to see all
-   * the offsets sharing a millisecond date together, which is only possible once
-   * collection has finished. The `offsets` map is keyed by that shared date for exactly
-   * this reason.
+   * required rather than stylistic: `shakeOffsets`/`shakeTimingOffsets` need to see all the
+   * offsets sharing a millisecond date together, which is why `offsets` is keyed by that date
+   * and why it can only run once collection has finished.
    *
    * An entry that is not a distribution leaves {@link Predecessor} standing, so the *next*
    * correlated distribution still gets a valid handover partner and the sequence does not
-   * restart. That looks redundant and is not — see {@link distributionAt} for the one kind
-   * of failure that does replace the predecessor.
+   * restart. See {@link distributionAt} for the one kind of failure that does replace the
+   * predecessor.
    *
    * The timing basis is the grid the random sequence is indexed on; {@link resolveTimingBasis}
    * derives one where the document declares none.
    *
-   * `shakePolyphonicPart` addresses simultaneous notes: without it, every note of a chord
-   * receives the same offset and the chord stays mechanically together. Shaking re-rolls
-   * all but one of them so the chord spreads. The timing variant additionally keeps notes
-   * of the *same pitch* on the same offset, since two voices sounding one pitch must not
-   * separate into an audible flam.
+   * `shakePolyphonicPart` addresses simultaneous notes: without it every note of a chord
+   * receives the same offset and the chord stays mechanically together, so shaking re-rolls
+   * all but one of them. The timing variant additionally keeps notes of the *same pitch* on
+   * the same offset, since two voices sounding one pitch must not separate into a flam.
    *
    * See the class doc's randomness contract before changing any control flow here: the
    * `continue`s, the deferred `pendingDurations` pass, and the handover calls each
@@ -528,11 +503,11 @@ export class ImprecisionMap extends GenericMap {
     shakePolyphonicPart: boolean,
     ctx?: RenderContext,
   ): void {
-    // Read once per call, before anything can return early, so it counts calls rather
-    // than distributions: `impIndex` below distinguishes the distributions *within* one
-    // map, this distinguishes the maps within one render, and the pair is unique per
-    // RandomNumberProvider. Order-dependent by design — for identical input and options
-    // the call order is fixed, so the derived seeds reproduce.
+    // Read once per call, before anything can return early, so it counts calls rather than
+    // distributions: `impIndex` below distinguishes the distributions within one map, this
+    // distinguishes the maps within one render, and the pair is unique per
+    // RandomNumberProvider. Order-dependent by design — for identical input and options the
+    // call order is fixed, so the derived seeds reproduce.
     const ordinal = ctx !== undefined ? ctx.streamOrdinal++ : 0;
 
     if (map === null || this.elements.length === 0) return;
@@ -564,10 +539,8 @@ export class ImprecisionMap extends GenericMap {
     for (let impIndex = 0; impIndex < this.size(); ++impIndex) {
       const entry = this.distributionAt(impIndex);
       if (!entry.ok) {
-        // The three ways an entry is not a usable distribution, and what each leaves the
-        // next correlated distribution to hand over from. Written as a table so that the
-        // asymmetry — an unknown family REPLACES the predecessor, the other two do not —
-        // is stated rather than implied by which branch happens to omit an assignment.
+        // What each kind of unusable entry leaves the next correlated distribution to hand
+        // over from: an unknown family REPLACES the predecessor, the other two do not.
         predecessor = matchKind(entry.error, {
           noEntry: () => predecessor,
           notADistribution: () => predecessor,
@@ -577,30 +550,24 @@ export class ImprecisionMap extends GenericMap {
       }
       const { distribution, endDate } = entry.value;
 
-      // initialize the seed, generate correlated distribution functions
       random = providerFor(distribution, random, predecessor);
 
       // A `seed` in the MPM always wins (RULE F7); `options.seed` supplies one only where
       // the MPM supplies none. With neither, the provider keeps its constructor's
-      // Math.random() seed — today's behaviour, deliberately untouched.
+      // Math.random() seed.
       if (distribution.seed !== null) random.setSeed(distribution.seed);
       else if (ctx?.options.seed !== undefined)
         random.setSeed(deriveSeed(ctx.options.seed, ordinal, impIndex));
 
-      // make sure that the timing resolution is specified, and if not, compute a reasonable value
       const timingBasisMs = resolveTimingBasis(distribution, domain === ImprecisionMap.TIMING);
 
       // Only now, after the handover above has read the *previous* distribution's resolved
-      // basis. The incumbent got that ordering from writing the resolved value back into
-      // the `DistributionData` object the next iteration would see as `ddPrev`; the order
-      // of these two statements is what replaces that mutation.
+      // basis: the order of these two statements is the handover.
       predecessor = { timingBasisMs };
 
-      // apply distribution to map elements
       for (; mapIndex < map.size(); ++mapIndex) {
-        // A random access and not an iteration: `mapIndex` is a cursor that survives the
-        // distribution loop around this one, and the `break` below deliberately leaves the
-        // entry that ended this span for the next distribution to re-examine.
+        // `mapIndex` is a cursor that survives the distribution loop around this one, and the
+        // `break` below leaves the entry that ended this span for the next distribution.
         const mapEntry = elementAt(map.elements, mapIndex, 'imprecision target');
 
         if (mapEntry.getKey() < distribution.startDate) continue;
@@ -671,13 +638,9 @@ export class ImprecisionMap extends GenericMap {
       }
 
       // Offset the milliseconds.date.end attributes: drain the leading run of pending
-      // durations that end inside this distribution's span, stopping at the first that
-      // does not. The loop this replaces spliced each drained entry out individually and
-      // stepped `i` back, which is the same prefix drain written so that every removal
-      // shifts the whole remainder — quadratic in the number of notes, and the single
-      // largest cost of rendering a long part with an imprecision map. Entries are
-      // consumed in the same order, so the RandomNumberProvider sees the same call
-      // sequence and produces the same offsets.
+      // durations that end inside this distribution's span, stopping at the first that does
+      // not. The order entries are consumed in is part of the randomness contract — it is
+      // what the RandomNumberProvider's call sequence is made of.
       let drained = 0;
       for (const pd of pendingDurations) {
         if (pd.endDate >= endDate) break;
@@ -736,7 +699,8 @@ export class ImprecisionMap extends GenericMap {
       const keepOffset = Math.floor(Math.random() * entries.length);
       const pitchOffsetTuplet = new Map<number, number>();
 
-      // as this applies also to the element that keeps its offset, it should be added to the hashmap first
+      // The kept entry defines the offset for its pitch, so it is filed before the others are
+      // looked up against it.
       const keeper = elementAt(entries, keepOffset, 'shake keeper');
       const keeperParent = keeper.getValue().getParent();
       if (keeperParent !== null) {
@@ -750,7 +714,6 @@ export class ImprecisionMap extends GenericMap {
       for (const [i, entry] of entries.entries()) {
         if (i === keepOffset) continue;
 
-        // check whether we have already an offset value for this pitch
         const entryParent = entry.getValue().getParent();
         let pitchAtt: Attribute | null = null;
         if (entryParent !== null) {

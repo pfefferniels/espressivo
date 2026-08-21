@@ -6,9 +6,6 @@ import { Element, Attribute } from '../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 
 describe('AsynchronyMap', () => {
-  // ---------------------------------------------------------------
-  // Create an asynchrony map
-  // ---------------------------------------------------------------
   describe('createAsynchronyMap', () => {
     it('should create an empty asynchrony map', () => {
       const map = AsynchronyMap.createAsynchronyMap();
@@ -29,9 +26,6 @@ describe('AsynchronyMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Add asynchrony instruction
-  // ---------------------------------------------------------------
   describe('addAsynchrony', () => {
     it('should add an asynchrony instruction', () => {
       const map = AsynchronyMap.createAsynchronyMap();
@@ -73,9 +67,6 @@ describe('AsynchronyMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // getAsynchronyAt
-  // ---------------------------------------------------------------
   describe('getAsynchronyAt', () => {
     it('should return 0.0 for an empty map', () => {
       const map = AsynchronyMap.createAsynchronyMap();
@@ -120,18 +111,15 @@ describe('AsynchronyMap', () => {
     });
 
     /**
-     * The backwards scan steps over entries that are not asynchronies, and answers 0.0 when
-     * it runs off the front without finding one.
-     *
      * An asynchronyMap holds ordinary dated entries, `<style>` switches included, and
-     * `getElementIndexBeforeAt` finds the nearest of ANY kind. So the entry it lands on may
-     * not be an asynchrony at all, and reading `@milliseconds.offset` off a `<style>` yields
-     * `parseFloat('')`, i.e. NaN — a number that propagates into every millisecond date the
+     * `getElementIndexBeforeAt` finds the nearest of any kind. The entry it lands on may
+     * therefore not be an asynchrony, and reading `@milliseconds.offset` off a `<style>`
+     * gives `parseFloat('')`, i.e. NaN, which propagates into every millisecond date the
      * asynchrony pass touches.
      *
-     * Nothing pinned that skip: deleting the local-name test passed every test in the tree,
-     * because no fixture and no unit test puts a non-asynchrony entry into an asynchronyMap
-     * before the date being asked about.
+     * Nothing else pins the skip: deleting the local-name test leaves every test in the tree
+     * green, because no fixture and no other unit test puts a non-asynchrony entry into an
+     * asynchronyMap before the date being asked about.
      */
     it('steps back over entries that are not asynchronies, and 0.0 when there are only those', () => {
       const map = AsynchronyMap.createAsynchronyMap();
@@ -166,14 +154,7 @@ describe('AsynchronyMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // renderAsynchronyToMap
-  // ---------------------------------------------------------------
   describe('renderAsynchronyToMap', () => {
-    /**
-     * Helper: create a GenericMap with note entries that have
-     * milliseconds.date and milliseconds.date.end attributes.
-     */
     function createTestMap(
       entries: { date: number; msDate: number; duration: number; msEnd: number; id?: string }[],
     ): GenericMap {
@@ -193,20 +174,17 @@ describe('AsynchronyMap', () => {
     }
 
     /**
-     * `@modified` records WHICH instruction moved a note, and it recorded nothing.
+     * `@modified` records which instruction moved a note.
      *
      * `renderAsynchronyToMap` appends the asynchrony instruction's id to `@modified` on every
-     * entry it shifts. Both this port and the Java fork read that id with the equivalent of
-     * `getAttributeValue('xml:id', …)`, and Java's `Helper.getAttribute` matches a LOCAL name —
-     * the attribute's local name is `id` — so it missed all three of its lookups and returned
-     * `""` for every element, always. The feature was inert in both.
+     * entry it shifts. Java's `Helper.getAttribute` matches a local name, and the attribute's
+     * local name is `id`, so the `getAttributeValue('xml:id', …)` lookup missed and returned
+     * `""` for every element — inert in the Java fork and in this port, until the fork's fix
+     * at `meico@68ccd3b8`, taken here at the same time.
      *
-     * **No fixture can show this**, which is why it survived: `GenerateAllMapsReference` builds
-     * its asynchrony instructions with `addAsynchrony(date, offset)` and no id at all, so all
-     * 105 `modified` attributes in the corpus would be empty even with the lookup fixed. This
-     * is the case the corpus does not contain.
-     *
-     * Fixed in the fork at `meico@68ccd3b8` and here at the same time.
+     * No fixture can show this: `GenerateAllMapsReference` builds its asynchrony instructions
+     * with `addAsynchrony(date, offset)` and no id, so every `modified` attribute in the
+     * corpus reads empty even with the lookup fixed.
      */
     it('records the instruction id in @modified, not an empty string', () => {
       const map = createTestMap([
@@ -227,15 +205,10 @@ describe('AsynchronyMap', () => {
     });
 
     it('appends nothing when the instruction genuinely has no id', () => {
-      // The corpus's own shape, and the reason the bug above stayed invisible: every
-      // asynchrony instruction in every fixture is built by `addAsynchrony(date, offset)`
-      // with no id, so `@modified` would read empty even with the lookup correct.
-      //
-      // `toBeNull` and not `toBe('')`: the `modified=""` seen on every element of every
-      // reference document is SEEDED by `Performance.addModifiedAttributes` before the render
-      // passes run. This test drives `renderAsynchronyToMap` against a hand-built map, so that
-      // seeding never happened and there is no attribute to read — which is the honest result,
-      // and worth pinning because it says the pass appends rather than creates.
+      // `toBeNull` and not `toBe('')`: the `modified=""` on every element of every reference
+      // document is seeded by `Performance.addModifiedAttributes` before the render passes
+      // run. Driving the pass against a hand-built map skips that seeding, so there is no
+      // attribute at all — the pass appends to `@modified`, it does not create it.
       const map = createTestMap([{ date: 0, msDate: 0, duration: 720, msEnd: 500 }]);
       const asyn = AsynchronyMap.createAsynchronyMap();
       asyn.addAsynchrony(0, 50);
@@ -254,7 +227,6 @@ describe('AsynchronyMap', () => {
     }
 
     it('positive offset shifts milliseconds.date and milliseconds.date.end forward', () => {
-      // Note at ms=100, end=200, apply offset=50 -> ms=150, end=250
       const asyncMap = AsynchronyMap.createAsynchronyMap();
       asyncMap.addAsynchrony(0, 50);
 
@@ -266,8 +238,6 @@ describe('AsynchronyMap', () => {
     });
 
     it('negative offset: milliseconds.date clamped to 0', () => {
-      // Note at ms=10, apply offset=-20 -> ms=max(0, 10-20)=0
-      // end: ms=50 + (-20) = 30, but must be >= startDateMs + 1 = 1
       const asyncMap = AsynchronyMap.createAsynchronyMap();
       asyncMap.addAsynchrony(0, -20);
 
@@ -279,9 +249,7 @@ describe('AsynchronyMap', () => {
     });
 
     it('negative offset clamps end to startDateMs + 1', () => {
-      // Note at ms=10, end=15, apply offset=-20
-      // startDateMs = max(0, 10 - 20) = 0
-      // end = 15 - 20 = -5, but clamped to max(-5, 0+1) = 1
+      // end = 15 - 20 = -5, clamped up to max(-5, startDateMs + 1) = 1.
       const asyncMap = AsynchronyMap.createAsynchronyMap();
       asyncMap.addAsynchrony(0, -20);
 
@@ -306,7 +274,6 @@ describe('AsynchronyMap', () => {
     it('null map is handled gracefully', () => {
       const asyncMap = AsynchronyMap.createAsynchronyMap();
       asyncMap.addAsynchrony(0, 50);
-      // Should not throw
       asyncMap.renderAsynchronyToMap(null);
     });
 
@@ -324,7 +291,6 @@ describe('AsynchronyMap', () => {
       asyncMap.addAsynchrony(0, 10);
       asyncMap.addAsynchrony(480, 20);
 
-      // Note at date=0 gets offset 10, note at date=480 gets offset 20
       const map = createTestMap([
         { date: 0, msDate: 100, duration: 240, msEnd: 200 },
         { date: 480, msDate: 300, duration: 240, msEnd: 400 },
@@ -365,7 +331,6 @@ describe('AsynchronyMap', () => {
     });
 
     it('notes without duration attribute are still processed for date', () => {
-      // Create a map entry without a duration attribute
       const map = okValue(GenericMap.createGenericMap('positionMap'));
       const e = new Element('note', Mpm.MPM_NAMESPACE);
       e.addAttribute(new Attribute('date', '0'));
@@ -384,9 +349,6 @@ describe('AsynchronyMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // GenericMap operations on AsynchronyMap
-  // ---------------------------------------------------------------
   describe('GenericMap operations', () => {
     it('should support removeElement by index', () => {
       const map = AsynchronyMap.createAsynchronyMap();

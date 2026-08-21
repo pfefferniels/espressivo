@@ -6,15 +6,12 @@ import { Element, Attribute, Builder } from '../../src/xml/XomTypes.js';
 /**
  * An empty `Mei` — one whose `isEmpty()` is true — reached through the constructor.
  *
- * Four tests below used to forge this state with `Object.create(Mei.prototype)` and a poke
- * at the private `data` field. That skips the constructor, types the result `any` (so every
- * assertion made on it was unchecked), and asserts about a state nobody had shown a caller
- * could reach. It is reachable, by exactly one route, and this is it: `Builder.build`
- * screens the parsed document for a `<parsererror>` element — browser-`DOMParser` semantics
- * that `@xmldom/xmldom` never produces — so a *well-formed* document containing one is
- * reported as a failed parse and `XmlBase.parseXmlString` leaves `data` null. Every actually
- * malformed source throws instead. Both halves are measured and pinned in
- * `tests/xml/XmlBase.test.ts`, and recorded in PARITY.md as `XB1`.
+ * There is exactly one route to it: `Builder.build` screens the parsed document for a
+ * `<parsererror>` element — browser-`DOMParser` semantics that `@xmldom/xmldom` never
+ * produces — so a *well-formed* document containing one is reported as a failed parse and
+ * `XmlBase.parseXmlString` leaves `data` null. Every actually malformed source throws
+ * instead. Both halves are measured and pinned in `tests/xml/XmlBase.test.ts`, and recorded
+ * in PARITY.md as `XB1`.
  */
 function emptyMei(): Mei {
   const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -25,7 +22,7 @@ function emptyMei(): Mei {
   }
 }
 
-/** put the given markup into a minimal but complete MEI score, inside measure 1 / staff 1 / layer 1 */
+/** put the given markup into a minimal but complete MEI score, in measure 1 / staff 1 / layer 1 */
 function wrap(inner: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <mei xmlns="http://www.music-encoding.org/ns/mei">
@@ -72,9 +69,6 @@ const SAMPLE_MEI = `<?xml version="1.0" encoding="UTF-8"?>
   </music>
 </mei>`;
 
-// ---------------------------------------------------------------------------
-// Construction
-// ---------------------------------------------------------------------------
 describe('Mei – construction', () => {
   it('should create a minimal MEI from no-arg constructor', () => {
     const mei = new Mei();
@@ -103,9 +97,6 @@ describe('Mei – construction', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// getMeiHead
-// ---------------------------------------------------------------------------
 describe('Mei – getMeiHead', () => {
   it('should return the meiHead element', () => {
     const mei = new Mei(SAMPLE_MEI, true);
@@ -115,16 +106,12 @@ describe('Mei – getMeiHead', () => {
   });
 
   it('should return null for empty MEI', () => {
-    // The default `new Mei()` is built from MINIMAL_MEI and therefore does have a meiHead —
-    // stated here because the old comment claimed it without checking it.
+    // The default `new Mei()` is built from MINIMAL_MEI and therefore does have a meiHead.
     expect(new Mei().getMeiHead()).not.toBeNull();
     expect(emptyMei().getMeiHead()).toBeNull();
   });
 });
 
-// ---------------------------------------------------------------------------
-// getMusic
-// ---------------------------------------------------------------------------
 describe('Mei – getMusic', () => {
   it('should return the music element', () => {
     const mei = new Mei(SAMPLE_MEI, true);
@@ -138,9 +125,6 @@ describe('Mei – getMusic', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// getTitle
-// ---------------------------------------------------------------------------
 describe('Mei – getTitle', () => {
   it('should extract the title from titleStmt', () => {
     const mei = new Mei(SAMPLE_MEI, true);
@@ -156,7 +140,6 @@ describe('Mei – getTitle', () => {
   });
 
   it('should use filename without extension as fallback', () => {
-    // Create MEI with no readable title structure
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <mei xmlns="http://www.music-encoding.org/ns/mei">
   <meiHead/>
@@ -201,9 +184,6 @@ describe('Mei – getTitle', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// getAllMdivs
-// ---------------------------------------------------------------------------
 describe('Mei – getAllMdivs', () => {
   it('should find the mdiv element', () => {
     const mei = new Mei(SAMPLE_MEI, true);
@@ -240,9 +220,6 @@ describe('Mei – getAllMdivs', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// computeMinimalPPQ
-// ---------------------------------------------------------------------------
 describe('Mei – computeMinimalPPQ', () => {
   it('should compute minimal PPQ from quarter notes', () => {
     const mei = new Mei(SAMPLE_MEI, true);
@@ -288,9 +265,6 @@ describe('Mei – computeMinimalPPQ', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// writeMei / toXML
-// ---------------------------------------------------------------------------
 describe('Mei – serialization', () => {
   it('writeMei should return XML string', () => {
     const mei = new Mei(SAMPLE_MEI, true);
@@ -308,9 +282,6 @@ describe('Mei – serialization', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Mei.getStaff / Mei.getLayer (static)
-// ---------------------------------------------------------------------------
 describe('Mei – static helpers (getStaff, getLayer)', () => {
   it('getStaff should find the staff ancestor in parsed XML', () => {
     // getParent() relies on DOM parentNode, so we need parsed XML
@@ -318,7 +289,6 @@ describe('Mei – static helpers (getStaff, getLayer)', () => {
     const builder = new Builder();
     const doc = builder.build(xml);
     const root = doc.getRootElement();
-    // Navigate to the note element
     const layer = root.getFirstChildElement('layer')!;
     const note = layer.getFirstChildElement('note')!;
 
@@ -368,9 +338,6 @@ describe('Mei – static helpers (getStaff, getLayer)', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// getAllVariantEncodings
-// ---------------------------------------------------------------------------
 describe('Mei – getAllVariantEncodings', () => {
   it('should find choice elements', () => {
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -410,9 +377,6 @@ describe('Mei – getAllVariantEncodings', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// addIds
-// ---------------------------------------------------------------------------
 describe('Mei – addIds', () => {
   it('should give every id-worthy element an xml:id and report how many', () => {
     const mei = new Mei(wrap('<note dur="4"/><rest dur="4"/><chord><note dur="8"/></chord>'), true);
@@ -478,9 +442,6 @@ describe('Mei – addIds', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// removeRendElements
-// ---------------------------------------------------------------------------
 describe('Mei – removeRendElements', () => {
   it('should replace a rend element by its text content', () => {
     const mei = new Mei(wrap('<dir><rend fontweight="bold">forte</rend></dir>'), true);
@@ -517,9 +478,6 @@ describe('Mei – removeRendElements', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// resolveCopyofs
-// ---------------------------------------------------------------------------
 describe('Mei – resolveCopyofs', () => {
   it('should replace a copyof placeholder by a copy of its target', () => {
     const mei = new Mei(
@@ -637,9 +595,6 @@ describe('Mei – resolveCopyofs', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// resolveExpansions
-// ---------------------------------------------------------------------------
 describe('Mei – resolveExpansions', () => {
   const withExpansion = `<?xml version="1.0" encoding="UTF-8"?>
 <mei xmlns="http://www.music-encoding.org/ns/mei">
@@ -718,9 +673,6 @@ describe('Mei – resolveExpansions', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// getStaffId / getLayerId / getStaff / getLayer – remaining branches
-// ---------------------------------------------------------------------------
 describe('Mei – staff and layer identification', () => {
   it('getStaffId should prefer def over n', () => {
     const staff = new Element('staff');
@@ -757,15 +709,12 @@ describe('Mei – staff and layer identification', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// exportMsm / exportMsmMpm
-// ---------------------------------------------------------------------------
 describe('Mei – the export entry points', () => {
-  // Java converts right here (Mei.java exportMsm/exportMsmMpm). The port defers the
-  // import of the converter to dodge the Mei <-> Mei2MsmMpmConverter cycle, but it
-  // does so with require(), which does not exist in this ESM package. Every caller
-  // therefore has to build the converter itself, as tests/integration does.
-  // These tests pin that limitation; they should be replaced once the import is fixed.
+  // Java converts right here (Mei.java exportMsm/exportMsmMpm). The port defers the import
+  // of the converter to dodge the Mei <-> Mei2MsmMpmConverter cycle, but does so with
+  // require(), which does not exist in this ESM package, so every caller has to build the
+  // converter itself, as tests/integration does. These tests pin that limitation, not a
+  // contract.
   it('exportMsmMpm cannot load the converter in this ESM build', () => {
     expect(() => new Mei(SAMPLE_MEI, true).exportMsmMpm()).toThrow(/Mei2MsmMpmConverter/);
   });
@@ -774,10 +723,6 @@ describe('Mei – the export entry points', () => {
     expect(() => new Mei(SAMPLE_MEI, true).exportMsm()).toThrow(/Mei2MsmMpmConverter/);
   });
 });
-
-// ---------------------------------------------------------------------------
-// layersToStaffs
-// ---------------------------------------------------------------------------
 
 /** build a score whose section contains exactly `sectionInner` */
 function score(scoreDefInner: string, sectionInner: string): string {

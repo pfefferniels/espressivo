@@ -27,55 +27,28 @@ import { Element, Attribute } from '../../../../src/xml/XomTypes.js';
  * Reference: meico/src/meico/mpm/elements/styles/{GenericStyle,TempoStyle,DynamicsStyle,
  * ArticulationStyle,RubatoStyle,MetricalAccentuationStyle}.java
  *
- * This file is the merge of the former `GenericStyle.test.ts` and `Styles.test.ts`, which
- * split along a class boundary that no longer exists: one covered the base class's def
- * management and the other covered the six subclasses' `parseData` overrides. Both are now
- * the same `Style`, parameterised by kind, so the split would have meant testing one object
- * from two files. Every assertion from both is here, plus the ones the kind table makes
- * possible (see "the style kind table").
- *
- * ## THESE TESTS ARE THE ONLY THING GUARDING HALF OF THE STYLE→DEF WIRING
- *
- * A measured hole, found by a deliberate control while collapsing the six style subclasses
- * into `STYLE_SHAPE`. Point the `tempo` row's `defChildName` at `'dynamicsDef'`, so that
- * every `tempoStyles` collection in every document silently indexes **no defs at all**, and
- * `npm run gate` — all 121 byte-equality tests, `cross-validation`, `full-xml-equivalence`,
- * `midi-byte-equivalence` and `all-maps-equivalence` together — **stays green**. Only unit
- * tests see it: 11 red, across this file and the four map suites.
- *
- * **If you grep and think this note is wrong, read the second bullet.** `grep -l tempoStyles
- * tests/integration/fixtures/reference/*.mpm` finds several, and it is tempting to conclude
- * the hole does not exist. It does: those are the documents nothing ever *parses*. A later
- * agent on this campaign made exactly that correction, and it was the correction that was
- * wrong. The distinction that matters is parsed-into-an-`Mpm` versus compared-as-text.
- *
- * The reason is not that the gate is insensitive to style resolution. Do the same thing to
- * the `metricalAccentuation` row and **4 gate tests go red**. The difference is which
- * documents are *parsed*:
+ * These tests are the only guard on half of the style→def wiring, measured. Point the
+ * `tempo` row's `defChildName` at `'dynamicsDef'`, so every `tempoStyles` collection in every
+ * document indexes no defs at all, and `npm run gate` stays green; only unit tests see it,
+ * 11 red across this file and the four map suites. Do the same to the `metricalAccentuation`
+ * row and 4 gate tests go red. The difference is which documents are parsed:
  *
  * - The only `.mpm` files any gate suite reads into an `Mpm` are
  *   `fixtures/all-maps-reference/*.mpm` (`all-maps-equivalence:143`,
- *   `midi-byte-equivalence:253`). Between them those eight documents contain exactly three
+ *   `midi-byte-equivalence:253`). Between them those eight documents carry exactly three
  *   style collections — `articulationStyles`, `metricalAccentuationStyles`,
- *   `ornamentationStyles`. There is **no `tempoStyles`, `dynamicsStyles` or `rubatoStyles`
- *   anywhere in them**, so three of the six rows of `STYLE_SHAPE` are never consulted.
- * - The documents that *do* carry `tempoDef`s — `fixtures/reference/*.mpm`, with
- *   `bpm="Andante"` resolving to `value="101.0"` and friends — are Java-generated **outputs**.
- *   `cross-validation` and `full-xml-equivalence` generate the same documents from MEI and
- *   compare them as text; nothing ever reads one back. And the MEI path builds its styles
- *   programmatically through `Header.addStyleDef` + `Style.addDef`, which never touches
- *   `defChildName` at all. Serialization then comes off the live element tree, which a
- *   style's lookup index does not participate in — an unindexed def is still a child element
- *   and still comes out verbatim.
+ *   `ornamentationStyles` — so three of the six rows of `STYLE_SHAPE` are never consulted.
+ * - The documents that do carry `tempoDef`s, `fixtures/reference/*.mpm`, are Java-generated
+ *   outputs that `cross-validation` and `full-xml-equivalence` compare as text; nothing ever
+ *   reads one back. The MEI path that produces them builds styles through
+ *   `Header.addStyleDef` + `Style.addDef`, which never touches `defChildName`, and
+ *   serialization comes off the live element tree, which a style's lookup index does not
+ *   participate in — an unindexed def is still a child element and still comes out verbatim.
  *
  * So the byte gate covers the parse path for three style kinds and not for the other three,
- * and the split is a property of the fixture corpus rather than of the code. The third such
- * hole this campaign has found, after the SMF writer being unreachable from the byte suite
- * (see the header of `tests/integration/midi-writer-equivalence.test.ts`) and the imprecision
- * timing basis being checked only against `comparison/`'s own independent copy. The pattern
- * repeats: byte-equality over a corpus proves agreement on what the corpus exercises and says
- * nothing whatever about the rest. Do not delete a unit test here on the grounds that "the
- * gate covers it" — for tempo, dynamics and rubato styles, it does not.
+ * and the split is a property of the fixture corpus rather than of the code. Do not delete a
+ * unit test here on the grounds that the gate covers it: for tempo, dynamics and rubato
+ * styles, it does not.
  */
 function element(
   name: string,
@@ -104,10 +77,8 @@ function quiet<T>(body: () => T): T {
 }
 
 /**
- * The style, or a failure naming the reason.
- *
- * A throw rather than an `expect` so that the return type narrows and the tests below read
- * without a `!` on every parse.
+ * The style, or a throw naming the reason — a throw rather than an `expect` so the return
+ * type narrows and the tests below read without a `!` on every parse.
  */
 function parsed<K extends StyleKind>(kind: K, xml: Element): StyleOfKind<K> {
   const result = parseStyle(kind, xml);
@@ -118,7 +89,7 @@ function parsed<K extends StyleKind>(kind: K, xml: Element): StyleOfKind<K> {
 describe('the style kind table', () => {
   /**
    * The seven kinds, spelled out rather than derived from the module, so that adding an
-   * eighth to `DefOfStyleKind` fails HERE as well as in the source's mapped types. A test
+   * eighth to `DefOfStyleKind` fails here as well as in the source's mapped types. A test
    * that read the table it is testing would agree with any table at all.
    */
   const ALL_KINDS: readonly StyleKind[] = [
@@ -165,17 +136,13 @@ describe('the style kind table', () => {
   });
 
   /**
-   * The state `styleOfKind` exists to survive, reached through the public API.
-   *
    * `Header.addStyleDef(type, style)` files a style under whatever collection name it is
    * given and never checks that the style is of that collection's kind, so a rubato style
-   * genuinely can end up under `tempoStyles`. The incumbent read it back through an
-   * `as TempoStyle | null` and handed a `RubatoDef` to a caller expecting a `TempoDef`;
-   * `getStyle` now checks and answers null.
+   * genuinely can end up under `tempoStyles`; `getStyle` checks and answers null.
    *
-   * Written because deleting the check and replacing it with a cast left the whole 5790-test
-   * suite green — every style in every fixture is filed under the collection that decided
-   * its kind, so nothing in the corpus distinguishes the two. This is the control.
+   * Replacing that check with a cast leaves the whole suite green — every style in every
+   * fixture is filed under the collection that decided its kind, so nothing in the corpus
+   * distinguishes the two. This is the control.
    */
   it('does not hand back a style filed under the wrong collection', () => {
     const header = okValue(Header.createHeader());
@@ -228,9 +195,6 @@ describe('Style, whatever the kind', () => {
 
     it('reports a missing name attribute, with the element that lacks it', () => {
       const xml = element('styleDef', {});
-      // Was `expect(GenericStyle.createGenericStyle(xml)).toBeNull()` plus a spy proving
-      // something had been logged. The Result carries the reason, so the assertion is now
-      // about the reason itself and nothing has to be silenced to make it.
       expect(parseStyle('generic', xml)).toEqual({
         ok: false,
         error: { kind: 'missingName', element: xml },
@@ -663,7 +627,7 @@ describe("Style<'metricalAccentuation'>", () => {
     expect(fourFour.getLength()).toBe(4.0);
     expect(fourFour.size()).toBe(2);
     expect(fourFour.getAccentuationAt(1.0)).toBe(1.0);
-    // Reaches getAccentuationAt's segment-end logic through the PARSE path, which is the route
+    // Reaches getAccentuationAt's segment-end logic through the parse path, which is the route
     // the reference fixtures take. Beat 1 has a successor at beat 3, so segmentEnd = 3 and
     // ((2-1) * (1-0)) / (3-1) + 0 = 0.5 (AccentuationPatternDef.java:316-320, fixed in
     // meico@1d662105). The upstream spelling would leave segmentEnd at length + 1 = 5 => 0.25.

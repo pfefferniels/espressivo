@@ -257,9 +257,9 @@ describe('formatTemporalValue', () => {
   });
 
   it('writes a non-finite value out verbatim, which no reader takes back', () => {
-    // One hop from real input: a 309-digit frameLength parses to Infinity *successfully*,
-    // so a caller's log-and-skip on a failed parse never sees it. The formatter stays
-    // total and the guard decision belongs to the code that owns the attribute (W3).
+    // One hop from real input: a 309-digit frameLength parses to Infinity successfully, so a
+    // caller's log-and-skip on a failed parse never sees it. The formatter stays total and
+    // the guard decision belongs to the code that owns the attribute.
     expect(formatTemporalValue({ value: Infinity, domain: 'ticks' })).toBe('Infinityticks');
     expect(formatTemporalValue({ value: -Infinity, domain: 'milliseconds' })).toBe('-Infinityms');
     expect(formatTemporalValue({ value: NaN, domain: 'relative' })).toBe('NaN%');

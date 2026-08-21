@@ -77,10 +77,6 @@ describe('AccentuationPatternDef', () => {
     });
   });
 
-  // WAS: `parseData` re-applied to a second element. See the same note in `TempoDef.test.ts`
-  // — `@name` is required, so it is read by the factory and handed to a `readonly`
-  // constructor parameter, which is what let `AbstractDef`'s `name!` go. The parse of the
-  // length and the accentuation children is observed by the from-XML cases above and below.
   describe('name and length are bound to the element the def was parsed from', () => {
     it('writes through the very nodes the parse read', () => {
       const xml = patternElement({ name: '3/4', length: '3.0' }, [
@@ -175,15 +171,11 @@ describe('AccentuationPatternDef', () => {
     });
 
     /**
-     * The three shapes where re-sorting the children after EVERY parsed accentuation could
-     * conceivably have ended somewhere different from re-sorting them once at the end.
-     *
-     * Parsing used to call `sortXml()` inside its loop, which made it cubic in the number of
-     * accentuations (measured: n=100 1.1 ms, 200 6.9 ms, 400 56 ms, 800 380 ms — ×7-8 per
-     * doubling). It is now called once. That is safe because `sortXml` is a full re-layout
-     * whose result depends only on the list, not on the arrangement it starts from — but
-     * "only on the list" is exactly the claim that needs pinning, and it is only interesting
-     * where something OTHER than a well-formed sorted accentuation is in the child list.
+     * The three shapes where one `sortXml` at the end of the parse could end somewhere
+     * different from re-sorting after every parsed accentuation. `sortXml` is a full
+     * re-layout whose result depends only on the list, not on the arrangement it starts
+     * from; "only on the list" is the claim being pinned, and it is only interesting where
+     * something other than a well-formed sorted accentuation is in the child list.
      */
     it('keeps non-accentuation children after the sorted accentuations', () => {
       const foreign = (n: string) => {
@@ -254,8 +246,8 @@ describe('AccentuationPatternDef', () => {
       const build = (n: number): Element =>
         patternElement(
           { name: 'big', length: String(n) },
-          // Reverse order, so every accentuation is inserted at the FRONT of the list and
-          // `sortXml` has the most work to do — the worst case for the shape being guarded.
+          // Reverse order, so every accentuation is inserted at the front of the list and
+          // `sortXml` has the most work to do.
           [...Array(n).keys()].map((i) =>
             accentuation({ beat: String(n - i), value: String((n - i) / n) }),
           ),
@@ -276,10 +268,9 @@ describe('AccentuationPatternDef', () => {
       AccentuationPatternDef.createAccentuationPatternDef(build(800));
 
       // Eightfold input. One `sortXml` leaves the parse quadratic (both `removeChild` and the
-      // insertion sort are linear per element), so ~64 is the band to expect and the cubic it
-      // replaced would be ~512. Measured on this machine: ~30 after, ~350 before. The
-      // threshold sits between the two bands so a loaded machine stays green and a
-      // reintroduced `sortXml()` inside the loop does not.
+      // insertion sort are linear per element), so ~64 is the band to expect; a `sortXml()`
+      // inside the loop is cubic, ~512. Measured on this machine: ~30 and ~350. The threshold
+      // sits between the bands so a loaded machine stays green and the in-loop sort does not.
       const ratio = bestGrowthRatio(() => perParse(800) / perParse(100), 150);
       expect(ratio).toBeLessThan(150);
     });
@@ -462,7 +453,7 @@ describe('AccentuationPatternDef', () => {
 
     it('ramps to the next accentuation’s beat, not to the pattern end', () => {
       // The fix mirrored from meico@1d662105 (AccentuationPatternDef.java:316-320): for an
-      // accentuation that HAS a successor, segmentEnd becomes that successor's beat.
+      // accentuation that has a successor, segmentEnd becomes that successor's beat.
       // fourFour: beat 1 (transition.from 0.0, transition.to 1.0), next accentuation at beat 3,
       // length 4. Fixed segmentEnd = 3 => at 2.0: ((2-1) * (1-0)) / (3-1) + 0 = 0.5.
       // The upstream spelling `i > size-1` never fires, leaving segmentEnd at length + 1 = 5
@@ -471,7 +462,7 @@ describe('AccentuationPatternDef', () => {
     });
 
     it('interpolates from the nearest preceding accentuation', () => {
-      // Beat 4 lies after the LAST accentuation (beat 3), so that one's ramp applies and its
+      // Beat 4 lies after the last accentuation (beat 3), so that one's ramp applies and its
       // segmentEnd is the pattern end: transition.from 0.5, transition.to 0.1, segmentEnd 5 =>
       // ((4-3) * (0.1-0.5)) / (5-3) + 0.5 = -0.2 + 0.5 = 0.3
       const apd = okValue(AccentuationPatternDef.createAccentuationPatternDef('4/4', 4.0));
@@ -507,7 +498,7 @@ describe('AccentuationPatternDef', () => {
         // Anchor 0 (beat 0, transition 0 -> 1) has a successor at beat 720, so segmentEnd = 720:
         // ((k-0) * (1-0)) / (720-0) + 0 = k/720.
         // Upstream's dead guard leaves segmentEnd at 2880 + 1 = 2881 and yields k/2881, e.g.
-        // 0.0003471017007983339 at beat 1 — the value the pre-TD3 reference stored.
+        // 0.0003471017007983339 at beat 1.
         const apd = referencePattern();
         expect(apd.getAccentuationAt(1.0)).toBe(0.001388888888888889); // 1/720
         expect(apd.getAccentuationAt(2.0)).toBe(0.002777777777777778); // 2/720
@@ -527,7 +518,7 @@ describe('AccentuationPatternDef', () => {
       it('scales to the velocities the regenerated reference fixture stores', () => {
         // The map applies the pattern at scale 1.0 over notes at velocity 100, so the
         // augmented MSM's velocity is 100 + the accentuation value. These four strings are
-        // exactly what metrical_accentuation_augmented.msm contains after TD3's regeneration.
+        // exactly what metrical_accentuation_augmented.msm contains.
         const apd = referencePattern();
         const velocity = (beat: number): string => String(100 + apd.getAccentuationAt(beat));
         expect(velocity(1.0)).toBe('100.00138888888888');

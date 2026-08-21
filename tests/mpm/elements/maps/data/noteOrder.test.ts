@@ -21,9 +21,9 @@ function idsOf(order: NoteOrder | null): string[][] {
   return asList(order).items.map((item) => [...item.ids]);
 }
 
-// The exact warning strings are part of this module's contract (they are what W3/W5 will
-// log), so they are spelled out here rather than imported — a test that shares the
-// production constant cannot notice the constant changing.
+// The exact warning strings are part of this module's contract, so they are spelled out here
+// rather than imported: a test that shares the production constant cannot notice the
+// constant changing.
 const W = {
   trimmedAscending:
     'note.order: surrounding whitespace trimmed before matching keyword "ascending pitch".',
@@ -437,13 +437,12 @@ describe('parseNoteOrder — pathological input terminates', () => {
     expect(order.warnings).toEqual([]);
   }, 2000);
 
-  // W9, from the W2 verifier's non-blocking advisory. The old salvage peeled the string with
-  // `slice` AND collected the peeled brackets with `tail.unshift(']')`, and the `unshift` is
-  // the quadratic half — it re-indexes the array on every call. Isolated at this size:
-  // ~975 ms for the unshift, ~8 ms for a slice-only variant, ~1150 ms for the original pair,
-  // against 6–21 ms for the whole parse today. So a mutation restoring only the `slice` shape
-  // does NOT fail this test — the W9 verifier measured exactly that — and a control for this
-  // fix has to restore both halves. The explicit timeout is the gate.
+  // The quadratic shape this guards: peeling the string with `slice` and collecting the
+  // peeled brackets with `tail.unshift(']')`, where the `unshift` re-indexes the array on
+  // every call. Isolated at this size: ~975 ms for the unshift, ~8 ms for a slice-only
+  // variant, ~1150 ms for the pair, against 6–21 ms for the whole parse today. So a mutation
+  // restoring only the `slice` shape does not fail this test — measured — and a control has
+  // to restore both halves. The explicit timeout is the gate.
   //
   // 64 000 is also deliberately below the limit documented on `parseNoteOrder`: at 105 989
   // brackets in one token the spread in `tokens.push(...parts)` overflows the call stack.
@@ -460,9 +459,9 @@ describe('parseNoteOrder — pathological input terminates', () => {
 });
 
 describe('parseNoteOrder — the diagnostics are capped (W9)', () => {
-  // Also from the W2 verifier: `warnings` grew with the input, so a 100 000-character malformed
-  // value produced 100 000 strings and the caller logged every one. The cap bounds the array;
-  // the tally entry is what keeps "there was more" from being lost.
+  // Uncapped, `warnings` grows with the input: a 100 000-character malformed value produces
+  // 100 000 strings and the caller logs every one. The cap bounds the array; the tally entry
+  // is what keeps "there was more" from being lost.
   const cap = MAX_NOTE_ORDER_WARNINGS;
 
   /** `n` stray `]` tokens, i.e. `n` copies of one and the same warning. */

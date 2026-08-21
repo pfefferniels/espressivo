@@ -1,11 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { extractAllIntegersFromString, getFilenameWithoutExtension } from '../../src/music/text.js';
 
-// Moved verbatim from tests/mei/Helper.test.ts by T14: string utilities.
-
-// ---------------------------------------------------------------------------
-// getFilenameWithoutExtension
-// ---------------------------------------------------------------------------
 describe('getFilenameWithoutExtension', () => {
   it('should strip the extension from a simple filename', () => {
     expect(getFilenameWithoutExtension('test.mei')).toBe('test');
@@ -24,13 +19,6 @@ describe('getFilenameWithoutExtension', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// duration2word
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// extractAllIntegersFromString
-// ---------------------------------------------------------------------------
 describe('extractAllIntegersFromString', () => {
   it('should extract positive integers', () => {
     expect(extractAllIntegersFromString('measure 1 and 2')).toEqual([1, 2]);
@@ -50,7 +38,3 @@ describe('extractAllIntegersFromString', () => {
     expect(extractAllIntegersFromString('no numbers here')).toEqual([]);
   });
 });
-
-// ---------------------------------------------------------------------------
-// accidString2decimal / accidDecimal2String
-// ---------------------------------------------------------------------------

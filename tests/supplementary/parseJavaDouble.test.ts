@@ -28,7 +28,7 @@ describe('parseJavaDouble', () => {
     });
 
     it('accepts the literal NaN and Infinity, as Double.parseDouble does', () => {
-      // Java does NOT throw on these: a value="NaN" attribute yields a NaN-valued def there
+      // Java does not throw on these: a value="NaN" attribute yields a NaN-valued def there
       // too, so rejecting them here would be a new divergence rather than a repair.
       expect(parseJavaDouble('NaN', 'x')).toBeNaN();
       expect(parseJavaDouble('Infinity', 'x')).toBe(Infinity);

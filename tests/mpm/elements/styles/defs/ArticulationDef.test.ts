@@ -113,13 +113,6 @@ describe('ArticulationDef', () => {
     });
   });
 
-  // WAS: `parseData` re-applied to a second element, asserting it re-read name and the
-  // twelve numeric attributes. That test's own comment said re-application "is not a path
-  // production takes … simply the only way to observe [the parse] separately from
-  // construction", and `@name` is no longer part of what it re-reads: it is required, so
-  // the factory reads it and hands it to a `readonly` constructor parameter — which is what
-  // let `AbstractDef`'s `protected name!: Attribute` go. The parse of the twelve is observed
-  // directly by the from-XML cases above; what is left to pin is the name binding.
   describe('the name is bound at construction', () => {
     it('writes through the very attribute node the parse read', () => {
       const xml = articulationDefElement({
@@ -137,10 +130,10 @@ describe('ArticulationDef', () => {
       ad.setName('renamed');
       expect(nameNode.getValue()).toBe('renamed');
       expect(ad.getName()).toBe('renamed');
-      // No second `name` attribute appended — which for THIS class is the load-bearing half:
-      // its twelve numeric setters go through `addAttribute`, which is remove-then-append in
-      // XomTypes and so moves an existing attribute to the end of the serialized list.
-      // `setName` must not, or renaming a def would reorder its bytes.
+      // No second `name` attribute appended: this class's twelve numeric setters go through
+      // `addAttribute`, which is remove-then-append in XomTypes and so moves an existing
+      // attribute to the end of the serialized list. `setName` must not, or renaming a def
+      // would reorder its bytes.
       expect(xml.getAttributeCount()).toBe(3);
       expect(xml.getChildElements().size()).toBe(0);
       expect(xml.toXML()).toContain('name="renamed" relativeDuration="0.8" detuneHz="2.0"');
@@ -637,8 +630,7 @@ describe('ArticulationDef', () => {
     );
 
     it('covers every numeric attribute the class reads', () => {
-      // If someone adds a thirteenth attribute, this count fails and the list above has to
-      // grow with it — the it.each block is only as complete as this number.
+      // A thirteenth attribute reds this; the it.each above is only as complete as the list.
       expect(NUMERIC_ATTRIBUTES).toHaveLength(12);
     });
 

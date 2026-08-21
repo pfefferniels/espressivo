@@ -23,10 +23,9 @@ import {
 import type { Normalized } from '../../../src/units.js';
 
 /**
- * Brand a plain literal as {@link Normalized} (ARCHITECTURE.md §7). RULE U2 forbids
- * converter functions in `src/` — one would emit JavaScript and cost the brands their
- * zero-line emitted-JS proof — but a test-local one emits nothing into `dist/` and keeps
- * the assertions below readable.
+ * Brand a plain literal as {@link Normalized} (ARCHITECTURE.md §7). RULE U2 forbids converter
+ * functions in `src/`, where one would emit JavaScript and cost the brands their zero-line
+ * emitted-JS proof; a test-local one emits nothing into `dist/`.
  */
 const norm = (x: number): Normalized => x as Normalized;
 
@@ -36,11 +35,10 @@ const ctx = (options: RenderOptions): RenderContext => ({ options, streamOrdinal
 /**
  * A resolved {@link Movement} built by hand, for the Bézier tests that take one directly.
  *
- * Stands in for the `const md = new MovementData(); md.startDate = …` blocks these tests
- * used to open with, and goes through the real {@link resolveMovement}, so the arm choice
- * and the defaults under test are the reader's rather than a second implementation of them.
- * `endDate` defaults to `Number.MAX_VALUE`, which is what `GenericMap.nextDateOfType`
- * answers for a last instruction.
+ * It goes through the real {@link resolveMovement}, so the arm choice and the defaults under
+ * test are the reader's rather than a second implementation of them. `endDate` defaults to
+ * `Number.MAX_VALUE`, which is what `GenericMap.nextDateOfType` answers for a last
+ * instruction.
  */
 function mov(o: {
   startDate?: number;
@@ -64,9 +62,6 @@ function mov(o: {
 }
 
 describe('MovementMap', () => {
-  // ---------------------------------------------------------------
-  // Create a movement map
-  // ---------------------------------------------------------------
   describe('createMovementMap', () => {
     it('should create an empty movement map', () => {
       const map = MovementMap.createMovementMap();
@@ -87,9 +82,6 @@ describe('MovementMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Add movement instruction
-  // ---------------------------------------------------------------
   describe('addMovement', () => {
     it('should add a movement instruction with all parameters', () => {
       const map = MovementMap.createMovementMap()!;
@@ -134,9 +126,6 @@ describe('MovementMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // getMovementDataOf
-  // ---------------------------------------------------------------
   describe('getMovementDataOf', () => {
     it('should return null for an empty map', () => {
       const map = MovementMap.createMovementMap()!;
@@ -190,9 +179,6 @@ describe('MovementMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // MovementData
-  // ---------------------------------------------------------------
   describe('MovementData', () => {
     it('should have correct default values', () => {
       const md = new MovementData();
@@ -206,10 +192,8 @@ describe('MovementMap', () => {
     });
 
     /**
-     * The write payload's nulls are the point of it, and this replaces the three `clone()`
-     * tests — a method with no caller anywhere in `src/`. What is worth pinning is that
-     * each null means "emit no attribute", because that is the difference between a
-     * `<movement>` the reader will treat as constant and one it will reject for having no
+     * Each null in the write payload means "emit no attribute", which is the difference
+     * between a `<movement>` the reader treats as constant and one it rejects for having no
      * position at all.
      */
     it('omits every attribute the payload leaves null', () => {
@@ -269,21 +253,15 @@ describe('MovementMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // MovementData.getPositionAt - Bezier curve mathematics
-  // ---------------------------------------------------------------
   describe('MovementData.getPositionAt', () => {
     /**
-     * `positionAt` is dead on the rendering path — `MovementMap` samples whole segments
-     * and never asks for a single date — and it is dead in meico too, so no rendered byte
-     * depends on it. That is what licenses the one behaviour this rewrite changed: a
-     * CONSTANT movement past its own `startDate` used to fall through to `return
-     * this.transitionTo!` and hand back a literal `null` typed as `number`, or, inside the
-     * span, evaluate `(3-2t)t²·(null - position) + position`, which JavaScript coerces to
-     * `position·(1 - (3-2t)t²)`. Java agrees with neither and NPEs at both places
-     * (MovementData.java:166 and :170). A constant movement holds its position, which is
-     * what the one branch of the method that WAS reachable already returned; the three
-     * dates below are the ones that used to disagree.
+     * A deliberate divergence, licensed by `positionAt` being dead on the rendering path:
+     * `MovementMap` samples whole segments and never asks for a single date, in this port and
+     * in meico alike, so no rendered byte depends on it.
+     *
+     * Java NPEs on a constant movement outside its span (MovementData.java:166 and :170).
+     * Here a constant movement holds its position at every date, which is what the reachable
+     * branch of the method already returned.
      */
     it('a constant movement holds its position across and past its whole span', () => {
       const md = mov({ startDate: 0, endDate: 960, position: norm(0.5) });
@@ -297,10 +275,6 @@ describe('MovementMap', () => {
     it('constant movement returns position at any date', () => {
       const md = mov({ startDate: 0, endDate: 960, position: norm(0.5), transitionTo: null });
 
-      // For constant movement, getPositionAt returns position!
-      // But the code path: date <= startDate => position, date >= endDate => transitionTo
-      // For constant: position is returned since transitionTo is null
-      // Actually with null transitionTo, date <= startDate is checked first
       expect(positionAt(md, 0)).toBe(0.5);
     });
 
@@ -348,13 +322,8 @@ describe('MovementMap', () => {
     });
 
     it('S-curve at t=0.5 gives 0.5 for symmetric case', () => {
-      // The Bezier S-curve formula: ((3 - 2t) * t^2) * (transitionTo - position) + position
-      // At t=0.5: ((3 - 1) * 0.25) * (1 - 0) + 0 = (2 * 0.25) = 0.5
-      // With curvature=0 and protraction=0, the x-mapping is linear:
-      //   x1=0, x2=1 => the cubic x-parametrization becomes t^3 + 0t^2 + 0t = t^3???
-      //   Actually: u = 3*0 - 3*1 + 1 = -2, v = 0 + 3, w = 0
-      //   x(t) = (-2t + 3)t * t * s => at t=0.5, x = (-1+3)*0.25*s = 0.5s
-      //   So date at t=0.5 corresponds to midpoint
+      // y(t) = ((3 - 2t) * t^2) * (transitionTo - position) + position. With curvature and
+      // protraction both 0 the x-mapping is the same cubic, so date 480 is t=0.5 and y = 0.5.
       const md = mov({
         startDate: 0,
         endDate: 960,
@@ -401,13 +370,9 @@ describe('MovementMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // MovementData.computeInnerControlPointsXPositions
-  // (tested indirectly through getPositionAt and getMovementSegment)
-  // ---------------------------------------------------------------
   describe('Inner control point X positions (via getMovementSegment)', () => {
     it('curvature=0, protraction=0 produces S-curve through midpoint', () => {
-      // x1=0, x2=1 (or more precisely, x1=curvature=0, x2=1-curvature=1)
+      // x1 = curvature = 0, x2 = 1 - curvature = 1.
       const md = mov({
         startDate: 0,
         endDate: 1000,
@@ -417,13 +382,12 @@ describe('MovementMap', () => {
         protraction: 0.0,
       });
 
-      // At midpoint, S-curve gives 0.5
       expect(positionAt(md, 500)).toBeCloseTo(0.5, 1);
     });
 
     it('curvature=0.4, protraction=0: x1=0.4, x2=0.6', () => {
-      // With protraction=0: x1=curvature=0.4, x2=1-curvature=0.6
-      // This affects the timing of the transition but not the start/end positions
+      // protraction=0 gives x1=curvature=0.4 and x2=1-curvature=0.6, which shifts the timing
+      // of the transition but leaves the start and end positions exact.
       const md = mov({
         startDate: 0,
         endDate: 1000,
@@ -433,11 +397,9 @@ describe('MovementMap', () => {
         protraction: 0.0,
       });
 
-      // Start and end should be exact
       expect(positionAt(md, 0)).toBe(0.0);
       expect(positionAt(md, 1000)).toBe(1.0);
 
-      // Midpoint: curvature changes the shape but the transition still works
       const midPos = positionAt(md, 500);
       expect(midPos).toBeGreaterThan(0.0);
       expect(midPos).toBeLessThan(1.0);
@@ -462,10 +424,8 @@ describe('MovementMap', () => {
         protraction: 0.0,
       });
 
-      // Different curvatures yield different positions at the same date
       const pos1 = positionAt(md1, 300);
       const pos2 = positionAt(md2, 300);
-      // They should both be between 0 and 1 but differ
       expect(pos1).toBeGreaterThanOrEqual(0);
       expect(pos1).toBeLessThanOrEqual(1);
       expect(pos2).toBeGreaterThanOrEqual(0);
@@ -474,9 +434,6 @@ describe('MovementMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // MovementData.getMovementSegment
-  // ---------------------------------------------------------------
   describe('MovementData.getMovementSegment', () => {
     it('segment should have at least 4 entries (beginning, t=0, t=1, end)', () => {
       const md = mov({
@@ -580,7 +537,6 @@ describe('MovementMap', () => {
       const segSmall = movementSegment(mdSmall, norm(0.1));
       const segLarge = movementSegment(mdLarge, norm(0.1));
 
-      // Larger transition needs more subdivision points
       expect(segLarge.length).toBeGreaterThanOrEqual(segSmall.length);
     });
 
@@ -611,7 +567,6 @@ describe('MovementMap', () => {
       });
 
       const segment = movementSegment(md, norm(0.1));
-      // For upward transition, position values should be monotonically non-decreasing
       for (let i = 1; i < segment.length; i++) {
         expect(segment[i][1]).toBeGreaterThanOrEqual(segment[i - 1][1] - 0.001);
       }
@@ -639,9 +594,9 @@ describe('MovementMap', () => {
      * start point unshifted onto the front, which is why the flat series is 3 long and not
      * 2 — the sampled t=0 point coincides with it and is deliberately duplicated.
      *
-     * Added because a control measured the hole: pushing an end point onto the constant arm
-     * as well left `npm run gate` at 121/121 AND this whole file green, and was caught only
-     * by `tests/comparison/pedal.test.ts`, three layers away.
+     * A control measured the hole: pushing an end point onto the constant arm as well leaves
+     * `npm run gate` and this whole file green, and is caught only by
+     * `tests/comparison/pedal.test.ts`, three layers away.
      */
     it('a constant movement gets NO exact end point, where a transition does', () => {
       const flat = mov({ startDate: 0, endDate: 1000, position: norm(0.5) });
@@ -667,9 +622,6 @@ describe('MovementMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // renderMovementToMap
-  // ---------------------------------------------------------------
   describe('renderMovementToMap', () => {
     it('empty map returns an empty positionMap', () => {
       const map = MovementMap.createMovementMap()!;
@@ -687,7 +639,6 @@ describe('MovementMap', () => {
 
       const result = map.renderMovementToMap();
       expect(result).not.toBeNull();
-      // Should have generated position entries for the first movement
       expect(result!.size()).toBeGreaterThan(0);
     });
 
@@ -707,9 +658,6 @@ describe('MovementMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // GenericMap operations on MovementMap
-  // ---------------------------------------------------------------
   describe('GenericMap operations', () => {
     it('should support removeElement by index', () => {
       const map = MovementMap.createMovementMap()!;
@@ -741,18 +689,12 @@ describe('MovementMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // The 2026-08-08 movement fixes (item T20b), mirrored from the Java
-  // reference. Adapted from mpmify's MovementFixTest, which is what
-  // verified the fixes on the Java side.
-  // ---------------------------------------------------------------
+  // Mirrored from the Java reference and from mpmify's MovementFixTest, which is what
+  // verified these fixes on the Java side.
   describe('movement round-trip fixes', () => {
-    // These two used to run against a `new MovementData(xml)` constructor that no
-    // production path ever called; they are the same assertions pointed at
-    // `getMovementDataOf`, which is where the T20b fix actually has to hold. The
-    // regression they guard is specifically that reading `@controller` does not clobber
-    // `xmlId` — before the fix the controller was looked up in the xml: namespace, where
-    // it never lives, and the result was assigned to `xmlId`.
+    // The regression these two guard: `@controller` is a plain attribute, and looking it up
+    // in the xml: namespace — where it never lives — finds nothing and clobbers `xmlId` with
+    // the result.
     it('getMovementDataOf reads controller from the plain, no-namespace attribute', () => {
       const map = MovementMap.createMovementMap()!;
       const e = new Element('movement');
@@ -765,10 +707,9 @@ describe('MovementMap', () => {
       expect(md.controller).toBe('soft');
     });
 
-    // The other half of the same guard. The resolved datum no longer carries an `xmlId`
-    // for the old assertion to check — nothing downstream reads one — so the way to tell
-    // a namespace-blind lookup apart from a correct one is to offer it ONLY an
-    // `xml:id` and require that it still finds no controller.
+    // The other half of the same guard. The resolved datum carries no `xmlId` to assert on,
+    // so a namespace-blind lookup is told apart from a correct one by offering only an
+    // `xml:id` and requiring that no controller is found.
     it('getMovementDataOf keeps the "sustain" default when there is no controller attribute', () => {
       const map = MovementMap.createMovementMap()!;
       const e = new Element('movement');
@@ -951,12 +892,9 @@ describe('MovementMap', () => {
       expect(positionsOf(shaped)).not.toEqual(positionsOf(defaults));
     });
 
-    // Migrated from the `MovementMap.movementSampleMaxStep` static this item deleted
-    // (RULE I5). Both of the original assertions are kept — the 0.1 default and the
-    // sampling-density effect of a non-default value — and the restore-afterwards check
-    // now proves something stronger: with the knob in `RenderOptions` there is no global
-    // to leak in the first place, so a render with no options is unaffected by any render
-    // that came before it.
+    // The knob lives in `RenderOptions` and not in a static (RULE I5), so there is no global
+    // to leak: the final assertion is that a render with no options is unaffected by every
+    // non-default render before it.
     it('movementSampleMaxStep defaults to 0.1 and controls the sampling density', () => {
       expect(DEFAULT_MOVEMENT_SAMPLE_MAX_STEP).toBe(0.1);
 
@@ -990,9 +928,6 @@ describe('MovementMap', () => {
       ).toBeLessThan(MovementMap.renderMovementToMap(map)!.size());
     });
   });
-  // ---------------------------------------------------------------
-  // Inheriting a position from the preceding movement
-  // ---------------------------------------------------------------
   describe('position inheritance (PARITY.md, "Fixed bugs", P2)', () => {
     /** A bare <movement> with exactly the attributes given. */
     function movement(attributes: Record<string, string>): Element {
@@ -1021,9 +956,8 @@ describe('MovementMap', () => {
       expect(map.getMovementDataOf(2)!.position).toBe(0.7);
     });
 
-    // Java NPEs here (MovementMap.java:200) and the port used to yield a silent 0, placing
-    // the movement at "fully released" as if that were a real reading. Now the movement is
-    // skipped and the rest of the map still renders.
+    // Java NPEs here (MovementMap.java:200). A silent 0 would place the movement at "fully
+    // released" as if that were a real reading, so the port skips it and renders the rest.
     it('skips a movement whose inherited position is unavailable', () => {
       const map = MovementMap.createMovementMap()!;
       map.addElement(movement({ date: '0.0', position: '0.1', 'transition.to': '0.4' }));

@@ -16,12 +16,11 @@ import { Mpm } from '../../../src/mpm/Mpm.js';
 /**
  * A resolved {@link Dynamics} built by hand, for the Bézier tests that take one directly.
  *
- * Stands in for the `const dd = new DynamicsData(); dd.startDate = …` blocks these tests
- * used to open with. It goes through the real {@link resolveDynamics}, so the substitutions
- * the reader makes — an omitted `transitionTo` becoming `volume`, omitted curve parameters
- * becoming 0.0, the control points being derived — are the ones under test rather than a
- * second implementation of them. `endDate` defaults to `Number.MAX_VALUE`, which is what
- * `GenericMap.nextDateOfType` answers for a last instruction.
+ * It goes through the real {@link resolveDynamics}, so the substitutions — an omitted
+ * `transitionTo` becoming `volume`, omitted curve parameters becoming 0.0, the control points
+ * being derived — are the ones under test rather than a second implementation of them.
+ * `endDate` defaults to `Number.MAX_VALUE`, which is what `GenericMap.nextDateOfType` answers
+ * for a last instruction.
  */
 function dyn(o: {
   startDate?: number;
@@ -47,9 +46,6 @@ function dyn(o: {
   });
 }
 
-// ==========================================================================
-//  DynamicsMap Tests
-// ==========================================================================
 describe('DynamicsMap', () => {
   // Shared by every describe below that needs a real map rather than a bare element: a
   // `<dynamics>` only means something inside a `dynamicsMap`, because that is what supplies
@@ -63,9 +59,6 @@ describe('DynamicsMap', () => {
       ),
     );
 
-  // ---------------------------------------------------------------
-  //  Construction
-  // ---------------------------------------------------------------
   describe('createDynamicsMap', () => {
     it('should create an empty dynamics map', () => {
       const map = DynamicsMap.createDynamicsMap();
@@ -86,9 +79,6 @@ describe('DynamicsMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  addDynamics
-  // ---------------------------------------------------------------
   describe('addDynamics', () => {
     it('should add a constant dynamics instruction', () => {
       const map = DynamicsMap.createDynamicsMap();
@@ -204,9 +194,6 @@ describe('DynamicsMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  getDynamicsDataOf
-  // ---------------------------------------------------------------
   describe('getDynamicsDataOf', () => {
     it('should return null for an empty map', () => {
       const map = DynamicsMap.createDynamicsMap();
@@ -235,7 +222,6 @@ describe('DynamicsMap', () => {
       map.addDynamics(0, '80');
 
       const dd = map.getDynamicsDataOf(0)!;
-      // Without a transition.to, transitionTo is set equal to volume
       expect(dd.transitionTo).toBe(80);
       expect(dd.transitionToString).toBe('80');
       expect(isConstantDynamics(dd)).toBe(true);
@@ -298,14 +284,10 @@ describe('DynamicsMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  getDynamicsDataOf - curvature and protraction
-  // ---------------------------------------------------------------
   // Every transition in tests/integration/fixtures carries curvature="0.0"
-  // protraction="0.0", which is what the fields default to anyway - so the certification
-  // suite could not see that these two were not being read at all, and every transition
-  // with a real curve rendered on the straight Bezier. These tests therefore use literal
-  // non-zero values, which no fixture has.
+  // protraction="0.0", which is what the fields default to anyway, so the certification suite
+  // cannot see whether these two are read at all. These tests therefore use literal non-zero
+  // values, which no fixture has.
   describe('getDynamicsDataOf reads curvature and protraction', () => {
     it('reads both from a literal transition element', () => {
       const dd = mapOf(
@@ -347,9 +329,6 @@ describe('DynamicsMap', () => {
     });
 
     it('the curve it reads is the curve that renders', () => {
-      // The observable consequence of the omission: with curvature dropped, a curved
-      // transition rendered on the straight Bezier and every velocity inside the span was
-      // wrong. Same span, same endpoints, different curvature => different midpoint.
       const straight = mapOf(
         '<dynamics date="0.0" volume="0" transition.to="100" curvature="0.0"' +
           ' protraction="0.0" /><dynamics date="1000.0" volume="100" />',
@@ -359,9 +338,8 @@ describe('DynamicsMap', () => {
           ' protraction="0.0" /><dynamics date="1000.0" volume="100" />',
       ).getDynamicsDataOf(0)!;
 
-      // Both curves are symmetric, so they agree at the midpoint and nowhere else: the
-      // midpoint is exactly where a suite that only sampled the centre would have missed
-      // the omission.
+      // Both curves are symmetric, so they agree at the midpoint and nowhere else - which is
+      // where a suite that only sampled the centre would miss a dropped curvature.
       expect(dynamicsAt(curved, 500)).toBeCloseTo(50, 6);
       expect(dynamicsAt(straight, 500)).toBeCloseTo(50, 6);
 
@@ -373,9 +351,6 @@ describe('DynamicsMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  curvature / protraction boundaries on the way out
-  // ---------------------------------------------------------------
   describe('addDynamics clamps the curve parameters', () => {
     it('clamps what addDynamics writes into the element', () => {
       const map = DynamicsMap.createDynamicsMap();
@@ -414,9 +389,6 @@ describe('DynamicsMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  getDynamicsDataAt
-  // ---------------------------------------------------------------
   describe('getDynamicsDataAt', () => {
     it('should return null for an empty map', () => {
       const map = DynamicsMap.createDynamicsMap();
@@ -444,9 +416,6 @@ describe('DynamicsMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  GenericMap operations on DynamicsMap
-  // ---------------------------------------------------------------
   describe('GenericMap operations', () => {
     it('should support removeElement by index', () => {
       const map = DynamicsMap.createDynamicsMap();
@@ -488,21 +457,11 @@ describe('DynamicsMap', () => {
     });
   });
 
-  // ==========================================================================
-  //  DynamicsData Tests
-  // ==========================================================================
   describe('DynamicsData', () => {
-    // ---------------------------------------------------------------
-    //  isConstantDynamics
-    // ---------------------------------------------------------------
     /**
-     * Two of the five cases this block used to cover — "null volume" and "both null" —
-     * described states the reader cannot produce and the resolved type can no longer
-     * express: `numericDynamicsValue` never returns null, and `resolveDynamics` fills an
-     * absent `@transition.to` from `volume`. The predicate is `transitionTo === volume`
-     * now, and the three cases below are the three it can actually be asked about. The
-     * `dyn` helper reaches them through `resolveDynamics`, so "no `@transition.to`" is
-     * still a case rather than a state that has to be written by hand.
+     * The predicate is `transitionTo === volume`, and these are the three states it can be
+     * asked about: `numericDynamicsValue` never returns null and `resolveDynamics` fills an
+     * absent `@transition.to` from `volume`, so neither field is ever null here.
      */
     describe('isConstantDynamics', () => {
       it('no transition.to at all => constant', () => {
@@ -518,9 +477,6 @@ describe('DynamicsMap', () => {
       });
     });
 
-    // ---------------------------------------------------------------
-    //  clone (the write payload's, the only half that still has one)
-    // ---------------------------------------------------------------
     describe('clone', () => {
       it('should produce an identical copy', () => {
         const dd = new DynamicsData();
@@ -564,15 +520,7 @@ describe('DynamicsMap', () => {
         expect(dd.curvature).toBe(0.5);
       });
 
-      /**
-       * Replaces "clone with getDynamicsAt produces identical results", which asked
-       * whether a *copy* of an evaluable datum evaluated the same — a question that only
-       * arose because the evaluation cached its control points by mutating the object it
-       * was called on, so a clone taken before or after the first call was a different
-       * object. The resolved half is `readonly` and derives its control points at read
-       * time, so what is worth asking now is that two independently resolved data with the
-       * same parameters agree everywhere.
-       */
+      /** The resolved half is `readonly` and derives its control points at read time. */
       it('two independently resolved data with the same parameters agree everywhere', () => {
         const parameters = {
           startDate: 0,
@@ -591,20 +539,13 @@ describe('DynamicsMap', () => {
       });
     });
 
-    // ---------------------------------------------------------------
-    //  computeInnerControlPointsXPositions (tested indirectly)
-    // ---------------------------------------------------------------
     describe('computeInnerControlPointsXPositions', () => {
-      // We can't call the private method directly, but we can verify its
-      // effects through getTForDate / getDynamicsAt / getSubNoteDynamicsSegment.
+      // The method is private; these reach it through `dynamicsAt` and
+      // `subNoteDynamicsSegment`.
 
       it('curvature=0, protraction=0 => linear Bezier control points (x1=0, x2=1)', () => {
-        // With x1=0, x2=1 the Bezier x(t) curve simplifies to:
-        //   x(t) = (3*0 - 3*1 + 1)*t^3 + (-6*0 + 3*1)*t^2 + 3*0*t
-        //        = (-2)*t^3 + 3*t^2 = t^2(3 - 2t)
-        // At t=0.5: x = 0.25*(3-1) = 0.5 => midpoint maps to midpoint in date space.
-        // S-curve for dynamics: y(t) = (3-2t)*t^2 * (transitionTo - volume) + volume
-        // At t=0.5: y = (3-1)*0.25 * delta + vol = 0.5*delta + vol
+        // x1=0, x2=1 collapses the Bezier x(t) to t^2(3-2t), the same cubic as the dynamics
+        // S-curve, so date 500 is t=0.5 and y = 0.5 * (100 - 50) + 50 = 75.
         const dd = dyn({
           startDate: 0,
           endDate: 1000,
@@ -614,18 +555,13 @@ describe('DynamicsMap', () => {
           protraction: 0,
         });
 
-        // At midpoint date=500, t should be close to 0.5
         const dynAtMid = dynamicsAt(dd, 500);
-        // y(0.5) = ((3-1)*0.25)*(100-50) + 50 = 0.5*50 + 50 = 75
         expect(dynAtMid).toBeCloseTo(75.0, 0);
       });
 
       it('curvature=0.5, protraction=0 => x1=0.5, x2=0.5', () => {
-        // With protraction=0: x1=curvature=0.5, x2=1-curvature=0.5.
-        // Bezier x(t) = (3*0.5 - 3*0.5 + 1)*t^3 + (-6*0.5 + 3*0.5)*t^2 + 3*0.5*t
-        //             = t^3 + (-1.5)*t^2 + 1.5*t = t^3 - 1.5*t^2 + 1.5*t
-        // At t=0.5: x = 0.125 - 0.375 + 0.75 = 0.5
-        // So with curvature=0.5, protraction=0, the midpoint in date space still maps to t=0.5
+        // protraction=0 makes x1=curvature and x2=1-curvature, so both are 0.5 and x(0.5) is
+        // still 0.5: the date midpoint keeps mapping to t=0.5, hence the same 75.
         const dd = dyn({
           startDate: 0,
           endDate: 1000,
@@ -636,24 +572,13 @@ describe('DynamicsMap', () => {
         });
 
         const dynAtMid = dynamicsAt(dd, 500);
-        // At t=0.5: y = (3-1)*0.25*(100-50)+50 = 75
         expect(dynAtMid).toBeCloseTo(75.0, 0);
       });
 
       it('curvature=0.3, protraction=0.4: verify x1 and x2 via formula', () => {
-        // protraction > 0:
-        // x1 = curvature + ((|p|+p)/(2p) - (|p|/p)*curvature) * p
-        //    = 0.3 + ((0.4+0.4)/(0.8) - (0.4/0.4)*0.3) * 0.4
-        //    = 0.3 + (1.0 - 0.3) * 0.4
-        //    = 0.3 + 0.7 * 0.4 = 0.3 + 0.28 = 0.58
-        //
-        // x2 = 1 - curvature + ((p-|p|)/(2p) + (|p|/p)*curvature) * p
-        //    = 0.7 + ((0.4-0.4)/(0.8) + (0.4/0.4)*0.3) * 0.4
-        //    = 0.7 + (0 + 0.3) * 0.4
-        //    = 0.7 + 0.12 = 0.82
-        //
-        // We verify indirectly by checking that the dynamics curve produces
-        // expected behavior: with protraction > 0, the curve is shifted to the right.
+        // The formula gives x1=0.58, x2=0.82, both shifted right of the symmetric 0.3/0.7.
+        // Checked through the curve: a right-shifted x means the transition happens later,
+        // so the midpoint sits below the protraction=0 case.
         const dd = dyn({
           startDate: 0,
           endDate: 1000,
@@ -663,15 +588,10 @@ describe('DynamicsMap', () => {
           protraction: 0.4,
         });
 
-        // Verify boundary conditions
         expect(dynamicsAt(dd, 0)).toBeCloseTo(0.0, 5);
         expect(dynamicsAt(dd, 1000)).toBeCloseTo(100.0, 5);
 
-        // With positive protraction, the x-curve is shifted right,
-        // meaning the dynamics transition happens later.
-        // At midpoint, the dynamics should be less than the symmetric case.
         const dynAtMid = dynamicsAt(dd, 500);
-        // Compare with curvature=0.3, protraction=0 case
         const ddSym = dyn({
           startDate: 0,
           endDate: 1000,
@@ -682,24 +602,12 @@ describe('DynamicsMap', () => {
         });
 
         const dynAtMidSym = dynamicsAt(ddSym, 500);
-        // Positive protraction shifts the transition later, so at the midpoint
-        // the dynamics value should be lower
         expect(dynAtMid).toBeLessThan(dynAtMidSym);
       });
 
       it('curvature=0.3, protraction=-0.4: negative protraction shifts transition earlier', () => {
-        // protraction < 0:
-        // x1 = curvature + ((|p|+p)/(2p) - (|p|/p)*curvature) * p
-        //    = 0.3 + ((0.4-0.4)/(-0.8) - (0.4/(-0.4))*0.3) * (-0.4)
-        //    = 0.3 + (0 + 0.3) * (-0.4)
-        //    = 0.3 - 0.12 = 0.18
-        //
-        // x2 = 1 - curvature + ((p-|p|)/(2p) + (|p|/p)*curvature) * p
-        //    = 0.7 + ((-0.4-0.4)/(-0.8) + (0.4/(-0.4))*0.3) * (-0.4)
-        //    = 0.7 + (1.0 - 0.3) * (-0.4)
-        //    = 0.7 - 0.28 = 0.42
-        //
-        // With negative protraction, the transition happens earlier.
+        // The formula gives x1=0.18, x2=0.42, both left of the symmetric 0.3/0.7, so the
+        // transition happens earlier and the midpoint sits above the protraction=0 case.
         const dd = dyn({
           startDate: 0,
           endDate: 1000,
@@ -709,11 +617,9 @@ describe('DynamicsMap', () => {
           protraction: -0.4,
         });
 
-        // Verify boundary conditions
         expect(dynamicsAt(dd, 0)).toBeCloseTo(0.0, 5);
         expect(dynamicsAt(dd, 1000)).toBeCloseTo(100.0, 5);
 
-        // Compare with symmetric case
         const ddSym = dyn({
           startDate: 0,
           endDate: 1000,
@@ -725,15 +631,10 @@ describe('DynamicsMap', () => {
 
         const dynAtMidSym = dynamicsAt(ddSym, 500);
         const dynAtMid = dynamicsAt(dd, 500);
-        // Negative protraction shifts transition earlier, so at midpoint
-        // the dynamics value should be higher
         expect(dynAtMid).toBeGreaterThan(dynAtMidSym);
       });
     });
 
-    // ---------------------------------------------------------------
-    //  getTForDate (tested indirectly via getDynamicsAt)
-    // ---------------------------------------------------------------
     describe('getTForDate (via getDynamicsAt)', () => {
       it('at startDate: returns volume (t=0)', () => {
         const dd = dyn({
@@ -771,13 +672,8 @@ describe('DynamicsMap', () => {
           protraction: 0,
         });
 
-        // At the date midpoint (500), with curvature=0, protraction=0:
-        // x(t) = (3*0 - 3*1 + 1)*t^3 + (-6*0 + 3*1)*t^2 + (3*0)*t
-        //       = (-2t^3 + 3t^2)
-        // We need x(t) * s = 500 where s=1000
-        // So (-2t^3 + 3t^2) = 0.5
-        // At t=0.5: (-2*0.125 + 3*0.25) = (-0.25 + 0.75) = 0.5. Exact!
-        // y(0.5) = ((3-1)*0.25)*(100-50)+50 = 0.5*50+50 = 75
+        // x(t) = t^2(3-2t) is exactly 0.5 at t=0.5, so date 500 is the midpoint in t as well
+        // as in date space, and y(0.5) = 0.5 * (100 - 50) + 50 = 75.
         expect(dynamicsAt(dd, 500)).toBeCloseTo(75.0, 1);
       });
 
@@ -791,7 +687,6 @@ describe('DynamicsMap', () => {
           protraction: 0,
         });
 
-        // Verify monotonically increasing
         let prev = dynamicsAt(dd, 0);
         for (let d = 10; d <= 1000; d += 10) {
           const curr = dynamicsAt(dd, d);
@@ -810,7 +705,6 @@ describe('DynamicsMap', () => {
           protraction: 0.5,
         });
 
-        // Should still be monotonically increasing for a crescendo
         let prev = dynamicsAt(dd, 0);
         for (let d = 10; d <= 1000; d += 10) {
           const curr = dynamicsAt(dd, d);
@@ -820,9 +714,6 @@ describe('DynamicsMap', () => {
       });
     });
 
-    // ---------------------------------------------------------------
-    //  getDynamicsAt
-    // ---------------------------------------------------------------
     describe('getDynamicsAt', () => {
       it('constant dynamics returns volume at any date', () => {
         const dd = dyn({ startDate: 0, endDate: 960, volume: 80, transitionTo: null });
@@ -875,10 +766,7 @@ describe('DynamicsMap', () => {
           protraction: 0,
         });
 
-        // At t=0 (startDate): getDynamicsAt directly returns volume since date == startDate triggers t=0
-        // y(0) = ((3-0)*0*0)*(100-50) + 50 = 0 + 50 = 50
         expect(dynamicsAt(dd, 0)).toBe(50);
-        // At t=1 (endDate): y(1) = ((3-2)*1)*(100-50)+50 = 1*50+50 = 100
         expect(dynamicsAt(dd, 1000)).toBe(100);
       });
 
@@ -892,11 +780,7 @@ describe('DynamicsMap', () => {
           protraction: 0,
         });
 
-        // At t=0.5:
-        // y = ((3 - 2*0.5) * 0.5^2) * (100-50) + 50
-        //   = (2 * 0.25) * 50 + 50
-        //   = 0.5 * 50 + 50
-        //   = 75
+        // y(0.5) = ((3 - 2*0.5) * 0.25) * (100 - 50) + 50 = 75.
         expect(dynamicsAt(dd, 500)).toBeCloseTo(75.0, 1);
       });
 
@@ -910,13 +794,8 @@ describe('DynamicsMap', () => {
           protraction: 0,
         });
 
-        // For curvature=0, protraction=0:
-        // x(t) = t^2(3-2t) and y(t) = t^2(3-2t) * 100
-        // We need to find dates where t=0.25 and t=0.75
-        // x(0.25) = 0.0625 * 2.5 = 0.15625, date = 0.15625 * 1000 = 156.25
-        // x(0.75) = 0.5625 * 1.5 = 0.84375, date = 843.75
-        // y(0.25) = 0.15625 * 100 = 15.625
-        // y(0.75) = 0.84375 * 100 = 84.375
+        // With curvature=0, protraction=0 both x(t) and y(t) are t^2(3-2t), so t=0.25 falls
+        // at date 156.25 with dynamics 15.625, and t=0.75 at date 843.75 with 84.375.
         expect(dynamicsAt(dd, 156.25)).toBeCloseTo(15.625, 0);
         expect(dynamicsAt(dd, 843.75)).toBeCloseTo(84.375, 0);
       });
@@ -933,14 +812,13 @@ describe('DynamicsMap', () => {
 
         expect(dynamicsAt(dd, 0)).toBe(100);
         expect(dynamicsAt(dd, 1000)).toBe(50);
-        // At midpoint (t≈0.5):
-        // y(0.5) = (2*0.25)*(50-100) + 100 = 0.5*(-50)+100 = -25+100 = 75
+        // y(0.5) = 0.5 * (50 - 100) + 100 = 75, the same midpoint as the ascending case.
         expect(dynamicsAt(dd, 500)).toBeCloseTo(75.0, 0);
       });
 
       it('high curvature produces a sharper S-curve', () => {
-        // With high curvature, the inner control points are closer together,
-        // producing a more abrupt transition
+        // High curvature pulls the inner control points together, making the transition more
+        // abrupt: a slower start and a faster end than the linear curve.
         const ddSharp = dyn({
           startDate: 0,
           endDate: 1000,
@@ -959,16 +837,11 @@ describe('DynamicsMap', () => {
           protraction: 0,
         });
 
-        // At date 300, the sharp curve should be closer to 0 (slower start)
         expect(dynamicsAt(ddSharp, 300)).toBeLessThan(dynamicsAt(ddLinear, 300));
-        // At date 700, the sharp curve should be closer to 100 (faster end)
         expect(dynamicsAt(ddSharp, 700)).toBeGreaterThan(dynamicsAt(ddLinear, 700));
       });
     });
 
-    // ---------------------------------------------------------------
-    //  getSubNoteDynamicsSegment
-    // ---------------------------------------------------------------
     describe('getSubNoteDynamicsSegment', () => {
       it('returns at least start and end points', () => {
         const dd = dyn({
@@ -982,10 +855,8 @@ describe('DynamicsMap', () => {
 
         const segments = subNoteDynamicsSegment(dd, 200);
         expect(segments.length).toBeGreaterThanOrEqual(2);
-        // First point should be at startDate with volume
         expect(segments[0][0]).toBeCloseTo(0, 5);
         expect(segments[0][1]).toBeCloseTo(50, 1);
-        // Last point should be at endDate with transitionTo
         const last = segments[segments.length - 1];
         expect(last[0]).toBeCloseTo(1000, 5);
         expect(last[1]).toBeCloseTo(100, 1);
@@ -1057,7 +928,6 @@ describe('DynamicsMap', () => {
       });
 
       it('large maxStepSize with small dynamics range produces few segments', () => {
-        // only 10 difference between the endpoints
         const dd = dyn({
           startDate: 0,
           endDate: 1000,
@@ -1091,17 +961,9 @@ describe('DynamicsMap', () => {
       });
     });
 
-    // ---------------------------------------------------------------
-    //  reading an element, through the reader that renders
-    // ---------------------------------------------------------------
-    // Migrated from a `new DynamicsData(e)` constructor that no production path called.
-    // The first case transfers assertion for assertion. The second CANNOT, and that is
-    // the point: `expect(dd.volume).toBeNull()` was pinning a state the renderer never
-    // produces. The dead constructor put a non-numeric `@volume` in `volumeString` and
-    // left `volume` null; `getDynamicsDataOf` always sets the string AND resolves the
-    // number through the style in scope. Rather than drop the case, it is re-pointed at
-    // the resolution that actually happens — which needs a real document, because a
-    // style-relative name means nothing without a style.
+    // `getDynamicsDataOf` always sets `volumeString` and also resolves `volume` to a number
+    // through the style in scope, so a style-relative `@volume` needs a real document to
+    // exercise: without a style there is no def to resolve the name against.
     describe('reading an element through getDynamicsDataOf', () => {
       it('reads date, volume, transition.to, curvature, protraction and subNoteDynamics', () => {
         const dd = mapOf(
@@ -1115,8 +977,7 @@ describe('DynamicsMap', () => {
         expect(dd.curvature).toBe(0.5);
         expect(dd.protraction).toBe(0.3);
         expect(dd.subNoteDynamics).toBe(true);
-        // The string half of the pair, which the dead constructor NULLED for a numeric
-        // volume even though `addDynamics(DynamicsData)` prefers it on the way back out.
+        // The string half of the pair, which `addDynamicsFromData` prefers on the way out.
         expect(dd.volumeString).toBe('80');
       });
 
@@ -1130,8 +991,6 @@ describe('DynamicsMap', () => {
             '<dynamics date="0.0" volume="forte" /></dynamicsMap>' +
             '</dated></global></performance></mpm>',
         );
-        // `getMap` is declared to return the base `GenericMap`; the downcast names a
-        // PUBLIC reader, it is not a way in to a private path.
         const map = mpm
           .getAllPerformances()[0]
           .getGlobal()!
@@ -1145,18 +1004,14 @@ describe('DynamicsMap', () => {
       });
 
       it('falls back to 100 for a name no style resolves, rather than leaving volume null', () => {
-        // Without a style there is no def to consult and no number to parse, so
-        // `DynamicsStyle.getNumericValueStatic` logs and answers 100. The dead
-        // constructor answered null here, and null is what `getDynamicsAt` divides by.
+        // No style means no def to consult and no number to parse, so
+        // `DynamicsStyle.getNumericValueStatic` logs and answers 100 rather than null.
         const dd = mapOf('<dynamics date="0.0" volume="forte" />').getDynamicsDataOf(0)!;
         expect(dd.volumeString).toBe('forte');
         expect(dd.volume).toBe(100.0);
       });
     });
 
-    // ---------------------------------------------------------------
-    //  Comprehensive mathematical verification
-    // ---------------------------------------------------------------
     describe('comprehensive S-curve mathematics', () => {
       it('the S-curve formula y(t)=(3-2t)*t^2 at several t values', () => {
         // S-curve normalized: f(t) = (3-2t)*t^2
@@ -1170,16 +1025,9 @@ describe('DynamicsMap', () => {
           protraction: 0,
         });
 
-        // With curvature=0, protraction=0, x(t)=t^2(3-2t) and y(t)=t^2(3-2t)*100
-        // And x(t) is the same function as y(t)/100 in this special case.
-        // So date = x(t)*1000 = f(t)*1000, dynamics = f(t)*100.
-        // This means dynamics = date/10 for curvature=0, protraction=0.
-
-        // At date = f(0.25)*1000 = 156.25
+        // x(t) and y(t)/100 are the same function here, so dynamics = date/10 throughout.
         expect(dynamicsAt(dd, 156.25)).toBeCloseTo(15.625, 0);
-        // At date = f(0.5)*1000 = 500
         expect(dynamicsAt(dd, 500)).toBeCloseTo(50.0, 0);
-        // At date = f(0.75)*1000 = 843.75
         expect(dynamicsAt(dd, 843.75)).toBeCloseTo(84.375, 0);
       });
 
@@ -1202,17 +1050,14 @@ describe('DynamicsMap', () => {
           protraction: 0,
         });
 
-        // At the midpoint, crescendo + diminuendo should sum to 100
         const crescMid = dynamicsAt(ddCresc, 500);
         const dimMid = dynamicsAt(ddDim, 500);
         expect(crescMid + dimMid).toBeCloseTo(100.0, 0);
       });
 
       it('protraction shifts the x-curve control points, changing dynamics distribution', () => {
-        // Positive protraction increases x1 and x2, causing the Bezier x-curve
-        // to accumulate x-position faster at small t. This means that for a given
-        // date, the corresponding t is lower, resulting in a lower dynamics value.
-        // In effect, positive protraction delays the transition.
+        // Positive protraction raises x1 and x2, so the x-curve accumulates faster at small
+        // t, a given date maps to a lower t, and the transition is delayed.
         const ddPos = dyn({
           startDate: 0,
           endDate: 1000,
@@ -1240,28 +1085,22 @@ describe('DynamicsMap', () => {
           protraction: 0,
         });
 
-        // All three should agree at boundaries
         expect(dynamicsAt(ddPos, 0)).toBeCloseTo(0, 5);
         expect(dynamicsAt(ddNeg, 0)).toBeCloseTo(0, 5);
         expect(dynamicsAt(ddPos, 1000)).toBeCloseTo(100, 5);
         expect(dynamicsAt(ddNeg, 1000)).toBeCloseTo(100, 5);
 
-        // At the midpoint, positive and negative protraction should differ
         const dynPosMid = dynamicsAt(ddPos, 500);
         const dynNegMid = dynamicsAt(ddNeg, 500);
         const dynZeroMid = dynamicsAt(ddZero, 500);
         expect(dynPosMid).not.toBeCloseTo(dynNegMid, 0);
 
-        // Verify that the zero-protraction case is between the positive and negative
-        // (or at least different from both)
         expect(dynZeroMid).not.toBeCloseTo(dynPosMid, 0);
       });
 
       it('curvature=0 special case: x(t) = t^2(3-2t) which gives date=dynamics/100 * endDate', () => {
-        // When curvature=0, protraction=0: x1=0, x2=1
-        // Both x(t) and y(t) use the same cubic: (3-2t)*t^2
-        // This means the Bezier x maps directly to the S-curve y, creating a relationship
-        // where date fraction equals dynamics fraction.
+        // With x1=0, x2=1 both x(t) and y(t) use the cubic (3-2t)*t^2, so the date fraction
+        // equals the dynamics fraction.
         const dd = dyn({
           startDate: 0,
           endDate: 1000,
@@ -1271,7 +1110,6 @@ describe('DynamicsMap', () => {
           protraction: 0,
         });
 
-        // dynamics at any date should equal date/10
         for (const date of [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]) {
           expect(dynamicsAt(dd, date)).toBeCloseTo(date / 10, 0);
         }
@@ -1281,13 +1119,12 @@ describe('DynamicsMap', () => {
 
   /**
    * The `dynamicsMap === null` branch of the static entry point: with no dynamics
-   * instructions anywhere, every note gets the default velocity and nothing else is
-   * touched.
+   * instructions anywhere, every note gets the default velocity and nothing else is touched.
    *
-   * Added because a negative control found it unguarded — skipping the branch's first map
-   * entry entirely left all 6032 tests and `npm run gate` green. It is reachable in
-   * production (`Performance` passes `mpm.dynamics`, which is null for a performance that
-   * declares no `dynamicsMap`), so this is a gap in the oracle rather than dead code.
+   * A negative control found the branch unpinned — skipping its first map entry entirely left
+   * the whole suite and `npm run gate` green. It is reachable in production, because
+   * `Performance` passes `mpm.dynamics`, which is null for a performance that declares no
+   * `dynamicsMap`.
    */
   describe('renderDynamicsToMap with no dynamicsMap at all', () => {
     it('gives every note the default velocity, first one included, and returns no channelVolumeMap', () => {

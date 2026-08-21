@@ -203,7 +203,8 @@ describe('buildOrnamentData', () => {
 });
 
 describe('createMeiOrnamentDef', () => {
-  /** The values the blueprint records for the reference's createDefaultOrnamentDef table (§3.7). */
+  /** The values the blueprint records for the reference's createDefaultOrnamentDef table
+   * (§3.7). */
   const spreadOf = (name: string) => {
     const def = okValue(createMeiOrnamentDef(name));
     const ts = def.getTemporalSpread()!;
@@ -221,7 +222,8 @@ describe('createMeiOrnamentDef', () => {
   };
 
   it('gives the mordents a 180-tick frame', () => {
-    // table row: mordent / upper mordent / lower mordent → gradient(1, -1), (0, 180, ticks, 0.9, monophonic)
+    // table row: mordent / upper mordent / lower mordent →
+    //   gradient(1, -1), (0, 180, ticks, 0.9, monophonic)
     for (const name of ['mordent', 'upper mordent', 'lower mordent'])
       expect(spreadOf(name)).toEqual({
         offset: { value: 0.0, domain: 'ticks' },
@@ -249,7 +251,8 @@ describe('createMeiOrnamentDef', () => {
 
   it('falls through to the default row for the names the reference never cased', () => {
     // The blueprint's own observation: trill, upper/lower turn and the double cadence have no
-    // row of their own and take the default → gradient(-1, 1), (0, 80, relative, 0.9, monophonic).
+    // row of their own and take the default →
+    //   gradient(-1, 1), (0, 80, relative, 0.9, monophonic).
     for (const name of ['trill', 'upper turn', 'lower turn', 'double cadence lower prefix'])
       expect(spreadOf(name)).toEqual({
         offset: { value: 0.0, domain: 'ticks' },
@@ -279,7 +282,7 @@ describe('createMeiOrnamentDef', () => {
   it('leaves the frozen v2 arpeggio def alone', () => {
     // The arpeggio has no row here on purpose: it is converted by processArpeg on the v2 path
     // that DESIGN.md D6 freezes, and a row named "arpeggio" here could only ever shadow it. This
-    // table therefore does NOT know the name — it answers with the default row — while the v2
+    // table therefore does not know the name — it answers with the default row — while the v2
     // function next door still answers with the frame the Java reference fixtures contain.
     expect(
       okValue(createMeiOrnamentDef('arpeggio')).getTemporalSpread()!.getFrameLengthValue(),

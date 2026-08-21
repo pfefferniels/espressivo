@@ -5,9 +5,6 @@ import { Mpm } from '../../../src/mpm/Mpm.js';
 import { Element } from '../../../src/xml/XomTypes.js';
 
 describe('Dated', () => {
-  // ---------------------------------------------------------------
-  // creation
-  // ---------------------------------------------------------------
   describe('createDated', () => {
     it('should create an empty dated environment', () => {
       const dated = okValue(Dated.createDated());
@@ -37,9 +34,6 @@ describe('Dated', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // addMapByType
-  // ---------------------------------------------------------------
   describe('addMapByType', () => {
     it('should create and attach a map of the requested type', () => {
       const dated = okValue(Dated.createDated());
@@ -79,9 +73,6 @@ describe('Dated', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // removeMap
-  // ---------------------------------------------------------------
   describe('removeMap', () => {
     it('should remove the map from the lookup and from the xml', () => {
       const dated = okValue(Dated.createDated());
@@ -114,9 +105,6 @@ describe('Dated', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // addMapFromXml / clear
-  // ---------------------------------------------------------------
   describe('addMapFromXml', () => {
     it('should add a typed map built from an xml element', () => {
       const dated = okValue(Dated.createDated());
@@ -147,9 +135,6 @@ describe('Dated', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // environment
-  // ---------------------------------------------------------------
   describe('setEnvironment', () => {
     it('should start without a global or part environment', () => {
       const dated = okValue(Dated.createDated());
@@ -168,9 +153,6 @@ describe('Dated', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // getMap
-  // ---------------------------------------------------------------
   describe('getMap', () => {
     it('should return null for a type that was never added', () => {
       expect(okValue(Dated.createDated()).getMap(Mpm.ASYNCHRONY_MAP)).toBeNull();

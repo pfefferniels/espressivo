@@ -17,11 +17,6 @@ function tree(name: string, children: Element[]): Element {
   return parent;
 }
 
-// Moved verbatim from tests/mei/Helper.test.ts by T14: MPM noteid repair.
-
-// ---------------------------------------------------------------------------
-// updateMpmNoteidsAfterResolvingRepetitions
-// ---------------------------------------------------------------------------
 describe('updateMpmNoteidsAfterResolvingRepetitions', () => {
   it('should renumber the repeats of a noteid, leaving the first one alone', () => {
     const map = tree('articulationMap', [
@@ -55,7 +50,3 @@ describe('updateMpmNoteidsAfterResolvingRepetitions', () => {
     expect(allChildElements(map)![0].getAttributeValue('noteid')).toBe('#n1');
   });
 });
-
-// ---------------------------------------------------------------------------
-// decimalDuration2HtmlUnicode
-// ---------------------------------------------------------------------------

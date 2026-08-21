@@ -69,9 +69,6 @@ const PROGRAM_CHANGE = 0xc0;
 const CONTROL_CHANGE = 0xb0;
 
 describe('Msm', () => {
-  // ---------------------------------------------------------------
-  // Create MSM document
-  // ---------------------------------------------------------------
   describe('createMsm', () => {
     it('should create an MSM document with the given title', () => {
       const msm = Msm.createMsm('Test Score', null, 720);
@@ -135,9 +132,6 @@ describe('Msm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Add parts
-  // ---------------------------------------------------------------
   describe('addPart', () => {
     it('should add a part element to the MSM document', () => {
       const msm = Msm.createMsm('Test', null, 720);
@@ -184,9 +178,6 @@ describe('Msm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // getParts
-  // ---------------------------------------------------------------
   describe('getParts', () => {
     it('should return an empty Elements when no parts exist', () => {
       const msm = Msm.createMsm('Test', null, 720);
@@ -214,9 +205,6 @@ describe('Msm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // getPPQ
-  // ---------------------------------------------------------------
   describe('getPPQ', () => {
     it('should return the correct PPQ value', () => {
       const msm = Msm.createMsm('Test', null, 480);
@@ -240,24 +228,16 @@ describe('Msm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // deleteEmptyMaps
-  // ---------------------------------------------------------------
   describe('deleteEmptyMaps', () => {
     it('should do nothing on an empty MSM', () => {
       const msm = new Msm();
       expect(msm.isEmpty()).toBe(true);
-      // Should not throw
       msm.deleteEmptyMaps();
     });
 
     it('should identify empty maps via XPath query', () => {
-      // deleteEmptyMaps relies on XPath + getParent().removeChild().
-      // Due to a limitation in the XOM compatibility layer (getParent()
-      // creates a new Element wrapper, so removeChild on it does not
-      // affect the actual tree), the actual removal may not work in the
-      // current implementation. Here we verify the method can be called
-      // without error on a parsed document.
+      // Only that the call survives a parsed document; the removal itself is asserted in
+      // tests/msm/AbstractMsm.test.ts.
       const xml = `<msm title="Test" pulsesPerQuarter="720">
                 <global>
                     <header />
@@ -269,14 +249,12 @@ describe('Msm', () => {
       const msm = new Msm(xml);
       expect(msm.isEmpty()).toBe(false);
 
-      // Verify the map exists before the call
       const dated = msm
         .getRootElement()!
         .getFirstChildElement('global')!
         .getFirstChildElement('dated')!;
       expect(dated.getFirstChildElement('keySignatureMap')).not.toBeNull();
 
-      // Should not throw
       msm.deleteEmptyMaps();
     });
 
@@ -293,7 +271,6 @@ describe('Msm', () => {
             </msm>`;
       const msm = new Msm(xml);
 
-      // Should not throw; non-empty maps are left alone
       msm.deleteEmptyMaps();
 
       const dated = msm
@@ -304,9 +281,6 @@ describe('Msm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // clone
-  // ---------------------------------------------------------------
   describe('clone', () => {
     it('should produce a deep copy', () => {
       const msm = Msm.createMsm('Test Score', null, 720);
@@ -317,16 +291,12 @@ describe('Msm', () => {
       expect(clone.getPPQ()).toBe(720);
       expect(clone.getParts().size()).toBe(1);
 
-      // Modifying the clone should not affect the original
       clone.addPart(Msm.makePart('Violin', 2, 1, 0));
       expect(clone.getParts().size()).toBe(2);
       expect(msm.getParts().size()).toBe(1);
     });
   });
 
-  // ---------------------------------------------------------------
-  // makeTimeSignature
-  // ---------------------------------------------------------------
   describe('makeTimeSignature', () => {
     it('should create a time signature element', () => {
       const ts = Msm.makeTimeSignature(0, 4, 4, null);
@@ -344,9 +314,6 @@ describe('Msm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Export XML
-  // ---------------------------------------------------------------
   describe('writeMsm', () => {
     it('should produce a valid XML string', () => {
       const msm = Msm.createMsm('Test', null, 720);
@@ -363,9 +330,7 @@ describe('Msm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
   // getTitle fallbacks (Msm.java:164-178)
-  // ---------------------------------------------------------------
   describe('getTitle', () => {
     it('should fall back to the filename without extension when the title attribute is missing', () => {
       const msm = new Msm('<msm pulsesPerQuarter="720"><global><header/><dated/></global></msm>');
@@ -387,9 +352,7 @@ describe('Msm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
   // convertPPQ (Msm.java:225-248)
-  // ---------------------------------------------------------------
   describe('convertPPQ', () => {
     it('should scale date, date.end and duration when doubling the resolution', () => {
       const msm = msmWithNotes(360, [
@@ -473,9 +436,7 @@ describe('Msm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
   // getMinimalPPQ (Msm.java:254-279)
-  // ---------------------------------------------------------------
   describe('getMinimalPPQ', () => {
     it('should return 1 when everything is aligned to whole quarter notes', () => {
       expect(
@@ -575,9 +536,7 @@ describe('Msm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
   // getPart (Msm.java:340-372)
-  // ---------------------------------------------------------------
   describe('getPart', () => {
     function threePartMsm(): Msm {
       const msm = Msm.createMsm('Test', null, 720);
@@ -619,9 +578,7 @@ describe('Msm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
   // removeRests (Msm.java:412-420)
-  // ---------------------------------------------------------------
   describe('removeRests', () => {
     it('should remove all rest elements and keep the notes', () => {
       const msm = Msm.createMsm('Test', null, 720);
@@ -661,9 +618,7 @@ describe('Msm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
   // getEndDate (Msm.java:1217-1240)
-  // ---------------------------------------------------------------
   describe('getEndDate', () => {
     it('should return the latest note offset', () => {
       expect(
@@ -697,9 +652,7 @@ describe('Msm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
   // addIds (Msm.java:1327-...)
-  // ---------------------------------------------------------------
   describe('addIds', () => {
     it('should add xml:ids to notes and rests that have none', () => {
       const msm = Msm.createMsm('Test', null, 720);
@@ -754,9 +707,7 @@ describe('Msm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
   // MIDI export (Msm.java:634-791)
-  // ---------------------------------------------------------------
   describe('exportMidi', () => {
     it('should return null for an empty MSM', () => {
       expect(new Msm().exportMidi()).toBeNull();
@@ -940,20 +891,16 @@ describe('Msm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // The defaults the map parsers apply to an incomplete entry.
-  //
-  // Every one of these was found by a negative control that came back GREEN — the marker
-  // message default, the time-signature numerator default and the ported key-signature
-  // threshold could each be changed with 1138 tests passing. The shared cause was that
-  // `midi-byte-equivalence.test.ts` reduced a meta event to its `metaType` and compared only
-  // that, so no meta PAYLOAD was checked against Java.
+  // Each of these defaults was found by a negative control that came back green: the marker
+  // message, the time-signature numerator and the ported key-signature threshold could each
+  // be changed with the suite still passing, because `midi-byte-equivalence.test.ts` reduced
+  // a meta event to its `metaType` and compared only that, so no meta payload was checked
+  // against Java.
   //
   // `8bdd00e` has since closed that, and the key-signature threshold now reddens six
   // fixtures there as well as the test below. The other two still need these: the corpus has
   // no marker without a `message` and no `<timeSignature>` without a `numerator`, so only a
   // hand-built document reaches those branches at all.
-  // ---------------------------------------------------------------
   describe('the map parsers’ defaults for an incomplete entry', () => {
     /** The global `<dated>` of a fresh MSM with one note. */
     function globalDated(msm: Msm): Element {
@@ -982,8 +929,6 @@ describe('Msm', () => {
     });
 
     it('a marker with an EMPTY message keeps the empty string, not the default', () => {
-      // The distinction the old `getAttributeValue('message')!` + `=== null` test was making,
-      // now made by the value rather than around an assertion.
       const msm = msmWithNotes(720, [[0, 720, 60]]);
       addMarker(msm, { message: '' });
       expect(markerPayload(msm)).toBe('');
@@ -1004,12 +949,10 @@ describe('Msm', () => {
     });
 
     /**
-     * The accidental count used `value > 1.0` / `value < 1.0` where it should have used
-     * `> 0` / `< 0`, so a sharp — which `Mei2MsmMpmConverter` writes as exactly `1.0` —
-     * was not counted at all while a flat (`-1.0`) was. This test used to pin that defect
-     * on purpose. It is now fixed in the fork (`meico@db83c7c5`) and here, the reference
-     * MIDI has been regenerated from the fixed fork, and the assertions below are the
-     * counts a key signature should always have produced.
+     * `Mei2MsmMpmConverter` writes a sharp as exactly `1.0`, so counting with `value > 1.0` /
+     * `< 1.0` rather than `> 0` / `< 0` misses every sharp while still counting flats. The
+     * fork fixed that (`meico@db83c7c5`), the reference MIDI has been regenerated from it,
+     * and the counts below are the ones a key signature should always have produced.
      */
     it('counts sharps and flats symmetrically by sign', () => {
       function accidentalCount(values: string[]): number {
@@ -1040,20 +983,18 @@ describe('Msm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
   // makeInitialTempo (Msm.java:928-937)
   //
   // Written because a negative control came back green: making a `<timeSignature>` with no
-  // `denominator` fall back to a quarter-note beat instead of producing NaN changed nothing
-  // in 1132 tests, and so did doubling the parsed beat length. The cause was that
-  // `midi-byte-equivalence` reduced a meta event to its type byte and compared only that, so
-  // no Set Tempo PAYLOAD was ever checked against Java.
+  // `denominator` fall back to a quarter-note beat instead of producing NaN changed nothing,
+  // and neither did doubling the parsed beat length, because `midi-byte-equivalence` reduced
+  // a meta event to its type byte and compared only that, so no Set Tempo payload was ever
+  // checked against Java.
   //
   // That gap is now closed — `8bdd00e` compares meta payloads, and the parsed arm reddens
   // `rests_meters` there. These tests still earn their place, because the corpus cannot reach
   // the other three arms: no fixture carries a `<timeSignature>` without a `denominator`,
   // with an unparsable one, or a global `timeSignatureMap` that is empty.
-  // ---------------------------------------------------------------
   describe('makeInitialTempo: the one tempo event of a non-expressive export', () => {
     const META_SET_TEMPO = 0x51;
 
@@ -1114,7 +1055,7 @@ describe('Msm', () => {
     });
 
     /*
-     * The two below pin a DIVERGENCE FROM JAVA, not agreement with it.
+     * The two below pin a divergence from Java, not agreement with it.
      *
      * `Msm.java:932` wraps the whole read in `catch (NumberFormatException |
      * NullPointerException)`. A missing `<global>`/`<dated>`/`<timeSignatureMap>`/
@@ -1123,13 +1064,12 @@ describe('Msm', () => {
      * `Integer.parseInt("x")` both raise NumberFormatException in Java, so Java lands on
      * 0.25 for a denominator that is absent or not an int literal, where JavaScript's
      * `parseInt` returns NaN and does not throw. The port therefore emits a tempo of NaN
-     * microseconds per quarter, which `intToByteArray` truncates to **zero**.
+     * microseconds per quarter, which `intToByteArray` truncates to zero.
      *
      * No fixture reaches it: every `<timeSignature>` in the reference and comparison corpora
      * carries an integer `denominator`. These tests exist so that the behaviour is at least
      * observed, and so that a decision to align with Java is a red test rather than a silent
-     * one. Reported to the conductor; not fixed here, because changing render output on an
-     * unfixtured path is not this charter's to authorise.
+     * one.
      */
     it('DIVERGES from Java: a timeSignature with no denominator yields a tempo of zero', () => {
       const msm = msmWithNotes(720, [[0, 720, 60]]);
@@ -1150,9 +1090,7 @@ describe('Msm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
   // expressive MIDI export (Msm.java:667-703)
-  // ---------------------------------------------------------------
   describe('exportExpressiveMidi', () => {
     /** An MSM that already carries the millisecond attributes a performance would add. */
     function performedMsm(velocities: number[]): Msm {
@@ -1184,7 +1122,7 @@ describe('Msm', () => {
 
     /*
      * `readMillisecondsDateFromElement`'s two absences. Written because a control came back
-     * green: replacing its throw with `return 0` left 3027 tests passing. Nothing on the
+     * green: replacing its throw with `return 0` left the suite passing. Nothing on the
      * pipeline path can reach it — `Performance.perform` writes `milliseconds.date` onto
      * every dated element and the converter writes `date` onto all of them anyway — so only
      * a hand-built MSM observes either arm.

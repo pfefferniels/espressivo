@@ -116,11 +116,10 @@ describe('OrnamentNote', () => {
     });
 
     it('should skip a note whose pitch value is empty', () => {
-      // INVERTED in W9, deliberately, by the D16 ruling (PARITY.md §6.8): this used to assert
-      // the opposite of its own title. `Number('')` is 0, so an empty attribute silently read
-      // as "no alteration" — a pitch the document never stated, invented from nothing.
-      // `parseJavaDouble` rejects the empty string exactly as `Double.parseDouble` does, so the
-      // note now takes the same route as every other unreadable pitch: logged and skipped.
+      // D16 (PARITY.md §6.8): `Number('')` is 0, so an empty attribute would read as "no
+      // alteration" — a pitch the document never stated. `parseJavaDouble` rejects the empty
+      // string exactly as `Double.parseDouble` does, so the note takes the same route as
+      // every other unreadable pitch: logged and skipped.
       let n: OrnamentNote | null = null;
       const messages = captureErrors(() => {
         n = note('xml:id="empty" interval.chromatic=""');
@@ -138,8 +137,8 @@ describe('OrnamentNote', () => {
     });
 
     /**
-     * The three spellings where `parseJavaDouble` and the `Number` this used to call disagree
-     * (D16's W9 ruling — `midi.pitch` has no grammar, so the choice of parser is observable):
+     * The three spellings where `parseJavaDouble` and `Number` disagree (D16 — `midi.pitch`
+     * has no grammar, so the choice of parser is observable):
      *
      * | value    | `Number`   | `Double.parseDouble` | here |
      * | -------- | ---------- | -------------------- | ---- |

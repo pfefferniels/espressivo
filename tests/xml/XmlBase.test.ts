@@ -19,9 +19,6 @@ const XML_WITH_ATTRS = `<?xml version="1.0" encoding="UTF-8"?>
   </nested>
 </root>`;
 
-// ---------------------------------------------------------------------------
-// Construction
-// ---------------------------------------------------------------------------
 describe('XmlBase – construction', () => {
   it('should create an empty instance (no args)', () => {
     const xb = new XmlBase();
@@ -46,9 +43,6 @@ describe('XmlBase – construction', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// what actually happens to malformed XML — PARITY.md XB1
-// ---------------------------------------------------------------------------
 /**
  * `parseXmlString` reads as "catch the parse failure, leave the document empty", which is
  * what Java's `XmlBase` does. Under `@xmldom/xmldom` it is not what happens, and these two
@@ -89,9 +83,6 @@ describe('XmlBase – malformed XML throws, and only a <parsererror> yields an e
   });
 });
 
-// ---------------------------------------------------------------------------
-// Basic getters
-// ---------------------------------------------------------------------------
 describe('XmlBase – getters', () => {
   it('getRootElement() should return the root', () => {
     const xb = new XmlBase(SIMPLE_XML, true);
@@ -123,9 +114,6 @@ describe('XmlBase – getters', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// File property
-// ---------------------------------------------------------------------------
 describe('XmlBase – file property', () => {
   it('should default to null', () => {
     const xb = new XmlBase();
@@ -139,9 +127,6 @@ describe('XmlBase – file property', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// setDocument
-// ---------------------------------------------------------------------------
 describe('XmlBase – setDocument', () => {
   it('should replace the internal document', () => {
     const xb = new XmlBase();
@@ -153,9 +138,6 @@ describe('XmlBase – setDocument', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// removeAllElements
-// ---------------------------------------------------------------------------
 describe('XmlBase – removeAllElements', () => {
   it('should find matching elements and report the count', () => {
     const xb = new XmlBase(SIMPLE_XML, true);
@@ -171,9 +153,6 @@ describe('XmlBase – removeAllElements', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// removeAllAttributes
-// ---------------------------------------------------------------------------
 describe('XmlBase – removeAllAttributes', () => {
   it('should remove the named attribute from all elements that have it', () => {
     const xb = new XmlBase(XML_WITH_ATTRS, true);
@@ -192,14 +171,10 @@ describe('XmlBase – removeAllAttributes', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// the three tree-wide operations on an empty document
-// ---------------------------------------------------------------------------
 describe('XmlBase – tree operations on an empty document', () => {
-  // All three used to reach the root with `getRootElement()!` and therefore died on an
-  // empty instance with "cannot read properties of null (reading 'query')". They now go
-  // through `requireRootElement`, so the failure names the document rather than the
-  // property — same set of inputs that fail, a different sentence when they do.
+  // All three reach the root through `requireRootElement`, so an empty instance fails with a
+  // sentence naming the document rather than "cannot read properties of null (reading
+  // 'query')". The same set of inputs fails either way; only the message differs.
   it.each([
     ['removeAllElements', (xb: XmlBase) => xb.removeAllElements('child')],
     ['removeAllAttributes', (xb: XmlBase) => xb.removeAllAttributes('color')],
@@ -209,9 +184,6 @@ describe('XmlBase – tree operations on an empty document', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// exportXml
-// ---------------------------------------------------------------------------
 describe('XmlBase – exportXml', () => {
   it('should return XML string when data is present', () => {
     const xb = new XmlBase(SIMPLE_XML, true);
@@ -226,9 +198,6 @@ describe('XmlBase – exportXml', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// validate (stub)
-// ---------------------------------------------------------------------------
 describe('XmlBase – validate', () => {
   it('should report no-data when empty', () => {
     const xb = new XmlBase();
@@ -241,9 +210,6 @@ describe('XmlBase – validate', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// isValid
-// ---------------------------------------------------------------------------
 describe('XmlBase – isValid', () => {
   it('should default to false', () => {
     const xb = new XmlBase();

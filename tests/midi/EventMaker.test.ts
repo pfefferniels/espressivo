@@ -14,9 +14,6 @@ import {
 } from '../../src/midi/MidiTypes.js';
 
 describe('EventMaker', () => {
-  // ---------------------------------------------------------------
-  // MIDI constants
-  // ---------------------------------------------------------------
   describe('MIDI constants', () => {
     it('should define NOTE_ON as 144 (0x90)', () => {
       expect(EventMaker.NOTE_ON).toBe(144);
@@ -91,9 +88,6 @@ describe('EventMaker', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // createNoteOn / createNoteOff
-  // ---------------------------------------------------------------
   describe('createNoteOn', () => {
     it('should create a valid note on event', () => {
       const event = EventMaker.createNoteOn(0, 480, 60, 100);
@@ -157,9 +151,6 @@ describe('EventMaker', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // createProgramChange
-  // ---------------------------------------------------------------
   describe('createProgramChange', () => {
     it('should create a program change event', () => {
       const event = EventMaker.createProgramChange(0, 0, EventMaker.PC_Violin);
@@ -180,9 +171,6 @@ describe('EventMaker', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // createTempo
-  // ---------------------------------------------------------------
   describe('createTempo', () => {
     it('should create a tempo event for 120 BPM quarter note beats', () => {
       const event = EventMaker.createTempo(0, 120, 0.25);
@@ -210,7 +198,6 @@ describe('EventMaker', () => {
     });
 
     it('should handle non-quarter beat lengths', () => {
-      // 120 BPM with half-note beats (beatlength=0.5)
       const event = EventMaker.createTempo(0, 120, 0.5);
       expect(event).not.toBeNull();
       const msg = event!.getMessage() as MetaMessage;
@@ -221,9 +208,6 @@ describe('EventMaker', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // createTimeSignature
-  // ---------------------------------------------------------------
   describe('createTimeSignature', () => {
     it('should create a 4/4 time signature event', () => {
       const event = EventMaker.createTimeSignature(0, 4, 4);
@@ -258,9 +242,6 @@ describe('EventMaker', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // createKeySignature
-  // ---------------------------------------------------------------
   describe('createKeySignature', () => {
     it('should create a key signature with 0 accidentals (C major)', () => {
       const event = EventMaker.createKeySignature(0, 0);
@@ -269,7 +250,7 @@ describe('EventMaker', () => {
       expect(msg.type).toBe(EventMaker.META_Key_Signature);
       const data = metaPayload(msg);
       expect(data.length).toBe(2);
-      expect(data[0]).toBe(0); // 0 accidentals
+      expect(data[0]).toBe(0);
       expect(data[1]).toBe(0); // major mode
     });
 
@@ -282,7 +263,6 @@ describe('EventMaker', () => {
     });
 
     it('should handle negative accidentals (flats) via byte representation', () => {
-      // -3 flats => as byte: 0xFD
       const event = EventMaker.createKeySignature(0, -3);
       expect(event).not.toBeNull();
       const msg = event!.getMessage() as MetaMessage;
@@ -291,9 +271,6 @@ describe('EventMaker', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // intToByteArray / byteArrayToInt round-trips
-  // ---------------------------------------------------------------
   describe('intToByteArray and byteArrayToInt', () => {
     it('should round-trip value 500000 in little-endian (network order)', () => {
       const bytes = EventMaker.intToByteArray(500000, false);
@@ -329,8 +306,7 @@ describe('EventMaker', () => {
     it('should produce different byte orders for big-endian vs little-endian', () => {
       const le = EventMaker.intToByteArray(256, false);
       const be = EventMaker.intToByteArray(256, true);
-      // In little-endian (false = network order), MSB is first
-      // In big-endian (true), LSB is first
+      // The flag reads backwards: false (network order) puts the MSB first, true the LSB.
       expect(le[3]).toBe(be[0]);
       expect(le[2]).toBe(be[1]);
       expect(le[1]).toBe(be[2]);
@@ -347,12 +323,6 @@ describe('EventMaker', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // shortToByteArray
-  //
-  // `byteToShort` used to be tested here too. T21 deleted it (ARCHITECTURE.md §8.10: no
-  // caller outside this file), and its two `it`s went with it per charter invariant 7c.
-  // ---------------------------------------------------------------
   describe('shortToByteArray', () => {
     it('should reduce a value to its lowest byte', () => {
       expect(Array.from(EventMaker.shortToByteArray(0))).toEqual([0]);
@@ -363,9 +333,6 @@ describe('EventMaker', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // createControlChange
-  // ---------------------------------------------------------------
   describe('createControlChange', () => {
     it('should create a control change event', () => {
       const event = EventMaker.createControlChange(3, 480, EventMaker.CC_Channel_Volume, 100);
@@ -387,9 +354,6 @@ describe('EventMaker', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // createProgramChangeByName
-  // ---------------------------------------------------------------
   describe('createProgramChangeByName', () => {
     it('should look the instrument name up in the dictionary', () => {
       const event = EventMaker.createProgramChangeByName(0, 0, 'Violin');
@@ -413,9 +377,6 @@ describe('EventMaker', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // text-carrying meta events
-  // ---------------------------------------------------------------
   describe('text meta events', () => {
     const decode = (event: MidiEvent) =>
       new TextDecoder().decode(metaPayload(event.getMessage() as MetaMessage));
@@ -463,9 +424,6 @@ describe('EventMaker', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // channel prefix and midi port
-  // ---------------------------------------------------------------
   describe('createChannelPrefix and createMidiPortEvent', () => {
     it('createChannelPrefix should hold the channel in a single data byte', () => {
       const event = EventMaker.createChannelPrefix(0, 9);
@@ -487,23 +445,15 @@ describe('EventMaker', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // the re-export table
-  //
-  // T20 dissolved the static-only `EventMaker` class into module functions and
-  // constants; `EventMaker` is now a re-export table over them. Most of the 299
-  // constants are not reachable from any fixture, so the byte-equivalence suite
-  // cannot see a member that is dropped from the table or wired to the wrong
-  // binding — these two tests are what does.
-  // ---------------------------------------------------------------
+  // `EventMaker` is a re-export table over the module's functions and constants. Most of
+  // the constants are unreachable from any fixture, so the byte-equivalence suite cannot
+  // see a member dropped from the table or wired to the wrong binding; these two tests can.
   describe('the EventMaker re-export table', () => {
     const moduleExports = Object.keys(EventMakerModule).filter((name) => name !== 'EventMaker');
 
     it('should expose exactly the module’s exports', () => {
       expect([...Object.keys(EventMaker)].sort()).toEqual([...moduleExports].sort());
-      // 299 constants + 17 functions, the public surface of the former class.
-      // 318 → 317 in T20 (the class had no re-export table); 317 → 316 in T21, which
-      // deleted `byteToShort` per ARCHITECTURE.md §8.10 — no caller but its own test.
+      // 299 constants + 17 functions.
       expect(Object.keys(EventMaker)).toHaveLength(316);
     });
 
@@ -516,10 +466,9 @@ describe('EventMaker', () => {
       }
     });
 
-    // The two blocks below are the MIDI specification's own numbering: controller
-    // numbers and program change numbers each run 0..127 with no gaps, in the order
-    // the spec lists them. Asserting the whole run (rather than the handful of
-    // constants named above) is what pins the 250-odd values that no fixture reaches.
+    // Controller and program change numbers each run 0..127 with no gaps, in the order the
+    // MIDI specification lists them. Asserting the whole run, rather than the handful of
+    // constants named above, pins the 250-odd values no fixture reaches.
     const valuesOfPrefix = (prefix: string) =>
       Object.entries(EventMaker)
         .filter(([name]) => name.startsWith(prefix))

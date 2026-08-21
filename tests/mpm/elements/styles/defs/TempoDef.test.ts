@@ -7,8 +7,6 @@ import { NumberFormatError } from '../../../../../src/xml/errors.js';
 
 /**
  * Reference: meico/src/meico/mpm/elements/styles/defs/TempoDef.java
- * (the name and id accessors it used to inherit from AbstractDef.java are exercised
- * here, since the base class is gone and each def now carries its own).
  */
 function tempoDefElement(attributes: Record<string, string>): Element {
   const e = new Element('tempoDef', Mpm.MPM_NAMESPACE);
@@ -80,20 +78,13 @@ describe('TempoDef', () => {
     });
 
     /**
-     * The three tests above assert that a malformed *document* is skipped. On their own they
-     * cannot tell that apart from the factory crashing, because the factory used to be
-     * `try { … } catch (e) { console.error(e); return null }` and a bare `catch` absorbs
-     * everything.
+     * The three tests above assert that a malformed document is skipped; on their own they
+     * cannot tell that apart from the factory crashing. Measured: with a bare `catch`
+     * absorbing everything, a deliberate break of `requireDefName` came back green, because
+     * the injected `ReferenceError` became exactly the `null` those tests expect.
      *
-     * That is not a theoretical gap — it was measured. A deliberate control that broke
-     * `requireDefName`, introduced to prove those tests could see a break, came back GREEN:
-     * the injected fault was a `ReferenceError`, and the catch-all turned it into exactly the
-     * `null` the tests were already expecting. So this file was asserting a behaviour it could
-     * not distinguish from its own absence.
-     *
-     * `skipMalformedDef` now absorbs only `MeicoError`, the root of what this library raises
-     * deliberately. Anything else escapes — and that is what makes the three tests above mean
-     * something, so it needs its own assertion.
+     * `skipMalformedDef` absorbs only `MeicoError`, the root of what this library raises
+     * deliberately. Anything else escapes, which is what makes the three above mean something.
      */
     it('lets an error that is NOT a malformed document escape instead of skipping the def', () => {
       // Not an Element: reading `@name` off it is a TypeError, which no MPM document can
@@ -113,15 +104,6 @@ describe('TempoDef', () => {
     });
   });
 
-  // WAS: `parseData` re-applied to a second element, asserting that it re-read name, value
-  // and xml. That test's own comment said re-application "is not a path production takes …
-  // simply the only way to observe [the parse] separately from construction", and it is no
-  // longer even that: `@name` and `@value` are required, so they are read by the factory and
-  // handed to a `readonly` constructor parameter — which is what let `AbstractDef`'s
-  // `protected name!: Attribute` go. What the old test observed is now observed directly by
-  // the from-XML cases above ('creates a def from an existing element', 'reads an element
-  // that is not named tempoDef'), and what is left to pin is the invariant that replaced it:
-  // the two required attributes are bound once, to the element the def was parsed from.
   describe('the identity attributes are bound at construction', () => {
     it('writes name and value back to the element it was parsed from', () => {
       const xml = tempoDefElement({ name: 'Largo', value: '50.0' });

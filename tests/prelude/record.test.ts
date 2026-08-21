@@ -1,10 +1,10 @@
 /**
  * The two total-record constructors.
  *
- * These exist to replace seventeen casts, so the property under test is the one the cast was
- * asserting: **every key of the vocabulary is present**. Asserting the values would miss the
- * whole point — a builder that skips a key still returns the right values for the keys it did
- * not skip, and the type says nothing is missing either way.
+ * These stand in for the casts they replace, so the property under test is the one a cast
+ * asserts: every key of the vocabulary is present. Asserting the values would miss the point
+ * — a builder that skips a key still returns the right values for the keys it did not skip,
+ * and the type says nothing is missing either way.
  */
 import { describe, expect, it } from 'vitest';
 import { fromEntriesExact, mapValues } from '../../src/prelude/record.js';

@@ -29,12 +29,8 @@ export class MovementMap extends GenericMap {
   }
 
   /**
-   * A fresh, empty `<movementMap>`, or one read from an existing element.
-   *
-   * The two overloads return different things and that is the point. Building an empty
-   * map consults nothing the caller supplied, so it cannot fail and says so; reading an
-   * element can, and returns the reason instead of printing it. See
-   * {@link GenericMap.emptyMapElement}.
+   * A fresh, empty `<movementMap>`, or one read from an existing element. The empty form is
+   * total, the parsing one is not; see {@link GenericMap.emptyMapElement}.
    */
   static createMovementMap(): MovementMap;
   static createMovementMap(xml: Element): Result<MovementMap, MpmParseError>;
@@ -84,9 +80,6 @@ export class MovementMap extends GenericMap {
     e.addAttribute(new Attribute('date', String(date)));
     e.addAttribute(new Attribute('position', String(position)));
     e.addAttribute(new Attribute('transition.to', String(transitionTo)));
-    // `String(controller)` and not `controller!`: the numeric overload declares it
-    // required, so it is present on every reachable call, and the sibling lines already
-    // spell the same fact as `String(position)` / `String(transitionTo)`.
     e.addAttribute(new Attribute('controller', String(controller)));
     e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id));
     return this.insertElement(new KeyValue(date, e), false);
@@ -147,19 +140,17 @@ export class MovementMap extends GenericMap {
    * The end position of the nearest preceding `<movement>`; 0 if there is none, and null if
    * the one found cannot supply a position.
    *
-   * PARITY NOTE — the loop condition is `j > 0`, not `j >= 0`, so **entry 0 is never
-   * examined**: a movement that inherits its position from the very first entry in the
-   * map gets 0 instead of that entry's `transition.to`. This is faithful to the Java
-   * reference (MovementMap.java:200) and is deliberately kept.
+   * PARITY NOTE — the loop condition is `j > 0`, not `j >= 0`, so ENTRY 0 IS NEVER EXAMINED:
+   * a movement that inherits its position from the very first entry in the map gets 0 instead
+   * of that entry's `transition.to`. Faithful to the Java reference (MovementMap.java:200) and
+   * deliberately kept.
    *
-   * The null return is not: a preceding `<movement>` with no `transition.to` used to leave
-   * `finalPosition` at 0, silently placing the movement at "fully released" — a wrong
-   * position rendered as if it were a real one. Java throws a NullPointerException at
-   * `MovementMap.java:200` (`getAttribute("transition.to").getValue()`) and aborts the
-   * whole render instead. Neither is right, so this reports "no position available" and
-   * {@link getMovementDataOf} logs and skips just that movement, which is the interior's
-   * house policy for malformed input (ARCHITECTURE.md RULE E1, logs-and-returns-null) and
-   * the same shape the def factories use. See PARITY.md, "Fixed bugs", P2.
+   * The null return is a deliberate divergence. Java throws a NullPointerException at
+   * `MovementMap.java:200` (`getAttribute("transition.to").getValue()`) for a preceding
+   * `<movement>` with no `transition.to` and aborts the whole render; leaving the position at
+   * 0 instead would silently place the movement at "fully released". So this reports "no
+   * position available" and {@link getMovementDataOf} logs and skips just that movement
+   * (ARCHITECTURE.md RULE E1, logs-and-returns-null). See PARITY.md, "Fixed bugs", P2.
    */
   private getPreviousPosition(index: number): number | null {
     for (let j = index - 1; j > 0; --j) {
@@ -185,8 +176,7 @@ export class MovementMap extends GenericMap {
    *   generated with.
    */
   renderMovementToMap(ctx?: RenderContext): GenericMap | null {
-    // As in `DynamicsMap.renderDynamicsToMap`: `'positionMap'` contains "Map", so the only
-    // arm this can take is the value, and the `!== null` guard below stays a guard.
+    // `'positionMap'` contains "Map", so this cannot fail.
     const movementMap = unwrapOr(GenericMap.createGenericMap('positionMap'), null);
     for (let movementIndex = 0; movementIndex < this.size(); ++movementIndex) {
       const md = this.getMovementDataOf(movementIndex);
@@ -211,10 +201,10 @@ export class MovementMap extends GenericMap {
     movementMap: GenericMap,
     ctx?: RenderContext,
   ): void {
-    // The default is resolved here, at the point of use inside `src/mpm/`, never by a
-    // caller — `src/msm/` may only `import type` from this layer (RULE M1), so it cannot
-    // reach the constant. The `as` is RULE U3a's single boundary cast: options are plain
-    // numbers on the way in, branded where they are consumed.
+    // The default is resolved at the point of use inside `src/mpm/`, never by a caller:
+    // `src/msm/` may only `import type` from this layer (RULE M1), so it cannot reach the
+    // constant. The `as` is RULE U3a's single boundary cast — options are plain numbers on the
+    // way in, branded where they are consumed.
     const maxStepSize = (ctx?.options.movementSampleMaxStep ??
       DEFAULT_MOVEMENT_SAMPLE_MAX_STEP) as Normalized;
     const segment = movementSegment(movementData, maxStepSize);

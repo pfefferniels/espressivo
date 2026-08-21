@@ -13,7 +13,7 @@ import { ArticulationDef } from '../styles/defs/ArticulationDef.js';
  * An MPM `articulationMap`: staccato, accent, tenuto and the rest — per-note changes to
  * duration, velocity, onset and tuning.
  *
- * This map renders in **two passes**, and the split is not optional. Tick-domain
+ * This map renders in two passes, and the split is not optional. Tick-domain
  * modifiers are applied by
  * {@link ArticulationMap.renderArticulationToMap_noMillisecondModifiers} before the
  * tempo map runs; millisecond-domain modifiers cannot be, because milliseconds do not
@@ -34,12 +34,8 @@ export class ArticulationMap extends GenericMap {
   }
 
   /**
-   * A fresh, empty `<articulationMap>`, or one read from an existing element.
-   *
-   * The two overloads return different things and that is the point. Building an empty
-   * map consults nothing the caller supplied, so it cannot fail and says so; reading an
-   * element can, and returns the reason instead of printing it. See
-   * {@link GenericMap.emptyMapElement}.
+   * A fresh, empty `<articulationMap>`, or one read from an existing element. The empty form
+   * is total, the parsing one is not; see {@link GenericMap.emptyMapElement}.
    */
   static createArticulationMap(): ArticulationMap;
   static createArticulationMap(xml: Element): Result<ArticulationMap, MpmParseError>;
@@ -135,11 +131,10 @@ export class ArticulationMap extends GenericMap {
       if (ad.style !== null) ad.articulationDef = ad.style.getDef(ad.articulationDefName) ?? null;
     }
 
-    // null = attribute absent, so the field keeps its default. Same twelve names and the
-    // same shape as ArticulationDef.parseData, but reading through `parseFloat`
-    // rather than `parseJavaDouble`: a def can be skipped by the factory above it, an
-    // articulation entry cannot, so there is nowhere for a NumberFormatError to go. That
-    // makes this one of the map-level reads PARITY.md's P1 entry names as still open.
+    // null = attribute absent, so the field keeps its default. Reads through `parseFloat`
+    // rather than `ArticulationDef.parseData`'s `parseJavaDouble`: a def can be skipped by the
+    // factory above it, an articulation entry cannot, so there is nowhere for a
+    // NumberFormatError to go. One of the map-level reads PARITY.md's P1 entry leaves open.
     const numeric = (name: string): number | null => {
       const a = attribute(name, e);
       return a === null ? null : parseFloat(a.getValue());
@@ -183,11 +178,10 @@ export class ArticulationMap extends GenericMap {
    * Pass one of two: apply every tick-domain articulation to `map`, and park the
    * millisecond ones for later (see the class doc).
    *
-   * Built in three stages. First the explicit articulations are indexed by the note
-   * element they target, since one note can collect several. Then the style switches are
-   * resolved into a date-ordered list of default articulation defs. Finally the map is
-   * walked once: a note with explicit articulations gets those and *only* those — the
-   * default is deliberately not also applied — and every other note gets whichever
+   * Explicit articulations are indexed by the note element they target (one note can collect
+   * several), the style switches are resolved into a date-ordered list of default defs, and
+   * the map is then walked once: a note with explicit articulations gets those and *only*
+   * those — the default is deliberately not also applied — and every other note gets whichever
    * default is current, tracked by a forward-only `defaultArticulationIndex`.
    *
    * The `mapTimingChanged` accumulator is why `map.sort()` runs at the end. Articulation
@@ -199,17 +193,9 @@ export class ArticulationMap extends GenericMap {
   renderArticulationToMap_noMillisecondModifiers(map: GenericMap | null): void {
     if (map === null) return;
 
-    // make a hashmap (note element, articulation data list) for all notes with a specific (i.e. non-default) articulation
+    // Notes with an explicit (i.e. non-default) articulation, and the data targeting each.
     const noteArtics = new Map<Element, ArticulationData[]>();
-    /**
-     * Append to the note's list, starting one where there is none — the get-or-create the
-     * two branches below each wrote out, character for character, fifteen lines apart.
-     *
-     * Not {@link groupBy}: that groups ONE sequence by a key derived from its elements, and
-     * this is the mirror image — one datum filed under several notes, from two different
-     * loops with two different ways of finding them. A multimap append is the shape here,
-     * and the prelude does not have one because this is the only place that wants it.
-     */
+    /** Append to the note's list, starting one where there is none. */
     const fileUnder = (note: Element, ad: ArticulationData): void => {
       const adList = noteArtics.get(note);
       if (adList === undefined) noteArtics.set(note, [ad]);
@@ -224,24 +210,16 @@ export class ArticulationMap extends GenericMap {
       if (ad.noteid !== null) {
         const index = map.getElementIndexByID(ad.noteid);
         if (index < 0) continue;
-        // One lookup where there were three. `getAllElements()` hands back the map's own
-        // array, so the three reads always named the same entry.
         const referee = elementAt(map.getAllElements(), index, 'articulation referee');
         if (referee.getKey() !== ad.date)
           console.error(
-            // `this.entryAt(articIndex)` and not `ad.xml!`: `getArticulationDataOf` sets
-            // `xml` from exactly this entry (`resolveEntryIndex` returns its argument
-            // unchanged for an in-range index, and the loop bound guarantees one), so the
-            // two are the same Element — but only one of them is typed `Element | null`.
-            // The field stays nullable for the write half, where
-            // `addArticulationFromData` is handed a datum that has no element yet.
             `Warning: articulation date and referee date do not match!\n    ${this.entryAt(articIndex).getValue().toXML()}\n    ${referee.getValue().toXML()}`,
           );
         fileUnder(referee.getValue(), ad);
         continue;
       }
 
-      // if no noteid is specified, the articulation is potentially relevant to all map elements at the same date
+      // With no noteid the articulation applies to every note at its own date.
       const elements = map.getAllElementsAt(ad.date);
       for (const element of elements) {
         if (element.getValue().getLocalName() !== 'note') continue;
@@ -249,7 +227,7 @@ export class ArticulationMap extends GenericMap {
       }
     }
 
-    // create a list of styles/switches
+    // The default articulation def in force from each style switch, in date order.
     const defaultArticulations: KeyValue<number, ArticulationDef | null>[] = [];
     const styleSwitchList = this.getAllElementsOfType('style');
     for (const styleEntry of styleSwitchList) {
@@ -270,8 +248,6 @@ export class ArticulationMap extends GenericMap {
       const aDef = aStyle.getDef(defaultArticulationAtt.getValue()) ?? null;
       if (aDef === null)
         console.error(
-          // The attribute node is the one already in hand; the incumbent looked it up a
-          // second time and asserted the result non-null, which is the same node.
           `Warning: attribute ${defaultArticulationAtt.toXML()} in style element refers to an unknown articulationDef.`,
         );
       defaultArticulations.push(
@@ -279,12 +255,7 @@ export class ArticulationMap extends GenericMap {
       );
     }
 
-    // articulate the map elements
     let defaultArticulationIndex = 0;
-    // A plain walk, start to end: unlike the span-driven renderers, this one has no cursor to
-    // preserve across an outer loop and never breaks early, so it iterates rather than
-    // indexes. `defaultArticulationIndex` is the only cursor here, and it indexes a different
-    // list.
     for (const mapEntry of map.getAllElements()) {
       if (mapEntry.getValue().getLocalName() !== 'note') continue;
 
@@ -296,12 +267,9 @@ export class ArticulationMap extends GenericMap {
         continue;
       }
 
-      // otherwise apply the default articulation
+      // Otherwise the default articulation, advanced to the latest switch at or before this
+      // note. `at(…) ?? Infinity`: no successor means no later switch to advance to.
       if (defaultArticulations.length === 0) continue;
-
-      // make sure we use the latest default articulation
-      // `at(…) ?? Infinity` says the same thing as the length test it replaces: no successor
-      // means no later switch to advance to, and a date past every note never compares less.
       while (
         (defaultArticulations.at(defaultArticulationIndex + 1)?.getKey() ?? Infinity) <=
         mapEntry.getKey()
@@ -319,7 +287,6 @@ export class ArticulationMap extends GenericMap {
         defaultArticulationDef.articulateNote(mapEntry.getValue()) || mapTimingChanged;
     }
 
-    // correct map order due to timing changes
     if (mapTimingChanged) map.sort();
   }
 
@@ -336,10 +303,10 @@ export class ArticulationMap extends GenericMap {
    * the notes, now that the tempo map has produced real millisecond dates.
    *
    * Each attribute is removed as it is applied, so the markers do not survive into the
-   * serialized output. The guard at the end is what keeps the result playable: the new
-   * values are committed **only** if the note still ends after it starts. A millisecond
-   * modifier that would invert or zero a note's duration is dropped wholesale — start
-   * and end both keep their old values rather than half the change landing.
+   * serialized output. The new values are committed only if the note still ends after it
+   * starts: a millisecond modifier that would invert or zero a note's duration is dropped
+   * wholesale, start and end both keeping their old values rather than half the change
+   * landing.
    */
   renderArticulationToMap_millisecondModifiers(map: GenericMap | null): void {
     if (map === null) return;

@@ -65,11 +65,8 @@ function referenceStyleXml(): Element {
 }
 
 /**
- * The style, or a failure that names the reason.
- *
- * `parseStyle` returns a `Result` where the six `create…Style(xml)` factories returned
- * `… | null` after logging, so the "this must have parsed" step is explicit here instead of
- * being a `!`. It is a throw and not an `expect` so the return type narrows for the caller.
+ * The style, or a throw naming the reason — a throw rather than an `expect` so the return
+ * type narrows for the caller.
  */
 function parsedStyle(xml: Element): OrnamentationStyle {
   const result = parseStyle('ornamentation', xml);
@@ -78,9 +75,6 @@ function parsedStyle(xml: Element): OrnamentationStyle {
 }
 
 describe('OrnamentationStyle', () => {
-  // ---------------------------------------------------------------
-  //  Construction from a name
-  // ---------------------------------------------------------------
   describe('createStyle(ornamentation, name)', () => {
     it('should create an empty style', () => {
       const style = createStyle('ornamentation', 'orn style');
@@ -108,9 +102,6 @@ describe('OrnamentationStyle', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  Construction from XML
-  // ---------------------------------------------------------------
   describe('parseStyle(ornamentation, xml)', () => {
     it('should parse all ornamentDef children of the reference styleDef', () => {
       const style = parsedStyle(referenceStyleXml());
@@ -179,8 +170,6 @@ describe('OrnamentationStyle', () => {
       const xml = new Element('styleDef', Mpm.MPM_NAMESPACE);
       xml.appendChild(ornamentDefXml('arpeggio'));
 
-      // Was `expect(…createOrnamentationStyle(xml)).toBeNull()`, which could not tell "no
-      // name" from "null element" and left the reason in a console the test had to silence.
       expect(parseStyle('ornamentation', xml)).toEqual({
         ok: false,
         error: { kind: 'missingName', element: xml },
@@ -195,9 +184,6 @@ describe('OrnamentationStyle', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  Def management
-  // ---------------------------------------------------------------
   describe('def management', () => {
     it('should add a def and make it retrievable by name', () => {
       const style = createStyle('ornamentation', 'orn style');
@@ -257,9 +243,6 @@ describe('OrnamentationStyle', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  Round trip
-  // ---------------------------------------------------------------
   it('should survive an XML round trip', () => {
     const style = createStyle('ornamentation', 'orn style');
     style.addDef(okValue(OrnamentDef.createDefaultOrnamentDef('arpeggio')));

@@ -151,13 +151,11 @@ describe('zipWith and pairwise', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Ordered lookup — the replacement for GenericMap's four hand-written binary
-// searches. Each is defined here in terms of the two primitives, and checked
-// against a brute-force linear scan over pseudo-random data. The four Java-ported
-// originals carry a comment saying every comparison in them is load-bearing;
-// this is the evidence that the two-primitive form means the same thing.
-// ---------------------------------------------------------------------------
+// Ordered lookup, the replacement for GenericMap's four hand-written binary searches. Each is
+// defined here in terms of the two primitives and checked against a brute-force linear scan
+// over pseudo-random data. The four Java-ported originals carry a comment saying every
+// comparison in them is load-bearing; this is the evidence that the two-primitive form means
+// the same thing.
 describe('partitionPoint and the bounds', () => {
   it('partitionPoint finds where a monotone predicate stops holding', () => {
     const xs = [1, 3, 5, 7];

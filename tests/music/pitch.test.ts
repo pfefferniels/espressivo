@@ -10,11 +10,6 @@ import {
   pname2midi,
 } from '../../src/music/pitch.js';
 
-// Moved verbatim from tests/mei/Helper.test.ts by T14: pitch and accidental conversions.
-
-// ---------------------------------------------------------------------------
-// accidString2decimal / accidDecimal2String
-// ---------------------------------------------------------------------------
 describe('accidental conversions', () => {
   it('accidString2decimal should convert common accidentals', () => {
     expect(accidString2decimal('s')).toBe(1);
@@ -40,13 +35,6 @@ describe('accidental conversions', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// pname2midi
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// pname2midi
-// ---------------------------------------------------------------------------
 describe('pname2midi', () => {
   it('should convert basic pitch names', () => {
     expect(pname2midi('c')).toBe(0);
@@ -68,13 +56,6 @@ describe('pname2midi', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// cloneElement
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// accidental conversions – the remaining cases
-// ---------------------------------------------------------------------------
 describe('accidString2decimal – quarter tones and enharmonics', () => {
   it('should convert the double and triple accidentals', () => {
     expect(accidString2decimal('x')).toBe(2);
@@ -197,13 +178,6 @@ describe('accidDecimal2unicodeString', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// pitch conversions
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// pitch conversions
-// ---------------------------------------------------------------------------
 describe('pname2midi – accidental spellings', () => {
   it('should resolve the enharmonic spellings onto one pitch class', () => {
     expect(pname2midi('b#')).toBe(0);
@@ -389,7 +363,3 @@ describe('midi2PnameAccidOct', () => {
     errSpy.mockRestore();
   });
 });
-
-// ---------------------------------------------------------------------------
-// prettyXml – declaration and nesting
-// ---------------------------------------------------------------------------

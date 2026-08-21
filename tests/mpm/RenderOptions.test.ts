@@ -22,14 +22,13 @@ const XML_NS = 'http://www.w3.org/XML/1998/namespace';
 /**
  * An MSM with one part and eight notes for imprecision to move around.
  *
- * **The half-length durations are load-bearing, do not "tidy" them to `ppq`.** A seeded
- * render is only reproducible while no two offsets share a `milliseconds.date`: where two
- * do, `ImprecisionMap.shakeTimingOffsets` picks the one that keeps its value with a bare
- * `Math.random()` and re-rolls the rest through an unseeded `RandomNumberProvider` — an
- * inherited property of the reference (`ImprecisionMap.java:845,894`), not of this port,
- * and unaffected by any seed. With `duration = ppq` every note's end lands exactly on the
- * next note's start and the seed stops determining the output; at half that, every date
- * is distinct and the sequence is fully determined by the seed.
+ * The half-length durations are load-bearing. A seeded render is only reproducible while no
+ * two offsets share a `milliseconds.date`: where two do, `ImprecisionMap.shakeTimingOffsets`
+ * picks the one that keeps its value with a bare `Math.random()` and re-rolls the rest
+ * through an unseeded `RandomNumberProvider` — inherited from the reference
+ * (`ImprecisionMap.java:845,894`) and unaffected by any seed. With `duration = ppq` every
+ * note's end lands exactly on the next note's start and the seed stops determining the
+ * output; at half that, every date is distinct.
  */
 function makeMsm(ppq = 720): Msm {
   const msm = Msm.createMsm('Options Test', 'msm-id', ppq);
@@ -109,9 +108,7 @@ function positionEventCount(options?: RenderOptions): number {
 }
 
 describe('RenderOptions', () => {
-  // ---------------------------------------------------------------
-  // deriveSeed — the normative sub-seed derivation of §2.4
-  // ---------------------------------------------------------------
+  // The normative sub-seed derivation of ARCHITECTURE.md §2.4.
   describe('deriveSeed', () => {
     it('is deterministic', () => {
       expect(deriveSeed(12345, 0, 0)).toBe(deriveSeed(12345, 0, 0));
@@ -151,7 +148,7 @@ describe('RenderOptions', () => {
     });
 
     it('matches the derivation §2.4 specifies, recomputed independently', () => {
-      // Not a tautology: this pins the multiplier, the unsigned coercions and the
+      // The re-implementation pins the multiplier, the unsigned coercions and the
       // left-to-right fold, any of which could be "simplified" without a test failing.
       const expected = (base: number, parts: number[]) => {
         let h = base >>> 0;
@@ -170,9 +167,7 @@ describe('RenderOptions', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Seed plumbing — RULE F7, all four hops of §2.4
-  // ---------------------------------------------------------------
+  // Seed plumbing: RULE F7, all four hops of §2.4.
   describe('seed', () => {
     it('renders byte-identical MIDI for the same seed', () => {
       expect(midiBytes({ seed: 1234 })).toBe(midiBytes({ seed: 1234 }));
@@ -183,9 +178,6 @@ describe('RenderOptions', () => {
     });
 
     it('stays nondeterministic without a seed — the default path is untouched', () => {
-      // The point of the item is that omitting `seed` changes nothing, including the
-      // nondeterminism the charter relies on. A pass here proves the derivation is not
-      // applied on the default path.
       expect(midiBytes()).not.toBe(midiBytes());
       expect(midiBytes({})).not.toBe(midiBytes({}));
     });
@@ -196,8 +188,7 @@ describe('RenderOptions', () => {
           makeMsm().exportExpressiveMidi(makePerformance(4242), true, options)!.exportMidi(),
         ).toString('hex');
 
-      // Two different option seeds, one MPM seed: the MPM wins, so both renders agree —
-      // and they agree with the render that passed no options at all.
+      // Two different option seeds, one MPM seed: the MPM wins, so all three renders agree.
       expect(withMpmSeed({ seed: 1 })).toBe(withMpmSeed({ seed: 2 }));
       expect(withMpmSeed({ seed: 1 })).toBe(withMpmSeed({}));
     });
@@ -223,14 +214,11 @@ describe('RenderOptions', () => {
       expect(ctx.streamOrdinal).toBe(2);
       expect(second).not.toBe(first);
 
-      // A fresh context with the same options replays the first stream exactly.
       expect(render({ options: { seed: 7 }, streamOrdinal: 0 })).toBe(first);
     });
   });
 
-  // ---------------------------------------------------------------
-  // movementSampleMaxStep — RULE I5, through all four hops
-  // ---------------------------------------------------------------
+  // RULE I5, through all four hops.
   describe('movementSampleMaxStep', () => {
     it('defaults to the historic 0.1 every fixture is generated with', () => {
       expect(DEFAULT_MOVEMENT_SAMPLE_MAX_STEP).toBe(0.1);

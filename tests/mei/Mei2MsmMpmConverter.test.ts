@@ -7,10 +7,10 @@ import type { Element } from '../../src/xml/XomTypes.js';
 /**
  * Converter behaviour the byte-equivalence corpus cannot see.
  *
- * Every test here was written because a **negative control came back green**: the code under
- * test was broken deliberately and all 6062 tests still passed. Each `describe` below names
- * the mutation it was written to catch, so a later reader can re-run the same control and
- * watch it go red.
+ * Every test here was written because a negative control came back green: the code under
+ * test was broken deliberately and the suite still passed. Each `describe` below names the
+ * mutation it was written to catch, so a later reader can re-run the same control and watch
+ * it go red.
  *
  * The corpus is blind to these three for structural reasons, not by oversight:
  * - `tests/integration/fixtures/mei/**` contains no `section` or `phrase` carrying `@label`
@@ -23,19 +23,19 @@ import type { Element } from '../../src/xml/XomTypes.js';
  * - exactly one fixture carries a standalone `<accid>` element, on the only note of its
  *   pitch in its measure, so the deferred-accidental list it feeds is never read back.
  *
- * The fourth blind spot has its own section further down, and is the largest of them: **every
- * one of the sixteen MEI fixtures holds exactly one `mdiv`**, so nothing in the corpus ever
- * crosses a movement boundary and `reset()` — which decides the *lifetime* of eleven fields —
- * is executed once per run with nothing before it to clear. That is the hazard
+ * The fourth blind spot has its own section further down, and is the largest of them: every
+ * one of the sixteen MEI fixtures holds exactly one `mdiv`, so nothing in the corpus ever
+ * crosses a movement boundary and `reset()` — which decides the lifetime of eleven fields —
+ * runs once per conversion with nothing before it to clear. That is the hazard
  * ARCHITECTURE.md §8.5 named when it ruled the converter's cursor out of scope: a change to a
  * field's lifetime is invisible to a byte-equivalence suite. See "per-movement lifetimes"
  * below.
  *
- * The fifth is the plainest: **no MEI fixture contains a `<choice>` element**, so the whole
- * editorial-variant selector `processChoice` was never executed by the byte gate. See
+ * The fifth is the plainest: no MEI fixture contains a `<choice>` element, so the whole
+ * editorial-variant selector `processChoice` is never executed by the byte gate. See
  * "processChoice picks one editorial reading".
  *
- * The last section of this file is not a blind spot but a **divergence from Java**, pinned so
+ * The last section of this file is not a blind spot but a divergence from Java, pinned so
  * that repairing it cannot happen silently. See "the work-level tempo style switch".
  */
 
@@ -79,9 +79,7 @@ function descendants(root: Element, localName: string): Element[] {
     .map((n) => n as unknown as Element);
 }
 
-// ---------------------------------------------------------------------------
-// section / phrase labels — control: make `labelOrN` return null unconditionally
-// ---------------------------------------------------------------------------
+// control: make `labelOrN` return null unconditionally
 describe('Mei2MsmMpmConverter – the label an MSM sectionMap entry carries', () => {
   it('prefers @label over @n, and falls back to @n', () => {
     const msm = convertToMsm(
@@ -109,9 +107,7 @@ describe('Mei2MsmMpmConverter – the label an MSM sectionMap entry carries', ()
   });
 });
 
-// ---------------------------------------------------------------------------
-// voice tracking — control: make `addLayerAttribute` write nothing
-// ---------------------------------------------------------------------------
+// control: make `addLayerAttribute` write nothing
 describe('Mei2MsmMpmConverter – the layer an MSM note remembers it came from', () => {
   /**
    * `cleanup: false` is what makes this observable at all; with the default `true`,
@@ -163,9 +159,7 @@ describe('Mei2MsmMpmConverter – the layer an MSM note remembers it came from',
   });
 });
 
-// ---------------------------------------------------------------------------
-// deferred accidentals — control: drop `this.accid.push(accid)` from processAccid
-// ---------------------------------------------------------------------------
+// control: drop `this.accid.push(accid)` from processAccid
 describe('Mei2MsmMpmConverter – an <accid> element carries to later notes in the measure', () => {
   /**
    * `keys_accidentals.mei` is the one fixture with a standalone `<accid>`, and it puts it on
@@ -244,24 +238,19 @@ describe('Mei2MsmMpmConverter – an <accid> element carries to later notes in t
   });
 });
 
-// ---------------------------------------------------------------------------
-// per-movement lifetimes — controls: delete a line from `reset()`, or a cursor
-// restore from `processLayer`
-// ---------------------------------------------------------------------------
 /**
  * What `reset()` clears, what survives it, and what a cursor is worth once the walk leaves
  * the element that set it.
  *
- * **Nothing in `tests/integration/fixtures/**` reaches this.** All sixteen MEI fixtures hold
+ * Nothing in `tests/integration/fixtures/**` reaches this. All sixteen MEI fixtures hold
  * exactly one `mdiv`, so `reset()` runs once per conversion with an empty converter in front
  * of it and every "is this cleared between movements?" question answers itself trivially.
- * A field's *lifetime* is therefore invisible to the byte suites — which is the reason
- * ARCHITECTURE.md §8.5 ruled the cursor out of scope, and the reason these tests exist before
- * it is moved.
+ * A field's lifetime is therefore invisible to the byte suites — which is the reason
+ * ARCHITECTURE.md §8.5 ruled the cursor out of scope.
  *
- * Every test below is a control that came back green against the whole 6071-test suite:
- * removing the corresponding line from `reset()` (or `processLayer`'s
- * `this.currentLayer = parentLayer`) changed nothing anywhere else.
+ * Every test below is a control that came back green: removing the corresponding line from
+ * `reset()` (or `processLayer`'s `this.currentLayer = parentLayer`) changed nothing anywhere
+ * else.
  */
 
 /** two movements in one document — the shape no fixture has */
@@ -481,11 +470,12 @@ describe('Mei2MsmMpmConverter – what reset() clears between two mdivs', () => 
   });
 
   /**
-   * The one field `reset()` was *missing*, and the only test in this file that failed when
-   * it was written. `arpeggiosToSort` parks a live `note.order` attribute of the MPM
-   * ornament it belongs to, and `makeMovement` drains the list after the walk without
-   * emptying it — so movement 2's drain re-sorted movement 1's ornament against movement 2's
-   * (freshly cleared) note index, found none of the ids, and wrote the empty string over it.
+   * The one field `reset()` was missing, and the only test in this file that failed when it
+   * was written. `arpeggiosToSort` parks a live `note.order` attribute of the MPM ornament
+   * it belongs to, and `makeMovement` drains the list after the walk without emptying it —
+   * so without the clear, movement 2's drain re-sorts movement 1's ornament against movement
+   * 2's (freshly cleared) note index, finds none of the ids, and writes the empty string
+   * over it.
    */
   it('clears the parked arpeggios, so the previous movement keeps its note order', () => {
     const { mpm } = convertMovements(
@@ -530,17 +520,15 @@ describe('Mei2MsmMpmConverter – what reset() clears between two mdivs', () => 
   });
 });
 
-// ---------------------------------------------------------------------------
-// the work element — control: give the movement context `work: null` unconditionally
-// ---------------------------------------------------------------------------
+// control: give the movement context `work: null` unconditionally
 describe('Mei2MsmMpmConverter – the meiHead work a movement claims', () => {
   /**
-   * The `work` a movement claims has exactly **one** ambient read — the `<meter>` fallback in
+   * The `work` a movement claims has exactly one ambient read — the `<meter>` fallback in
    * `getCurrentTimeSignature`, taken only when neither the part's nor the global
    * `timeSignatureMap` holds anything — and nothing reached it. Dropping the work from the
-   * movement context entirely left all 1040 tests in `tests/integration` and `tests/mei`
-   * passing, including the fallback-tempo test above, which reads the same lookup's result
-   * inside `makeMovement` and never goes through the context at all.
+   * movement context entirely left `tests/integration` and `tests/mei` passing, including
+   * the fallback-tempo test above, which reads the same lookup's result inside
+   * `makeMovement` and never goes through the context at all.
    *
    * A `@tstamp` is the shortest path to it: `tstampToTicks` scales the beat by
    * `4 * ppq / denominator`, so the work's `unit` moves a control event's date.
@@ -578,9 +566,7 @@ describe('Mei2MsmMpmConverter – the meiHead work a movement claims', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// cursor restores — control: delete `this.currentLayer = parentLayer` from processLayer
-// ---------------------------------------------------------------------------
+// control: delete `this.currentLayer = parentLayer` from processLayer
 describe('Mei2MsmMpmConverter – a cursor stops applying when the walk leaves its element', () => {
   /**
    * The four other cursor restores are pinned by the byte corpus — deleting any of
@@ -588,8 +574,8 @@ describe('Mei2MsmMpmConverter – a cursor stops applying when the walk leaves i
    * `processMeasure`'s `this.currentMeasure = null` or `processChord`'s
    * `this.currentChord = f` reds `tests/integration/cross-validation.test.ts`. The layer
    * cursor is the exception: it survives only into `msmCleanup`'s working attributes, so
-   * with `cleanup` on nothing downstream can see it, and the whole 6071-test suite passed
-   * with the restore deleted.
+   * with `cleanup` on nothing downstream can see it, and the whole suite passed with the
+   * restore deleted.
    */
   it('stops stamping a layer once the layer is closed', () => {
     const msm = convertToMsm(
@@ -610,8 +596,8 @@ describe('Mei2MsmMpmConverter – a cursor stops applying when the walk leaves i
 
   /**
    * The other end of the same cursor, and the second control that came back green: making
-   * `processStaffDef` walk its own children under the *enclosing* context — i.e. never opening
-   * the part it just created — changed nothing in 1039 tests.
+   * `processStaffDef` walk its own children under the enclosing context — i.e. never opening
+   * the part it just created — changed nothing anywhere else.
    *
    * It is unobserved because a `staffDef` in this corpus never contains anything the walk
    * descends into. `layerDef` is the shape that makes the difference visible: `processLayerDef`
@@ -661,14 +647,11 @@ describe('Mei2MsmMpmConverter – a cursor stops applying when the walk leaves i
   });
 });
 
-// ---------------------------------------------------------------------------
-// processChoice — control: convert `children.get(1)` instead of `children.get(0)`
-// ---------------------------------------------------------------------------
 /**
- * The fifth blind spot, and the plainest: **no MEI fixture in the corpus contains a
- * `<choice>` element at all**, so `processChoice` — the whole editorial-variant selector —
- * has never been executed by the byte gate. The control that found it changed the fallback
- * arm from "convert the first child" to "convert the second" and left all 6212 tests green.
+ * The fifth blind spot, and the plainest: no MEI fixture in the corpus contains a `<choice>`
+ * element at all, so `processChoice` — the whole editorial-variant selector — is never
+ * executed by the byte gate. The control that found it changed the fallback arm from
+ * "convert the first child" to "convert the second" and left the suite green.
  *
  * The method has three behaviours worth pinning and they are independent of each other: the
  * preference order over the nine editorial names, the recursion into a nested `choice`, and
@@ -723,9 +706,6 @@ describe('Mei2MsmMpmConverter – processChoice picks one editorial reading', ()
   });
 });
 
-// ---------------------------------------------------------------------------
-// the work-level tempo's style switch — a DIVERGENCE FROM JAVA, pinned not fixed
-// ---------------------------------------------------------------------------
 /**
  * `finishMdiv`'s last act is to seed the global tempoMap from `meiHead/workList/work/tempo`
  * when the score itself produced no tempo. Java guards the accompanying style switch with
@@ -739,8 +719,8 @@ describe('Mei2MsmMpmConverter – processChoice picks one editorial reading', ()
  * `<style name.ref="MEI export"/>` in a document that has no `<tempoStyles>` element for it
  * to refer to. A named tempo ("Allegro") takes the other arm, defines the style, and the two
  * spellings agree — which is why the one place in the whole corpus that reaches this branch
- * cannot see the difference, and why aligning the condition with Java left all 6208 tests
- * green when that was measured.
+ * cannot see the difference, and why aligning the condition with Java left the suite green
+ * when that was measured.
  *
  * These tests pin the behaviour as it is, so that correcting it is a deliberate act with a
  * red test attached rather than a silent byte change. See PARITY.md, "Known divergences".

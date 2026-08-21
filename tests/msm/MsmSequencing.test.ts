@@ -4,11 +4,9 @@ import { Element, Attribute } from '../../src/xml/XomTypes.js';
 
 const XML_NS = 'http://www.w3.org/XML/1998/namespace';
 
-// ---------------------------------------------------------------------------
-// Builders. Everything is assembled programmatically so that the maps contain
-// no whitespace text nodes; Helper.getNextSiblingElement() walks raw children,
-// so a pretty-printed map would stop the traversal at the first indentation.
-// ---------------------------------------------------------------------------
+// Everything is assembled programmatically so that the maps contain no whitespace text
+// nodes; Helper.getNextSiblingElement() walks raw children, so a pretty-printed map would
+// stop the traversal at the first indentation.
 
 function note(date: number, duration: number, pitch: number, id?: string): Element {
   const n = new Element('note');
@@ -66,9 +64,7 @@ function ids(map: Element): (string | null)[] {
 }
 
 describe('Msm.applySequencingMapToMap', () => {
-  // ---------------------------------------------------------------
   // Nothing to expand (Msm.java:501-502)
-  // ---------------------------------------------------------------
   it('should return null when the sequencingMap has no goto elements', () => {
     const seq = mapOf('sequencingMap', [markerElement(0, 'rptstart1')]);
     const score = fourNoteScore();
@@ -82,9 +78,7 @@ describe('Msm.applySequencingMapToMap', () => {
     ).toBeNull();
   });
 
-  // ---------------------------------------------------------------
-  // A single repetition: |: n1 n2 :| n3 n4
-  // ---------------------------------------------------------------
+  // |: n1 n2 :| n3 n4
   describe('single repetition', () => {
     function expand(seq: Element): {
       newMap: Element;
@@ -198,9 +192,7 @@ describe('Msm.applySequencingMapToMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
   // Two repetitions - exercises the repetitionIDs chaining (Msm.java:546-549)
-  // ---------------------------------------------------------------
   describe('double repetition (activity "110")', () => {
     const seq = () =>
       mapOf('sequencingMap', [gotoElement({ date: '1440', 'target.date': '0', activity: '110' })]);
@@ -236,9 +228,6 @@ describe('Msm.applySequencingMapToMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // activity string semantics
-  // ---------------------------------------------------------------
   describe('activity strings', () => {
     it('should ignore a goto that is inactive from the start', () => {
       const seq = mapOf('sequencingMap', [
@@ -258,9 +247,7 @@ describe('Msm.applySequencingMapToMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
   // date.end handling (Msm.java:530-534)
-  // ---------------------------------------------------------------
   it('should shift date.end along with date, preserving the duration', () => {
     const pedal = new Element('pedal');
     pedal.addAttribute(new Attribute('date', '0'));
@@ -281,12 +268,12 @@ describe('Msm.applySequencingMapToMap', () => {
   });
 
   /*
-   * The test above reaches `date.end` only through the TAIL loop — the one that runs after
+   * The test above reaches `date.end` only through the tail loop — the one that runs after
    * the last goto. With a single repeat, the goto loop copies its one element while
    * `dateOffset` is still 0, so the `+ dateOffset` term in the goto loop's own `date.end`
-   * update is invisible there: a control deleting it left all 237 tests green.
+   * update is invisible there: a control deleting it left the suite green.
    *
-   * A repeat taken TWICE reaches it. The second pass copies the element with `dateOffset`
+   * A repeat taken twice reaches it. The second pass copies the element with `dateOffset`
    * already at 720, so the middle copy is the only place in the suite where the goto loop's
    * offset and a `date.end` meet.
    */
@@ -311,9 +298,6 @@ describe('Msm.applySequencingMapToMap', () => {
     expect(ends).toEqual([360, 1080, 1800]);
   });
 
-  // ---------------------------------------------------------------
-  // elements without ids
-  // ---------------------------------------------------------------
   it('should duplicate elements without an xml:id but record no id mapping', () => {
     const score = mapOf('score', [note(0, 720, 60), note(720, 720, 62), note(1440, 720, 64)]);
     const seq = mapOf('sequencingMap', [
@@ -326,9 +310,7 @@ describe('Msm.applySequencingMapToMap', () => {
     expect(repetitionIDs.size).toBe(0);
   });
 
-  // ---------------------------------------------------------------
   // multiple gotos (Msm.java:521 - the "goto is before currentDate" guard)
-  // ---------------------------------------------------------------
   it('should skip a goto that lies before the current date after a later jump', () => {
     const seq = mapOf('sequencingMap', [
       gotoElement({ date: '720', 'target.date': '0', activity: '10' }),
@@ -349,9 +331,7 @@ describe('Msm.applySequencingMapToMap', () => {
     ]);
   });
 
-  // ---------------------------------------------------------------
   // malformed gotos are skipped, not fatal (Msm.java:507-512)
-  // ---------------------------------------------------------------
   it('should skip malformed goto elements and still apply the valid ones', () => {
     const seq = mapOf('sequencingMap', [
       gotoElement({ 'target.date': '0' }), // no date -> rejected
@@ -370,9 +350,6 @@ describe('Msm.applySequencingMapToMap', () => {
     expect(dates(newMap)).toEqual([0, 720, 1440, 2160]);
   });
 
-  // ---------------------------------------------------------------
-  // a forward jump (da capo / skip) rather than a repetition
-  // ---------------------------------------------------------------
   it('should drop the skipped range for a forward jump', () => {
     // jump from 720 forward to 2160, i.e. n2 and n3 are never played
     const seq = mapOf('sequencingMap', [

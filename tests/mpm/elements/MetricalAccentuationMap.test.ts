@@ -6,9 +6,6 @@ import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
 import { Element, Attribute } from '../../../src/xml/XomTypes.js';
 
 describe('MetricalAccentuationMap', () => {
-  // ---------------------------------------------------------------
-  // Create a metrical accentuation map
-  // ---------------------------------------------------------------
   describe('createMetricalAccentuationMap', () => {
     it('should create an empty metrical accentuation map', () => {
       const map = MetricalAccentuationMap.createMetricalAccentuationMap();
@@ -29,9 +26,6 @@ describe('MetricalAccentuationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Add accentuation pattern
-  // ---------------------------------------------------------------
   describe('addAccentuationPattern', () => {
     it('should add an accentuation pattern with required parameters', () => {
       const map = MetricalAccentuationMap.createMetricalAccentuationMap();
@@ -84,15 +78,11 @@ describe('MetricalAccentuationMap', () => {
       const index = map.addAccentuationPattern(0, 'myPattern', 1.0);
       const elem = map.getElement(index)!;
 
-      // These attributes should not be present
       expect(elem.getAttribute('loop')).toBeNull();
       expect(elem.getAttribute('stickToMeasures')).toBeNull();
     });
   });
 
-  // ---------------------------------------------------------------
-  // getMetricalAccentuationDataOf
-  // ---------------------------------------------------------------
   describe('getMetricalAccentuationDataOf', () => {
     it('should return null for an empty map', () => {
       const map = MetricalAccentuationMap.createMetricalAccentuationMap();
@@ -106,13 +96,12 @@ describe('MetricalAccentuationMap', () => {
     });
 
     it('should return null when no style is configured (style lookup fails)', () => {
-      // Without a proper header/style configured, getMetricalAccentuationDataOf
-      // returns null because it cannot find the style definition
+      // With no `<style>` switch in scope there is no styleDef to resolve against, and the
+      // reader answers null rather than a partly built datum.
       const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       map.addAccentuationPattern(0, 'myPattern', 1.0);
 
       const result = map.getMetricalAccentuationDataOf(0);
-      // This returns null because no style is attached
       expect(result).toBeNull();
     });
 
@@ -120,24 +109,12 @@ describe('MetricalAccentuationMap', () => {
       const map = MetricalAccentuationMap.createMetricalAccentuationMap();
       map.addAccentuationPattern(0, 'myPattern', 1.0);
 
-      // Even with clamping, it will return null because no style is configured
+      // Still null: the clamped index lands on the same style-less instruction.
       const result = map.getMetricalAccentuationDataOf(100);
       expect(result).toBeNull();
     });
   });
 
-  // ---------------------------------------------------------------
-  // getMetricalAccentuationDataOf reads the instruction's own attributes
-  // ---------------------------------------------------------------
-  // These three used to run against a `new MetricalAccentuationData(xml)` constructor
-  // that nothing in `src/` ever called; they are the same five assertions pointed at the
-  // reader the renderer actually uses. The move is not cosmetic — the dead constructor
-  // agreed with `getMetricalAccentuationDataOf` on `@loop` and `@stickToMeasures` only.
-  // It took `startDate` from `parseFloat(@date)` where the live reader takes the map's
-  // own key, and it produced a datum with a NaN `scale` and a null `style` where the
-  // live reader rejects the instruction outright. Asserting the parse through the map
-  // therefore pins strictly more than the old spelling did: the same five values, plus
-  // the style and def resolution that makes the datum renderable at all.
   describe('getMetricalAccentuationDataOf reads the instruction', () => {
     // A `<style>` switch and a resolvable styleDef are both required: the reader returns
     // null when `getStyle` finds nothing, which the describe above already pins.
@@ -155,9 +132,6 @@ describe('MetricalAccentuationMap', () => {
           `<metricalAccentuationMap><style date="0.0" name.ref="s" />${instructions}` +
           '</metricalAccentuationMap></dated></global></performance></mpm>',
       );
-      // `getMap` is declared to return the base `GenericMap`; the downcast is the same one
-      // ArticulationMap.test.ts makes, and it names a PUBLIC reader — not a way in to a
-      // private path.
       return mpm
         .getAllPerformances()[0]
         .getGlobal()!
@@ -177,10 +151,8 @@ describe('MetricalAccentuationMap', () => {
       expect(md.scale).toBe(1.5);
       expect(md.loop).toBe(true);
       expect(md.stickToMeasures).toBe(false);
-      // The half the dead constructor could not do at all. Asserting the resolved def's
-      // own name rather than the `styleName` field the datum used to carry: it pins the
-      // same resolution (style `s` was in scope) plus the fact that it landed on the RIGHT
-      // def, where a `styleName` of `'s'` and a merely non-null def did not.
+      // The def's own name, not merely a non-null def: this is what pins that the resolution
+      // landed on the right one of the styleDef's two patterns.
       expect(md.accentuationPatternDef).not.toBeNull();
       expect(md.accentuationPatternDef?.getName()).toBe('waltzPattern');
     });
@@ -200,11 +172,9 @@ describe('MetricalAccentuationMap', () => {
       expect(md.stickToMeasures).toBe(true);
     });
 
-    // The one assertion added rather than migrated, and it was added because a control
-    // measured the hole: with only the `stickToMeasures="false"` and absent cases above,
-    // rewriting the read as `md.stickToMeasures = stmAtt === null` leaves the suite green
-    // — the default and the two tested values coincide. An explicit `"true"` is the case
-    // that tells reading the VALUE apart from noticing the attribute's PRESENCE.
+    // Without this case the suite cannot tell reading the value from noticing the attribute's
+    // presence: with only `stickToMeasures="false"` and the absent case, rewriting the read as
+    // `md.stickToMeasures = stmAtt === null` stays green.
     it('reads stickToMeasures=true when the attribute says so, not merely by its absence', () => {
       const md = mapWith(
         '<accentuationPattern date="0.0" name.ref="pattern" scale="1.0" stickToMeasures="true" />',
@@ -217,13 +187,12 @@ describe('MetricalAccentuationMap', () => {
      * half of its contract, not an oversight.
      *
      * Java returns a datum with a null `accentuationPatternDef` here and
-     * `renderMetricalAccentuationToMap` dereferences it unguarded, so the whole render
-     * dies with a NullPointerException; `src/comparison/accentuationCurve.ts` reports the
-     * case as `⊥` (R21) and distinguishes it from the silent skip an instruction with no
-     * `<style>` in scope gets. Nothing pinned either half of that here before: the render
-     * method had no test at all, so a `return null` added to this reader — turning the
-     * abort into a skip and rendering documents the reference refuses — left the whole
-     * suite and `npm run gate` green. These two tests are that control, discharged.
+     * `renderMetricalAccentuationToMap` dereferences it unguarded, so the whole render dies
+     * with a NullPointerException; `src/comparison/accentuationCurve.ts` reports the case as
+     * `⊥` (R21) and distinguishes it from the silent skip an instruction with no `<style>` in
+     * scope gets. Nothing else pins either half: a `return null` added to this reader — which
+     * would turn the abort into a skip and render documents the reference refuses — leaves the
+     * whole suite and `npm run gate` green.
      */
     it('returns a datum with a NULL def when the name does not resolve, rather than skipping', () => {
       const md = mapWith(
@@ -263,26 +232,15 @@ describe('MetricalAccentuationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Beat position calculation mathematics
-  // ---------------------------------------------------------------
   describe('beat position calculation math', () => {
-    // These tests verify the mathematical formulas used in renderMetricalAccentuationToMap:
+    // The beat arithmetic of `renderMetricalAccentuationToMap`, in ticks, beats 1-based:
     //   ticksPerBeat = 4.0 * ppq / denominator
     //   tickLengthOfOneMeasure = ticksPerBeat * numerator
-    //   stickToMeasures=true:  beat = 1.0 + ((date - tsDate) % tickLengthOfOneMeasure) / ticksPerBeat
-    //   stickToMeasures=false: beat = 1.0 + ((date - tsDate) % patternLengthTicks) / ticksPerBeat
+    //   beat = 1.0 + ((date - tsDate) % wrap) / ticksPerBeat
+    // where `wrap` is tickLengthOfOneMeasure for stickToMeasures=true and patternLengthTicks
+    // for stickToMeasures=false.
 
     it('4/4 time, ppq=720: beat positions are computed correctly', () => {
-      // ppq4 = 4 * 720 = 2880
-      // ticksPerBeat = 2880 / 4 = 720
-      // tickLengthOfOneMeasure = 720 * 4 = 2880
-      //
-      // tick=0:    beat = 1 + (0 % 2880) / 720 = 1.0
-      // tick=720:  beat = 1 + (720 % 2880) / 720 = 1 + 1 = 2.0
-      // tick=1440: beat = 1 + (1440 % 2880) / 720 = 1 + 2 = 3.0
-      // tick=2160: beat = 1 + (2160 % 2880) / 720 = 1 + 3 = 4.0
-      // tick=2880: beat = 1 + (2880 % 2880) / 720 = 1 + 0 = 1.0 (wraps)
       const ppq = 720;
       const ppq4 = 4.0 * ppq;
       const denominator = 4;
@@ -305,14 +263,6 @@ describe('MetricalAccentuationMap', () => {
     });
 
     it('3/4 time, ppq=720: measure length = 3 beats', () => {
-      // ppq4 = 2880
-      // ticksPerBeat = 2880 / 4 = 720
-      // tickLengthOfOneMeasure = 720 * 3 = 2160
-      //
-      // tick=0:    beat = 1 + (0 % 2160) / 720 = 1.0
-      // tick=720:  beat = 1 + (720 % 2160) / 720 = 2.0
-      // tick=1440: beat = 1 + (1440 % 2160) / 720 = 3.0
-      // tick=2160: beat = 1 + (2160 % 2160) / 720 = 1.0 (wraps)
       const ppq = 720;
       const ppq4 = 4.0 * ppq;
       const denominator = 4;
@@ -334,13 +284,6 @@ describe('MetricalAccentuationMap', () => {
     });
 
     it('6/8 time, ppq=720: beat positions', () => {
-      // ppq4 = 2880
-      // ticksPerBeat = 2880 / 8 = 360
-      // tickLengthOfOneMeasure = 360 * 6 = 2160
-      //
-      // tick=0:   beat = 1.0
-      // tick=360: beat = 2.0
-      // tick=720: beat = 3.0
       const ppq = 720;
       const ppq4 = 4.0 * ppq;
       const denominator = 8;
@@ -370,11 +313,9 @@ describe('MetricalAccentuationMap', () => {
       const tickLengthOfOneMeasure = ticksPerBeat * numerator;
       const tsDate = 0;
 
-      // stickToMeasures formula:
       const computeBeat = (date: number) =>
         1.0 + ((date - tsDate) % tickLengthOfOneMeasure) / ticksPerBeat;
 
-      // After one measure (2880 ticks), it wraps back to beat 1
       expect(computeBeat(2880)).toBeCloseTo(1.0, 5);
       expect(computeBeat(3600)).toBeCloseTo(2.0, 5); // 3600 - 2880 = 720
     });
@@ -386,15 +327,13 @@ describe('MetricalAccentuationMap', () => {
       const ticksPerBeat = ppq4 / denominator;
       const tsDate = 0;
 
-      // patternLengthTicks depends on accentuationPatternDef.getLength()
-      // Suppose pattern length = 2.0 (2 beats in quarter-note terms)
-      // patternLengthTicks = (2.0 * ppq4) / denominator = (2.0 * 2880) / 4 = 1440
+      // `accentuationPatternDef.getLength()` is in quarter notes; a length of 2.0 is
+      // (2.0 * ppq4) / denominator = 1440 ticks.
       const patternLength = 2.0;
       const patternLengthTicks = (patternLength * ppq4) / denominator;
 
       expect(patternLengthTicks).toBe(1440);
 
-      // stickToMeasures=false formula:
       const computeBeat = (date: number) =>
         1.0 + ((date - tsDate) % patternLengthTicks) / ticksPerBeat;
 
@@ -404,7 +343,6 @@ describe('MetricalAccentuationMap', () => {
     });
 
     it('accentuation application formula: velocity + (accentuation * scale)', () => {
-      // This is the core formula for applying accentuation
       const velocity = 80;
       const accentuation = 10;
       const scale = 1.5;
@@ -447,7 +385,7 @@ describe('MetricalAccentuationMap', () => {
       const numerator = 4;
       const ticksPerBeat = ppq4 / denominator;
       const tickLengthOfOneMeasure = ticksPerBeat * numerator;
-      const tsDate = 1440; // time signature starts at tick 1440
+      const tsDate = 1440;
 
       const computeBeat = (date: number) =>
         1.0 + ((date - tsDate) % tickLengthOfOneMeasure) / ticksPerBeat;
@@ -477,9 +415,6 @@ describe('MetricalAccentuationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // GenericMap operations on MetricalAccentuationMap
-  // ---------------------------------------------------------------
   describe('GenericMap operations', () => {
     it('should support removeElement by index', () => {
       const map = MetricalAccentuationMap.createMetricalAccentuationMap();

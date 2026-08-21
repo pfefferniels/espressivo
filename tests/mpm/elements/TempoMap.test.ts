@@ -12,11 +12,9 @@ import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
 import { Element, Attribute } from '../../../src/xml/XomTypes.js';
 
 /**
- * Narrow a read tempo to the transitioning arm, failing the test if it is not one.
- *
- * Stands in for the `td.isConstantTempo()` assertions the old tests made: the predicate is
- * now the discriminant, so "is a transition" and "has a `transitionTo` to read" are one
- * check instead of two, and the second one no longer needs a `!`.
+ * Narrow a read tempo to the transitioning arm, failing the test if it is not one. The
+ * discriminant is the predicate, so "is a transition" and "has a `transitionTo` to read" are
+ * one check rather than two.
  */
 function expectTransitioning(tempo: Tempo | null): TransitioningTempo {
   if (tempo === null || tempo.kind !== 'transitioning')
@@ -77,13 +75,7 @@ function transitioningTempo(o: {
   };
 }
 
-// ==========================================================================
-//  TempoMap Tests
-// ==========================================================================
 describe('TempoMap', () => {
-  // ---------------------------------------------------------------
-  //  Construction
-  // ---------------------------------------------------------------
   describe('createTempoMap', () => {
     it('should create an empty tempo map', () => {
       const map = TempoMap.createTempoMap();
@@ -104,9 +96,6 @@ describe('TempoMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  addTempo
-  // ---------------------------------------------------------------
   describe('addTempo', () => {
     it('should add a constant tempo instruction', () => {
       const map = TempoMap.createTempoMap();
@@ -193,9 +182,6 @@ describe('TempoMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  getTempoDataOf
-  // ---------------------------------------------------------------
   describe('getTempoDataOf', () => {
     it('should return null for an empty map', () => {
       const map = TempoMap.createTempoMap();
@@ -225,9 +211,8 @@ describe('TempoMap', () => {
       map.addTempo(0, '120', 0.25);
 
       const td = expectConstant(map.getTempoDataOf(0));
-      // The old assertion was `isConstantTempo() === true` plus `transitionTo === null`.
-      // On the constant arm there is no `transitionTo` to be null, which the second
-      // assertion now checks structurally rather than by value.
+      // The constant arm has no `transitionTo` field at all, so its absence is structural
+      // rather than a null value.
       expect(td.kind).toBe('constant');
       expect('transitionTo' in td).toBe(false);
     });
@@ -302,7 +287,6 @@ describe('TempoMap', () => {
       const map = TempoMap.createTempoMap();
       map.addTempo(0, '120', '120', 0.25, 0.5);
 
-      // the transition is dropped since the target equals the tempo
       const td = expectConstant(map.getTempoDataOf(0));
       expect(td.bpm).toBe(120);
     });
@@ -330,7 +314,6 @@ describe('TempoMap', () => {
 
     it('should set default meanTempoAt to 0.5 when transition has no meanTempoAt attribute', () => {
       const map = TempoMap.createTempoMap();
-      // Manually create a tempo element with transition.to but NO meanTempoAt
       const e = new Element('tempo', 'http://www.cemfi.de/mpm/ns/1.0');
       e.addAttribute(new Attribute('date', '0'));
       e.addAttribute(new Attribute('bpm', '60'));
@@ -345,9 +328,6 @@ describe('TempoMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  computeExponent (tested indirectly via getTempoDataOf)
-  // ---------------------------------------------------------------
   describe('computeExponent', () => {
     it('exponent for meanTempoAt=0.5 is exactly 1.0', () => {
       const map = TempoMap.createTempoMap();
@@ -406,9 +386,6 @@ describe('TempoMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  getTempoAt
-  // ---------------------------------------------------------------
   describe('getTempoAt', () => {
     it('returns 100 bpm default for an empty map', () => {
       const map = TempoMap.createTempoMap();
@@ -422,7 +399,7 @@ describe('TempoMap', () => {
 
       // getTempoAt uses getElementIndexBefore (strictly before), so at date=0
       // there is nothing strictly before 0, and getTempoDataAt returns null -> default 100.
-      expect(map.getTempoAt(0)).toBe(100.0); // default: nothing strictly before date 0
+      expect(map.getTempoAt(0)).toBe(100.0);
       expect(map.getTempoAt(1)).toBe(120.0);
       expect(map.getTempoAt(500)).toBe(120.0);
       expect(map.getTempoAt(10000)).toBe(120.0);
@@ -433,15 +410,6 @@ describe('TempoMap', () => {
       map.addTempo(0, '60', '120', 0.25, 0.5);
       map.addTempo(720, '120', 0.25);
 
-      // At the very start of the transition, tempo should be 60 bpm
-      // getTempoAt uses getElementIndexBefore which is strictly before, so at date=0 there is no tempo before it.
-      // The getTempoDataAt method iterates backward from getElementIndexBefore(date) which for date 0 returns -1.
-      // Then getTempoDataOf(-1) returns null, so it defaults to 100.
-      // Actually, looking at the code: for i = -1 it calls getTempoDataOf(-1) which returns null. The loop starts at i = getElementIndexBefore(0) = -1, goes down to -1. So it calls getTempoDataOf(-1) once, gets null, and the loop ends.
-      // This means at date=0 with the first tempo at date=0, getTempoAt(0) returns 100.0 (default)!
-      // That's because getElementIndexBefore(0) returns -1 (no element STRICTLY before 0).
-      // At date=1, getElementIndexBefore(1) returns 0, so it would find the tempo.
-      // This is the expected behavior for this implementation.
       expect(map.getTempoAt(0)).toBe(100.0); // default because nothing strictly before date 0
     });
 
@@ -450,10 +418,7 @@ describe('TempoMap', () => {
       map.addTempo(0, '60', '120', 0.25, 0.5);
       map.addTempo(720, '120', 0.25);
 
-      // At midpoint (date=360), with linear exponent 1.0:
-      // result = (360 - 0) / (720 - 0) = 0.5
-      // result = pow(0.5, 1.0) = 0.5
-      // tempo = 0.5 * (120 - 60) + 60 = 0.5 * 60 + 60 = 90
+      // pow(360/720, 1.0) * (120 - 60) + 60 = 90.
       expect(map.getTempoAt(360)).toBeCloseTo(90.0, 5);
     });
 
@@ -462,15 +427,8 @@ describe('TempoMap', () => {
       map.addTempo(0, '60', '120', 0.25, 0.5);
       map.addTempo(720, '120', 0.25);
 
-      // At the endDate (720), getTempoAtStatic returns transitionTo
-      // But getTempoAt(720) uses getElementIndexBefore(720) which returns 1 (the tempo at 720),
-      // then getTempoDataOf(1) gives the second tempo instruction (120 bpm constant).
-      // So it returns 120. Actually, let's verify through the code path:
-      // getElementIndexBefore(720) finds element strictly before 720. Elements are at 0 and 720.
-      // Element at index 0 has key 0 < 720, element at index 1 has key 720 = 720 (not < 720).
-      // So getElementIndexBefore(720) = 0.
-      // getTempoDataOf(0) is the first tempo (60->120 transition, endDate=720).
-      // getTempoAtStatic(720, td): date == td.endDate, so returns td.transitionTo = 120.
+      // Strictly-before puts date 720 on the first instruction, not the second, and at its
+      // own endDate a transition answers with `transitionTo`.
       expect(map.getTempoAt(720)).toBeCloseTo(120.0, 5);
     });
 
@@ -479,13 +437,8 @@ describe('TempoMap', () => {
       map.addTempo(0, '60', '120', 0.25, 0.3);
       map.addTempo(720, '120', 0.25);
 
-      // At midpoint (360):
-      // result = (360-0)/(720-0) = 0.5
-      // exponent = ln(0.5)/ln(0.3) ≈ 0.5753641
-      // result = pow(0.5, 0.5753641) ≈ 0.672...
-      // tempo = 0.672 * (120-60) + 60 = 0.672 * 60 + 60 ≈ 100.3
-      // With meanTempoAt < 0.5, the curve reaches the mean tempo earlier,
-      // so at midpoint, the tempo should be closer to transitionTo (120).
+      // meanTempoAt < 0.5 reaches the mean tempo earlier, so the midpoint sits closer to
+      // transitionTo than the linear 90 would.
       const exponent = Math.log(0.5) / Math.log(0.3);
       const t = Math.pow(0.5, exponent);
       const expectedTempo = t * (120 - 60) + 60;
@@ -499,12 +452,8 @@ describe('TempoMap', () => {
       map.addTempo(0, '60', '120', 0.25, 0.7);
       map.addTempo(720, '120', 0.25);
 
-      // At midpoint:
-      // exponent = ln(0.5)/ln(0.7) ≈ 1.9434164
-      // result = pow(0.5, 1.943) ≈ 0.260
-      // tempo = 0.260 * 60 + 60 ≈ 75.6
-      // With meanTempoAt > 0.5, the curve reaches the mean later, so
-      // at midpoint the tempo is closer to startBpm (60).
+      // meanTempoAt > 0.5 reaches the mean later, so the midpoint sits closer to the starting
+      // 60 than the linear 90 would.
       const exponent = Math.log(0.5) / Math.log(0.7);
       const t = Math.pow(0.5, exponent);
       const expectedTempo = t * (120 - 60) + 60;
@@ -519,25 +468,18 @@ describe('TempoMap', () => {
       map.addTempo(480, '140', 0.25);
       map.addTempo(960, '80', 0.25);
 
-      // Date 240 is in the first tempo region (100 bpm constant)
       expect(map.getTempoAt(240)).toBe(100.0);
-      // Date 720 is in the second tempo region (140 bpm constant)
       expect(map.getTempoAt(720)).toBe(140.0);
-      // Date 1200 is in the third tempo region (80 bpm constant)
       expect(map.getTempoAt(1200)).toBe(80.0);
     });
   });
 
-  // ---------------------------------------------------------------
-  //  computeMillisecondsForConstantTempo
-  // ---------------------------------------------------------------
   describe('computeMillisecondsForConstantTempo (via computeDiffTiming)', () => {
     // Formula: (15000 * (date - startDate)) / (bpm * beatLength * ppq)
     // For quarter-note basis (beatLength = 0.25):
     //   ms = (15000 * date) / (bpm * 0.25 * ppq)
 
     it('120 bpm, ppq=720, date=720: should be 500ms', () => {
-      // 15000 * (720-0) / (120 * 0.25 * 720) = 15000 * 720 / (21600) = 10800000 / 21600 = 500
       const td = constantTempo({ startDate: 0, bpm: 120, beatLength: 0.25 });
 
       const ms = TempoMap.computeDiffTiming(720, 720, td);
@@ -559,7 +501,6 @@ describe('TempoMap', () => {
     });
 
     it('60 bpm, ppq=720, date=720: one beat at 60bpm = 1000ms', () => {
-      // 15000 * 720 / (60 * 0.25 * 720) = 10800000 / 10800 = 1000
       const td = constantTempo({ startDate: 0, bpm: 60, beatLength: 0.25 });
 
       const ms = TempoMap.computeDiffTiming(720, 720, td);
@@ -574,7 +515,6 @@ describe('TempoMap', () => {
     });
 
     it('120 bpm, ppq=480, date=480: should be 500ms (standard MIDI ppq)', () => {
-      // 15000 * 480 / (120 * 0.25 * 480) = 7200000 / 14400 = 500
       const td = constantTempo({ startDate: 0, bpm: 120, beatLength: 0.25 });
 
       const ms = TempoMap.computeDiffTiming(480, 480, td);
@@ -582,10 +522,8 @@ describe('TempoMap', () => {
     });
 
     it('half-note basis (beatLength=0.5), 120 bpm, ppq=720, date=1440: 500ms', () => {
-      // beatLength 0.5 = half note. 120 half-notes per minute = 2 half-notes per second.
-      // 1440 ticks = 2 quarter notes = 1 half note at ppq=720.
-      // 1 half note at 120 halves/min = 0.5 sec = 500ms.
-      // Formula: 15000 * 1440 / (120 * 0.5 * 720) = 21600000 / 43200 = 500
+      // beatLength 0.5 makes the beat a half note: 1440 ticks at ppq 720 is one of them, and
+      // one half note at 120 per minute is 500 ms.
       const td = constantTempo({ startDate: 0, bpm: 120, beatLength: 0.5 });
 
       const ms = TempoMap.computeDiffTiming(1440, 720, td);
@@ -593,8 +531,7 @@ describe('TempoMap', () => {
     });
 
     it('non-zero startDate: offset is subtracted', () => {
-      // With startDate=360, date=1080: effective duration = 720 ticks
-      // 15000 * (1080-360) / (120 * 0.25 * 720) = 15000*720/21600 = 500
+      // 1080 - 360 = 720 effective ticks, the same 500 ms as above.
       const td = constantTempo({ startDate: 360, bpm: 120, beatLength: 0.25 });
 
       const ms = TempoMap.computeDiffTiming(1080, 720, td);
@@ -602,9 +539,6 @@ describe('TempoMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  computeMillisecondsForNoTempo (null tempoData)
-  // ---------------------------------------------------------------
   describe('computeDiffTiming with null tempoData (no tempo = 100 bpm default)', () => {
     // Formula for no tempo: (600 * date) / ppq
     // This is equivalent to 100 bpm with quarter-note basis:
@@ -631,24 +565,11 @@ describe('TempoMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  computeMillisecondsForTempoTransition (Simpson's rule)
-  // ---------------------------------------------------------------
   describe('computeMillisecondsForTempoTransition (via computeDiffTiming)', () => {
     it('linear transition 60->120 bpm over 720 ticks at ppq=720, verify with analytical', () => {
-      // For a linear transition (exponent=1.0), the tempo at tick t is:
-      //   bpm(t) = 60 + (120-60)*(t/720) = 60 + 60*t/720
-      //
-      // The time to traverse from 0 to 720 ticks is:
-      //   integral from 0 to 720 of (1/bpm(t)) * (15000 / (beatLength * ppq)) dt
-      //   = (15000 / (0.25 * 720)) * integral from 0 to 720 of 1/(60 + 60*t/720) dt
-      //
-      // Let u = 60 + 60*t/720, du = (60/720) dt, dt = 720/60 du = 12 du
-      // When t=0: u=60; t=720: u=120
-      // integral = 12 * integral from 60 to 120 of 1/u du = 12 * ln(120/60) = 12 * ln(2)
-      //
-      // ms = (15000 / 180) * 12 * ln(2) = (15000 * 12 * ln(2)) / 180
-      //    = (180000 * ln(2)) / 180 = 1000 * ln(2) ≈ 693.147...
+      // Simpson's rule is checked against the closed form. For a linear ramp the elapsed time
+      // is the integral of 1/bpm(t) scaled by 15000/(beatLength * ppq); substituting
+      // u = 60 + 60t/720 turns it into 12 * ln(120/60), so ms = 1000 * ln(2) ≈ 693.147.
       const td = transitioningTempo({
         startDate: 0,
         endDate: 720,
@@ -661,20 +582,13 @@ describe('TempoMap', () => {
 
       const ms = TempoMap.computeDiffTiming(720, 720, td);
       const analytical = 1000.0 * Math.log(2);
-      // Simpson's rule should be very close to the analytical result
       expect(ms).toBeCloseTo(analytical, 0);
-      // More precisely, within 1ms
       expect(Math.abs(ms - analytical)).toBeLessThan(1.0);
     });
 
     it('linear transition 120->60 bpm (deceleration) over 720 ticks at ppq=720', () => {
-      // By symmetry of the integral, same total time as 60->120
-      // integral of 1/(120 - 60*t/720) from 0 to 720
-      // = integral of 1/(120(1 - t/1440)) from 0 to 720
-      // Let u = 120 - 60*t/720, du = -60/720 dt, dt = -12 du
-      // When t=0: u=120; t=720: u=60
-      // integral = -12 * integral from 120 to 60 of 1/u du = 12 * ln(120/60) = 12 * ln(2)
-      // Same result: ms = 1000 * ln(2)
+      // The integral is symmetric in the two endpoints, so a deceleration takes the same
+      // 1000 * ln(2) as the acceleration above.
       const td = transitioningTempo({
         startDate: 0,
         endDate: 720,
@@ -692,14 +606,8 @@ describe('TempoMap', () => {
     });
 
     it('partial transition: linear 60->120 bpm, compute at midpoint (date=360)', () => {
-      // At the midpoint of a linear transition, tempo = 90 bpm.
-      // integral from 0 to 360 of 1/(60 + 60*t/720) dt * (15000/(0.25*720))
-      // = (15000/180) * integral from 0 to 360 of 1/(60+t/12) dt
-      // Let u = 60+t/12, du = 1/12 dt, dt = 12 du
-      // When t=0: u=60; t=360: u=60+30=90
-      // = (15000/180) * 12 * integral from 60 to 90 of 1/u du
-      // = (15000/180) * 12 * ln(90/60) = 1000 * ln(1.5)
-      // ≈ 1000 * 0.405465... ≈ 405.465
+      // The same integral stopped at the midpoint, where the tempo is 90: 12 * ln(90/60), so
+      // ms = 1000 * ln(1.5) ≈ 405.465.
       const td = transitioningTempo({
         startDate: 0,
         endDate: 720,
@@ -716,9 +624,6 @@ describe('TempoMap', () => {
     });
 
     it('non-linear transition with meanTempoAt=0.3, endDate to full', () => {
-      // No simple analytical form, but we can verify:
-      // 1) The result is positive
-      // 2) The result is different from the linear case
       const td = transitioningTempo({
         startDate: 0,
         endDate: 720,
@@ -732,7 +637,6 @@ describe('TempoMap', () => {
       const msNonLinear = TempoMap.computeDiffTiming(720, 720, td);
       expect(msNonLinear).toBeGreaterThan(0);
 
-      // Compare with linear
       const tdLinear = transitioningTempo({
         startDate: 0,
         endDate: 720,
@@ -790,14 +694,10 @@ describe('TempoMap', () => {
       });
 
       const ms = TempoMap.computeDiffTiming(720, 720, td);
-      // Should be very close to constant 120 bpm: 500ms
       expect(ms).toBeCloseTo(500.0, 0);
     });
   });
 
-  // ---------------------------------------------------------------
-  //  TempoData
-  // ---------------------------------------------------------------
   describe('TempoData', () => {
     it('default values', () => {
       const td = new TempoData();
@@ -835,18 +735,14 @@ describe('TempoMap', () => {
       expect(clone.meanTempoAt).toBe(0.3);
       expect(clone.xmlId).toBe('test-id');
 
-      // Modifying clone should not affect original
       clone.bpm = 999;
       expect(td.bpm).toBe(120);
     });
 
-    // Migrated from a `new TempoData(e)` that no production path ever called. Same
-    // element, same five assertions, pointed at the reader the renderer uses — plus the
-    // three fields the dead constructor could not produce and that make the difference
-    // between a datum that renders and one that does not: `bpmString` (which the
-    // constructor NULLED for a numeric bpm, and which `addTempo(TempoData)` prefers on
-    // the way back out, so the round-trip was not byte-stable), `exponent` (never set at
-    // all, so a declared transition had no curve), and `endDate`.
+    // Three of the fields below are resolved by the reader and cannot come from a raw parse
+    // of the element: `bpmString`, which `addTempo(TempoData)` prefers on the way back out and
+    // which a byte-stable round-trip therefore needs; `exponent`, without which a declared
+    // transition has no curve; and `endDate`.
     it('reads the same element through getTempoDataOf, and resolves what the raw parse could not', () => {
       const map = TempoMap.createTempoMap();
       const e = new Element('tempo');
@@ -871,18 +767,6 @@ describe('TempoMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  resolveTempo — the normalisation, unit-tested directly
-  // ---------------------------------------------------------------
-  /**
-   * These replace the four `isConstantTempo()` unit tests that used to sit above.
-   *
-   * That predicate answered three questions at once (`transitionTo == null || bpm == null
-   * || transitionTo == bpm`) about a record that could be in any state; the arms answer
-   * them once, at read time, so the thing worth testing is the read. One of the four old
-   * cases — "null bpm counts as constant" — described a state `resolveTempo` cannot
-   * produce, and the last test here is what makes that true rather than merely asserted.
-   */
   describe('resolveTempo', () => {
     const span = { startDate: 0, endDate: 720, beatLength: 0.25 };
 
@@ -933,10 +817,9 @@ describe('TempoMap', () => {
     });
 
     /**
-     * The claim the two arms rest on: neither `bpm` nor `transitionTo` can be absent,
-     * because an unresolvable name is resolved to 100.0 rather than to null. The old
-     * `isConstantTempo` treated a null `bpm` as constant and the constant path then
-     * divided by it.
+     * The claim the two arms rest on: neither `bpm` nor `transitionTo` can be absent, because
+     * an unresolvable name resolves to 100.0 rather than to null — and the constant path
+     * divides by `bpm`.
      */
     it('an unresolvable name resolves to 100.0, never to an absence', () => {
       const t = expectConstant(resolveTempo(span, 'Allegro', null, null, null));
@@ -945,9 +828,6 @@ describe('TempoMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  GenericMap operations on TempoMap
-  // ---------------------------------------------------------------
   describe('GenericMap operations', () => {
     it('should support removeElement by index', () => {
       const map = TempoMap.createTempoMap();
@@ -990,9 +870,6 @@ describe('TempoMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  Edge cases and integration
-  // ---------------------------------------------------------------
   describe('edge cases', () => {
     it('constant tempo timing: multiple beats', () => {
       // 4 beats at 120 bpm = 2 seconds = 2000ms
@@ -1023,10 +900,10 @@ describe('TempoMap', () => {
    * The `tempoMap === null` branch of the static entry point: with no tempo instructions
    * anywhere, the millisecond attributes are the `.perf` ones copied across verbatim.
    *
-   * Added because a negative control found it unguarded — skipping the branch's first map
-   * entry entirely left all 6032 tests and `npm run gate` green. It is reachable in
-   * production (`Performance` passes `mpm.tempo`, which is null for a performance that
-   * declares no `tempoMap`), so this is a gap in the oracle rather than dead code.
+   * A negative control found the branch unpinned — skipping its first map entry entirely left
+   * the whole suite and `npm run gate` green. It is reachable in production, because
+   * `Performance` passes `mpm.tempo`, which is null for a performance that declares no
+   * `tempoMap`.
    */
   describe('renderTempoToMap with no tempoMap at all', () => {
     const noteMap = (): GenericMap => {

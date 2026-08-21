@@ -7,9 +7,6 @@ import { Element, Attribute, Builder } from '../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 
 describe('ArticulationMap', () => {
-  // ---------------------------------------------------------------
-  // Create an articulation map
-  // ---------------------------------------------------------------
   describe('createArticulationMap', () => {
     it('should create an empty articulation map', () => {
       const map = ArticulationMap.createArticulationMap();
@@ -30,9 +27,6 @@ describe('ArticulationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Add articulation
-  // ---------------------------------------------------------------
   describe('addArticulation', () => {
     it('should add an articulation instruction', () => {
       const map = ArticulationMap.createArticulationMap();
@@ -92,9 +86,6 @@ describe('ArticulationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // addArticulationFromData
-  // ---------------------------------------------------------------
   describe('addArticulationFromData', () => {
     it('should add an articulation from ArticulationData', () => {
       const map = ArticulationMap.createArticulationMap();
@@ -168,9 +159,6 @@ describe('ArticulationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // addArticulationStyleSwitch
-  // ---------------------------------------------------------------
   describe('addArticulationStyleSwitch', () => {
     it('should add an articulation style switch', () => {
       const map = ArticulationMap.createArticulationMap();
@@ -207,9 +195,6 @@ describe('ArticulationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // getArticulationDataOf
-  // ---------------------------------------------------------------
   describe('getArticulationDataOf', () => {
     it('should return null for an empty map', () => {
       const map = ArticulationMap.createArticulationMap();
@@ -237,7 +222,6 @@ describe('ArticulationMap', () => {
       map.addArticulationStyleSwitch(0, 'myStyle');
 
       const ad = map.getArticulationDataOf(0);
-      // Style elements have localName "style", not "articulation"
       expect(ad).toBeNull();
     });
 
@@ -260,14 +244,11 @@ describe('ArticulationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // getArticulationDataOf - the twelve inline numeric modifiers
-  // ---------------------------------------------------------------
   // These read literal attributes off a parsed <articulation>, which no fixture in
-  // tests/integration/fixtures does: every fixture articulation carries name.ref and
-  // noteid only, so the whole certification suite was green while this read was missing
-  // and every inline modifier rendered as the identity. That blind spot is why these
-  // tests build their XML rather than reach for a fixture.
+  // tests/integration/fixtures does: every fixture articulation carries name.ref and noteid
+  // only, so the certification suite stays green with this read missing and every inline
+  // modifier rendering as the identity. That blind spot is why these tests build their XML
+  // rather than reach for a fixture.
   describe('getArticulationDataOf reads the inline numeric modifiers', () => {
     const parse = (xml: string): Element => new Builder().build(xml).getRootElement();
 
@@ -350,11 +331,8 @@ describe('ArticulationMap', () => {
     });
 
     it('applies the inline modifiers on top of the referenced def', () => {
-      // The styleDef path is the second half of the fixture blind spot: every fixture
-      // articulation is a bare name.ref, so a def carrying inline modifiers alongside it
-      // was never rendered. The def runs first and these run on top of the result, so an
-      // absolute modifier replaces what the def wrote while a relative one compounds with
-      // it - both directions are pinned here.
+      // The def runs first and the inline modifiers run on top of its result: an absolute
+      // modifier replaces what the def wrote, a relative one compounds with it.
       const mpm = new Mpm(
         `<mpm xmlns="${Mpm.MPM_NAMESPACE}"><performance name="p" pulsesPerQuarter="720">` +
           '<global><header><articulationStyles><styleDef name="s">' +
@@ -385,16 +363,16 @@ describe('ArticulationMap', () => {
       note.addAttribute(new Attribute('velocity', '64'));
       ad.articulateNote(note);
 
-      // 720 * 0.5 (def) * 0.9 (inline) - the inline factor multiplies the def's result,
-      // not the original duration. Velocity is the other case: the def's -5 lands on 59
-      // and the inline absolute then replaces it outright.
+      // 720 * 0.5 (def) * 0.9 (inline): the inline factor multiplies the def's result, not
+      // the original duration. Velocity goes the other way - the def's -5 lands on 59 and
+      // the inline absolute replaces it outright.
       expect(parseFloat(note.getAttributeValue('duration.perf')!)).toBeCloseTo(324, 5);
       expect(parseFloat(note.getAttributeValue('velocity')!)).toBeCloseTo(100, 5);
     });
 
     it('renders the inline millisecond modifiers through both passes', () => {
-      // The ms modifiers are the half of E1 that only shows up in pass two: pass one parks
-      // them on the note, pass two consumes them.
+      // The ms modifiers take two passes: pass one parks them on the note, pass two
+      // consumes them.
       const map = mapOf(
         '<articulation date="0.0" absoluteDurationMs="160.0" absoluteDelayMs="25.0" />',
       );
@@ -419,9 +397,6 @@ describe('ArticulationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // ArticulationData
-  // ---------------------------------------------------------------
   describe('ArticulationData', () => {
     it('should have correct default values', () => {
       const ad = new ArticulationData();
@@ -506,9 +481,6 @@ describe('ArticulationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // ArticulationData.articulateNote - modification mathematics
-  // ---------------------------------------------------------------
   describe('ArticulationData.articulateNote', () => {
     function createNote(datePerf: number, durationPerf: number, velocity: number): Element {
       const note = new Element('note', Mpm.MPM_NAMESPACE);
@@ -583,7 +555,6 @@ describe('ArticulationMap', () => {
       const note = createNote(100, 200, 80);
       ad.articulateNote(note);
 
-      // duration * 0.5 = 200 * 0.5 = 100
       expect(parseFloat(note.getAttributeValue('duration.perf')!)).toBeCloseTo(100, 5);
     });
 
@@ -614,7 +585,6 @@ describe('ArticulationMap', () => {
       const note = createNote(100, 200, 80);
       ad.articulateNote(note);
 
-      // 80 * 0.5 = 40
       expect(parseFloat(note.getAttributeValue('velocity')!)).toBeCloseTo(40, 5);
     });
 
@@ -625,7 +595,6 @@ describe('ArticulationMap', () => {
       const note = createNote(100, 200, 80);
       ad.articulateNote(note);
 
-      // 80 + 20 = 100
       expect(parseFloat(note.getAttributeValue('velocity')!)).toBeCloseTo(100, 5);
     });
 
@@ -636,7 +605,6 @@ describe('ArticulationMap', () => {
       const note = createNote(100, 200, 80);
       ad.articulateNote(note);
 
-      // 80 - 30 = 50
       expect(parseFloat(note.getAttributeValue('velocity')!)).toBeCloseTo(50, 5);
     });
 
@@ -712,20 +680,19 @@ describe('ArticulationMap', () => {
       expect(parseFloat(attr!.getValue())).toBeCloseTo(50, 5);
     });
 
-    // -------------------------------------------------------------
-    // absoluteDurationChange - DELIBERATE DIVERGENCE #1 (item TD1)
-    // -------------------------------------------------------------
+    // absoluteDurationChange - DELIBERATE DIVERGENCE #1 (TD1 in PARITY.md).
+    //
     // Java's ArticulationData.java:197 spells the halving loop `durNew >= 0.0` and has no
     // `duration > 0.0` guard, so it never terminates; the port follows the spelling of
     // Java's ArticulationDef.java:420-423 instead. These are the pinning tests for that
     // divergence, and they must fail rather than hang if it is ever undone.
     //
     // A vitest per-test timeout cannot do that on its own: a synchronous loop never yields
-    // the event loop, so the timeout timer never fires (measured - a 1500 ms per-test
-    // timeout let a plain `for (;;)` run until an external kill). The timeouts below are
-    // the outer net; the watchdog is what actually converts non-termination into a failure.
-    // It counts reads of `absoluteDurationChange`, which the loop body performs once per
-    // iteration - a loop that spins therefore trips it within `maxReads` iterations.
+    // the event loop, so the timeout timer never fires - measured, a 1500 ms per-test
+    // timeout let a plain `for (;;)` run until an external kill. The timeouts below are the
+    // outer net; the watchdog is what converts non-termination into a failure. It counts
+    // reads of `absoluteDurationChange`, which the loop body performs once per iteration, so
+    // a loop that spins trips it within `maxReads` iterations.
     function articulateUnderWatchdog(
       ad: ArticulationData,
       note: Element,
@@ -838,9 +805,6 @@ describe('ArticulationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // renderArticulationToMap_millisecondModifiers
-  // ---------------------------------------------------------------
   describe('renderArticulationToMap_millisecondModifiers', () => {
     function createMsMapEntry(date: number, msDate: number, msEnd: number): Element {
       const e = new Element('note', Mpm.MPM_NAMESPACE);
@@ -860,7 +824,6 @@ describe('ArticulationMap', () => {
       map.renderArticulationToMap_millisecondModifiers(target);
 
       expect(parseFloat(entry.getAttributeValue('milliseconds.date')!)).toBeCloseTo(125, 5);
-      // The attribute should be removed after processing
       expect(entry.getAttribute('articulation.absoluteDelayMs')).toBeNull();
     });
 
@@ -873,8 +836,7 @@ describe('ArticulationMap', () => {
 
       map.renderArticulationToMap_millisecondModifiers(target);
 
-      // absoluteDurationMs: endNew = dateNew + absoluteDurationMs
-      // dateNew = 100 (no delay), so endNew = 100 + 50 = 150
+      // absoluteDurationMs is measured from the (undelayed) start, not added to the end.
       expect(parseFloat(entry.getAttributeValue('milliseconds.date.end')!)).toBeCloseTo(150, 5);
     });
 
@@ -887,7 +849,6 @@ describe('ArticulationMap', () => {
 
       map.renderArticulationToMap_millisecondModifiers(target);
 
-      // endNew = 200 + 30 = 230
       expect(parseFloat(entry.getAttributeValue('milliseconds.date.end')!)).toBeCloseTo(230, 5);
     });
 
@@ -901,8 +862,6 @@ describe('ArticulationMap', () => {
 
       map.renderArticulationToMap_millisecondModifiers(target);
 
-      // dateNew = 100 + 10 = 110
-      // endNew = 200 + 20 = 220
       expect(parseFloat(entry.getAttributeValue('milliseconds.date')!)).toBeCloseTo(110, 5);
       expect(parseFloat(entry.getAttributeValue('milliseconds.date.end')!)).toBeCloseTo(220, 5);
     });
@@ -916,15 +875,13 @@ describe('ArticulationMap', () => {
 
       map.renderArticulationToMap_millisecondModifiers(target);
 
-      // dateNew = 100 + 50 = 150, endNew = 110 => dateNew >= endNew
-      // So values should NOT be written
+      // The delay would put the start at 150, past the end at 110, so nothing is written.
       expect(parseFloat(entry.getAttributeValue('milliseconds.date')!)).toBeCloseTo(100, 5);
       expect(parseFloat(entry.getAttributeValue('milliseconds.date.end')!)).toBeCloseTo(110, 5);
     });
 
     it('null map is handled gracefully', () => {
       const map = ArticulationMap.createArticulationMap();
-      // Should not throw
       map.renderArticulationToMap_millisecondModifiers(null);
     });
 
@@ -943,13 +900,9 @@ describe('ArticulationMap', () => {
     it('static with null articulation map does nothing', () => {
       const target = okValue(GenericMap.createGenericMap('positionMap'));
       ArticulationMap.renderArticulationToMap_millisecondModifiers(target, null);
-      // Should not throw
     });
   });
 
-  // ---------------------------------------------------------------
-  // GenericMap operations on ArticulationMap
-  // ---------------------------------------------------------------
   describe('GenericMap operations', () => {
     it('should support removeElement by index', () => {
       const map = ArticulationMap.createArticulationMap();

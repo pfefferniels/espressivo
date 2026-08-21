@@ -11,9 +11,6 @@ import {
   ValidityException,
 } from '../../src/xml/XomTypes.js';
 
-// ---------------------------------------------------------------------------
-// Attribute
-// ---------------------------------------------------------------------------
 describe('Attribute', () => {
   it('should create a simple attribute with name and value', () => {
     const attr = new Attribute('foo', 'bar');
@@ -56,7 +53,6 @@ describe('Attribute', () => {
     expect(copy.getQualifiedName()).toBe('xml:id');
     expect(copy.getValue()).toBe('abc');
     expect(copy.getNamespaceURI()).toBe('http://www.w3.org/XML/1998/namespace');
-    // mutating original must not affect copy
     attr.setValue('xyz');
     expect(copy.getValue()).toBe('abc');
   });
@@ -70,9 +66,6 @@ describe('Attribute', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Text
-// ---------------------------------------------------------------------------
 describe('Text', () => {
   it('should store and retrieve its value', () => {
     const t = new Text('hello');
@@ -99,9 +92,6 @@ describe('Text', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Element – creation and attributes
-// ---------------------------------------------------------------------------
 describe('Element', () => {
   it('should create a simple element', () => {
     const el = new Element('note');
@@ -172,9 +162,6 @@ describe('Element', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Element – child operations
-// ---------------------------------------------------------------------------
 describe('Element – children', () => {
   it('should append child elements', () => {
     const parent = new Element('measure');
@@ -290,9 +277,6 @@ describe('Element – children', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Element – toXML serialization
-// ---------------------------------------------------------------------------
 describe('Element – toXML', () => {
   it('should serialize an empty element as self-closing', () => {
     const el = new Element('note');
@@ -324,9 +308,6 @@ describe('Element – toXML', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Element – copy (deep clone)
-// ---------------------------------------------------------------------------
 describe('Element – copy', () => {
   it('should deep copy element with attributes and children', () => {
     const original = new Element('note');
@@ -343,15 +324,11 @@ describe('Element – copy', () => {
     expect(copiedChild.getLocalName()).toBe('artic');
     expect(copiedChild.getAttributeValue('type')).toBe('stacc');
 
-    // Mutation isolation
     original.addAttribute(new Attribute('oct', '5'));
     expect(copy.getAttribute('oct')).toBeNull();
   });
 });
 
-// ---------------------------------------------------------------------------
-// Element.wrap – from parsed XML
-// ---------------------------------------------------------------------------
 describe('Element.wrap', () => {
   it('should wrap a parsed DOM element with attributes and children', () => {
     const xml = '<root foo="bar"><child val="1"/><child val="2"/></root>';
@@ -401,9 +378,6 @@ describe('Element.wrap', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Element – query (XPath)
-// ---------------------------------------------------------------------------
 describe('Element – query (XPath)', () => {
   it('should find descendant elements by local-name', () => {
     const root = new Element('score');
@@ -451,9 +425,6 @@ describe('Element – query (XPath)', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Document
-// ---------------------------------------------------------------------------
 describe('Document', () => {
   it('should create from a root element', () => {
     const root = new Element('root');
@@ -469,13 +440,10 @@ describe('Document', () => {
   });
 
   /**
-   * A CONSTRUCTED document gets XOM's own default declaration — no encoding.
-   *
-   * This test used to assert `encoding="UTF-8"`, which is what the port hardcoded and is not
-   * what Java writes: every Java-generated reference under `tests/integration/fixtures/`
-   * begins with `<?xml version="1.0"?>`. The difference was invisible because
-   * `cross-validation.test.ts` stripped the declaration from both sides before comparing; that
-   * normaliser is now deleted and this assertion is the shape the references actually have.
+   * A constructed document gets XOM's own default declaration — no encoding, which is what
+   * Java writes: every Java-generated reference under `tests/integration/fixtures/` begins
+   * with `<?xml version="1.0"?>`. `cross-validation.test.ts` compares the declaration rather
+   * than stripping it, so this is the shape the references actually have.
    */
   it('should serialize a constructed document with XOM’s default declaration', () => {
     const root = new Element('root');
@@ -505,15 +473,11 @@ describe('Document', () => {
     const doc = new Document(root);
     const copy = doc.copy();
     expect(copy.getRootElement().getAttributeValue('id')).toBe('1');
-    // Mutation isolation
     root.addAttribute(new Attribute('x', '2'));
     expect(copy.getRootElement().getAttribute('x')).toBeNull();
   });
 });
 
-// ---------------------------------------------------------------------------
-// Builder.build – parsing
-// ---------------------------------------------------------------------------
 describe('Builder', () => {
   const builder = new Builder();
 
@@ -551,15 +515,11 @@ describe('Builder', () => {
     expect(root.getNamespaceURI()).toBe('http://www.music-encoding.org/ns/mei');
   });
 
-  // -------------------------------------------------------------------------
-  // UTF-8 BOM tolerance.
-  //
-  // Java hands XOM bytes, where a leading EF BB BF is the XML 1.0 Appendix F
-  // encoding signature and is consumed before the document entity begins
-  // (meico/xml/XmlBase.java:99,162). This port parses a decoded string, where the
-  // same bytes arrive as a U+FEFF character in front of the declaration. Stripping
-  // it is what makes the two agree.
-  // -------------------------------------------------------------------------
+  // UTF-8 BOM tolerance. Java hands XOM bytes, where a leading EF BB BF is the XML 1.0
+  // Appendix F encoding signature and is consumed before the document entity begins
+  // (meico/xml/XmlBase.java:99,162). This port parses a decoded string, where the same bytes
+  // arrive as a U+FEFF character in front of the declaration. Stripping it is what makes the
+  // two agree.
   const BOM = '﻿';
 
   it('should parse a BOM-prefixed document identically to the same text without one', () => {
@@ -609,9 +569,6 @@ describe('Builder', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Nodes
-// ---------------------------------------------------------------------------
 describe('Nodes', () => {
   it('should report size correctly', () => {
     const nodes = new Nodes([]);
@@ -634,9 +591,6 @@ describe('Nodes', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Elements
-// ---------------------------------------------------------------------------
 describe('Elements', () => {
   it('should wrap an array of elements', () => {
     const a = new Element('a');
@@ -653,9 +607,6 @@ describe('Elements', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// ParsingException / ValidityException
-// ---------------------------------------------------------------------------
 describe('Exceptions', () => {
   it('ParsingException should have correct name and message', () => {
     const e = new ParsingException('bad xml');
@@ -678,18 +629,14 @@ describe('Exceptions', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// XomNode – detach / getParent
-// ---------------------------------------------------------------------------
 describe('XomNode – parent and detach', () => {
   it('should return parent after being added as child', () => {
     const parent = new Element('parent');
     const child = new Element('child');
     parent.appendChild(child);
-    // The comment this replaces said `XomNode.getParent` "is based on DOM parentNode" and
-    // then checked `indexOf` instead — but `getParent` consults `_xomParent` first and only
-    // falls back to the DOM for nodes that came out of the parser and were never re-wired
-    // here. `appendChild` wires it, so the direct claim holds and is worth asserting.
+    // `getParent` consults `_xomParent` first and falls back to the DOM only for nodes that
+    // came out of the parser and were never re-wired here. `appendChild` wires it, so the
+    // direct claim is the one that holds.
     expect(child.getParent()).toBe(parent);
     expect(parent.indexOf(child)).toBe(0);
   });
@@ -710,13 +657,9 @@ describe('XomNode – parent and detach', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Attribute.detach on parsed trees
-//
-// Element.wrap parents the attributes it creates, exactly as it parents the child
-// nodes. Without that, detach() had nothing to remove itself from and silently did
-// nothing, so a parsed attribute stayed in the serialized XML forever.
-// ---------------------------------------------------------------------------
+// Element.wrap parents the attributes it creates, exactly as it parents the child nodes.
+// Without that, detach() has nothing to remove itself from and silently does nothing, so a
+// parsed attribute stays in the serialized XML forever.
 describe('Attribute – detach on parser-sourced attributes', () => {
   const parse = (xml: string): Element => new Builder().build(xml).getRootElement();
 

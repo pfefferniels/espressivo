@@ -10,14 +10,14 @@
  * either is deleted. Any method where they differ stays duplicated, with the difference
  * documented."
  *
- * This file is that probe. Each `describe` below restates the **deleted `Msm.ts` copy**
+ * This file is that probe. Each `describe` below restates the deleted `Msm.ts` copy
  * verbatim as `msm*` and asserts the shipped `src/xml/` function agrees with it, over the
  * repository's own MSM/MPM fixtures plus the adversarial trees the rule names. The old code
  * is restated here rather than cited because an equivalence claim needs both sides present
  * to be checkable — the same reasoning `tests/xml/navigationEquivalence.test.ts` opens with.
  *
- * **Seven of the eight are equivalent and the local copies are gone.** The eighth,
- * `getFilenameWithoutExtension`, is NOT, and the last section pins the difference so that
+ * Seven of the eight are equivalent and the local copies are gone. The eighth,
+ * `getFilenameWithoutExtension`, is not, and the last section pins the difference so that
  * nobody deduplicates it on sight later.
  */
 import { describe, it, expect } from 'vitest';
@@ -43,9 +43,7 @@ const XML_NS = 'http://www.w3.org/XML/1998/namespace';
 const MEI_NS = 'http://www.music-encoding.org/ns/mei';
 const MPM_NS = 'http://www.cemfi.de/mpm/ns/1.0';
 
-// ---------------------------------------------------------------------------
-// The deleted implementations, restated character for character
-// ---------------------------------------------------------------------------
+// The deleted implementations, restated character for character.
 
 /** `src/msm/Msm.ts:28` as it stood before the merge. */
 function msmGetAttribute(name: string, ofThis: Element): Attribute | null {
@@ -144,9 +142,7 @@ function msmGetFilenameWithoutExtension(filename: string): string {
   return filename.substring(0, i);
 }
 
-// ---------------------------------------------------------------------------
-// The trees to feed both sides
-// ---------------------------------------------------------------------------
+// The trees to feed both sides.
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const COMPARISON = join(HERE, '..', 'comparison', 'fixtures');
@@ -288,7 +284,7 @@ it('the corpus this file probes against is actually there', () => {
  * That is not a weaker assertion — an empty list is exactly the claim "every pair agreed" —
  * and it names every mismatch instead of stopping at the first, which is what an equivalence
  * claim wants to be told. It also keeps ~10^5 `expect` calls per test off vitest's reporter
- * channel, which is what a first draft of this file put there.
+ * channel.
  */
 function expectAgreement(mismatches: readonly string[]): void {
   expect(mismatches).toEqual([]);
@@ -306,15 +302,12 @@ function elementListDisagreement(
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// 1 + 2. getAttribute / getAttributeValue
-// ---------------------------------------------------------------------------
 /**
  * A qualified name is where the two deliberately differ now, and the difference is a fix.
  *
  * The restated `msmGetAttribute` above begins `ofThis.getAttribute(name)`, faithfully to
  * `Helper.java:349` — but this port's one-argument `Element.getAttribute` matches the
- * QUALIFIED name as well as the local one, where XOM's matches only a local name in no
+ * qualified name as well as the local one, where XOM's matches only a local name in no
  * namespace. So `getAttribute('xml:id')` found the attribute here and finds nothing in Java,
  * whose `Helper.getAttributeValue` therefore answers `""`. `xml/tree.ts`'s `attribute` now
  * spells step one `getAttribute(name, '')` and agrees with Java; the historical copy above is
@@ -401,9 +394,6 @@ describe('Msm.getAttributeValue is xml/tree.getAttributeValue', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// 3 + 4. the child-axis pair
-// ---------------------------------------------------------------------------
 describe('Msm.getFirstChildElement is xml/tree.firstChildElement(name, ofThis)', () => {
   it('returns the identical Element for every (element, name) in the corpus', () => {
     const mismatches: string[] = [];
@@ -499,9 +489,6 @@ describe('Msm.getAllChildElements is xml/tree.allChildElements(ofThis, name)', (
   });
 });
 
-// ---------------------------------------------------------------------------
-// 5. getNextSiblingElement, both call forms
-// ---------------------------------------------------------------------------
 describe('Msm.getNextSiblingElement is xml/tree.getNextSiblingElement', () => {
   it('agrees for every element in the corpus, unnamed form', () => {
     const mismatches: string[] = [];
@@ -549,9 +536,6 @@ describe('Msm.getNextSiblingElement is xml/tree.getNextSiblingElement', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// 6. cloneElement
-// ---------------------------------------------------------------------------
 describe('Msm.cloneElement is xml/tree.cloneElement', () => {
   it('produces the same serialization for every element in the corpus', () => {
     const mismatches: string[] = [];
@@ -588,7 +572,7 @@ describe('Msm.cloneElement is xml/tree.cloneElement', () => {
 
   it('keeps a namespaced attribute in both — the documented divergence from Java', () => {
     // Java rebuilds each attribute as `new Attribute(localName, value)`, dropping the
-    // namespace. BOTH TypeScript copies preserve it, which is why merging them cannot
+    // namespace. Both TypeScript copies preserve it, which is why merging them cannot
     // change the output: the divergence is shared, not introduced here.
     const map = new Element('markerMap');
     map.addAttribute(new Attribute('xml:id', XML_NS, 'm1'));
@@ -597,9 +581,6 @@ describe('Msm.cloneElement is xml/tree.cloneElement', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// 7. addUUID
-// ---------------------------------------------------------------------------
 describe('Msm.addUUID is xml/ids.addUUID', () => {
   it('writes the same attribute in the same namespace, and returns what it wrote', () => {
     const mine = new Element('note');
@@ -634,9 +615,6 @@ describe('Msm.addUUID is xml/ids.addUUID', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// 8. getFilenameWithoutExtension — THE ONE THAT DIFFERS
-// ---------------------------------------------------------------------------
 describe('getFilenameWithoutExtension: the Msm copy is NOT music/text.ts’s', () => {
   it('agrees wherever the filename has a dot that is not the first character', () => {
     for (const filename of [
@@ -667,7 +645,7 @@ describe('getFilenameWithoutExtension: the Msm copy is NOT music/text.ts’s', (
     // `String.substring(0, -1)` throws `StringIndexOutOfBoundsException`, so neither
     // spelling is Java's; the Msm copy added the `i === -1` guard and returns the name.
     //
-    // This is why the Msm copy STAYS. `Msm.getTitle()` falls back to it when the root
+    // This is why the Msm copy stays. `Msm.getTitle()` falls back to it when the root
     // carries no `title`, and `Msm.renderMidi` builds the MIDI filename with it — an
     // extensionless file would title the movement `''` and name the MIDI `.mid` under the
     // shared copy, where today it keeps the name.

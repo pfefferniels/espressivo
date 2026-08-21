@@ -9,9 +9,6 @@ import { Element, Attribute } from '../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 
 describe('RubatoMap', () => {
-  // ---------------------------------------------------------------
-  // Create a rubato map
-  // ---------------------------------------------------------------
   describe('createRubatoMap', () => {
     it('should create an empty rubato map', () => {
       const map = RubatoMap.createRubatoMap();
@@ -32,9 +29,6 @@ describe('RubatoMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Add rubato instruction
-  // ---------------------------------------------------------------
   describe('addRubato', () => {
     it('should add a rubato with full numeric parameters', () => {
       const map = RubatoMap.createRubatoMap();
@@ -113,9 +107,6 @@ describe('RubatoMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // getRubatoDataOf
-  // ---------------------------------------------------------------
   describe('getRubatoDataOf', () => {
     it('should return null for an empty map', () => {
       const map = RubatoMap.createRubatoMap();
@@ -183,9 +174,6 @@ describe('RubatoMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // RubatoData
-  // ---------------------------------------------------------------
   describe('RubatoData', () => {
     it('should have correct default values', () => {
       const rd = new RubatoData();
@@ -200,10 +188,8 @@ describe('RubatoMap', () => {
     });
 
     /**
-     * The write payload's nulls are the point of it: a `<rubato>` that names a def spells
-     * out none of the four numbers, and `addRubato` must emit no attribute for each one it
-     * has nothing for. Replaces the two `clone()` tests, which exercised a method with no
-     * caller anywhere in `src/`; what is worth pinning is the serialization.
+     * A `<rubato>` that names a def spells out none of the four numbers, so `addRubato` must
+     * emit no attribute for each one the payload leaves null.
      */
     it('omits every attribute the payload leaves null', () => {
       const map = RubatoMap.createRubatoMap();
@@ -249,13 +235,10 @@ describe('RubatoMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // resolveRubato — inheritance from the def, and the boundary clamps
-  // ---------------------------------------------------------------
   /**
-   * The read half, unit-tested directly. `getRubatoDataOf` above covers the path where the
-   * element declares everything; these cover the three that used to be spelled as nullable
-   * fields on the datum — inherit, fall back to the identity warp, and reject.
+   * The read half. `getRubatoDataOf` above covers the path where the element declares
+   * everything; these cover the other three — inherit from the def, fall back to the identity
+   * warp, and reject.
    */
   describe('resolveRubato', () => {
     const span = { startDate: 0, endDate: 1440 };
@@ -355,14 +338,8 @@ describe('RubatoMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Rubato power curve mathematics
-  // ---------------------------------------------------------------
   describe('renderRubatoToMap - power curve math', () => {
-    /**
-     * Helper: create a GenericMap (positionMap) with entries that have "date.perf" attributes.
-     * The rubato rendering modifies "date.perf" attribute values.
-     */
+    /** A positionMap of notes whose `date.perf` starts equal to `date`, which rubato warps. */
     function createTestMap(dates: number[]): GenericMap {
       const map = okValue(GenericMap.createGenericMap('positionMap'));
       for (const date of dates) {
@@ -380,17 +357,16 @@ describe('RubatoMap', () => {
     }
 
     it('identity rubato: intensity=1.0, lateStart=0, earlyEnd=1 produces no offset', () => {
-      // With intensity=1.0, lateStart=0, earlyEnd=1:
-      // d = pow(localDate/frameLength, 1.0) * (1.0 - 0.0) + 0.0 * frameLength
-      // d = (localDate/frameLength) * frameLength = localDate
-      // offset = d - localDate = 0
+      // The warp, used by every test below: with localDate = (date - startDate) % frameLength,
+      //   d = (pow(localDate/frameLength, intensity) * (earlyEnd - lateStart) + lateStart)
+      //       * frameLength
+      // and the entry moves by d - localDate. Intensity 1 over the full window is the identity.
       const rubatoMap = RubatoMap.createRubatoMap();
       rubatoMap.addRubato(0, 720, 1.0, 0.0, 1.0, true);
 
       const map = createTestMap([0, 180, 360, 540, 720]);
       rubatoMap.renderRubatoToMap(map);
 
-      // All dates should remain the same (offsets are 0)
       expect(getDatePerf(map, 0)).toBeCloseTo(0, 5);
       expect(getDatePerf(map, 1)).toBeCloseTo(180, 5);
       expect(getDatePerf(map, 2)).toBeCloseTo(360, 5);
@@ -398,32 +374,21 @@ describe('RubatoMap', () => {
     });
 
     it('quadratic acceleration: intensity=2.0 compresses first half, expands second', () => {
-      // frameLength=720, intensity=2.0, lateStart=0, earlyEnd=1, startDate=0
-      // Formula: d = pow(localDate/720, 2.0) * (1.0 - 0.0) * 720 + 0.0 * 720
-      //        = pow(localDate/720, 2.0) * 720
-      //
-      // At localDate=0:   d = pow(0, 2) * 720 = 0,     offset = 0 - 0 = 0
-      // At localDate=180: d = pow(0.25, 2) * 720 = 0.0625 * 720 = 45,  offset = 45 - 180 = -135
-      // At localDate=360: d = pow(0.5, 2) * 720 = 0.25 * 720 = 180,   offset = 180 - 360 = -180
-      // At localDate=540: d = pow(0.75, 2) * 720 = 0.5625 * 720 = 405, offset = 405 - 540 = -135
+      // d = pow(localDate/720, 2) * 720, so 0 -> 0, 180 -> 45, 360 -> 180, 540 -> 405.
       const rubatoMap = RubatoMap.createRubatoMap();
       rubatoMap.addRubato(0, 720, 2.0, 0.0, 1.0, true);
 
       const map = createTestMap([0, 180, 360, 540]);
       rubatoMap.renderRubatoToMap(map);
 
-      expect(getDatePerf(map, 0)).toBeCloseTo(0, 5); // 0 + 0 = 0
-      expect(getDatePerf(map, 1)).toBeCloseTo(45, 5); // 180 + (-135) = 45
-      expect(getDatePerf(map, 2)).toBeCloseTo(180, 5); // 360 + (-180) = 180
-      expect(getDatePerf(map, 3)).toBeCloseTo(405, 5); // 540 + (-135) = 405
+      expect(getDatePerf(map, 0)).toBeCloseTo(0, 5);
+      expect(getDatePerf(map, 1)).toBeCloseTo(45, 5);
+      expect(getDatePerf(map, 2)).toBeCloseTo(180, 5);
+      expect(getDatePerf(map, 3)).toBeCloseTo(405, 5);
     });
 
     it('square root deceleration: intensity=0.5 expands first half, compresses second', () => {
-      // frameLength=720, intensity=0.5, lateStart=0, earlyEnd=1, startDate=0
-      // d = pow(localDate/720, 0.5) * 720
-      //
-      // At localDate=180: d = pow(0.25, 0.5) * 720 = 0.5 * 720 = 360, offset = 360 - 180 = +180
-      // At localDate=360: d = pow(0.5, 0.5) * 720 = ~0.7071 * 720 = ~509.12, offset = ~+149.12
+      // d = pow(localDate/720, 0.5) * 720, so 180 -> 360 and 360 -> 509.117.
       const rubatoMap = RubatoMap.createRubatoMap();
       rubatoMap.addRubato(0, 720, 0.5, 0.0, 1.0, true);
 
@@ -431,33 +396,25 @@ describe('RubatoMap', () => {
       rubatoMap.renderRubatoToMap(map);
 
       expect(getDatePerf(map, 0)).toBeCloseTo(0, 5);
-      expect(getDatePerf(map, 1)).toBeCloseTo(360, 3); // 180 + 180 = 360
-      expect(getDatePerf(map, 2)).toBeCloseTo(509.117, 1); // 360 + 149.117 = 509.117
+      expect(getDatePerf(map, 1)).toBeCloseTo(360, 3);
+      expect(getDatePerf(map, 2)).toBeCloseTo(509.117, 1);
     });
 
     it('at frame boundary (localDate=frameLength), d=frameLength, offset=0', () => {
-      // At localDate=720: pow(1.0, 2.0) = 1.0, d = 720, offset = 0
-      // But date=720 at startDate=0 is EXACTLY at the frame boundary.
-      // In loop mode, this wraps: localDate = 720 % 720 = 0 => d = 0, offset = 0
-      // Actually: the rubato loop condition is mapEntry.getKey() >= (rd.startDate + rd.frameLength!) => break when loop=false
-      // For loop=true: mapEntry.getKey() >= rd.endDate => break
-      // Since endDate=MAX_VALUE for a single entry, date=720 continues.
-      // localDate = (720 - 0) % 720 = 0 => pow(0, 2) = 0, d = 0, offset = 0 - 0 = 0
+      // Date 720 sits exactly on the frame boundary. With loop=true the instruction runs to
+      // its endDate, here MAX_VALUE, so the date is warped rather than skipped — and the wrap
+      // makes localDate 0, hence an offset of 0.
       const rubatoMap = RubatoMap.createRubatoMap();
       rubatoMap.addRubato(0, 720, 2.0, 0.0, 1.0, true);
 
       const map = createTestMap([720]);
       rubatoMap.renderRubatoToMap(map);
 
-      // localDate = 720 % 720 = 0, pow(0,2) = 0, d = 0, offset = 0
       expect(getDatePerf(map, 0)).toBeCloseTo(720, 5);
     });
 
     it('at start (localDate=0), offset is always 0 regardless of intensity', () => {
-      // pow(0, anything) = 0, so d = lateStart * frameLength, offset = d - 0 = d
-      // but localDate = (0 - 0) % 720 = 0
-      // d = (pow(0, intensity) * (earlyEnd - lateStart) + lateStart) * frameLength
-      // with lateStart=0: d = 0, offset = 0
+      // pow(0, intensity) is 0 whatever the intensity, and lateStart is 0, so d = 0.
       for (const intensity of [0.1, 0.5, 1.0, 2.0, 5.0]) {
         const rubatoMap = RubatoMap.createRubatoMap();
         rubatoMap.addRubato(0, 720, intensity, 0.0, 1.0, true);
@@ -470,34 +427,19 @@ describe('RubatoMap', () => {
     });
 
     it('with lateStart and earlyEnd: linear rubato shifts start and end proportionally', () => {
-      // frameLength=720, intensity=1.0 (linear), lateStart=0.1, earlyEnd=0.9
-      // d = (pow(localDate/720, 1.0) * (0.9 - 0.1) + 0.1) * 720
-      // d = ((localDate/720) * 0.8 + 0.1) * 720
-      //
-      // At localDate=0:   d = (0 * 0.8 + 0.1) * 720 = 0.1 * 720 = 72,    offset = 72 - 0 = +72
-      // At localDate=360: d = (0.5 * 0.8 + 0.1) * 720 = 0.5 * 720 = 360,  offset = 360 - 360 = 0
-      // At localDate=720: d = (1.0 * 0.8 + 0.1) * 720 = 0.9 * 720 = 648,  offset = 648 - 720 = -72
-      //
-      // But: localDate = (date - startDate) % frameLength
-      //   at date=0:   localDate = 0 % 720 = 0
-      //   at date=360: localDate = 360 % 720 = 360
-      //   (date=720 wraps to localDate=0 again in loop)
+      // d = ((localDate/720) * 0.8 + 0.1) * 720, so 0 -> 72 and 360 -> 360.
       const rubatoMap = RubatoMap.createRubatoMap();
       rubatoMap.addRubato(0, 720, 1.0, 0.1, 0.9, true);
 
       const map = createTestMap([0, 360]);
       rubatoMap.renderRubatoToMap(map);
 
-      expect(getDatePerf(map, 0)).toBeCloseTo(72, 3); // 0 + 72
-      expect(getDatePerf(map, 1)).toBeCloseTo(360, 3); // 360 + 0
+      expect(getDatePerf(map, 0)).toBeCloseTo(72, 3);
+      expect(getDatePerf(map, 1)).toBeCloseTo(360, 3);
     });
 
     it('concrete calculation: halfway with intensity=2.0', () => {
-      // frameLength=720, intensity=2.0, lateStart=0, earlyEnd=1, startDate=0
-      // At localDate=360 (halfway):
-      //   pow(360/720, 2.0) = pow(0.5, 2.0) = 0.25
-      //   d = (0.25 * (1 - 0) + 0) * 720 = 0.25 * 720 = 180
-      //   new date.perf = 360 + (180 - 360) = 180
+      // pow(0.5, 2) * 720 = 180.
       const rubatoMap = RubatoMap.createRubatoMap();
       rubatoMap.addRubato(0, 720, 2.0, 0.0, 1.0, true);
 
@@ -508,10 +450,7 @@ describe('RubatoMap', () => {
     });
 
     it('concrete calculation: three-quarters with intensity=2.0', () => {
-      // At localDate=540 (3/4):
-      //   pow(540/720, 2.0) = pow(0.75, 2.0) = 0.5625
-      //   d = 0.5625 * 720 = 405
-      //   new date.perf = 540 + (405 - 540) = 405
+      // pow(0.75, 2) * 720 = 405.
       const rubatoMap = RubatoMap.createRubatoMap();
       rubatoMap.addRubato(0, 720, 2.0, 0.0, 1.0, true);
 
@@ -522,8 +461,6 @@ describe('RubatoMap', () => {
     });
 
     it('loop=false: rubato only applies within one frame from startDate', () => {
-      // With loop=false and frameLength=720, rubato applies from startDate to startDate+frameLength
-      // Any note at date >= startDate + frameLength should NOT be modified
       const rubatoMap = RubatoMap.createRubatoMap();
       rubatoMap.addRubato(0, 720, 2.0, 0.0, 1.0, false);
 
@@ -541,11 +478,7 @@ describe('RubatoMap', () => {
     });
 
     it('loop=true: rubato repeats across multiple frames', () => {
-      // With loop=true and frameLength=720, rubato wraps around
-      // date=900: localDate = (900 - 0) % 720 = 180
-      // pow(180/720, 2.0) = pow(0.25, 2.0) = 0.0625
-      // d = 0.0625 * 720 = 45
-      // new date.perf = 900 + (45 - 180) = 765
+      // localDate = 900 % 720 = 180, d = 45, so 900 + 45 - 180 = 765.
       const rubatoMap = RubatoMap.createRubatoMap();
       rubatoMap.addRubato(0, 720, 2.0, 0.0, 1.0, true);
 
@@ -556,10 +489,7 @@ describe('RubatoMap', () => {
     });
 
     it('non-zero startDate shifts the frame origin', () => {
-      // startDate=480, frameLength=720, intensity=2.0
-      // date=840: localDate = (840 - 480) % 720 = 360
-      // pow(360/720, 2.0) = 0.25, d = 180, offset = 180 - 360 = -180
-      // new date.perf = 840 + (-180) = 660
+      // localDate = (840 - 480) % 720 = 360, d = 180, so 840 - 180 = 660.
       const rubatoMap = RubatoMap.createRubatoMap();
       rubatoMap.addRubato(480, 720, 2.0, 0.0, 1.0, true);
 
@@ -576,7 +506,6 @@ describe('RubatoMap', () => {
       const map = createTestMap([0, 240]);
       rubatoMap.renderRubatoToMap(map);
 
-      // Both dates are before startDate=480, should be unmodified
       expect(getDatePerf(map, 0)).toBeCloseTo(0, 5);
       expect(getDatePerf(map, 1)).toBeCloseTo(240, 5);
     });
@@ -594,7 +523,6 @@ describe('RubatoMap', () => {
     it('null map is handled gracefully', () => {
       const rubatoMap = RubatoMap.createRubatoMap();
       rubatoMap.addRubato(0, 720, 2.0, 0.0, 1.0, true);
-      // Should not throw
       rubatoMap.renderRubatoToMap(null);
     });
 
@@ -615,9 +543,7 @@ describe('RubatoMap', () => {
     });
 
     it('intensity=3.0: cubic acceleration', () => {
-      // pow(0.5, 3.0) = 0.125
-      // d = 0.125 * 720 = 90
-      // new date.perf at localDate=360: 360 + (90 - 360) = 90
+      // pow(0.5, 3) * 720 = 90.
       const rubatoMap = RubatoMap.createRubatoMap();
       rubatoMap.addRubato(0, 720, 3.0, 0.0, 1.0, true);
 
@@ -628,11 +554,7 @@ describe('RubatoMap', () => {
     });
 
     it('combined lateStart=0.1, earlyEnd=0.9, intensity=2.0', () => {
-      // At localDate=360 (half of frame=720):
-      // pow(360/720, 2.0) = 0.25
-      // d = (0.25 * (0.9 - 0.1) + 0.1) * 720 = (0.25 * 0.8 + 0.1) * 720 = 0.3 * 720 = 216
-      // offset = 216 - 360 = -144
-      // new date.perf = 360 + (-144) = 216
+      // d = (0.25 * 0.8 + 0.1) * 720 = 216.
       const rubatoMap = RubatoMap.createRubatoMap();
       rubatoMap.addRubato(0, 720, 2.0, 0.1, 0.9, true);
 
@@ -652,10 +574,10 @@ describe('RubatoMap', () => {
      * one that was never warped — so the blocked note would keep an unwarped `date.end.perf`
      * while a note behind it got warped by the wrong rubato.
      *
-     * The corpus reaches the drain (deleting it fails the rubato byte fixtures) but never
-     * reaches the stop: turning the `break` into a `continue` passed every test in the tree.
-     * The shape it needs is two overlapping notes inside one frame with the longer one first,
-     * and no fixture has that.
+     * The corpus reaches the drain — deleting it fails the rubato byte fixtures — but never
+     * reaches the stop: turning the `break` into a `continue` leaves every test in the tree
+     * green. The shape it needs is two overlapping notes inside one frame with the longer one
+     * first, and no fixture has that.
      *
      * Here: note A starts at 0 and ends at 600, past the first rubato's 480-tick frame; note B
      * starts at 100 and ends at 200, inside it. Under the prefix rule A blocks the drain, both
@@ -690,9 +612,6 @@ describe('RubatoMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // GenericMap operations on RubatoMap
-  // ---------------------------------------------------------------
   describe('GenericMap operations', () => {
     it('should support removeElement by index', () => {
       const map = RubatoMap.createRubatoMap();

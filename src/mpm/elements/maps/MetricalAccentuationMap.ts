@@ -25,12 +25,8 @@ export class MetricalAccentuationMap extends GenericMap {
   }
 
   /**
-   * A fresh, empty `<metricalAccentuationMap>`, or one read from an existing element.
-   *
-   * The two overloads return different things and that is the point. Building an empty
-   * map consults nothing the caller supplied, so it cannot fail and says so; reading an
-   * element can, and returns the reason instead of printing it. See
-   * {@link GenericMap.emptyMapElement}.
+   * A fresh, empty `<metricalAccentuationMap>`, or one read from an existing element. The
+   * empty form is total, the parsing one is not; see {@link GenericMap.emptyMapElement}.
    */
   static createMetricalAccentuationMap(): MetricalAccentuationMap;
   static createMetricalAccentuationMap(
@@ -106,12 +102,11 @@ export class MetricalAccentuationMap extends GenericMap {
   /**
    * Add each note's metrical accentuation to its `velocity`, in place.
    *
-   * The work is in locating the note's beat. That needs the time signature in force,
-   * which is tracked incrementally: `timeSignIndex` only ever moves forward as the map
-   * is walked, and whenever it does, the derived quantities are all recomputed together
-   * — `ticksPerBeat`, the measure length, and the pattern length, which depends on the
-   * denominator too. The initial values (4/4, one beat per quarter) are what applies
-   * when there is no time signature map at all.
+   * The work is in locating the note's beat. That needs the time signature in force, tracked
+   * incrementally: `timeSignIndex` only ever moves forward, and whenever it does the derived
+   * quantities are recomputed together — `ticksPerBeat`, the measure length, and the pattern
+   * length, which depends on the denominator too. The initial values (4/4, one beat per
+   * quarter) are what applies when there is no time signature map at all.
    *
    * `stickToMeasures` picks what the beat count is relative to: the current measure (the
    * default, so the pattern re-aligns at every barline) or the pattern's own length,
@@ -137,18 +132,13 @@ export class MetricalAccentuationMap extends GenericMap {
     for (let accIndex = 0; accIndex < this.size(); ++accIndex) {
       const md = this.getMetricalAccentuationDataOf(accIndex);
       if (md === null) continue;
-      // PARITY — the abort, and it is deliberate. Java reads a datum whose
-      // `accentuationPatternDef` is null when the style is in scope but names no def by this
-      // name, and then dereferences it unguarded: the render dies with a
-      // NullPointerException. Skipping the instruction instead would render a document the
-      // reference refuses, and `src/comparison/accentuationCurve.ts` (R21) measures the
-      // difference between the two.
-      //
-      // This used to be `md.accentuationPatternDef!` — the one assertion in the file, whose
-      // whole job was to let the very next line throw. The branch says the same thing and
-      // raises the same error: same class, same message, same line, so R21's quoted
-      // `TypeError: Cannot read properties of null (reading 'getLength')` is still literally
-      // what a caller sees. Do not "improve" the message without reading that module first.
+      // PARITY — the abort is deliberate. Java reads a datum whose `accentuationPatternDef` is
+      // null when the style is in scope but names no def by this name, and then dereferences
+      // it unguarded: the render dies with a NullPointerException. Skipping the instruction
+      // instead would render a document the reference refuses, and
+      // `src/comparison/accentuationCurve.ts` (R21) measures the difference between the two.
+      // R21 quotes this error text verbatim, so do not "improve" the message without reading
+      // that module first.
       const def = md.accentuationPatternDef;
       if (def === null) throw new TypeError("Cannot read properties of null (reading 'getLength')");
       let patternLengthTicks = (def.getLength() * ppq4) / tsDenominator;

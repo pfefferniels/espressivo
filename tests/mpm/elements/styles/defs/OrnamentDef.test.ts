@@ -46,9 +46,6 @@ function ornamentDefXml(
   return e;
 }
 
-// ==========================================================================
-//  DynamicsGradient
-// ==========================================================================
 describe('DynamicsGradient', () => {
   describe('construction', () => {
     it('should default both transition values to 0', () => {
@@ -295,9 +292,6 @@ describe('DynamicsGradient', () => {
   });
 });
 
-// ==========================================================================
-//  TemporalSpread
-// ==========================================================================
 describe('TemporalSpread', () => {
   describe('construction', () => {
     it('should have the documented default values', () => {
@@ -653,9 +647,6 @@ describe('TemporalSpread', () => {
   });
 });
 
-// ==========================================================================
-//  OrnamentDef
-// ==========================================================================
 describe('OrnamentDef', () => {
   describe('createOrnamentDef', () => {
     it('should create a named def without transformers', () => {
@@ -849,9 +840,9 @@ describe('OrnamentDef', () => {
 // ==========================================================================
 //  setId(null) on transformers that came out of the parser
 //
-//  Both classes remove their id by detaching the attribute. Until the attribute
-//  carried its parent, that detach did nothing for anything parsed from a file and
-//  the stale xml:id stayed in the serialized MPM.
+//  Both classes remove their id by detaching the attribute, which only reaches the
+//  document if the attribute knows its parent; otherwise the stale xml:id stays in
+//  the serialized MPM.
 // ==========================================================================
 describe('setId(null) on parsed transformers', () => {
   const parse = (xml: string): Element => new Builder().build(xml).getRootElement();
@@ -925,10 +916,9 @@ describe('setId(null) on parsed transformers', () => {
 // ==========================================================================
 //  MPM v3 — TemporalSpread (DESIGN.md D2, D3, D12) and OrnamentDef.alignment
 //
-//  Everything below is ADDITIVE. The suites above pin the v2 behaviour and none
-//  of them was weakened: v2 documents must keep parsing and serializing exactly
-//  as they did before v3 existed, which is what the first suite here nails down
-//  byte for byte.
+//  Everything below is additive to the v2 suites above: a v2 document must parse
+//  and serialize exactly as it does without v3, which the first suite here nails
+//  down byte for byte.
 // ==========================================================================
 
 const MPM_NS = 'http://www.cemfi.de/mpm/ns/1.0';
@@ -944,12 +934,10 @@ function spread(attributes: string): TemporalSpread {
 }
 
 /**
- * Silence and capture console.error for one call.
- *
- * Still needed, and that is a finding in itself: `OrnamentDef.parseData` and
- * `TemporalSpread` warn about out-of-range and unparseable v3 values and then *repair* them,
- * which is a different species from the factory's "this def is unreadable, skip it". Those
- * are still `console.error` and are named in this work's report as scope not taken.
+ * Silence and capture console.error for one call. `OrnamentDef.parseData` and
+ * `TemporalSpread` warn about out-of-range and unparseable v3 values and then repair them,
+ * which is a different species from the factory's "this def is unreadable, skip it" and is
+ * still reported through `console.error`.
  */
 function captureErrors(run: () => void): string[] {
   const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -962,11 +950,9 @@ function captureErrors(run: () => void): string[] {
 }
 
 describe('TemporalSpread — v2 byte stability (DESIGN.md D6/D12)', () => {
-  // The contract: a temporalSpread showing no v3 marker parses and re-serializes
-  // EXACTLY as it did before this wave. The expected strings were captured from the
-  // committed behaviour (branch ornamentation-v3 @ cd140e1, before W3) and are asserted
-  // as whole strings rather than attribute by attribute, so that attribute ORDER — which
-  // is byte-visible in the Java fixture comparison — is pinned too.
+  // A temporalSpread showing no v3 marker parses and re-serializes exactly as it does
+  // without v3. Asserted as whole strings rather than attribute by attribute, so that
+  // attribute order — byte-visible in the Java fixture comparison — is pinned too.
   const CASES: readonly (readonly [string, string])[] = [
     // a bare spread stays bare: every value is at its v2 default
     ['', `<temporalSpread xmlns="${MPM_NS}" />`],
@@ -1033,7 +1019,7 @@ describe('TemporalSpread — v2 byte stability (DESIGN.md D6/D12)', () => {
 describe('TemporalSpread — v3 parsing (DESIGN.md D3)', () => {
   it('should read per-value unit suffixes', () => {
     // the spec's own temporalSpread exemplum (temporalSpread.xml:45-48): the two frame
-    // values are in DIFFERENT domains, which is exactly what v3 added
+    // values are in different domains, which is what v3 added
     const ts = spread('frame.offset="-100.0ms" frameLength="200.0ticks" intensity="1.4"');
 
     expect(ts.getSourceFormat()).toBe('v3');
@@ -1051,7 +1037,7 @@ describe('TemporalSpread — v3 parsing (DESIGN.md D3)', () => {
 
   it('should default a suffix-less value to ticks', () => {
     // the real corpus writes frame.offset without a suffix (github-v3-design.md §5);
-    // frame.offset is a v3 marker in its own right, so this IS a v3 element
+    // frame.offset is a v3 marker in its own right, so this is a v3 element
     const ts = spread('frame.offset="0.0" frameLength="300.0"');
     expect(ts.getSourceFormat()).toBe('v3');
     expect(ts.getFrameOffset()).toEqual({ value: 0, domain: 'ticks' });
@@ -1099,7 +1085,7 @@ describe('TemporalSpread — v3 parsing (DESIGN.md D3)', () => {
   });
 
   it('should read frame.start as an alias of frame.offset once anything marks the element v3', () => {
-    // RULING (DESIGN.md D3 + the wave brief): ANY v3 marker makes the whole instance v3.
+    // DESIGN.md D3: any v3 marker makes the whole instance v3.
     // "frame.start" is v2's spelling, but a suffixed frameLength is a v3 marker, so the
     // element is v3 and its frame.start value is read through D3's alias.
     const ts = spread('frame.start="-22.0" frameLength="44%"');
@@ -1140,13 +1126,11 @@ describe('TemporalSpread — v3 parsing (DESIGN.md D3)', () => {
   });
 
   it('should treat a malformed value marked v3 by its SUFFIX ALONE as absent', () => {
-    // The companion of the test above, and the one that pins the suffix half of
-    // detectSourceFormat. There the attribute NAME (frame.offset) was already a v3 marker,
-    // so the element would have been v3 with or without the suffix probe. Here the only
-    // marker in the whole element is the trailing "%", which is exactly why the probe is a
-    // FORMAT test and not a validity test: without it "abc%" would slide back onto the v2
-    // path, where parseFloat("abc%") is NaN, setFrameLength's Math.max(0, NaN) is NaN, and
-    // generateXML would write a silent frameLength="NaN" with no diagnostic at all.
+    // The suffix half of detectSourceFormat: the only v3 marker in this element is the
+    // trailing "%", which is why the probe is a format test and not a validity test.
+    // Without it "abc%" would slide back onto the v2 path, where parseFloat("abc%") is NaN,
+    // setFrameLength's Math.max(0, NaN) is NaN, and generateXML would write a silent
+    // frameLength="NaN" with no diagnostic at all.
     let ts: TemporalSpread | null = null;
     const messages = captureErrors(() => {
       ts = spread('frameLength="abc%"');
@@ -1181,7 +1165,7 @@ describe('TemporalSpread — v3 parsing (DESIGN.md D3)', () => {
 
   it('should treat an out-of-range v3 value as absent', () => {
     // 309 legal digits are schema-valid and overflow to Infinity, which would serialize
-    // as the unreadable "Infinityticks"; TemporalValue hands that decision here (W1 F2)
+    // as the unreadable "Infinityticks"; TemporalValue hands that decision here
     const messages = captureErrors(() => {
       const ts = spread(`frameLength="${'9'.repeat(309)}%"`);
       expect(ts.getFrameLengthValue()).toEqual({ value: 100, domain: 'relative' });
@@ -1218,7 +1202,7 @@ describe('TemporalSpread — v3 serialization (DESIGN.md D12)', () => {
   it('should write canonical v3 with unit suffixes and no time.unit', () => {
     const ts = spread('frame.offset="-100.0ms" frameLength="200.0ticks"');
     // formatTemporalValue writes String(x), so "-100.0ms" comes back as "-100ms" — the
-    // same port-wide number-formatting divergence the v2 path shows (pinned in W1)
+    // same port-wide number-formatting divergence the v2 path shows
     expect(ts.generateXML().toXML()).toBe(
       `<temporalSpread xmlns="${MPM_NS}" frame.offset="-100ms" frameLength="200ticks" />`,
     );
@@ -1412,8 +1396,8 @@ describe('OrnamentDef — alignment (DESIGN.md D2)', () => {
 
   it('should keep an adopted alignment when the temporalSpread is replaced', () => {
     // the spread element is regenerated by setTemporalSpread and a regenerated spread
-    // never carries alignment, so a def that had ADOPTED its alignment from the old
-    // spread would lose it unless it re-asserts what it owns
+    // never carries alignment, so a def that adopted its alignment from the old spread
+    // would lose it unless it re-asserts what it owns
     const d = def('><temporalSpread alignment="at end"/>');
     expect(d.getAlignment()).toBe('at end');
 
@@ -1431,15 +1415,14 @@ describe('OrnamentDef — alignment (DESIGN.md D2)', () => {
   });
 
   it('should leave a parsed alignment where the document wrote it', () => {
-    // DOCUMENTED CONSEQUENCE: parsing never mutates the caller's tree, so a
-    // reference-style document keeps its attribute on the spread until setAlignment
-    // canonicalises it. The model value is right either way.
+    // Parsing never mutates the caller's tree, so a reference-style document keeps its
+    // attribute on the spread until setAlignment canonicalises it. The model value is right
+    // either way.
     const source = `<ornamentDef xmlns="${MPM_NS}" name="turn"><temporalSpread alignment="at end"/></ornamentDef>`;
     const d = okValue(OrnamentDef.createOrnamentDef(parseElement(source)));
     expect(d.getAlignment()).toBe('at end');
     // untouched: the child keeps the attribute, and the def element has none of its own.
-    // (The serializer restates the namespace on the child and writes ` />`; that shape is
-    // this port's, not this wave's.)
+    // (The serializer restates the namespace on the child and writes ` />`.)
     expect(d.getXml()!.toXML()).toBe(
       `<ornamentDef xmlns="${MPM_NS}" name="turn"><temporalSpread alignment="at end" /></ornamentDef>`,
     );

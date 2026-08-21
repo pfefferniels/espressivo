@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { RandomNumberProvider } from '../../src/supplementary/RandomNumberProvider.js';
 import { MeicoError, OutOfRangeError } from '../../src/xml/errors.js';
 
-// Helper: generate a batch of values and return them
 function generateValues(provider: RandomNumberProvider, count: number): number[] {
   const values: number[] = [];
   for (let i = 0; i < count; i++) {
@@ -11,9 +10,6 @@ function generateValues(provider: RandomNumberProvider, count: number): number[]
   return values;
 }
 
-// ---------------------------------------------------------------------------
-// Distribution type constants
-// ---------------------------------------------------------------------------
 describe('RandomNumberProvider – constants', () => {
   it('should have the expected distribution type constants', () => {
     expect(RandomNumberProvider.DISTRIBUTION_UNIFORM).toBe(0);
@@ -25,9 +21,6 @@ describe('RandomNumberProvider – constants', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Uniform distribution
-// ---------------------------------------------------------------------------
 describe('RandomNumberProvider – uniform distribution', () => {
   it('should create with correct distribution type', () => {
     const rng = RandomNumberProvider.createRandomNumberProvider_uniformDistribution(-1, 1);
@@ -62,9 +55,6 @@ describe('RandomNumberProvider – uniform distribution', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Gaussian distribution
-// ---------------------------------------------------------------------------
 describe('RandomNumberProvider – Gaussian distribution', () => {
   it('should create with correct distribution type', () => {
     const rng = RandomNumberProvider.createRandomNumberProvider_gaussianDistribution(1.0, -3, 3);
@@ -89,9 +79,6 @@ describe('RandomNumberProvider – Gaussian distribution', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Triangular distribution
-// ---------------------------------------------------------------------------
 describe('RandomNumberProvider – triangular distribution', () => {
   it('should create with correct distribution type', () => {
     const rng = RandomNumberProvider.createRandomNumberProvider_triangularDistribution(
@@ -136,9 +123,6 @@ describe('RandomNumberProvider – triangular distribution', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Brownian noise distribution
-// ---------------------------------------------------------------------------
 describe('RandomNumberProvider – Brownian noise distribution', () => {
   it('should create with correct distribution type', () => {
     const rng = RandomNumberProvider.createRandomNumberProvider_brownianNoiseDistribution(
@@ -166,7 +150,7 @@ describe('RandomNumberProvider – Brownian noise distribution', () => {
       -10,
       10,
     );
-    // Do NOT call setSeed() here; it clears the initial value the factory set.
+    // Do not call setSeed() here; it clears the initial value the factory set.
     const values = generateValues(rng, 100);
     for (const v of values) {
       expect(v).toBeGreaterThanOrEqual(-10);
@@ -180,7 +164,7 @@ describe('RandomNumberProvider – Brownian noise distribution', () => {
       0,
       100,
     );
-    // Do NOT call setSeed() - it would clear the initial series value
+    // Do not call setSeed(); it would clear the initial series value.
     const values = generateValues(rng, 50);
     // Consecutive values should be close (within 2 * maxStepWidth)
     for (let i = 1; i < values.length; i++) {
@@ -220,9 +204,6 @@ describe('RandomNumberProvider – Brownian noise distribution', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Compensating triangle distribution
-// ---------------------------------------------------------------------------
 describe('RandomNumberProvider – compensating triangle distribution', () => {
   it('should create with correct distribution type', () => {
     const rng = RandomNumberProvider.createRandomNumberProvider_compensatingTriangleDistribution(
@@ -256,7 +237,8 @@ describe('RandomNumberProvider – compensating triangle distribution', () => {
       -5,
       5,
     );
-    // Do NOT call setSeed() - it clears the initial series value required for correlated distributions
+    // Do not call setSeed(); it clears the initial series value the correlated distributions
+    // need.
     const values = generateValues(rng, 100);
     for (const v of values) {
       expect(v).toBeGreaterThanOrEqual(-10);
@@ -265,9 +247,6 @@ describe('RandomNumberProvider – compensating triangle distribution', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Distribution list
-// ---------------------------------------------------------------------------
 describe('RandomNumberProvider – distribution list', () => {
   it('should create with correct distribution type', () => {
     const rng = RandomNumberProvider.createRandomNumberProvider_distributionList([1, 2, 3]);
@@ -293,9 +272,6 @@ describe('RandomNumberProvider – distribution list', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// getValueDouble – interpolation
-// ---------------------------------------------------------------------------
 describe('RandomNumberProvider – getValueDouble', () => {
   it('should interpolate between list values', () => {
     const rng = RandomNumberProvider.createRandomNumberProvider_distributionList([0, 10]);
@@ -316,19 +292,17 @@ describe('RandomNumberProvider – getValueDouble', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Index guards (PARITY.md, "Fixed bugs", P4)
+// Index guards (PARITY.md, "Fixed bugs", P4).
 //
 // Unguarded, the three rejected classes failed in three different ways: getValue(NaN)
 // recursed with getValueDouble until the stack overflowed; getValue(Infinity) and huge finite
 // indices allocated for seconds and then threw a bare RangeError; and getValue(-Infinity) was
 // not pathological at all — it clamped to 0 and returned series[0], with
-// getValueDouble(-Infinity) returning NaN. All three are rejected now, the last one because a
+// getValueDouble(-Infinity) returning NaN. All three are rejected, the last one because a
 // silently wrong index is worse than one that throws.
 //
-// The guards are pure preconditions: the last three tests are what pins that, because a guard
-// that perturbed the draw sequence would change every rendered performance.
-// ---------------------------------------------------------------------------
+// The guards are pure preconditions: the last three tests pin that, because a guard that
+// perturbed the draw sequence would change every rendered performance.
 describe('RandomNumberProvider – index guards', () => {
   const uniform = () => RandomNumberProvider.createRandomNumberProvider_uniformDistribution(0, 100);
 
@@ -365,7 +339,7 @@ describe('RandomNumberProvider – index guards', () => {
     expect(() => uniform().getValue(NaN)).toThrow(MeicoError);
   });
 
-  // --- the sequence-identity half: a guard that drew would be a silent renderer change ---
+  // The sequence-identity half: a guard that drew would be a silent renderer change.
 
   it('draws nothing when it rejects', () => {
     const rng = RandomNumberProvider.createRandomNumberProvider_uniformDistribution(0, 100);
@@ -399,8 +373,8 @@ describe('RandomNumberProvider – index guards', () => {
 
     for (const [i, rng] of build().entries()) {
       // setSeed clears the series unconditionally, which for the list distribution discards
-      // the list itself and leaves getValue reading series[i % 0]. Pre-existing, unrelated to
-      // the guards, and not TD2's to repair — see the [TD2] worker DISCOVERED note.
+      // the list itself and leaves getValue reading series[i % 0]. A pre-existing defect,
+      // unrelated to the guards, hence the exclusion here rather than a repair.
       if (rng.getDistributionType() !== RandomNumberProvider.DISTRIBUTION_LIST) {
         rng.setSeed(777);
         rng.setInitialValue(50);

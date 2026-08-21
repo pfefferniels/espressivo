@@ -103,9 +103,6 @@ function makeHeader(defs: OrnamentDef[], styleName = 'orn style'): Header {
 }
 
 describe('OrnamentationMap', () => {
-  // ---------------------------------------------------------------
-  // Create an ornamentation map
-  // ---------------------------------------------------------------
   describe('createOrnamentationMap', () => {
     it('should create an empty ornamentation map', () => {
       const map = OrnamentationMap.createOrnamentationMap();
@@ -126,9 +123,6 @@ describe('OrnamentationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Add ornament
-  // ---------------------------------------------------------------
   describe('addOrnament', () => {
     it('should add an ornament with required parameters only', () => {
       const map = OrnamentationMap.createOrnamentationMap();
@@ -238,9 +232,6 @@ describe('OrnamentationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // addOrnamentFromData
-  // ---------------------------------------------------------------
   describe('addOrnamentFromData', () => {
     it('should return -1 if no ornamentDef and no ornamentDefName', () => {
       const map = OrnamentationMap.createOrnamentationMap();
@@ -267,9 +258,6 @@ describe('OrnamentationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // getOrnamentDataOf
-  // ---------------------------------------------------------------
   describe('getOrnamentDataOf', () => {
     it('should return null for an empty map', () => {
       const map = OrnamentationMap.createOrnamentationMap();
@@ -292,12 +280,6 @@ describe('OrnamentationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // OrnamentData
-  // ---------------------------------------------------------------
-  // The `readOrnament` cases below used to build their data with a `new OrnamentData(xml)`
-  // constructor; see that helper's doc for what the two readers disagreed on. Nothing was
-  // weakened in the move — the same assertions run against the reader the renderer uses.
   describe('OrnamentData', () => {
     it('should have correct default values', () => {
       const od = new OrnamentData();
@@ -441,20 +423,15 @@ describe('OrnamentationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // renderOrnamentationToMap / static wrappers
-  // ---------------------------------------------------------------
   describe('render methods', () => {
     it('renderOrnamentationToMap with null map does not throw', () => {
       const map = OrnamentationMap.createOrnamentationMap();
       map.addOrnament(0, 'trill');
-      // Should not throw
       map.renderOrnamentationToMap(null);
     });
 
     it('static renderOrnamentationToMap with null ornamentation map does not throw', () => {
       const target = okValue(GenericMap.createGenericMap('positionMap'));
-      // Should not throw
       OrnamentationMap.renderOrnamentationToMap(target, null);
     });
 
@@ -463,9 +440,6 @@ describe('OrnamentationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // GenericMap operations on OrnamentationMap
-  // ---------------------------------------------------------------
   describe('GenericMap operations', () => {
     it('should support removeElement by index', () => {
       const map = OrnamentationMap.createOrnamentationMap();
@@ -508,9 +482,6 @@ describe('OrnamentationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  getOrnamentDataOf with a resolvable style
-  // ---------------------------------------------------------------
   describe('getOrnamentDataOf with a style', () => {
     function mapWithStyle(): OrnamentationMap {
       const map = OrnamentationMap.createOrnamentationMap();
@@ -620,10 +591,8 @@ describe('OrnamentationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  Ornament rendering - parity with the Java reference fixture
-  //  tests/integration/fixtures/all-maps-reference/ornamentation*.
-  // ---------------------------------------------------------------
+  // Parity with the Java reference fixture,
+  // tests/integration/fixtures/all-maps-reference/ornamentation*.
   describe('renderOrnamentationToMap', () => {
     it('should apply a tick arpeggio exactly as the Java reference does', () => {
       // reference fixture, orn1: <ornament date="0.0" name.ref="arpeggio"/>
@@ -887,9 +856,6 @@ describe('OrnamentationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  Rendering the modifier attributes into performance attributes
-  // ---------------------------------------------------------------
   describe('non-milliseconds modifier rendering', () => {
     /** an ornamentationMap without headers only renders modifiers, it does not apply ornaments */
     function modifierOnlyMap(): OrnamentationMap {
@@ -995,9 +961,6 @@ describe('OrnamentationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  renderMillisecondsModifiersToMap
-  // ---------------------------------------------------------------
   describe('renderMillisecondsModifiersToMap', () => {
     const ornMap = () => OrnamentationMap.createOrnamentationMap();
 
@@ -1075,9 +1038,6 @@ describe('OrnamentationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  Global ornamentation
-  // ---------------------------------------------------------------
   describe('renderGlobalOrnamentationToParts', () => {
     it('should spread one ornament across the notes of all parts', () => {
       const a1 = makePerformedNote('a1', 0, 60);
@@ -1144,9 +1104,6 @@ describe('OrnamentationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  Ornaments that cannot be resolved
-  // ---------------------------------------------------------------
   describe('unresolvable ornaments', () => {
     it('should not touch the notes when no header is available', () => {
       const n = makePerformedNote('n1', 0, 60);
@@ -1235,9 +1192,6 @@ describe('OrnamentationMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  OrnamentData.apply
-  // ---------------------------------------------------------------
   describe('OrnamentData.apply', () => {
     it('should return an empty list and change nothing without an ornamentDef', () => {
       const od = new OrnamentData();
@@ -1331,12 +1285,8 @@ describe('OrnamentationMap', () => {
   });
 });
 
-// ==========================================================================
-//  MPM v3 — note pool, repetitions, noteid (DESIGN.md D1, D7, D9, D12)
-//
-//  ADDITIVE. Nothing above was weakened; the first suite here pins the v2 writer
-//  byte for byte, which is the contract the v3 additions had to fit around.
-// ==========================================================================
+// MPM v3 — note pool, repetitions, noteid (DESIGN.md D1, D7, D9, D12). The first suite here
+// pins the v2 writer byte for byte, which is the contract the v3 additions fit around.
 
 const MPM_NS = 'http://www.cemfi.de/mpm/ns/1.0';
 
@@ -1352,18 +1302,12 @@ function ornamentElement(body: string): Element {
 
 /**
  * Read an `<ornament>` element the way the renderer does — through
- * `OrnamentationMap.getOrnamentDataOf`, inside a map with a style in scope and a def the
- * style knows.
+ * `OrnamentationMap.getOrnamentDataOf`, inside a map with a style in scope and a def the style
+ * knows. Both are required: `getOrnamentDataOf` returns null for an ornament missing either,
+ * and `apply` skips it.
  *
- * The cases below used to build their data with `readOrnament(xml)`. That constructor
- * was deleted because nothing in `src/` called it and it disagreed with both live readers:
- * it resolved neither the style nor the `ornamentDef`, where `getOrnamentDataOf` REFUSES an
- * ornament missing either (`return null`) and `apply` skips it — so every object it built
- * was in a state the renderer treats as unusable. It also dereferenced `@date` and
- * `@name.ref` unguarded, throwing where both live readers decline.
- *
- * The five defs are every `name.ref` this file uses; they carry no transformers because
- * these cases assert what was READ off the element, not what it renders to.
+ * The five defs are every `name.ref` this file uses. They carry no transformers, because these
+ * cases assert what was read off the element and not what it renders to.
  */
 function readOrnament(element: Element): OrnamentData {
   const map = OrnamentationMap.createOrnamentationMap();
@@ -1403,8 +1347,8 @@ function captureErrors(run: () => void): string[] {
 }
 
 describe('addOrnament — v2 byte stability (DESIGN.md D6/D12)', () => {
-  // Captured from the committed behaviour (branch ornamentation-v3 @ cd140e1, before W3).
-  // Whole-string assertions, so attribute ORDER is pinned along with the values.
+  // Captured from the committed behaviour at `cd140e1`. Whole-string assertions, so attribute
+  // order is pinned along with the values.
   const CASES: readonly (readonly [string, () => Element, string])[] = [
     [
       'required parameters only',
@@ -1523,10 +1467,9 @@ describe('OrnamentData — v3 fields', () => {
   });
 
   it('should fall back to 0 for an unusable repeat count, and say so every time', () => {
-    // W9 (D16 ruling, PARITY.md §6.8): `''` used to parse as 0 through `Number` and take the
-    // default **silently** — the one unusable value that reported nothing. `parseJavaDouble`
-    // rejects it as Java does, so every row here now logs. The values are unchanged; what
-    // changed is that the empty attribute stopped being a quiet special case.
+    // D16 ruling, PARITY.md §6.8: `parseJavaDouble` rejects `''` as Java does, so an empty
+    // attribute logs and takes the default rather than parsing as 0 through `Number`. Every
+    // row here therefore logs.
     for (const value of ['many', '', '-2', 'NaN', '0x10']) {
       let od: OrnamentData | null = null;
       const messages = captureErrors(() => {
@@ -1538,8 +1481,8 @@ describe('OrnamentData — v3 fields', () => {
   });
 
   it('should read Java’s own numeric spellings of a repeat count', () => {
-    // `3d` is a legal Java double literal and `Number('3d')` is NaN, so this row moved from
-    // "unusable, default 0" to "three extra passes" with the D16 switch.
+    // `3d` is a legal Java double literal where `Number('3d')` is NaN, so under D16 it is
+    // three extra passes rather than an unusable value taking the default.
     const od = ornamentDataOf('date="0.0" name.ref="trill" repetitions="3d"/>');
     expect(od.repetitions).toBe(3);
   });
@@ -1659,17 +1602,13 @@ describe('OrnamentationMap — reading v3 ornaments', () => {
   });
 
   /**
-   * INVERTED by W5, and its predecessor's own comment said it would be. W3 pinned that an
-   * ornament carrying v3 attributes still produced exactly the v2 arpeggio markers, because
-   * "nothing downstream consumes them yet — that is the renderer wave". W5 is that wave: the
-   * DESIGN.md D6 gate now diverts such an ornament off the v2 path entirely, so the v2 markers
-   * are precisely what must NOT appear.
+   * The DESIGN.md D6 gate diverts an ornament carrying v3 attributes off the v2 path entirely,
+   * so the v2 arpeggio markers are precisely what must not appear.
    *
-   * Assertion strength is preserved rather than reduced: where the old test named the three
-   * `date.perf` values and two velocities the v2 path produces, this one asserts that none of
-   * them moved *and* that no marker was written *and* that the ornament was skipped rather
-   * than half-rendered — and the case that used to be untestable, the same ornament with a
-   * `note.order` it can actually play, is pinned next to it.
+   * All three claims are asserted, because any two of them can hold while the ornament is
+   * half-rendered: none of the v2 numbers moved, no marker was written, and the ornament was
+   * skipped rather than half-played. The same ornament with a `note.order` it can actually
+   * play is pinned next to it.
    */
   it('should divert an ornament with v3 attributes off the v2 path (D6)', () => {
     const n1 = makePerformedNote('n1', 0, 60);
@@ -1984,31 +1923,25 @@ describe('addOrnament — the v3 options form (DESIGN.md D12)', () => {
     for (const data of [withNoteid, withRepetitions, withPool]) {
       const m = OrnamentationMap.createOrnamentationMap();
       m.addOrnamentFromData(data);
-      // the v3 form always writes scale; the v2 form would have omitted it at 0.0... no:
-      // the v2 form omits it only at 1.0, so the discriminating marker is the v3 attribute
-      // itself plus scale being present for a default-constructed (scale 0.0) data object
+      // The v2 form omits scale only at 1.0, so what discriminates the two writers here is the
+      // v3 attribute itself plus scale being present for a default-constructed (0.0) datum.
       expect(m.getElement(0)!.getAttributeValue('scale')).toBe('0');
     }
   });
 });
 
-// ---------------------------------------------------------------
-// The two copies of renderMillisecondsModifiersToMap
-// ---------------------------------------------------------------
 describe('OrnamentationMap — the duplicated millisecond pass', () => {
   /**
    * `Performance` carries a private static copy of
-   * {@link OrnamentationMap.renderMillisecondsModifiersToMap}, and **that copy is the one the
-   * pipeline runs** — this class's is Java-parity code no fixture reaches (architecture brief
-   * §2.5, `docs/history/refactor/log.md:2376-2401`). T19 measured the two bodies character-identical and
-   * ruled the duplication stays, noting that nothing keeps them in step.
+   * {@link OrnamentationMap.renderMillisecondsModifiersToMap}, and that copy is the one the
+   * pipeline runs; this class's is Java-parity code no fixture reaches (architecture brief
+   * §2.5, `docs/history/refactor/log.md:2376-2401`). The duplication stays deliberately, and
+   * nothing else keeps the two bodies in step.
    *
-   * W5 had to edit both (the MPM v3 `ornament.milliseconds.fromend.offset` branch of the D5
-   * amendment), so it leaves this behind: the drift guard that was missing. It is deliberately
-   * two assertions, because either alone can pass while the copies have diverged —
-   * source-text equality would not notice `parseFloat` vs `Number`-shaped semantics if both
-   * were spelled the same way, and behavioural equality on one input would not notice a branch
-   * neither input reaches.
+   * The guard is two assertions, because either alone can pass while the copies have diverged:
+   * source-text equality would not notice `parseFloat` versus `Number`-shaped semantics if
+   * both were spelled the same way, and behavioural equality on one input would not notice a
+   * branch neither input reaches.
    */
   describe('parity between the two copies of renderMillisecondsModifiersToMap', () => {
     /** A method body, brace to brace, cut out of the TypeScript source. */
@@ -2110,7 +2043,7 @@ describe('OrnamentationMap — the duplicated millisecond pass', () => {
 
       const viaPerformance = build();
       // `private static`, so the cast is the only way in; it is a member of the emitted class
-      // like any other, and reaching it here is the whole point of the test.
+      // like any other.
       (
         Performance as unknown as {
           renderMillisecondsModifiersToMap: (
@@ -2121,8 +2054,7 @@ describe('OrnamentationMap — the duplicated millisecond pass', () => {
       ).renderMillisecondsModifiersToMap(viaPerformance, OrnamentationMap.createOrnamentationMap());
 
       expect(read(viaPerformance)).toEqual(read(viaOrnamentationMap));
-      // and the values are the ones the semantics call for, so the test is not just
-      // "two wrongs agree"
+      // and the values are the ones the semantics call for, so this is not two wrongs agreeing
       expect(read(viaOrnamentationMap)).toEqual([
         'plain:1000/2000',
         'offset:970/2000',

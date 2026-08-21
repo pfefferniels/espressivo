@@ -69,9 +69,6 @@ it('the corpus this file probes against is actually there', () => {
   expect(everyElement(documents[0].root).length).toBeGreaterThan(50);
 });
 
-// ---------------------------------------------------------------------------
-// descendantElements — replaced `query("descendant::*[…]")`
-// ---------------------------------------------------------------------------
 describe('descendantElements agrees with the XPath descendant axis', () => {
   /** The three predicates the port actually uses, with their original expressions. */
   const cases: { readonly xpath: string; readonly predicate: (e: Element) => boolean }[] = [
@@ -149,9 +146,6 @@ describe('descendantElements agrees with the XPath descendant axis', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// reverseDescendantElements — replaced `descendantElements(…)` read back to front
-// ---------------------------------------------------------------------------
 describe('reverseDescendantElements is descendantElements read backwards, lazily', () => {
   /**
    * The claim is exactly this: same elements, reversed. Both call sites — `addToMap` and
@@ -253,9 +247,6 @@ describe('reverseDescendantElements is descendantElements read backwards, lazily
   });
 });
 
-// ---------------------------------------------------------------------------
-// allChildElements / firstChildElement — replaced `query("child::*[…]")`
-// ---------------------------------------------------------------------------
 describe('the child-axis helpers agree with the XPath they replaced', () => {
   it('allChildElements(parent, name) matches child::*[local-name()=name]', () => {
     for (const { name, root } of documents) {
@@ -336,11 +327,8 @@ describe('the child-axis helpers agree with the XPath they replaced', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// the sibling walkers — replaced a scan of the whole child-element list per step
-// ---------------------------------------------------------------------------
 describe('the sibling walkers agree with the scans they replaced', () => {
-  /** `getNextSiblingElement(name, ofThis)` as it was written before T-perf. */
+  /** `getNextSiblingElement(name, ofThis)` as it was written before the rewrite. */
   function nextByBackwardScan(name: string, ofThis: Element): Element | null {
     const parent = ofThis.getParent();
     if (parent === null) return null;
@@ -353,7 +341,7 @@ describe('the sibling walkers agree with the scans they replaced', () => {
     return null;
   }
 
-  /** `getPreviousSiblingElement(name, ofThis)` as it was written before T-perf. */
+  /** `getPreviousSiblingElement(name, ofThis)` as it was written before the rewrite. */
   function previousByForwardScan(name: string, ofThis: Element): Element | null {
     const parent = ofThis.getParent();
     if (parent === null) return null;
@@ -410,9 +398,6 @@ describe('the sibling walkers agree with the scans they replaced', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Element.indexOf — memoised, and must not drift from Array.prototype.indexOf
-// ---------------------------------------------------------------------------
 describe('the memoised indexOf tracks every child mutation', () => {
   it('answers as Array.prototype.indexOf would after each step of a mutation script', () => {
     const parent = new Element('dated');
@@ -465,11 +450,8 @@ describe('the memoised indexOf tracks every child mutation', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Element.reorderChildren — replaced GenericMap.sortXml's remove/insert loop
-// ---------------------------------------------------------------------------
 describe('reorderChildren produces what the remove-and-insert loop produced', () => {
-  /** `GenericMap.sortXml` as it was written before T-perf. */
+  /** `GenericMap.sortXml` as it was written before the rewrite. */
   function byRemoveInsertLoop(parent: Element, order: readonly XomNode[]): void {
     for (let i = 0; i < order.length; ++i) {
       parent.removeChild(order[i]);
@@ -543,9 +525,6 @@ describe('reorderChildren produces what the remove-and-insert loop produced', ()
   });
 });
 
-// ---------------------------------------------------------------------------
-// A guard on the shape of the whole thing: these are linear, not quadratic.
-// ---------------------------------------------------------------------------
 describe('the rewritten primitives are linear in the size of the document', () => {
   /** Build a map of `n` dated children, the shape a `<score>` has. */
   function scoreOf(n: number): Element {

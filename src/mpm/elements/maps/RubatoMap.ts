@@ -27,12 +27,8 @@ export class RubatoMap extends GenericMap {
   }
 
   /**
-   * A fresh, empty `<rubatoMap>`, or one read from an existing element.
-   *
-   * The two overloads return different things and that is the point. Building an empty
-   * map consults nothing the caller supplied, so it cannot fail and says so; reading an
-   * element can, and returns the reason instead of printing it. See
-   * {@link GenericMap.emptyMapElement}.
+   * A fresh, empty `<rubatoMap>`, or one read from an existing element. The empty form is
+   * total, the parsing one is not; see {@link GenericMap.emptyMapElement}.
    */
   static createRubatoMap(): RubatoMap;
   static createRubatoMap(xml: Element): Result<RubatoMap, MpmParseError>;
@@ -99,12 +95,12 @@ export class RubatoMap extends GenericMap {
    * entry is not a `<rubato>`, or if no `frameLength` can be determined — without a frame
    * there is nothing to warp, so that case is a hard reject rather than a default.
    *
-   * This method's whole job is to say which of the five parameters the *element* declares;
+   * This method says which of the five parameters the *element* declares;
    * {@link resolveRubato} owns what to do about the rest — inherit from the `rubatoDef`,
-   * fall back to the identity warp, clamp the window, or reject. Note that "declares" means
-   * carries the attribute, not carries a usable value: `parseFloat` of a malformed value is
-   * `NaN`, which is not nullish and therefore still beats the def. That is the incumbent's
-   * behaviour and `tests/comparison/malformedValues.test.ts` pins it.
+   * fall back to the identity warp, clamp the window, or reject. "Declares" means carries the
+   * attribute, not carries a usable value: `parseFloat` of a malformed value is `NaN`, which
+   * is not nullish and therefore still beats the def.
+   * `tests/comparison/malformedValues.test.ts` pins that.
    *
    * The `rubatoDef` is resolved only through a style in scope; a `@name.ref` with no style
    * switched on resolves to nothing, and the instruction then stands on its own attributes.
@@ -213,10 +209,8 @@ export class RubatoMap extends GenericMap {
         }
       }
 
-      // A prefix drain, and it always was: the loop this replaces spliced entry `i` out and
-      // stepped `i` back on every pass that did not `break`, so `i` never left 0. Counting
-      // the run and splicing it once is the same removal without the shift-the-whole-array
-      // cost per entry — the same rewrite `ImprecisionMap`'s pending durations already had.
+      // A prefix drain: the entries are date-ordered, so the run that this rubato warps ends
+      // at the first one it does not, and the whole run is spliced off in one step.
       let drained = 0;
       for (const pd of pendingDurations) {
         const dateEnd = pd.getKey();

@@ -19,9 +19,7 @@ function buildMap(name: string, entries: [string, number | null][]): Element {
 }
 
 describe('AbstractMsm', () => {
-  // ---------------------------------------------------------------
-  // makePart (AbstractMsm.java:108-132)
-  // ---------------------------------------------------------------
+  // AbstractMsm.java:108-132
   describe('makePart', () => {
     it('should build a bare part with header and dated but no MSM maps', () => {
       const part = AbstractMsm.makePart('Piano', 1, 0, 0);
@@ -47,9 +45,7 @@ describe('AbstractMsm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // getElementAtAfter (AbstractMsm.java:141-164)
-  // ---------------------------------------------------------------
+  // AbstractMsm.java:141-164
   describe('getElementAtAfter', () => {
     it('should return the first element at the exact date', () => {
       const map = buildMap('score', [
@@ -141,9 +137,7 @@ describe('AbstractMsm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // getElementBeforeAt (AbstractMsm.java:173-197)
-  // ---------------------------------------------------------------
+  // AbstractMsm.java:173-197
   describe('getElementBeforeAt', () => {
     it('should return the last element at the exact date', () => {
       const map = buildMap('score', [
@@ -225,9 +219,7 @@ describe('AbstractMsm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // deleteEmptyMaps (AbstractMsm.java:203-212)
-  // ---------------------------------------------------------------
+  // AbstractMsm.java:203-212
   describe('deleteEmptyMaps', () => {
     it('should do nothing on an empty document', () => {
       const msm = new Msm();

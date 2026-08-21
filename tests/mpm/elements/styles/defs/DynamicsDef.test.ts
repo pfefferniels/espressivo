@@ -63,10 +63,6 @@ describe('DynamicsDef', () => {
     });
   });
 
-  // WAS: `parseData` re-applied to a second element. See the same note in `TempoDef.test.ts`
-  // — `@name` and `@value` are required, so they are read by the factory and handed to
-  // `readonly` constructor parameters, which is what let `AbstractDef`'s `name!` go. The
-  // parse itself is observed by the from-XML cases above; this pins what replaced it.
   describe('the identity attributes are bound at construction', () => {
     it('writes through the very attribute nodes the parse read', () => {
       const xml = dynamicsDefElement({ name: 'pp', value: '36.0' });

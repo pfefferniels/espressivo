@@ -58,7 +58,7 @@ const BASE: ExpansionInput = {
   frameNoteBudget: null,
 };
 
-/** Parse a `note.order` with W2's parser and assert it is a list (keywords never reach W4). */
+/** Parse a `note.order` and assert it is a list — a keyword never reaches the expander. */
 function asList(raw: string): NoteOrderList {
   const parsed = parseNoteOrder(raw);
   expect(parsed).not.toBeNull();
@@ -292,7 +292,7 @@ describe('expandOrnament — repetition expansion (rule 3)', () => {
   it('plays a group repetitions+1 times: the spec exemplum trill, 3 → 8 slots', () => {
     // DESIGN.md §5 vector 3 / spec exemplum: "repeating the trill pattern three times within
     // the time frame … So, it is played four times." Group is #up #P, so 4 × 2 = 8 slots, and
-    // the group does NOT start on the principal pitch, so no landing note is appended.
+    // the group does not start on the principal pitch, so no landing note is appended.
     const result = run('|: #up #P :|', { repetitions: 3 });
     expect(pitches(result)).toEqual([61, 60, 61, 60, 61, 60, 61, 60]);
     expect(landings(result)).toEqual(Array<boolean>(8).fill(false));
@@ -307,7 +307,7 @@ describe('expandOrnament — repetition expansion (rule 3)', () => {
   });
 
   it('expands in place, leaving the tail behind the last pass', () => {
-    // 1 + 3·2 + 1 = 8 slots. The reference gets 6 here (≠Lars): it reuses its fill-the-budget
+    // 1 + 3·2 + 1 = 8 slots. The reference gets 6 here: it reuses its fill-the-budget
     // loop with a budget of (r+1)·groupLen and charges the *whole* sequence against it, so the
     // #msm and #abs slots eat one of the three passes.
     expect(pitches(run('#msm |: #up #dn :| #abs', { repetitions: 2 }))).toEqual([
@@ -710,9 +710,8 @@ describe('expandOrnament — properties', () => {
 });
 
 /**
- * `Slot.repetitionPass` — the additive field the conductor's 2026-08-09 "D10 provenance
- * extension" ruling asked for, so that W5 can stamp `ornament.pass` onto a generated note and
- * a consumer can tell the third turn of a trill from the first.
+ * `Slot.repetitionPass` carries the provenance a generated note's `ornament.pass` is stamped
+ * from, so a consumer can tell the third turn of a trill from the first.
  */
 describe('expandOrnament — repetitionPass (D10 provenance extension)', () => {
   /** Every slot's pass number, `null` where the slot carries none. */

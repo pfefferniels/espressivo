@@ -6,11 +6,6 @@ import {
   pulseDuration2decimal,
 } from '../../src/music/duration.js';
 
-// Moved verbatim from tests/mei/Helper.test.ts by T14: duration conversions.
-
-// ---------------------------------------------------------------------------
-// duration2decimal
-// ---------------------------------------------------------------------------
 describe('duration2decimal', () => {
   it('should convert "maxima" to 8.0', () => {
     expect(duration2decimal('maxima')).toBe(8.0);
@@ -78,13 +73,6 @@ describe('duration2decimal', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// getAttribute – various namespace scenarios
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// duration2word
-// ---------------------------------------------------------------------------
 describe('duration2word', () => {
   it('should convert numeric durations to words', () => {
     expect(duration2word('1')).toBe('whole');
@@ -110,13 +98,6 @@ describe('duration2word', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// extractAllIntegersFromString
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// pulseDuration2decimal
-// ---------------------------------------------------------------------------
 describe('pulseDuration2decimal', () => {
   it('should convert pulse duration to decimal based on ppq', () => {
     // 720 pulses at ppq=720 = 720/(720*4) = 0.25 (quarter note)
@@ -129,13 +110,6 @@ describe('pulseDuration2decimal', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// addToListAttribute
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// decimalDuration2HtmlUnicode
-// ---------------------------------------------------------------------------
 describe('decimalDuration2HtmlUnicode', () => {
   it('should map the plain note values onto their musical symbols', () => {
     expect(decimalDuration2HtmlUnicode(1.0, false)).toBe('&#119133;'); // whole
@@ -186,7 +160,3 @@ describe('decimalDuration2HtmlUnicode', () => {
     expect(decimalDuration2HtmlUnicode(16.0, true)).toBe('rest');
   });
 });
-
-// ---------------------------------------------------------------------------
-// accidental conversions – the remaining cases
-// ---------------------------------------------------------------------------

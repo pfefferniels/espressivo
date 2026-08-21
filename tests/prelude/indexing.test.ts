@@ -9,13 +9,10 @@ import {
 } from '../../src/prelude/seq.js';
 
 /**
- * The checked readers — the most-used thing in the prelude, at ~129 call sites, and until now
- * untested anywhere.
+ * The checked readers — the most-used thing in the prelude, at ~129 call sites.
  *
- * The gap was introduced by consolidation rather than by omission: `src/comparison/indexing.ts`
- * and `src/mei/indexing.ts` were folded into `seq.ts`, and their tests went with the modules.
- * Nothing noticed, because every caller is covered by its own suite — which is exactly the
- * shape of blind spot this campaign kept finding, arriving this time in our own vocabulary.
+ * Every caller is covered by its own suite, so a defect here surfaces as somebody else's
+ * failure rather than as its own. These are the tests that fail on their own terms.
  */
 describe('elementAt', () => {
   it('returns the element at an index in range', () => {
@@ -34,16 +31,14 @@ describe('elementAt', () => {
   });
 
   /**
-   * The distinction that cost three red tests when this function briefly used
-   * `xs[index] ?? outOfRange(...)`.
+   * Why this cannot be `xs[index] ?? outOfRange(...)`: `??` treats a null element as a
+   * missing one. `RandomNumberProvider.series` is declared `number[]` and genuinely holds
+   * `null` on a documented degenerate path, where the null coerces to 0 and produces the
+   * delta-0 that `tests/comparison/imprecisionLaws.test.ts` pins, so reading it as a miss and
+   * throwing breaks a modelled behaviour.
    *
-   * `??` treats a null ELEMENT as a missing one. `RandomNumberProvider.series` is declared
-   * `number[]` and genuinely holds `null` on a documented degenerate path, where the null
-   * coerces to 0 and produces the delta-0 that `tests/comparison/imprecisionLaws.test.ts`
-   * pins — so reading it as a miss and throwing broke a modelled behaviour.
-   *
-   * The signature's `NonNullable` constraint stops an honest caller reaching this, so the cast
-   * here stands in for the type that lies about itself.
+   * The signature's `NonNullable` constraint stops an honest caller reaching this, so the
+   * cast here stands in for the type that lies about itself.
    */
   it('does not treat a null element as a missing one', () => {
     const lying = [null, 1] as unknown as number[];

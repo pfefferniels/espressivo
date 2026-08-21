@@ -18,15 +18,9 @@ import {
 import { EventMaker } from '../../src/midi/EventMaker.js';
 
 describe('Midi', () => {
-  // ---------------------------------------------------------------
-  // Construction
-  // ---------------------------------------------------------------
   describe('construction', () => {
     it('should create an empty MIDI with default PPQ of 720', () => {
       const midi = Midi.empty();
-      // `isEmpty()` used to be asserted here; it answered "the sequence field is null",
-      // which is now unrepresentable, so this asserts what the test meant instead — the
-      // sequence exists and carries nothing yet.
       expect(midi.getSequence().getTracks()).toHaveLength(0);
       expect(midi.getPPQ()).toBe(720);
     });
@@ -51,9 +45,6 @@ describe('Midi', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // File management
-  // ---------------------------------------------------------------
   describe('file management', () => {
     it('should get and set the file name', () => {
       const midi = Midi.empty();
@@ -63,9 +54,6 @@ describe('Midi', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Add tracks and events
-  // ---------------------------------------------------------------
   describe('tracks and events', () => {
     it('should create a track on the sequence', () => {
       const midi = Midi.empty(480);
@@ -114,14 +102,12 @@ describe('Midi', () => {
 
     it('should report the correct MIDI file format', () => {
       const midi = Midi.empty(480);
-      // No tracks: trackCount is 0, which is <= 1, so format 0
+      // a track count of 0 or 1 is format 0, more than 1 is format 1
       expect(midi.getMidiFileFormat()).toBe(0);
 
-      // Create one track
       midi.getSequence().createTrack();
       expect(midi.getMidiFileFormat()).toBe(0);
 
-      // Create a second track
       midi.getSequence().createTrack();
       expect(midi.getMidiFileFormat()).toBe(1);
     });
@@ -140,9 +126,6 @@ describe('Midi', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Export to MIDI binary format
-  // ---------------------------------------------------------------
   describe('exportMidi', () => {
     it('should export a valid MIDI binary with MThd header', () => {
       const midi = Midi.empty(480);
@@ -152,9 +135,8 @@ describe('Midi', () => {
 
       const data = midi.exportMidi();
       expect(data).not.toBeNull();
-      expect(data!.length).toBeGreaterThan(14); // at least header + some track data
+      expect(data!.length).toBeGreaterThan(14); // the MThd header alone is 14 bytes
 
-      // Verify MThd header
       expect(String.fromCharCode(data![0], data![1], data![2], data![3])).toBe('MThd');
     });
 
@@ -201,10 +183,9 @@ describe('Midi', () => {
 
     it('should return null when sequence is null', () => {
       const midi = Midi.empty();
-      // Replace the internal sequence to simulate null
+      // Nulling the sequence takes a cast; through the public API only the valid case
+      // below is reachable.
       midi.setSequence(null as any);
-      // We can't actually set it to null through the public API,
-      // but exportMidi on a valid midi should work
       const validMidi = Midi.empty(480);
       validMidi.getSequence().createTrack();
       const data = validMidi.exportMidi();
@@ -221,22 +202,18 @@ describe('Midi', () => {
       const data = midi.exportMidi();
       expect(data).not.toBeNull();
 
-      // Parse the exported data back
       const midi2 = Midi.fromBytes(data);
       expect(midi2.getPPQ()).toBe(480);
       expect(midi2.getSequence().getTracks().length).toBe(1);
     });
   });
 
-  // ---------------------------------------------------------------
-  // noteOns2NoteOffs / noteOffs2NoteOns
-  // ---------------------------------------------------------------
   describe('noteOns2NoteOffs', () => {
     it('should convert noteOn with velocity 0 to noteOff', () => {
       const midi = Midi.empty(480);
       const track = midi.getSequence().createTrack();
       track.add(EventMaker.createNoteOn(0, 0, 60, 100));
-      track.add(EventMaker.createNoteOn(0, 480, 60, 0)); // noteOn vel=0
+      track.add(EventMaker.createNoteOn(0, 480, 60, 0));
 
       const changed = midi.noteOns2NoteOffs();
       expect(changed).toBe(1);
@@ -270,9 +247,6 @@ describe('Midi', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // addOffset
-  // ---------------------------------------------------------------
   describe('addOffset', () => {
     it('should add tick offset to all events', () => {
       const midi = Midi.empty(480);
@@ -293,7 +267,7 @@ describe('Midi', () => {
 
       midi.addOffset(-200);
 
-      expect(track.get(0).getTick()).toBe(0); // clamped to 0
+      expect(track.get(0).getTick()).toBe(0);
     });
 
     it('should do nothing when offset is 0', () => {
@@ -306,9 +280,6 @@ describe('Midi', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // cloneSequence
-  // ---------------------------------------------------------------
   describe('cloneSequence', () => {
     it('should create a deep copy of the sequence', () => {
       const midi = Midi.empty(480);
@@ -322,15 +293,11 @@ describe('Midi', () => {
       expect(clone!.getTracks().length).toBe(1);
       expect(clone!.getTracks()[0].size()).toBe(2);
 
-      // Verify it's a deep copy by modifying the clone
       clone!.getTracks()[0].get(0).setTick(999);
       expect(track.get(0).getTick()).toBe(0); // original unchanged
     });
   });
 
-  // ---------------------------------------------------------------
-  // convertPPQ
-  // ---------------------------------------------------------------
   describe('convertPPQ', () => {
     it('should convert event ticks when PPQ changes', () => {
       const midi = Midi.empty(480);
@@ -356,9 +323,6 @@ describe('Midi', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // getTempoData
-  // ---------------------------------------------------------------
   describe('getTempoData', () => {
     it('should extract tempo data from the sequence', () => {
       const midi = Midi.empty(480);
@@ -384,9 +348,6 @@ describe('Midi', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // getPPQ / SMPTE timing
-  // ---------------------------------------------------------------
   describe('getPPQ', () => {
     it('should throw when the sequence uses SMPTE timing instead of PPQ', () => {
       const midi = new Midi(new Sequence(Sequence.SMPTE_25, 40));
@@ -394,17 +355,10 @@ describe('Midi', () => {
     });
 
     it('should report format 0 for a sequence with no tracks', () => {
-      // This replaces 'should report format 1 for a null sequence', which reached its
-      // branch through `setSequence(null as unknown as Sequence)`. The field is total now,
-      // so that input no longer exists; the rule that survives is the track-count one, and
-      // the zero-track end of it had no test.
       expect(Midi.empty().getMidiFileFormat()).toBe(0);
     });
   });
 
-  // ---------------------------------------------------------------
-  // convertPPQ – edge cases
-  // ---------------------------------------------------------------
   describe('convertPPQ – edge cases', () => {
     it('should truncate rather than round a tick that does not divide evenly', () => {
       // Java computes (tick * ppq) / ppqOld in long arithmetic, i.e. it truncates
@@ -439,7 +393,6 @@ describe('Midi', () => {
       const tracks = midi.getSequence().getTracks();
       expect(tracks.length).toBe(2);
       expect(tracks[0].get(0).getTick()).toBe(960);
-      // the original event objects are not reused
       expect(tracks[0].get(0)).not.toBe(t0.get(0));
       expect(shortData1(tracks[1].get(0).getMessage() as ShortMessage)).toBe(42);
     });
@@ -450,9 +403,6 @@ describe('Midi', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // append
-  // ---------------------------------------------------------------
   describe('append', () => {
     it('should shift the appended events behind the current tick length', () => {
       const midi = Midi.empty(480);
@@ -532,19 +482,15 @@ describe('Midi', () => {
         .createTrack()
         .add(EventMaker.createNoteOn(0, 0, 60, 100));
 
-      // Was `append(null as unknown as Midi)` plus a Midi whose sequence had been nulled
-      // by cast — the two inputs `Midi.java`'s `(midi == null) || midi.isEmpty()` guard
-      // exists for. Neither is representable now, so this pins the reachable claim that
-      // guard was standing in for: appending a Midi with nothing in it changes nothing.
+      // `Midi.java` guards with `(midi == null) || midi.isEmpty()`. Neither input is
+      // representable here, so what is pinned is the claim that guard stood for: appending
+      // a Midi with nothing in it changes nothing.
       midi.append(Midi.empty(480));
 
       expect(midi.getSequence().getTracks()[0].size()).toBe(1);
     });
   });
 
-  // ---------------------------------------------------------------
-  // getMinimalPPQ
-  // ---------------------------------------------------------------
   describe('getMinimalPPQ', () => {
     it('should return 1 when every event sits on a quarter note', () => {
       const midi = Midi.empty(720);
@@ -612,9 +558,6 @@ describe('Midi', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // getMicrosecondLength
-  // ---------------------------------------------------------------
   describe('getMicrosecondLength', () => {
     it('should compute the length from the tempo events', () => {
       const midi = Midi.empty(480);
@@ -634,9 +577,6 @@ describe('Midi', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // print
-  // ---------------------------------------------------------------
   describe('print', () => {
     it('should report the message for a null sequence', () => {
       expect(Midi.print(null)).toBe('No midi data loaded.');
@@ -656,12 +596,10 @@ describe('Midi', () => {
     });
 
     // Every other test in this describe asserts with `toContain`, which says nothing about
-    // ORDER: reversing the track list, or the events inside a track, left all of them
-    // green. That was measured, not assumed — a control that reversed
-    // `sequence.getTracks()` passed 458 of 458. Java emits tracks in sequence order and
-    // events in tick order, and this file reproduces `Midi.java`'s print quirks down to the
-    // doubled space in "noteOn,  key:", so the one assertion that is worth having here is
-    // the whole string.
+    // order: a control that reversed `sequence.getTracks()` left them all green. Java emits
+    // tracks in sequence order and events in tick order, and this file reproduces
+    // `Midi.java`'s print quirks down to the doubled space in "noteOn,  key:", so the
+    // assertion worth having here is the whole string.
     it('should emit tracks in sequence order and events in tick order', () => {
       const midi = Midi.empty(480);
       const t0 = midi.getSequence().createTrack();
@@ -720,9 +658,6 @@ describe('Midi', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // readMidiData
-  // ---------------------------------------------------------------
   describe('readMidiData', () => {
     it('should reject data that does not start with MThd', () => {
       const data = new Uint8Array([0x4d, 0x54, 0x72, 0x6b, 0, 0, 0, 0]); // MTrk
@@ -853,12 +788,11 @@ describe('Midi', () => {
     });
 
     // A chunk length that outruns the file. The reader's loop bound tests where an *event*
-    // starts, so the delta time of the cut-off event is read happily and the status byte
-    // then falls off the end. That read used to yield `undefined`, which compares false
-    // against every status test, so the truncated event arrived as a channel message on
-    // command 0 with zeroed data bytes — a message the MIDI specification does not have,
-    // manufactured out of bytes the file never contained. The parser is permissive by
-    // design, and staying permissive means dropping the unreadable tail, not inventing it.
+    // starts, so the delta time of the cut-off event reads happily and the status byte then
+    // falls off the end. A read past the end must not become a channel message on command 0
+    // with zeroed data bytes — a message the MIDI specification does not have, made of bytes
+    // the file never contained. The parser is permissive by design, and staying permissive
+    // means dropping the unreadable tail, not inventing it.
     it('should not invent an event from a track chunk that outruns the file', () => {
       const body = [
         0x00,
@@ -936,15 +870,9 @@ describe('Midi', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // exportMidi – track chunk details
-  // ---------------------------------------------------------------
   describe('exportMidi – track chunk details', () => {
     it('should export a header even with no tracks at all', () => {
-      // This replaces 'should return null and complain when there is no sequence'.
-      // `exportMidi` no longer has a null return to test, and the sequence it nulled out
-      // by cast cannot exist. The nearest reachable input is a sequence with nothing in
-      // it, which exports the bare 14-byte MThd header and no track chunk.
+      // A sequence with nothing in it exports the bare 14-byte MThd header, no track chunk.
       expect(Midi.empty().exportMidi()).toHaveLength(14);
     });
 
@@ -1016,30 +944,25 @@ describe('Midi', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Reading a file that lies about its own lengths
-  // ---------------------------------------------------------------
   describe('a declared length that outruns the data', () => {
     /**
-     * `readMidiData` used to build the meta and sysex payloads with
-     * `new Uint8Array(data.buffer, data.byteOffset + offset, declaredLength)`, which is
-     * bounded by the underlying ArrayBUFFER rather than by the view it was handed. The two
-     * spellings agree for every in-bounds read and part company for exactly the case below:
-     * `metaLength` and `sysexLength` come straight off the file and were never checked
-     * against what remained.
+     * `metaLength` and `sysexLength` come straight off the file and are not checked against
+     * what remains of it. A payload built as
+     * `new Uint8Array(data.buffer, data.byteOffset + offset, declaredLength)` is bounded by
+     * the underlying ArrayBuffer rather than by the view it was handed; the two spellings
+     * agree for every in-bounds read and part company for exactly the cases below.
      *
-     * That mattered because `Buffer` IS a `Uint8Array` and Node pools reads under 4 KB into
-     * one shared 8 KB ArrayBuffer, so `Midi.fromBytes(readFileSync(path))` put the parser one
-     * addition away from an unrelated allocation. Measured before the fix: a file declaring
-     * a 200-byte text event and supplying none produced a 200-byte payload holding bytes
-     * from elsewhere in the pool — silently, no throw. Over 4 KB, where Node hands out an
-     * exact-size buffer, the same input threw a RangeError instead.
+     * That matters because `Buffer` is a `Uint8Array` and Node pools reads under 4 KB into
+     * one shared 8 KB ArrayBuffer, so `Midi.fromBytes(readFileSync(path))` sits one addition
+     * away from an unrelated allocation. Measured: a file declaring a 200-byte text event
+     * and supplying none produced a 200-byte payload holding bytes from elsewhere in the
+     * pool, silently. Over 4 KB, where Node hands out an exact-size buffer, the same input
+     * threw a RangeError instead.
      *
-     * The suite never caught it because the integration tests wrap their reads in
+     * The integration tests cannot see this: they wrap their reads in
      * `new Uint8Array(readFileSync(...))`, which copies into an exact-size buffer. These
-     * cases reproduce the pooled shape on purpose: the MIDI bytes are placed at a non-zero
-     * offset inside a larger buffer whose tail is filled with a recognisable marker, which
-     * is exactly what the pool does.
+     * cases reproduce the pooled shape on purpose — MIDI bytes at a non-zero offset inside
+     * a larger buffer whose tail is a recognisable marker, which is what the pool does.
      */
     const POISON = 0xab;
 

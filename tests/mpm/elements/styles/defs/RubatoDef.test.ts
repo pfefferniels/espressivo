@@ -93,11 +93,6 @@ describe('RubatoDef', () => {
     });
   });
 
-  // WAS: `parseData` re-applied to a second element. See the same note in `TempoDef.test.ts`.
-  // The five attributes this def owns are now held as nodes rather than looked up again on
-  // every setter, so the claim worth pinning is that a set lands on the node the parse read —
-  // including for the three attributes the parse itself may have *created*, which is the
-  // case a fresh `getAttribute` lookup used to paper over.
   describe('the attributes are bound to the element the def was parsed from', () => {
     it('writes through the very nodes the parse read', () => {
       const xml = rubatoDefElement({

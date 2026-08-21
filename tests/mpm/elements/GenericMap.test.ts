@@ -5,15 +5,15 @@ import { Element, Attribute } from '../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 
 /**
- * Helper: create a GenericMap and populate it with elements at the given dates.
- * Each element is a <tempo> element with a date attribute and a bpm attribute for identification.
+ * Populates a tempoMap with one `<tempo>` per date. `@bpm` mirrors `@date`, so an assertion
+ * can name an entry by the date it was built at.
  */
 function makeMap(dates: number[]): GenericMap {
   const map = okValue(GenericMap.createGenericMap('tempoMap'));
   for (const d of dates) {
     const e = new Element('tempo', Mpm.MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(d)));
-    e.addAttribute(new Attribute('bpm', String(d))); // use date value as bpm for easy identification
+    e.addAttribute(new Attribute('bpm', String(d)));
     map.addElement(e);
   }
   return map;
@@ -24,10 +24,10 @@ function makeMap(dates: number[]): GenericMap {
  * comments state can be checked at all.
  *
  * Every production caller reaches `findStyleSwitchAt` through `resolveEntryIndex`, which has
- * already established that the entry at that index is an instruction of a named kind — never
- * a `<style>`. So the one thing those comments call load-bearing, that the scan starts *at*
- * the index rather than before it, is unreachable from outside this class, and moving the
- * start to `index - 1` broke no test in the tree. It is pinned here instead.
+ * already established that the entry at that index is an instruction of a named kind, never a
+ * `<style>`. The load-bearing part of the contract — that the scan starts *at* the index
+ * rather than before it — is therefore unreachable from outside this class: moving the start
+ * to `index - 1` breaks no other test in the tree.
  */
 class ExposedMap extends GenericMap {
   static make(type: string): ExposedMap {
@@ -41,13 +41,7 @@ class ExposedMap extends GenericMap {
   }
 }
 
-// ==========================================================================
-//  GenericMap Tests
-// ==========================================================================
 describe('GenericMap', () => {
-  // ---------------------------------------------------------------
-  //  Construction
-  // ---------------------------------------------------------------
   describe('construction', () => {
     it('should create a map from a string name containing "Map"', () => {
       expect(okValue(GenericMap.createGenericMap('tempoMap')).getType()).toBe('tempoMap');
@@ -57,8 +51,6 @@ describe('GenericMap', () => {
       expect(okValue(GenericMap.createGenericMap('score')).getType()).toBe('score');
     });
 
-    // Was `expect(map).toBeNull()` with the reason on stderr. The rejection is the same one;
-    // what it says is new, and it is what a caller would have had to parse a log line for.
     it('should name the offending local name for a type that is no map', () => {
       expect(errOf(GenericMap.createGenericMap('invalid'))).toEqual({
         kind: 'wrongLocalName',
@@ -97,9 +89,6 @@ describe('GenericMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  setId / getId
-  // ---------------------------------------------------------------
   describe('setId / getId', () => {
     it('should have null id initially', () => {
       const map = okValue(GenericMap.createGenericMap('tempoMap'));
@@ -129,14 +118,11 @@ describe('GenericMap', () => {
 
     it('should be idempotent when removing a non-existent id', () => {
       const map = okValue(GenericMap.createGenericMap('tempoMap'));
-      map.setId(null); // no-op, id was already null
+      map.setId(null);
       expect(map.getId()).toBeNull();
     });
   });
 
-  // ---------------------------------------------------------------
-  //  addElement
-  // ---------------------------------------------------------------
   describe('addElement', () => {
     it('should add a single element', () => {
       const map = okValue(GenericMap.createGenericMap('tempoMap'));
@@ -217,9 +203,6 @@ describe('GenericMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  removeElement
-  // ---------------------------------------------------------------
   describe('removeElement', () => {
     it('should remove an element by index', () => {
       const map = makeMap([100, 200, 300]);
@@ -269,9 +252,6 @@ describe('GenericMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  getFirstElement / getLastElement / getElement
-  // ---------------------------------------------------------------
   describe('getFirstElement / getLastElement / getElement', () => {
     it('getFirstElement returns null on empty map', () => {
       const map = okValue(GenericMap.createGenericMap('tempoMap'));
@@ -311,9 +291,6 @@ describe('GenericMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  Binary search: getElementIndexBeforeAt
-  // ---------------------------------------------------------------
   describe('getElementIndexBeforeAt', () => {
     it('returns -1 for an empty map', () => {
       const map = okValue(GenericMap.createGenericMap('tempoMap'));
@@ -372,7 +349,7 @@ describe('GenericMap', () => {
         e.addAttribute(new Attribute('date', String(d)));
         map.addElement(e);
       }
-      // Two elements at 100, one at 200. getElementIndexBeforeAt(100) should return index 1 (the last at 100).
+      // Two entries at 100, so the last of them is index 1.
       expect(map.getElementIndexBeforeAt(100)).toBe(1);
     });
 
@@ -390,9 +367,6 @@ describe('GenericMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  Binary search: getElementIndexBefore
-  // ---------------------------------------------------------------
   describe('getElementIndexBefore', () => {
     it('returns -1 for an empty map', () => {
       const map = okValue(GenericMap.createGenericMap('tempoMap'));
@@ -439,22 +413,15 @@ describe('GenericMap', () => {
     it('handles many elements (stress test)', () => {
       const dates = Array.from({ length: 100 }, (_, i) => i * 10);
       const map = makeMap(dates);
-      // Strictly before 0 → -1
+      // dates 0, 10, …, 990: index i holds date i*10.
       expect(map.getElementIndexBefore(0)).toBe(-1);
-      // Strictly before 10 → index 0 (date 0)
       expect(map.getElementIndexBefore(10)).toBe(0);
-      // Strictly before 15 → index 1 (date 10)
       expect(map.getElementIndexBefore(15)).toBe(1);
-      // Strictly before 990 → index 98 (date 980)
       expect(map.getElementIndexBefore(990)).toBe(98);
-      // Strictly before 1000 → index 99 (date 990)
       expect(map.getElementIndexBefore(1000)).toBe(99);
     });
   });
 
-  // ---------------------------------------------------------------
-  //  Binary search: getElementIndexAfter
-  // ---------------------------------------------------------------
   describe('getElementIndexAfter', () => {
     it('returns -1 for an empty map', () => {
       const map = okValue(GenericMap.createGenericMap('tempoMap'));
@@ -497,22 +464,15 @@ describe('GenericMap', () => {
     it('handles many elements (stress test)', () => {
       const dates = Array.from({ length: 100 }, (_, i) => i * 10);
       const map = makeMap(dates);
-      // After -5 → index 0
+      // dates 0, 10, …, 990: index i holds date i*10.
       expect(map.getElementIndexAfter(-5)).toBe(0);
-      // After 0 → index 1
       expect(map.getElementIndexAfter(0)).toBe(1);
-      // After 5 → index 1 (next after 0 is 10)
       expect(map.getElementIndexAfter(5)).toBe(1);
-      // After 980 → index 99 (date 990)
       expect(map.getElementIndexAfter(980)).toBe(99);
-      // After 990 → -1
       expect(map.getElementIndexAfter(990)).toBe(-1);
     });
   });
 
-  // ---------------------------------------------------------------
-  //  Binary search: getElementIndexAtAfter
-  // ---------------------------------------------------------------
   describe('getElementIndexAtAfter', () => {
     it('returns -1 for an empty map', () => {
       const map = okValue(GenericMap.createGenericMap('tempoMap'));
@@ -526,11 +486,9 @@ describe('GenericMap', () => {
 
     it('returns the index of the element at or after the date', () => {
       const map = makeMap([100, 200, 300]);
-      // At exact date
       expect(map.getElementIndexAtAfter(100)).toBe(0);
       expect(map.getElementIndexAtAfter(200)).toBe(1);
       expect(map.getElementIndexAtAfter(300)).toBe(2);
-      // Between elements
       expect(map.getElementIndexAtAfter(150)).toBe(1);
       expect(map.getElementIndexAtAfter(250)).toBe(2);
     });
@@ -559,9 +517,6 @@ describe('GenericMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  getElementIndexOf
-  // ---------------------------------------------------------------
   describe('getElementIndexOf', () => {
     it('returns -1 for null', () => {
       const map = makeMap([100, 200]);
@@ -583,9 +538,6 @@ describe('GenericMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  getAllElements / getAllElementsOfType / getAllElementsAt
-  // ---------------------------------------------------------------
   describe('getAllElements / getAllElementsOfType / getAllElementsAt', () => {
     it('getAllElements returns all elements in sorted order', () => {
       const map = makeMap([300, 100, 200]);
@@ -600,7 +552,6 @@ describe('GenericMap', () => {
       e1.addAttribute(new Attribute('date', '0'));
       map.addElement(e1);
 
-      // Add a style switch (different type)
       map.addStyleSwitch(0, 'myStyle');
 
       const tempos = map.getAllElementsOfType('tempo');
@@ -617,7 +568,6 @@ describe('GenericMap', () => {
         e.addAttribute(new Attribute('bpm', String(i)));
         map.addElement(e);
       }
-      // Also add one at a different date
       const e2 = new Element('tempo', Mpm.MPM_NAMESPACE);
       e2.addAttribute(new Attribute('date', '200'));
       map.addElement(e2);
@@ -630,12 +580,10 @@ describe('GenericMap', () => {
     });
 
     it('getAllElementsAt returns elements at or after when no exact match (implementation behavior)', () => {
-      // getAllElementsAt uses getElementIndexAtAfter, which finds the first element
-      // at or after the given date. The first such element is always included, and
-      // subsequent elements are included only if they share the exact date.
+      // `getAllElementsAt` starts from `getElementIndexAtAfter`: that first at-or-after entry
+      // is always included, and later entries only if they share its exact date.
       const map = makeMap([100, 300]);
       const result = map.getAllElementsAt(200);
-      // Element at date 300 is the first at-or-after 200, so it's included
       expect(result.length).toBe(1);
       expect(result[0].getKey()).toBe(300);
     });
@@ -651,23 +599,18 @@ describe('GenericMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  sort()
-  // ---------------------------------------------------------------
   describe('sort()', () => {
     it('should reorder elements when dates are manually changed', () => {
       const map = makeMap([100, 200, 300]);
 
-      // Manually change the date attribute of the first element to 500
       const first = map.getElement(0)!;
       first.addAttribute(new Attribute('date', '500'));
 
-      // Before sort: the keys are stale
-      expect(map.getAllElements()[0].getKey()).toBe(100); // stale key
+      // The keys stay stale until `sort()` re-reads `@date`.
+      expect(map.getAllElements()[0].getKey()).toBe(100);
 
       map.sort();
 
-      // After sort: keys should be updated and reordered
       const dates = map.getAllElements().map((kv) => kv.getKey());
       expect(dates).toEqual([200, 300, 500]);
     });
@@ -679,14 +622,13 @@ describe('GenericMap', () => {
       expect(dates).toEqual([100, 200, 300]);
     });
 
-    // PARITY.md §3. `sort()` used to swap where an insertion sort must shift, so it was not
-    // a sort and not stable; Java did the same (`Collections.swap`). This test used to pin
-    // that defect on purpose, asserting the WRONG result. Both are now repaired — the fork
-    // at `meico@a1bdf254`, the port to match — so it asserts the right one.
+    // PARITY.md §3. Java's `sort()` swapped where an insertion sort must shift, so it was
+    // neither a sort nor stable (`Collections.swap`); repaired in the fork at
+    // `meico@a1bdf254` and here to match.
     //
-    // The arrangements below are exactly the ones the swap got wrong. The test above passes
-    // either way: its arrangement (one element displaced to the end) is one of the cases the
-    // swap happened to get right, which is why the defect stayed invisible for so long.
+    // The arrangements below are the ones the swap got wrong. The test above passes either
+    // way — one element displaced to the end is a case the swap happened to get right, which
+    // is why the defect stayed invisible.
     it('sorts a general arrangement, not just the easy one', () => {
       function sorted(keys: number[]): number[] {
         const map = makeMap(keys.map((_, i) => (i + 1) * 100));
@@ -721,9 +663,6 @@ describe('GenericMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  addStyleSwitch / getStyleNameAt
-  // ---------------------------------------------------------------
   describe('addStyleSwitch / getStyleNameAt', () => {
     it('addStyleSwitch creates a style element with correct attributes', () => {
       const map = okValue(GenericMap.createGenericMap('tempoMap'));
@@ -750,28 +689,25 @@ describe('GenericMap', () => {
       e.addAttribute(new Attribute('date', '0'));
       map.addElement(e);
 
-      // Style switch at date 0 should be placed before the tempo element
       map.addStyleSwitch(0, 'staccato');
       expect(map.getElement(0)!.getLocalName()).toBe('style');
       expect(map.getElement(1)!.getLocalName()).toBe('tempo');
     });
 
     /**
-     * PARITY — the fallthrough the test below calls "the fallthrough bug", pinned rather than
-     * worked around.
+     * PARITY — the fallthrough is pinned rather than worked around.
      *
-     * `insertElement(…, firstAtDate = true)` scans FORWARD for the first entry at or after the
+     * `insertElement(…, firstAtDate = true)` scans forward for the first entry at or after the
      * new date and inserts before it. When there is none — the new switch is later than
      * everything in the map — the scan falls out of the bottom into the shared
      * `add(0, element)` tail, so a style switch dated after the last instruction lands at the
-     * FRONT of the map and takes effect from the top of it.
+     * front of the map and takes effect from the top of it.
      *
      * That tail is written for the other branch: `GenericMap.java:559` comments it "if the map
-     * is empty or its elements are all after the date of the new element", which is true of
-     * the backwards `firstAtDate = false` scan and false of this one. It is Java's, the port
-     * copies it, and until now nothing held it in place — the strict-index pass rewrote the
-     * two loops as `findIndex` and a shared `insertionIndexFor`, and moving the fallback to
-     * the end of the map instead broke no test at all.
+     * is empty or its elements are all after the date of the new element", true of the
+     * backwards `firstAtDate = false` scan and false of this one. It is Java's and the port
+     * copies it; nothing else holds it in place, so moving the fallback to the end of the map
+     * breaks no other test.
      */
     it('addStyleSwitch past the last element lands at the FRONT (GenericMap.java:559)', () => {
       const map = okValue(GenericMap.createGenericMap('tempoMap'));
@@ -798,12 +734,10 @@ describe('GenericMap', () => {
     });
 
     it('getStyleNameAt returns the most recent style name (only style elements)', () => {
-      // Use only style switches to avoid insertElement ordering issues
       const map = okValue(GenericMap.createGenericMap('tempoMap'));
       map.addStyleSwitch(0, 'legato');
-      // Adding a second style switch at a later date: insertElement with firstAtDate=true
-      // works correctly when there is already an element at or after that date.
-      // To avoid the fallthrough bug, we add a tempo element at a very high date first.
+      // The tempo at 9999 exists so that the second switch has an entry after it to insert
+      // before; without one it would hit the fallthrough pinned above and land at the front.
       const e = new Element('tempo', Mpm.MPM_NAMESPACE);
       e.addAttribute(new Attribute('date', '9999'));
       map.addElement(e);
@@ -854,23 +788,16 @@ describe('GenericMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  contains / size / isEmpty
-  // ---------------------------------------------------------------
   describe('contains / size / isEmpty', () => {
     it('contains checks DOM parentage (may be false due to XOM port limitations)', () => {
-      // contains() checks element.getParent() === this.getXml(), which relies on
-      // DOM parent-child relationships. In the XomTypes port, insertChild adds to
-      // the _children array but the underlying DOM node parentage is not always
-      // established. We verify the actual behavior here.
+      // `contains` tests `element.getParent() === this.getXml()`. In the XomTypes port
+      // `insertChild` appends to the `_children` array without always establishing DOM node
+      // parentage, so the answer is not reliable and only its type is asserted.
       const map = okValue(GenericMap.createGenericMap('tempoMap'));
       const e = new Element('tempo', Mpm.MPM_NAMESPACE);
       e.addAttribute(new Attribute('date', '100'));
       map.addElement(e);
-      // The element IS in the map (verified via getElementIndexOf)
       expect(map.getElementIndexOf(e)).toBe(0);
-      // But contains() uses DOM parentage which may not work
-      // We just verify it returns a boolean without error
       const result = map.contains(e);
       expect(typeof result).toBe('boolean');
     });
@@ -906,20 +833,15 @@ describe('GenericMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  insertElement: firstAtDate mode
-  // ---------------------------------------------------------------
   describe('insertElement firstAtDate mode (via addStyleSwitch)', () => {
     it('style switches at same date go before other elements at that date', () => {
       const map = okValue(GenericMap.createGenericMap('tempoMap'));
-      // Add 3 tempos at date 0
       for (let i = 0; i < 3; i++) {
         const e = new Element('tempo', Mpm.MPM_NAMESPACE);
         e.addAttribute(new Attribute('date', '0'));
         e.addAttribute(new Attribute('bpm', String(i)));
         map.addElement(e);
       }
-      // Add a style switch at date 0 — should be placed at the front
       map.addStyleSwitch(0, 'myStyle');
       expect(map.getElement(0)!.getLocalName()).toBe('style');
     });
@@ -928,17 +850,13 @@ describe('GenericMap', () => {
       const map = okValue(GenericMap.createGenericMap('tempoMap'));
       map.addStyleSwitch(0, 'first');
       map.addStyleSwitch(0, 'second');
-      // Both at date 0; second should go at index 0 because firstAtDate = true
-      // Actually: firstAtDate inserts at the FIRST position >= key, so second will be at index 0,
-      // pushing first to index 1
+      // firstAtDate inserts at the first position >= key, so the later switch lands at index
+      // 0 and pushes the earlier one to index 1.
       expect(map.getElement(0)!.getAttributeValue('name.ref')).toBe('second');
       expect(map.getElement(1)!.getAttributeValue('name.ref')).toBe('first');
     });
   });
 
-  // ---------------------------------------------------------------
-  //  getElementBeforeAt / getElementAfter (element retrieval wrappers)
-  // ---------------------------------------------------------------
   describe('getElementBeforeAt / getElementAfter', () => {
     it('getElementBeforeAt returns null when no element at or before the date', () => {
       const map = makeMap([100]);
@@ -966,9 +884,6 @@ describe('GenericMap', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  //  Two-element edge cases for binary search
-  // ---------------------------------------------------------------
   describe('binary search with two elements', () => {
     const map = makeMap([100, 300]);
 

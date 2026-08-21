@@ -4,24 +4,12 @@ import { okValue } from '../support/result.js';
 import { Mpm } from '../../src/mpm/Mpm.js';
 import { Performance } from '../../src/mpm/elements/Performance.js';
 
-/**
- * A real {@link Performance}, which is what these tests used to fake.
- *
- * Nine of them built `{ getName: () => …, getXml: () => … } as any` and handed that to
- * `addPerformance`/`removePerformance`. Those objects are not `Performance`s — they have two
- * of its forty methods — so what the tests measured was `Mpm`'s behaviour against a shape no
- * caller can construct, and the `as any` was what let them. `createPerformance(name)` builds
- * the same `<performance name="…">` element the fakes were assembling by hand, plus the
- * `<global>` child a real one carries, and needs no cast.
- */
+/** A real {@link Performance}: a `<performance name="…">` with the `<global>` child. */
 function performance(name: string): Performance {
   return okValue(Performance.createPerformance(name));
 }
 
 describe('Mpm', () => {
-  // ---------------------------------------------------------------
-  // Constants
-  // ---------------------------------------------------------------
   describe('constants', () => {
     it('should define MPM_NAMESPACE', () => {
       expect(Mpm.MPM_NAMESPACE).toBe('http://www.cemfi.de/mpm/ns/1.0');
@@ -56,9 +44,6 @@ describe('Mpm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Create MPM document
-  // ---------------------------------------------------------------
   describe('createMpm', () => {
     it('should create an empty MPM object', () => {
       const mpm = Mpm.createMpm();
@@ -93,9 +78,6 @@ describe('Mpm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Constructor variants
-  // ---------------------------------------------------------------
   describe('constructors', () => {
     it('should create from default constructor', () => {
       const mpm = new Mpm();
@@ -104,9 +86,6 @@ describe('Mpm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // isInNamespace
-  // ---------------------------------------------------------------
   describe('isInNamespace', () => {
     it('should recognize MPM element names', () => {
       const mpm = Mpm.createMpm();
@@ -130,25 +109,18 @@ describe('Mpm', () => {
       expect(mpm.isInNamespace('')).toBe(false);
     });
 
-    // INVERTED by W5, deliberately. This assertion used to read `isInNamespace('note')` ===
-    // false, which was right for MPM v2 — the name existed only in MSM. MPM v3 gives an
-    // `<ornament>` a pool of `<note>` children (DESIGN.md D1, spec `note.xml`), so the name is
-    // now part of the MPM vocabulary and reporting it as foreign would be the bug. The
-    // rejection above keeps its strength with `score`, an MSM map name MPM genuinely does not
-    // have. Journaled in docs/history/ornamentation/LOG.md under "W5 implementer".
+    // MPM v3 gives an `<ornament>` a pool of `<note>` children (DESIGN.md D1, spec
+    // `note.xml`), so `note` is MPM vocabulary. `score` above stays MSM-only.
     it('should recognize the MPM v3 ornament pool note', () => {
       const mpm = Mpm.createMpm();
       expect(mpm.isInNamespace('note')).toBe(true);
     });
 
     // Two names in the Java vocabulary are typos: a trailing space in 'accentuation '
-    // (Mpm.java:214) and 'dynamcisGradient' for dynamicsGradient (Mpm.java:218). The
-    // corrections are accepted here and the misspellings are STILL accepted, so this
-    // vocabulary is a superset of the reference's: it rejects nothing the reference
-    // accepts. The two misspelled assertions look wrong and are not — deleting either
-    // case label would reject a name a Java-written MPM may legitimately carry.
-    // See PARITY.md, "Fixed bugs"; the previous version of this test pinned the
-    // corrections as rejected (T22), and TD2 inverted that half.
+    // (Mpm.java:214) and 'dynamcisGradient' for dynamicsGradient (Mpm.java:218). This
+    // vocabulary accepts the corrections and keeps accepting the misspellings, making it a
+    // superset of the reference's: dropping either misspelling would reject a name a
+    // Java-written MPM may legitimately carry. See PARITY.md, "Fixed bugs".
     it('accepts the corrected spellings and keeps accepting the two Java typos', () => {
       const mpm = Mpm.createMpm();
       expect(mpm.isInNamespace('accentuation ')).toBe(true);
@@ -157,9 +129,6 @@ describe('Mpm', () => {
       expect(mpm.isInNamespace('dynamicsGradient')).toBe(true);
     });
 
-    // The guard the inversion above must not lose: a name that is neither the typo nor its
-    // correction is still rejected, so "accept both spellings" cannot degrade into
-    // "accept anything that looks close".
     it('still rejects near-misses of the two corrected names', () => {
       const mpm = Mpm.createMpm();
       expect(mpm.isInNamespace('accentuation  ')).toBe(false);
@@ -169,9 +138,6 @@ describe('Mpm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // addPerformance
-  // ---------------------------------------------------------------
   describe('addPerformance', () => {
     it('should add a performance object with getXml', () => {
       const mpm = Mpm.createMpm();
@@ -226,7 +192,6 @@ describe('Mpm', () => {
       const mpm = Mpm.createMpm();
       mpm.addPerformance(performance('attached'));
 
-      // The performance element should be a child of the root
       const root = mpm.getRootElement()!;
       const performanceChildren = root.getChildElements('performance');
       expect(performanceChildren.size()).toBe(1);
@@ -234,9 +199,6 @@ describe('Mpm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // removePerformance
-  // ---------------------------------------------------------------
   describe('removePerformance', () => {
     it('should remove a performance by reference', () => {
       const mpm = Mpm.createMpm();
@@ -261,23 +223,13 @@ describe('Mpm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // Parsing
-  // ---------------------------------------------------------------
   describe('parseData', () => {
     /**
-     * A closed oracle gap, found by a negative control.
-     *
-     * `Mpm.parseData` reads its performances through a module-local `getAllChildElements`,
-     * and `getPerformance(index)` then answers by position into that list — so the order
-     * the parse produces IS the index the whole `getPerformance` / `getAllPerformances`
-     * surface is addressed by. Reversing that helper left all 1880 tests in `tests/mpm`
-     * green; the only thing in the tree that noticed was `tests/comparison/fixtures.test.ts`,
-     * which pins document order for three real MPM files and does so from another suite
-     * entirely, for another reason.
-     *
-     * So this pins it where it belongs: three `<performance>` children, and the parse has
-     * to hand them back in the order the document lists them, not sorted, not reversed.
+     * `getPerformance(index)` answers by position into the list `parseData` builds, so parse
+     * order is what indexes the whole `getPerformance` / `getAllPerformances` surface.
+     * Reversing that list leaves every other test in `tests/mpm` green; the only thing in
+     * the tree that notices is `tests/comparison/fixtures.test.ts`, from another suite and
+     * for another reason.
      */
     it('keeps the performances in document order, which is what indexes them', () => {
       const mpm = new Mpm(
@@ -297,17 +249,11 @@ describe('Mpm', () => {
     });
 
     /**
-     * What unparsable source actually does, pinned because `parseData` now asserts that it
-     * never arrives — and because the two `getRootElement()!`s it replaces were resting on
-     * this without saying so.
-     *
-     * `XmlBase.parseXmlString` reads as though a bad string yields an EMPTY document: it
-     * catches `ParsingException`, prints it and stores null. That catch never fires.
+     * `XmlBase.parseXmlString` reads as though a bad string yields an empty document: it
+     * catches `ParsingException`, prints it and stores null. That catch is dead.
      * `@xmldom/xmldom` throws its own `ParseError` from inside `DOMParser.parseFromString`,
-     * so `Builder.build` never reaches either of its own `throw new ParsingException` lines
-     * and the error travels straight out of the constructor. Measured over seven malformed
-     * inputs — every one raises `ParseError: missing root element`. (The dead catch is in
-     * `src/xml`, reported rather than touched from here.)
+     * so `Builder.build` never reaches either of its `throw new ParsingException` lines and
+     * the error travels straight out of the constructor.
      *
      * Java throws too — `Mpm(String xml)` declares `throws ParsingException` — so the port
      * agrees with the reference on this input, in a different exception type.
@@ -324,16 +270,10 @@ describe('Mpm', () => {
     });
 
     /**
-     * The constructor's fourth arm, which only an untyped (plain-JS) caller can reach — hence
-     * the cast, which is here to SIMULATE such a caller rather than to defeat the compiler on
-     * behalf of typed code.
-     *
-     * It existed in the overload set as an explicit `else` with a comment saying that
-     * deleting it would change behaviour for `new Mpm(<anything else>)`, and it survives the
-     * collapse to one signature because the body tests `instanceof Document || typeof ===
-     * 'string'` rather than `=== undefined`. Testing for undefined instead would send this
-     * caller down the parse path and leave it with no document; the difference is what this
-     * pins.
+     * The constructor arm only an untyped (plain-JS) caller can reach; the cast simulates
+     * such a caller rather than defeating the compiler for typed code. The body tests
+     * `instanceof Document || typeof === 'string'`, not `=== undefined` — testing for
+     * undefined would send this caller down the parse path and leave it with no document.
      */
     it('gives an untyped caller passing something else the empty document, not a null one', () => {
       const mpm = new Mpm(42 as unknown as string);
@@ -343,9 +283,6 @@ describe('Mpm', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // XML export
-  // ---------------------------------------------------------------
   describe('writeMpm', () => {
     it('should produce a valid XML string', () => {
       const mpm = Mpm.createMpm();

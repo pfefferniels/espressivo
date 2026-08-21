@@ -24,15 +24,11 @@ import { EventMaker } from '../../src/midi/EventMaker.js';
 import { bestGrowthRatio } from '../support/growthGuard.js';
 
 /**
- * A message for tests that need *a* message and do not care which — the `90 00 00`
- * that the JDK's no-argument `new ShortMessage()` used to produce. That constructor
- * existed only to be the target of `clone()`, and went with it.
+ * A message for tests that need *a* message and do not care which — the `90 00 00` the
+ * JDK's no-argument `new ShortMessage()` produces.
  */
 const anyMessage = () => channelMessage(ShortMessage.NOTE_ON, 0, 0, 0);
 
-// ---------------------------------------------------------------------------
-// ShortMessage
-// ---------------------------------------------------------------------------
 describe('ShortMessage – construction', () => {
   it('should build a bare noteOn on channel 0 with pitch and velocity 0', () => {
     const sm = channelMessage(ShortMessage.NOTE_ON, 0, 0, 0);
@@ -127,9 +123,6 @@ describe('ShortMessage – messageBytes', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// MetaMessage
-// ---------------------------------------------------------------------------
 describe('MetaMessage', () => {
   it('should accept type 0 with no payload', () => {
     const mm = metaMessage(0, new Uint8Array(0));
@@ -149,7 +142,6 @@ describe('MetaMessage', () => {
   });
 
   it('should take exactly the bytes it is given, so a prefix view excludes the rest', () => {
-    // What the dropped `length` parameter used to express, said by the caller instead.
     const payload = new Uint8Array([1, 2, 3, 4, 5]);
     const mm = metaMessage(0x01, payload.subarray(0, 2));
     expect(Array.from(metaPayload(mm))).toEqual([1, 2]);
@@ -183,8 +175,7 @@ describe('MetaMessage', () => {
   });
 
   it('should copy the payload it is handed, so the caller cannot write into it later', () => {
-    // The framing used to be built once and stored beside a second copy of the payload;
-    // it is derived now, so this is the only remaining way the two could disagree.
+    // The framing is derived from the payload, so both reads have to see the copy.
     const source = new Uint8Array([1, 2, 3]);
     const mm = metaMessage(0x01, source);
     source[0] = 9;
@@ -224,9 +215,6 @@ describe('encodeVariableLength', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// SysexMessage
-// ---------------------------------------------------------------------------
 describe('SysexMessage', () => {
   it('should keep an empty F0 ... F7 frame', () => {
     const sx = sysexMessage(new Uint8Array([0xf0, 0xf7]));
@@ -254,9 +242,6 @@ describe('SysexMessage', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// MidiEvent
-// ---------------------------------------------------------------------------
 describe('MidiEvent', () => {
   it('should carry a message and a tick', () => {
     const msg = channelMessage(ShortMessage.NOTE_ON, 0, 60, 100);
@@ -272,8 +257,7 @@ describe('MidiEvent', () => {
   });
 
   it('should swap the message in place', () => {
-    // What `ShortMessage.setMessage` used to do, one level up: this is the operation
-    // `Midi.noteOns2NoteOffs` performs, and it must not disturb the event's position.
+    // The operation `Midi.noteOns2NoteOffs` performs; it must not disturb the event's tick.
     const event = new MidiEvent(channelMessage(ShortMessage.NOTE_ON, 0, 60, 100), 480);
     event.setMessage(channelMessage(ShortMessage.NOTE_OFF, 5, 62, 0));
 
@@ -297,9 +281,6 @@ describe('MidiEvent', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Track
-// ---------------------------------------------------------------------------
 describe('Track', () => {
   it('should start out empty with tick length 0', () => {
     const track = new Track();
@@ -355,11 +336,9 @@ describe('Track', () => {
     expect(track.size()).toBe(1);
   });
 
-  // `Track.get` used to return `undefined` out of range while declaring `MidiEvent`, with
-  // a comment admitting it. The JDK's `Track.get` throws `ArrayIndexOutOfBoundsException`,
-  // so this is the port catching up with its reference as well as with its own signature;
-  // the message has to name the index and the size, because the whole value of the throw
-  // over a silent `undefined` is that it says which read went wrong.
+  // The JDK's `Track.get` throws `ArrayIndexOutOfBoundsException` out of range. The message
+  // has to name the index and the size: the value of throwing over returning `undefined` is
+  // that it says which read went wrong.
   it('should throw a RangeError rather than hand back an undefined event', () => {
     const track = new Track();
     track.add(new MidiEvent(anyMessage(), 0));
@@ -370,9 +349,8 @@ describe('Track', () => {
     expect(() => track.get(-1)).toThrow(RangeError);
   });
 
-  // The iterator is what lets a caller walk a track without inventing an index, which is
-  // how every loop in `Midi.ts` now reads it. It must agree with `get`/`size` exactly —
-  // same events, same order, same identities.
+  // Every loop in `Midi.ts` walks a track through its iterator, so it has to agree with
+  // `get`/`size` exactly: same events, same order, same identities.
   it('should iterate its events in tick order, matching get()', () => {
     const track = new Track();
     const events = [
@@ -392,11 +370,8 @@ describe('Track', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Track.add — the binary insertion must be indistinguishable from push-and-sort
-// ---------------------------------------------------------------------------
 describe('Track.add is exactly push-then-stable-sort, without the sort', () => {
-  /** `Track.add` as it was written before T-perf: append, then sort the whole array. */
+  /** The reference implementation: append, then sort the whole array. */
   function byPushAndSort(events: MidiEvent[], event: MidiEvent): void {
     events.push(event);
     events.sort((a, b) => a.getTick() - b.getTick());
@@ -541,9 +516,6 @@ describe('Track.add is exactly push-then-stable-sort, without the sort', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Sequence
-// ---------------------------------------------------------------------------
 describe('Sequence', () => {
   it('should define the javax.sound.midi division types', () => {
     expect(Sequence.PPQ).toBe(0.0);

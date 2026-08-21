@@ -18,11 +18,7 @@ import type { TemporalValue } from '../styles/defs/TemporalValue.js';
  *
  * This is DESIGN.md D5's "phase N" (symbolic), D10 (timing and carving), D11 (several
  * ornaments on one principal) and D13 (generated notes are MSM `<note>`s, so MIDI export, the
- * facade's note discovery and every downstream pass see them with no further change). It
- * lives beside {@link GenericMap}'s ornamentation subclass rather than inside it so that the
- * map class stays what it was — a date-ordered container with three render passes — while
- * principal resolution, expansion adaption, note creation, frame layout and carving live
- * here.
+ * facade's note discovery and every downstream pass see them with no further change).
  *
  * ## Where it sits in the pipeline
  *
@@ -44,24 +40,18 @@ import type { TemporalValue } from '../styles/defs/TemporalValue.js';
  * markers the millisecond pass already consumes — plus, for `alignment="at end"`, the one new
  * marker the D5 amendment introduces (see {@link applyMillisecondSpacing}).
  *
- * ## What it does not do
- *
- * It never touches an ornament without a v3 feature ({@link isV3Ornament} is the gate), it
- * never throws (RULE E1: log and skip — every rejection below logs its reason and returns),
- * and it mutates nothing outside the MSM clone `Performance.perform` opened with (mutation
- * boundary 3).
+ * Nothing here touches an ornament without a v3 feature ({@link isV3Ornament} is the gate),
+ * nothing throws (RULE E1: every rejection logs its reason and returns), and nothing outside
+ * the MSM clone `Performance.perform` opened is mutated (mutation boundary 3).
  */
 
 /**
  * Attributes a generated note does **not** inherit from its principal.
  *
  * The renderer clones the principal (`Element.copy()`) and strips these, so that everything
- * the pipeline has already decided about that note — its velocity above all — carries over,
- * and only what is provably wrong for a *different* note at a *different* time is removed. An
- * MSM note at this point in the pipeline carries, in the reference fixtures' order: `xml:id`,
- * `date`, `midi.pitch`, `pitchname`, `accidentals`, `octave`, `duration`, `date.perf`,
- * `duration.perf`, `modified`, `velocity` — of which `modified` and `velocity` are exactly the
- * two that survive.
+ * the pipeline has already decided about that note carries over. Of the eleven attributes an
+ * MSM note carries at this point in the pipeline, `modified` and `velocity` are the two that
+ * survive.
  *
  * Why each of the others goes:
  * - `id` (i.e. `xml:id`) — every generated note draws its own; the principal's is then
@@ -75,20 +65,10 @@ import type { TemporalValue } from '../styles/defs/TemporalValue.js';
  * - `ornament.*` — markers a *previous* ornament left on the principal. Inheriting them would
  *   apply that ornament's offset a second time, to a note it never named.
  *
- * `ornament.carved` is on that list for a reason worth writing down, because **within one
- * render it cannot fire**: it is written by {@link markCarved}, which runs inside
- * {@link carve}, and {@link createChords} has already copied the principal by then — so at
- * copy time the principal is not carrying the mark and there is nothing to strip. The W7
- * verifier measured exactly that (removing the entry flipped zero tests) and reported it as an
- * advisory: what keeps the mark off generated notes *inside* a render is that only
- * `markCarved` writes it, and only onto the principal.
- *
- * The entry earns its place one step outside that window, and W9 pinned the case rather than
- * leaving it argued: a principal read back from an **already augmented** MSM — the second
- * performance of one document, which is the same scenario the `milliseconds.*` entries exist
- * for — really does arrive carrying the mark, and every note generated from it would then
- * claim to be a carved head. It also guards the *other* order, carve before build, which is a
- * two-line change here and one the D10 id-uniqueness ruling already made once.
+ * `ornament.carved` cannot fire within one render — only {@link markCarved} writes it, and
+ * {@link createChords} has copied the principal by then. It is listed for the case a test
+ * pins: a principal read back from an already augmented MSM does arrive carrying the mark, and
+ * every note generated from it would claim to be a carved head.
  */
 const NOT_INHERITED: readonly string[] = [
   'id',
@@ -150,11 +130,10 @@ interface PrincipalGeometry {
    * `date.perf − date` on the principal, or 0 when it carries no `date.perf` yet.
    *
    * Ornamentation runs *after* rubato, so a principal may already sit somewhere other than its
-   * notated date. The generated notes are laid out in notated time — that is what the frame is
-   * defined against, and what `%` measures — and then shifted by the principal's own
-   * deflection, so the ornament sounds where its principal sounds. A *duration* deflection
-   * (articulation) is deliberately not inherited: the frame already fixes how long each
-   * ornament note lasts.
+   * notated date. Generated notes are laid out in notated time — what the frame is defined
+   * against, and what `%` measures — then shifted by the principal's own deflection. A
+   * *duration* deflection (articulation) is deliberately not inherited: the frame already
+   * fixes how long each ornament note lasts.
    */
   readonly perfDelta: number;
   /** Whether the principal has `.perf` attributes yet — the global stage runs before they exist. */
@@ -162,18 +141,12 @@ interface PrincipalGeometry {
   /**
    * Whether the principal carries a symbolic `date.end` that generated notes should mirror.
    *
-   * **Currently false for every document in the repository, and kept anyway.** A scan of all
-   * 57 `.msm` files under `tests/` — the 24 Java-verified ones included, and the one this wave
-   * added — finds `date.end` on 57 `<section>` elements and on **no `<note>` at all** (the
-   * other 660 hits split evenly between
-   * `milliseconds.date.end` and `date.end.perf` — different attributes; the former is stripped
-   * from generated notes by {@link NOT_INHERITED} in any case). So neither this flag's `true` branch here nor
-   * the ones in {@link createNote} and {@link carve} is exercised by a fixture, and the W6
-   * verifier's mutation "never write `date.end` on generated notes" correctly survived the
-   * suite. It stays because MSM's schema permits the attribute on a note, and a generated note
-   * that inherited a *stale* `date.end` from its principal — or a carved leftover that kept one
-   * while its `duration` shrank — would be an inconsistent document. The cost of the branch is
-   * one attribute lookup; the cost of removing it is a corruption nobody would see coming.
+   * False for every document in the repository — a scan of all 57 `.msm` files under `tests/`
+   * finds `date.end` on `<section>` elements and on no `<note>` at all — so no fixture
+   * exercises the `true` branch here or in {@link createNote} and {@link carve}. Kept because
+   * MSM's schema permits the attribute on a note, and a generated note inheriting a stale
+   * `date.end`, or a carved leftover keeping one while its `duration` shrank, would be an
+   * inconsistent document.
    */
   readonly hasDateEnd: boolean;
 }
@@ -195,16 +168,14 @@ export interface PreparedOrnament {
 /**
  * DESIGN.md D6's gate: does this `<ornament>` use anything MPM v2 cannot express?
  *
- * The four markers are the ones D6 names, and each is impossible in a v2 document: a v2
- * `<ornament>` is always empty, and `noteid`, `repetitions` and the `note.order` grouping
- * syntax all arrived with v3. `repetitions` is tested on the *attribute*, not on the parsed
- * value, because `repetitions="0"` is as much a v3 marker as `repetitions="3"` even though it
- * parses to the default.
+ * Each of the four markers is impossible in a v2 document: a v2 `<ornament>` is always empty,
+ * and `noteid`, `repetitions` and the `note.order` grouping syntax all arrived with v3.
+ * `repetitions` is tested on the *attribute*, not on the parsed value, because
+ * `repetitions="0"` is as much a v3 marker as `repetitions="3"`.
  *
  * The `note.order` test is a character probe rather than a parse: `[`, `]` and `|` are the
- * only characters the v3 grammar adds, none of them can occur in a v2 value (`#id` lists and
- * the two pitch keywords), and probing bytes rather than running W2's parser keeps that parser
- * off the v2 path entirely — which is what "the v2 path is byte-frozen" means in practice.
+ * only characters the v3 grammar adds and none can occur in a v2 value, so the v3 parser
+ * stays off the v2 path entirely.
  */
 export function isV3Ornament(xml: Element, od: OrnamentData): boolean {
   if (od.notes.length > 0) return true;
@@ -220,11 +191,9 @@ export function isV3Ornament(xml: Element, od: OrnamentData): boolean {
  * The one write is `note.order.perf` on the `<ornament>` element itself, which DESIGN.md D7
  * asks for "for downstream visibility" and which is written as soon as an expansion exists.
  *
- * @param od the ornament's data, already carrying its style, def, date, scale and v3 fields
- * @param ornamentXml the `<ornament>` element, for its `xml:id` and its `repetitions` marker
- * @param notes every note of every map being ornamented, by `xml:id` — the index
- *   `OrnamentationMap.apply` already builds for the v2 path
- * @param owners which map each note lives in ({@link noteOwners}); it is what lets the key
+ * @param od already carrying its style, def, date, scale and v3 fields
+ * @param notes every note of every map being ornamented, by `xml:id`
+ * @param owners which map each note lives in ({@link noteOwners}) — what lets the key
  *   signature be read from the principal's *own* part when a global ornamentation map reaches
  *   across several
  * @returns null when the ornament cannot be rendered; the reason has been logged
@@ -246,8 +215,8 @@ export function prepareOrnament(
   }
   const order = parseNoteOrder(od.noteOrderText);
   if (order === null || order.kind !== 'list') {
-    // A pitch keyword keeps its full v2 behaviour (D9, "≠Lars bug 3"), so this is unreachable
-    // from OrnamentationMap.apply — isV3Ornament's character probe rejects both keywords. It
+    // A pitch keyword keeps its full v2 behaviour (D9), so this is unreachable from
+    // `OrnamentationMap.apply` — `isV3Ornament`'s character probe rejects both keywords. It
     // stands for callers that build an OrnamentData in code.
     console.error(
       `Warning: ${label} combines MPM v3 features with the v2 note.order keyword "${od.noteOrderText}"; the ornament is skipped.`,
@@ -327,10 +296,9 @@ export function prepareOrnament(
  * Lay out and instantiate every prepared ornament, grouped by the principal note they decorate
  * (DESIGN.md D11).
  *
- * Grouping is by element identity and keeps map order: a `Map` keyed by the principal element
- * preserves insertion order, so the front group's cursor walks the ornaments in the order the
- * `ornamentationMap` lists them. Ornaments with no principal each form their own group, since
- * nothing ties them together.
+ * Grouping is by element identity and keeps map order, so the front group's cursor walks the
+ * ornaments in the order the `ornamentationMap` lists them. Ornaments with no principal each
+ * form their own group.
  */
 export function instantiateOrnaments(
   prepared: readonly PreparedOrnament[],
@@ -339,16 +307,9 @@ export function instantiateOrnaments(
 ): void {
   if (prepared.length === 0) return;
 
-  // Two questions, and the loop this replaces asked them both at once: which ornaments have
-  // a principal at all, and which of those share one. They are `partitionWith` and `groupBy`,
-  // and the get-or-create dance in the middle was `groupBy`'s body written out.
-  //
-  // The two phases stay two phases — every group is laid out before any orphan is — because
-  // layout appends generated notes to the target maps and a single interleaved pass would
-  // append them in a different order. `groupBy` preserves encounter order inside each bucket
-  // and Map preserves first-encounter order across them, so both sequences are the ones the
-  // hand-written version produced. `renderGroup` already takes `Element | null`, so the key
-  // needs no narrowing on the way in.
+  // Every group is laid out before any orphan is: layout appends generated notes to the target
+  // maps, so an interleaved pass would append them in a different order. `groupBy` preserves
+  // encounter order inside each bucket and `Map` preserves first-encounter order across them.
   const { yes: orphans, no: parented } = partitionWith(prepared, (o) => o.principal === null);
 
   for (const [principal, group] of groupBy(parented, (o) => o.principal))
@@ -441,13 +402,12 @@ interface FrameValues {
 /**
  * Read the def's frame, from whichever generation its `temporalSpread` was written in.
  *
- * A v3-sourced spread hands over its two {@link TemporalValue}s directly. A **v2-sourced**
- * spread is reachable from a v3 ornament too — a note pool over a plain
+ * A v3-sourced spread hands over its two {@link TemporalValue}s directly. A v2-sourced spread
+ * is reachable from a v3 ornament too — a note pool over a plain
  * `<temporalSpread frame.start="-22.0" frameLength="44.0"/>` is legal — and its element-wide
- * `time.unit` becomes the domain of both values. A def with no `temporalSpread` at all gets
- * the spec's own attribute defaults, `0.0ticks` and `100%`: the ornament then spans exactly
- * its principal, which is the only reading that makes a def consisting of nothing but a
- * `dynamicsGradient` render at all.
+ * `time.unit` becomes the domain of both values. A def with no `temporalSpread` gets the
+ * spec's attribute defaults, `0.0ticks` and `100%`, so the ornament spans exactly its
+ * principal: the only reading under which a def of nothing but a `dynamicsGradient` renders.
  */
 function frameValues(od: OrnamentData): FrameValues {
   const def = od.ornamentDef;
@@ -477,7 +437,7 @@ function frameValues(od: OrnamentData): FrameValues {
 /**
  * Resolve a frame to numbers in one domain.
  *
- * **The frame's domain is its `frameLength`'s** — the length is the span the notes are spread
+ * The frame's domain is its `frameLength`'s — the length is the span the notes are spread
  * over, so it decides which clock the spacing is counted on. `%` resolves against the
  * principal's symbolic *tick* duration and therefore lands in ticks (DESIGN.md D4: a %-frame
  * trill is tempo-dependent and must breathe with rubato, which only tick-domain placement
@@ -485,11 +445,9 @@ function frameValues(od: OrnamentData): FrameValues {
  *
  * `frame.offset` may carry its own domain in v3, and a value in a domain the frame cannot use
  * is dropped to 0 with a log rather than silently reinterpreted: ticks and milliseconds are
- * not convertible before the tempo pass has run, which is the same fact that forces the whole
- * phase split. `%` on the offset resolves like `%` on the length, and so is usable only in a
- * tick-domain frame. A zero offset in the wrong domain is the schema default rather than an
- * authoring mistake (`frame.offset` defaults to `0.0ticks` whatever `frameLength` says), so it
- * passes silently.
+ * not convertible before the tempo pass has run. `%` on the offset resolves like `%` on the
+ * length, and so is usable only in a tick-domain frame. A zero offset in the wrong domain is
+ * the schema default rather than an authoring mistake, so it passes silently.
  *
  * @returns null when the frame cannot be resolved at all, having logged why
  */
@@ -512,9 +470,9 @@ function resolveFrame(
       ? (values.length.value / 100.0) * geometry.duration
       : values.length.value;
 
-  // The offset is compared against the frame's *resolved* domain, not against the authored
-  // one: `frame.offset="360ticks" frameLength="50%"` is the spec's own figure-3 exemplum, and
-  // a `%` length resolving into ticks is exactly what makes those two commensurable.
+  // Compared against the frame's *resolved* domain, not the authored one:
+  // `frame.offset="360ticks" frameLength="50%"` is the spec's figure-3 exemplum, and a `%`
+  // length resolving into ticks is what makes those two commensurable.
   const offsetDomain: FrameDomainV3 =
     values.offset.domain === 'milliseconds' ? 'milliseconds' : 'ticks';
   let offset = 0.0;
@@ -546,11 +504,11 @@ function resolveFrame(
 /**
  * The slot budget for `repetitions="-1"`, meico's undocumented fill-the-frame sentinel.
  *
- * It is computable only from a frame whose length is stated in **milliseconds**: a tick or `%`
- * frame's real duration depends on the tempo map, which has not run yet, so DESIGN.md D9's
- * "requires an ms-resolvable frame, else log+skip" resolves to "the authored `frameLength`
- * carries the `ms` suffix". Returning null for every other case is what makes the expansion
- * engine reject the ornament with its own message.
+ * Computable only from a frame whose length is stated in milliseconds: a tick or `%` frame's
+ * real duration depends on the tempo map, which has not run yet, so DESIGN.md D9's "requires
+ * an ms-resolvable frame, else log+skip" resolves to "the authored `frameLength` carries the
+ * `ms` suffix". Null for every other case, which makes the expansion engine reject the
+ * ornament with its own message.
  */
 function frameNoteBudget(od: OrnamentData, values: FrameValues): number | null {
   if (od.repetitions !== -1) return null;
@@ -568,10 +526,9 @@ interface PlannedNote {
   readonly date: number;
   readonly duration: number;
   /**
-   * Index of this note's slot in the **expansion's** final sequence, post-dedup and
-   * post-landing — not in what survives DESIGN.md D14's clamping, so a dropped note leaves a
-   * gap in the numbering rather than renumbering the notes after it. It is provenance about
-   * the expansion, and the expansion is what it has to stay true to.
+   * Index of this note's slot in the EXPANSION's final sequence, post-dedup and post-landing —
+   * not in what survives DESIGN.md D14's clamping, so a dropped note leaves a gap in the
+   * numbering rather than renumbering the notes after it.
    */
   readonly slotIndex: number;
   /** The slot's repetition pass, or null when it came from outside every repeat group. */
@@ -586,10 +543,9 @@ interface BuiltNote {
 
 /**
  * One ornament's generated elements: grouped into chords for the transformers, and flat in
- * generation order for the id assignment. The two are built together because DESIGN.md D14 may
- * drop a note, and pairing an element back to its slot afterwards would be guesswork — the
- * expansion engine deliberately *shares* slot objects between repeat passes, so identity says
- * nothing about position.
+ * generation order for the id assignment. Built together because DESIGN.md D14 may drop a
+ * note, and pairing an element back to its slot afterwards would be guesswork — the expansion
+ * engine shares slot objects between repeat passes, so identity says nothing about position.
  */
 interface BuiltOrnament {
   readonly chords: Element[][];
@@ -607,9 +563,8 @@ interface PlannedOrnament {
   readonly spacing: ((chords: Element[][]) => void) | null;
   /**
    * Where this ornament's frame begins, relative to the principal's date: the layout cursor
-   * plus the ornament's own `frame.offset`. Kept because it and {@link length} are the two
-   * numbers the spacing is computed from, and {@link carve} needs to recompute the first
-   * onset from them for its head-loss warning.
+   * plus the ornament's own `frame.offset`. It and {@link length} are the two numbers the
+   * spacing is computed from, which {@link carve} recomputes for its head-loss warning.
    */
   readonly start: number;
   /** The frame's length after D11's overflow scaling — 1× in the millisecond domain. */
@@ -619,11 +574,10 @@ interface PlannedOrnament {
 /**
  * Lay out one principal's ornaments and render them.
  *
- * The layout runs **per frame domain** (the W5 ruling amending D11): tick and `%` ornaments
- * share a tick cursor, millisecond ones share a millisecond cursor, and a principal carrying
- * both gets a warning plus two independent layouts — the spec says nothing about how a tick
- * frame and a millisecond frame on one note should be packed, and inventing a rule would take
- * a guess at what the author meant.
+ * The layout runs per frame domain (the ruling amending D11): tick and `%` ornaments share a
+ * tick cursor, millisecond ones share a millisecond cursor, and a principal carrying both gets
+ * a warning plus two independent layouts, since the spec says nothing about how a tick frame
+ * and a millisecond frame on one note should be packed.
  */
 function renderGroup(
   group: readonly PreparedOrnament[],
@@ -631,9 +585,7 @@ function renderGroup(
   owners: ReadonlyMap<Element, GenericMap>,
   maps: readonly GenericMap[],
 ): void {
-  // A group is built by pushing onto `[ornament]` and an orphan arrives as `[orphan]`, so
-  // it is never empty. The guard is what lets the three reads below be reads rather than
-  // assertions; it costs one comparison and answers "nothing to lay out" if it ever fires.
+  // A group is never empty; the guard is what lets the reads below be reads.
   if (!isNonEmpty(group)) return;
   const first = head(group);
 
@@ -645,8 +597,6 @@ function renderGroup(
     );
 
   const planned = [...planDomain(ticks), ...planDomain(milliseconds)];
-  // Nothing planned means nothing built, and `every` over the empty `built` would have
-  // returned two lines down anyway.
   if (!isNonEmpty(planned)) return;
   const geometry = first.geometry;
   const built = planned.map((plan) => createChords(plan, geometry, principal));
@@ -654,18 +604,16 @@ function renderGroup(
 
   if (principal !== null) {
     // Carving decides who keeps the id, so it runs first (D10 id-uniqueness ruling, LOG.md
-    // 2026-08-09): a surviving head leftover *is* the principal and keeps its own id, and only
-    // when the principal is consumed whole does the id move to a generated note. Never both —
-    // two elements sharing an xml:id is not a valid document.
+    // 2026-08-09): a surviving head leftover keeps its own id, and only when the principal is
+    // consumed whole does the id move to a generated note. Never both — two elements sharing
+    // an xml:id is not a valid document.
     if (!carve(principal, planned, built, geometry, owners))
       assignPrincipalId(principal, head(planned).ornament.principalPitch, built);
   }
 
   const owner = ownerOf(principal, owners, maps);
   if (owner === null) return;
-  // `built` is `planned.map(…)`, so this is a walk over two sequences that are the same
-  // length by construction — `zipWith`, rather than an index into one of them that has to
-  // prove the bound it was given.
+  // `built` is `planned.map(…)`, so the two sequences are the same length by construction.
   for (const [plan, one] of zipWith(planned, built, (p, b) => [p, b] as const)) {
     plan.ornament.od.generation = { chords: one.chords, spacing: plan.spacing };
     for (const chord of plan.ornament.od.apply(one.chords))
@@ -678,10 +626,10 @@ function renderGroup(
  * against its end, everything scaled down together when they do not fit (DESIGN.md D11 — the
  * overflow rule the spec drafted and then commented out).
  *
- * `scaleFactor = min(1, principalDuration / totalRawLength)` counts frame **lengths** only; an
+ * `scaleFactor = min(1, principalDuration / totalRawLength)` counts frame lengths only; an
  * offset displaces a frame but is not part of what has to fit. In the millisecond domain the
  * factor is always 1: the principal's duration in milliseconds is not knowable before the
- * tempo pass, which is the same reason millisecond frames go through markers at all.
+ * tempo pass.
  */
 function planDomain(group: readonly PreparedOrnament[]): PlannedOrnament[] {
   if (!isNonEmpty(group)) return [];
@@ -725,10 +673,8 @@ function planDomain(group: readonly PreparedOrnament[]): PlannedOrnament[] {
  * the end of the frame, which reads as a surprise and is v2's behaviour exactly.
  *
  * A millisecond frame has no tick geometry to place notes at: its notes sit on the principal's
- * own date and duration and carry the spacing as markers, so `start` and the spread reach them
- * through {@link applyMillisecondSpacing} instead. That function is handed the same `start`
- * and `length`, which is what makes a millisecond ornament's markers identical to the ones the
- * v2 engine writes for the same numbers.
+ * own date and duration and carry the spacing as markers, written by
+ * {@link applyMillisecondSpacing} from the same `start` and `length`.
  */
 function planOrnament(
   ornament: PreparedOrnament,
@@ -763,8 +709,6 @@ function planOrnament(
   const principalEnd = geometry.date + geometry.duration;
   return {
     ornament,
-    // `dates` is `spacingOffsets(slots.length, …)` mapped, so the two are the same length and
-    // the slot and its date are one zip rather than a map plus a parallel index.
     slots: zipWith(slots, dates, (slot, date, index) =>
       slot.notes.map((resolved) => ({
         resolved,
@@ -809,11 +753,11 @@ function spacingOffsets(count: number, start: number, length: number, intensity:
  * whenever `intensity` bends the spacing away from it, and is `start + length` at
  * `intensity === 0`.
  *
- * Derived from the array rather than from a formula of its own, so that a change to the
- * spacing cannot leave this behind; `reduce` rather than `Math.min(...offsets)` because the
- * expansion engine's ceiling permits a million slots and a spread that wide overflows the
- * call stack. {@link spacingOffsets} always yields at least the pinned last slot, so the
- * reduction never sees an empty array.
+ * Derived from the array rather than from a formula of its own, so a change to the spacing
+ * cannot leave this behind. `reduce` rather than `Math.min(...offsets)`: the expansion engine's
+ * ceiling permits a million slots, and a spread that wide overflows the call stack.
+ * {@link spacingOffsets} always yields at least the pinned last slot, so the reduction never
+ * sees an empty array.
  */
 function earliestSpacingOffset(
   count: number,
@@ -855,23 +799,20 @@ function noteDuration(
 /**
  * Write a millisecond frame's spacing as the markers the millisecond pass consumes.
  *
- * **`alignment="at start"` reuses the v2 engine verbatim.** A `TemporalSpread` is built with
- * the resolved numbers in its v2 fields and applied to the generated notes, so the markers —
+ * `alignment="at start"` reuses the v2 engine verbatim: a `TemporalSpread` is built with the
+ * resolved numbers in its v2 fields and applied to the generated notes, so the markers —
  * `ornament.milliseconds.date.offset`, the absolute `ornament.milliseconds.duration` that
  * `monophonic` writes onto the *previous* chord, the presence-only `ornament.noteoff.shift` —
  * are produced by the same code that produces them for a v2 arpeggio, accumulation and operand
- * order included. Nothing here re-implements v2 semantics; it feeds them.
+ * order included.
  *
- * **`alignment="at end"` cannot**, and that is the D5 amendment. The frame is anchored at the
+ * `alignment="at end"` cannot, and that is the D5 amendment. The frame is anchored at the
  * principal's *millisecond end*, which is unknowable before the tempo pass, so no onset-offset
  * marker can express it. Phase N writes `ornament.milliseconds.fromend.offset` instead — a
- * static quantity, the spacing plus `frame.offset` minus `frameLength` — and the millisecond
- * pass gains one branch reading it as `milliseconds.date = milliseconds.date.end + value`. The
- * loop below mirrors `TemporalSpread.setOrnamentDateAtts` statement for statement with that
- * attribute name in place of the onset one: offsets accumulate onto an existing marker, `true`
- * writes the presence-only note-off flag, and `monophonic` retro-shortens the previous chord by
- * writing an absolute `ornament.milliseconds.duration` computed from the marker value that
- * chord actually carries.
+ * static quantity, the spacing plus `frame.offset` minus `frameLength` — which the millisecond
+ * pass reads as `milliseconds.date = milliseconds.date.end + value`. The loop below mirrors
+ * `TemporalSpread.setOrnamentDateAtts` statement for statement with that attribute name in
+ * place of the onset one.
  */
 function applyMillisecondSpacing(
   chords: Element[][],
@@ -895,10 +836,8 @@ function applyMillisecondSpacing(
   const durAttName = 'ornament.milliseconds.duration';
   const offsets = spacingOffsets(chords.length, start, length, frame.intensity);
   let previous: Element[] | null = null;
-  // Two sequences walked together — `spacingOffsets` produces one offset per chord, and the
-  // `elementAt` this replaces was re-proving that on every step. `zipWith` states it once and
-  // stops at the shorter, which for the one length these two can disagree on (`chords` empty,
-  // where the spacing still pins its last slot) is the empty walk the index loop also made.
+  // One offset per chord. `zipWith` stops at the shorter, which for the one length these two
+  // can disagree on — `chords` empty, where the spacing still pins its last slot — is empty.
   for (const [chord, dateOffset] of zipWith(chords, offsets, (c, o) => [c, o] as const)) {
     for (const note of chord) {
       const ornamentDateAtt = attribute(dateAttName, note);
@@ -933,29 +872,21 @@ function applyMillisecondSpacing(
  *
  * DESIGN.md D14's negative-date rule is applied here, at creation, rather than in the MIDI
  * export the reference implementation patches: a frame with a negative offset may begin before
- * the piece does, and a note that would end at or before tick 0 is dropped while one that
- * straddles 0 is clamped to start there. The export code is shared with every other path and
- * is not destabilised for this. A note whose layout gave it a negative length — a frame packed
- * past its principal's end — is clamped to zero the same way.
+ * the piece does, so a note that would end at or before tick 0 is dropped while one that
+ * straddles 0 is clamped to start there. A note whose layout gave it a negative length — a
+ * frame packed past its principal's end — is clamped to zero the same way. A slot that loses
+ * all of its notes loses its place in the sequence, so the dynamics gradient ramps across what
+ * actually sounds.
  *
- * A slot that loses all of its notes loses its place in the sequence, so the dynamics gradient
- * ramps across what actually sounds.
- *
- * **A note whose position is not a finite number is dropped too** (W9 hardening, from the W5
- * verifier's finding O2). The v2 spacing engine has two unguarded edges that this one inherits
- * on purpose (`intensity === 0` piles every slot at the frame end, a negative one sends the
- * first slot to `Infinity` — see {@link spacingOffsets}), and `intensity="abc"` reads as `NaN`
- * the way every other numeric MSM/MPM attribute in this port does. In v2 such an input could
- * only ever write a marker *attribute* onto a note the score already had; v3 turns positions
- * into elements, so the same input materialised a real `<note date="Infinity" duration="NaN">`
- * that flowed on into the augmented MSM and the MIDI export. `Infinity − Infinity` is where
- * the `NaN` came from: the clamp below computes the duration as `end − date`.
- *
- * Dropping is the only defensible reading — there is no note at an infinite date, and no
- * rounding that would invent one — and it follows D14's own shape, which already drops what
- * cannot sound. It is announced once per ornament rather than once per note: the cause is a
- * frame value, so when it fires at all it usually fires for every slot at once, and a
- * per-note log would be as unbounded as the input.
+ * A note whose position is not a finite number is dropped too. The v2 spacing engine's two
+ * unguarded edges are inherited on purpose (`intensity === 0` piles every slot at the frame
+ * end, a negative one sends the first slot to `Infinity` — see {@link spacingOffsets}), and
+ * `intensity="abc"` reads as `NaN`. In v2 that could only write a marker *attribute* onto a
+ * note the score already had; v3 turns positions into elements, so without this it would
+ * materialise a real `<note date="Infinity" duration="NaN">` — the `NaN` from
+ * `Infinity − Infinity`, since the clamp below computes the duration as `end − date`. The drop
+ * is announced once per ornament, not once per note: the cause is a frame value, so it usually
+ * fires for every slot at once.
  */
 function createChords(
   plan: PlannedOrnament,
@@ -998,35 +929,31 @@ function createChords(
 /**
  * One generated MSM `<note>` (DESIGN.md D13).
  *
- * It is a *copy* of the principal with {@link NOT_INHERITED} stripped, so that everything the
- * pipeline has already decided about that note — its velocity above all — carries over. What
- * is written back afterwards, in this order: the identity (`xml:id`, drawn from the codebase's
- * own generator so that the equivalence suites' first-occurrence canonicalisation stays
- * meaningful), the symbolic position (`date`, `midi.pitch`, `duration`, and `date.end` when
- * the principal had one), the performance position (the three `.perf` attributes, **only**
- * when the principal already carries them — the global ornamentation stage runs before
- * `date.perf` exists, and inventing it there would hide the note from
+ * A *copy* of the principal with {@link NOT_INHERITED} stripped. What is written back
+ * afterwards, in this order: the identity (`xml:id`, drawn from the codebase's own generator
+ * so that the equivalence suites' first-occurrence canonicalisation stays meaningful), the
+ * symbolic position (`date`, `midi.pitch`, `duration`, and `date.end` when the principal had
+ * one), the performance position (the three `.perf` attributes, only when the principal
+ * already carries them — the global ornamentation stage runs before `date.perf` exists, and
+ * inventing it there would hide the note from
  * `Performance.addPerformanceTimingAttributes`), and the provenance family (below).
  *
  * A pitch may be fractional: MSM carries microtonal `midi.pitch` and only the MIDI export
  * rounds, which is what makes `interval.chromatic="0.5"` a quarter tone rather than an error.
  *
- * ## The provenance family (D10 as extended by the conductor's two 2026-08-09 rulings)
+ * ## The provenance family (D10, as extended by the two rulings of 2026-08-09)
  *
- * They are written **last, after every musical attribute**, in the fixed order `generated`,
- * `ref`, `source`, `slot`, `pass`, `anchor`. Attribute order is byte-visible (CHARTER §79-80)
- * and no Java reference writes any of these — the elements are new in v3 — so nothing external
- * binds the choice; what binds it is that a reader scanning a generated note should meet the
- * note before its bookkeeping, and that the order be fixed rather than incidental. All six are
- * v3-only, so none of them can appear in a v2 document's output:
+ * Written last, after every musical attribute, in the fixed order `generated`, `ref`, `source`,
+ * `slot`, `pass`, `anchor`. Attribute order is byte-visible (CHARTER §79-80) and no Java
+ * reference writes any of these, so nothing external binds the choice. All six are v3-only:
  *
  * - `ornament.generated="true"` — this note did not exist in the score.
  * - `ornament.ref` — the `<ornament>`'s `xml:id`, when it has one.
  * - `ornament.source` — the `note.order` token this note resolved from: a pool note's id, the
- *   principal's, or another score note's. It is what says *which* member of the figure this is.
+ *   principal's, or another score note's. It says *which* member of the figure this is.
  * - `ornament.slot` — the note's 0-based onset in the expanded sequence.
- * - `ornament.pass` — the 0-based repetition pass, on notes from a repeat group only. Absent
- *   everywhere else, which is how "not part of a repetition" is spelled.
+ * - `ornament.pass` — the 0-based repetition pass, on notes from a repeat group only; absent
+ *   everywhere else.
  * - `ornament.anchor` — the id the principal note had *before* this ornament replaced it.
  *   Without it the join from a generated note back to its score position is not total: an
  *   ornament whose `note.order` never names its principal, and which leaves no head leftover,
@@ -1079,22 +1006,17 @@ function createNote(
  *
  * The id has to survive somewhere: MSM `goto`/`marker` wiring and the MEI id links point at
  * it, and a performance that silently dropped it would break both. The first note the
- * expansion sourced *from* the principal is the natural heir — same pitch, near enough the
- * same place — with a same-pitch note as the fallback and, failing that, the first generated
- * note, so the id is never lost. It is written by overwriting the id that note already drew,
- * which keeps `xml:id` where it is in the attribute list and keeps the number of generated ids
- * equal to the number of generated notes, in document order (PARITY.md §5: "keep ID-generation
- * call order stable").
+ * expansion sourced *from* the principal is the heir, with a same-pitch note as the fallback
+ * and, failing that, the first generated note. It is written by overwriting the id that note
+ * already drew, which keeps `xml:id` where it is in the attribute list and keeps the number of
+ * generated ids equal to the number of generated notes, in document order (PARITY.md §5:
+ * "keep ID-generation call order stable").
  *
- * **Called only when the principal was consumed whole.** An earlier draft ran this
- * unconditionally, reasoning that a head leftover *is* the principal and may therefore share
- * its id with the heir; the W6 verifier found the consequence — an augmented document carrying
- * two elements with the same `xml:id`, which is not a valid document — and the conductor's
- * **D10 id-uniqueness ruling** (LOG.md, 2026-08-09) settled it the other way: the id goes to
- * the leftover when one survives, else to the heir, never to both. D10's original wording was
- * exclusive and was never amended; XML id uniqueness wins; and `ornament.anchor` is on every
- * generated note precisely so that no consumer needs the id there to find its way home.
- * {@link carve} reports which case applies and {@link renderGroup} is the xor.
+ * Called only when the principal was consumed whole. The D10 id-uniqueness ruling (LOG.md,
+ * 2026-08-09): the id goes to the head leftover when one survives, else to the heir, never to
+ * both, since two elements sharing an `xml:id` is not a valid document. `ornament.anchor` is
+ * on every generated note precisely so that no consumer needs the id there to find its way
+ * home. {@link carve} reports which case applies and {@link renderGroup} is the xor.
  */
 function assignPrincipalId(
   principal: Element,
@@ -1128,22 +1050,15 @@ function assignPrincipalId(
  * principal's date (a negative `frame.offset`, or a frame long enough to cover the note)
  * removes it like any other. Millisecond frames never leave a head either, and cannot: their
  * notes sit on the principal's own tick date, and where they land in real time is decided two
- * passes later — the head of an `at end` millisecond ornament's principal is lost, which is
- * the price of a frame whose anchor does not exist yet.
+ * passes later — so the head of an `at end` millisecond ornament's principal is lost.
  *
  * That last case is the only one where this function throws away sounding music the author
- * asked for, so it **says so** (RULE E1's log-and-carry-on, and the voice every other
- * unrenderable combination in this module already uses). The span it names is how much of the
- * principal still sounds, measured back from its end — the only quantity here that exists
- * before the tempo pass, since how much of the note *precedes* the frame depends on a
- * millisecond duration nobody knows yet.
- *
- * That span is the first onset the spread actually produces, not the frame's own length. The
- * two differ: the line used to say `frameLength − frame.offset`, which is right only while the
- * first slot sits at the frame's start, and at `intensity === 0` every slot lands at the frame
- * *end* instead, so the message overstated by a whole `frameLength` (W5 verifier's re-check
- * nit, LOG.md 2026-08-09). {@link earliestSpacingOffset} recomputes it from the same function
- * that writes the markers, so the two cannot drift apart.
+ * asked for, so it says so (RULE E1). The span it names is how much of the principal still
+ * sounds, measured back from its end — the only quantity here that exists before the tempo
+ * pass. That span is the first onset the spread actually produces, not the frame's own length:
+ * the two differ whenever `intensity` bends the spacing, and at `intensity === 0` every slot
+ * lands at the frame end instead. {@link earliestSpacingOffset} recomputes it from the same
+ * function that writes the markers, so the two cannot drift apart.
  *
  * @returns whether the principal survived as a head leftover. That is also the answer to "does
  *   the principal's `xml:id` still exist in the document", which is why the caller runs this
@@ -1175,8 +1090,6 @@ function carve(
     return true;
   }
 
-  // Same pairing as `instantiateOrnaments`: `built` is `planned.map(…)`, so the plan and the
-  // chords it produced travel together rather than being re-associated through an index.
   for (const [plan, one] of zipWith(planned, built, (p, b) => [p, b] as const)) {
     const { frame, ornamentId, od } = plan.ornament;
     if (frame.domain !== 'milliseconds' || frame.alignment !== 'at end') continue;
@@ -1203,19 +1116,17 @@ function carve(
 }
 
 /**
- * Mark a surviving head leftover as ornamented (conductor's ruling, LOG.md "the carved leftover
- * is ornamented", out of W7's verification).
+ * Mark a surviving head leftover as ornamented (LOG.md, "the carved leftover is ornamented").
  *
  * The leftover is the one note an ornament *alters* without generating: it is shortened, and
- * before this it carried nothing at all to say so. D15's facade contract is that `ornamented`
- * holds for a note "generated by **or altered by**" an ornament, and a predicate can only see
- * what the document says — so the altered-but-not-generated path needs its own marker or the
- * contract is false on it.
+ * nothing else in the document would say so. D15's facade contract is that `ornamented` holds
+ * for a note "generated by or altered by" an ornament, and a predicate can only see what the
+ * document says, so the altered-but-not-generated path needs its own marker.
  *
  * Two attributes, and deliberately not the other four:
- * - `ornament.carved="true"` — this note is the surviving head of a principal an ornament ate.
- *   A separate name from `ornament.generated` because the two are opposites: this note *was* in
- *   the score and stayed, the generated ones never were.
+ * - `ornament.carved="true"` — the surviving head of a principal an ornament ate. A separate
+ *   name from `ornament.generated` because the two are opposites: this note *was* in the score
+ *   and stayed, the generated ones never were.
  * - `ornament.ref` — which ornament did it, when that ornament has an `xml:id`. Several may
  *   carve one principal (D11); the first `at end` tick ornament in map order is named, the same
  *   "first in the group speaks for it" the layout already uses for the group's geometry.
@@ -1223,9 +1134,8 @@ function carve(
  *   of the expanded sequence — it has no `note.order` token, no onset in the spread and no
  *   repetition pass. Writing any of them would invent a position it does not occupy.
  * - **not** `ornament.anchor`: the anchor names the score note a generated note came from, and
- *   the leftover **is** that note — it kept the principal's `xml:id` (the D10 id-uniqueness
- *   ruling is what guarantees that). Pointing it at itself would be noise, and the attribute
- *   stays what it is: generated-note-only.
+ *   the leftover *is* that note — it kept the principal's `xml:id`, which the D10 id-uniqueness
+ *   ruling guarantees. The attribute stays generated-note-only.
  *
  * Written after the timing attributes, so a leftover reads as a note first and as bookkeeping
  * after — the same order {@link createNote} uses.
@@ -1255,8 +1165,7 @@ export function noteOwners(maps: readonly GenericMap[]): ReadonlyMap<Element, Ge
 /**
  * The map a principal's generated notes belong in: the one its principal lives in, so that a
  * *global* ornamentation map — which may name notes in several parts at once — puts each
- * ornament's notes into the part it decorates. (The v2 seam's dead loop adds to `maps[0]`
- * unconditionally, which for a global map would move a second part's notes into the first.)
+ * ornament's notes into the part it decorates rather than into `maps[0]`.
  */
 function ownerOf(
   principal: Element | null,
@@ -1299,11 +1208,10 @@ function readGeometry(principal: Element | null, ornamentDate: number): Principa
  * fallback; no signature anywhere means C major, which is also what a document that never
  * states a key means.
  *
- * PARITY NOTE — the thresholds here are `> 0` / `< 0`. They always were: this is new v3 code
- * with no Java counterpart, and reproducing the inherited `> 1.0` / `< 1.0` of
- * `Msm.parseKeySignatureMap` — which counted no sharp at all — would have put a trill in the
- * wrong key. That bug has since been fixed at the source (`meico@db83c7c5`) and in the port,
- * so the two readings now agree rather than diverging deliberately.
+ * PARITY NOTE — the thresholds are `> 0` / `< 0`, not the `> 1.0` / `< 1.0` this port
+ * inherited in `Msm.parseKeySignatureMap`, which counted no sharp at all and would have put a
+ * trill in the wrong key. That bug is fixed at the source (`meico@db83c7c5`) and in the port,
+ * so the two readings now agree.
  */
 export function readKeyFifths(map: GenericMap | null, date: number): number {
   if (map === null) return 0;
@@ -1346,10 +1254,9 @@ function fifthsFromMap(keySignatureMap: Element | null, date: number): number | 
  * A numeric MSM attribute, or null when it is absent or unreadable.
  *
  * `parseFloat`, the reading every other renderer in this port uses for MSM note attributes.
- * DESIGN.md D16's `parseJavaDouble` requirement is about *MPM v3 parse code* — the pool note's
- * pitch attributes and `@repetitions`, which read through it — and this is an MSM read, so the
- * requirement does not reach here. PARITY.md §6.8 records the split and names this family as
- * one `P1` already left open.
+ * DESIGN.md D16's `parseJavaDouble` requirement is about MPM v3 parse code — the pool note's
+ * pitch attributes and `@repetitions` — and does not reach an MSM read. PARITY.md §6.8 records
+ * the split and names this family as one `P1` already left open.
  */
 function readNumber(element: Element, name: string): number | null {
   const att = attribute(name, element);
@@ -1369,15 +1276,12 @@ function setNumber(element: Element, name: string, value: number): void {
  * How many of one diagnostic array's entries reach the console before the rest are counted.
  *
  * The two pure modules this reads from *return* their diagnostics rather than logging them
- * (RULE E1: they have no opinion about the console), which makes this the place where "how much
- * of it does a human want" is decided. Both arrays grow with the length of the value: a 50 000
- * item `note.order` of unresolvable references produces 100 000 expansion diagnostics —
- * measured, not estimated — and printing them buries every other line the render emits.
- * `noteOrder` additionally caps its own array so the memory is bounded too; the expansion's
- * array is bounded by the input's length, and this bounds what is said about it.
- *
- * Twenty is a reading number, not a tuning constant: past the first few, a malformed value is
- * repeating itself, and the count that follows says how much was left out.
+ * (RULE E1), which makes this where "how much of it does a human want" is decided. Both arrays
+ * grow with the length of the value: a 50 000 item `note.order` of unresolvable references
+ * produces 100 000 expansion diagnostics — measured — and printing them buries every other
+ * line the render emits. `noteOrder` additionally caps its own array so the memory is bounded
+ * too; the expansion's array is bounded by the input's length, and this bounds what is said
+ * about it. The count that follows the twenty says how much was left out.
  */
 const MAX_LOGGED_DIAGNOSTICS = 20;
 

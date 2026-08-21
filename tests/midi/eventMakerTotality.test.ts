@@ -4,19 +4,13 @@ import { shortData1, shortData2, messageStatus } from '../../src/midi/MidiTypes.
 import type { ShortMessage } from '../../src/midi/MidiTypes.js';
 
 /**
- * Every `EventMaker.createX` used to return `MidiEvent | null`, wrapping its body in
- * `try { … } catch (e) { console.error(e); return null; }` — a faithful port of Java,
- * where `new ShortMessage(...)` and `new MetaMessage(...)` throw `InvalidMidiDataException`
- * for out-of-range arguments.
+ * In Java, `new ShortMessage(...)` and `new MetaMessage(...)` throw
+ * `InvalidMidiDataException` for out-of-range arguments. This port does not validate; it
+ * masks — `channelMessage` ends in `data1 & 0x7f` and `MidiEvent`'s constructor is two
+ * assignments — so every `EventMaker.createX` is total and none of them returns null.
  *
- * **This port does not validate; it masks.** `channelMessage` ends in `data1 & 0x7f`, and
- * `MidiEvent`'s constructor is two assignments, so nothing on any of these paths can throw
- * and none of the fourteen nulls was reachable. 102 call sites were writing `!` to get past
- * them, and no test in the suite ever asserted that any of them returned null.
- *
- * These tests pin the claim the removal rests on: hostile arguments produce an event, and
- * they produce it by masking. If someone reintroduces validation, the first block throws
- * and the second block's masked values change — either way this file reds.
+ * Hostile arguments therefore produce an event, and produce it by masking. Reintroduce
+ * validation and the first blocks throw while the masked values in the last one change.
  */
 describe('EventMaker is total', () => {
   const hostile = [-1, 0, 200, 99999, -99999];
@@ -46,8 +40,7 @@ describe('EventMaker is total', () => {
   });
 
   it('is total because it masks, not because it clamps — 200 becomes 72', () => {
-    // This is the mechanism, and it is a documented divergence from Java, which would
-    // have thrown here. Velocity IS clamped (200 -> 127); pitch is NOT (200 -> 72).
+    // Java throws here. Velocity is clamped (200 -> 127); pitch is not (200 -> 72).
     const event = EventMaker.createNoteOn(0, 0, 200, 200);
     const message = event.getMessage() as ShortMessage;
     expect(shortData1(message)).toBe(200 & 0x7f); // 72

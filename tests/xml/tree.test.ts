@@ -34,11 +34,6 @@ function tree(name: string, children: Element[]): Element {
   return parent;
 }
 
-// Moved verbatim from tests/mei/Helper.test.ts by T14: XML navigation primitives.
-
-// ---------------------------------------------------------------------------
-// getAttribute – various namespace scenarios
-// ---------------------------------------------------------------------------
 describe('attribute', () => {
   it('should return null for null element', () => {
     expect(attribute('dur', null)).toBeNull();
@@ -63,16 +58,14 @@ describe('attribute', () => {
   it('should find attribute with element namespace', () => {
     const el = new Element('note', 'http://www.music-encoding.org/ns/mei');
     el.addAttribute(new Attribute('dur', '4'));
-    // getAttribute tries no-ns first, which should succeed
     const attr = attribute('dur', el);
     expect(attr).not.toBeNull();
     expect(attr!.getValue()).toBe('4');
   });
 
   // The three-lookup order (no namespace, then the element's own, then the XML namespace) is
-  // documented as load-bearing but was not pinned by any test or fixture: T14's negative
-  // control reversed it and neither the pipeline byte-probe nor the suite noticed. This test
-  // closes that gap. See the [T14] log entry, NC-B.
+  // documented as load-bearing but was pinned by no test or fixture: a negative control that
+  // reversed it left both the pipeline byte-probe and the suite green. This closes that gap.
   it('should prefer the unnamespaced attribute when the element carries both', () => {
     const note = new Element('note');
     note.addAttribute(new Attribute('id', 'bare'));
@@ -88,13 +81,6 @@ describe('attribute', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// getAttributeValue
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// getAttributeValue
-// ---------------------------------------------------------------------------
 describe('getAttributeValue', () => {
   it('should return the value for existing attributes', () => {
     const el = new Element('note');
@@ -112,13 +98,6 @@ describe('getAttributeValue', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// getFirstChildElement – various overloads
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// getFirstChildElement – various overloads
-// ---------------------------------------------------------------------------
 describe('firstChildElement', () => {
   it('should return the first child element (no filter)', () => {
     const parent = new Element('staff');
@@ -137,11 +116,9 @@ describe('firstChildElement', () => {
   });
 
   it('answers null for a null element — the guard no typed caller can reach', () => {
-    // The cast this used to carry (`null as unknown as Element`) tested what happens when the
-    // type system is defeated. The directive tests something stronger and self-maintaining:
-    // that the parameter is **not** nullable. Widen it to `Element | null` and this becomes an
-    // unused-directive error, so the claim cannot rot into a lie the way a cast can. What the
-    // guard is for is the untyped JavaScript caller, which a published library still has.
+    // The parameter is not nullable: widen it to `Element | null` and the directive below
+    // becomes an unused-directive error, so the claim cannot rot. What the guard is for is
+    // the untyped JavaScript caller, which a published library still has.
     // @ts-expect-error the parameter is non-nullable; this is the untyped-caller path
     expect(firstChildElement(null)).toBeNull();
     // …and the reachable spelling of "nothing to return", which is what callers actually hit
@@ -180,13 +157,6 @@ describe('firstChildElement', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// getFilenameWithoutExtension
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// cloneElement
-// ---------------------------------------------------------------------------
 describe('cloneElement', () => {
   it('should return null for null input', () => {
     expect(cloneElement(null)).toBeNull();
@@ -208,13 +178,6 @@ describe('cloneElement', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// addUUID
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// getAllChildElements
-// ---------------------------------------------------------------------------
 describe('allChildElements', () => {
   it('should return all children when no name is given', () => {
     const layer = tree('layer', [el('note'), el('rest'), el('note')]);
@@ -239,11 +202,10 @@ describe('allChildElements', () => {
     expect(allChildElements(layer, 'note').length).toBe(1);
   });
 
-  // T14 applied ARCHITECTURE.md RULE N2b here: `allChildElements` used to return null from
-  // two guards (`ofThis == null`, `name === ''`) and now returns `Element[]` unconditionally.
-  // This test is the rule's required negative control — it pins the failure mode the deleted
-  // guards used to hide. All 16 call sites in `src/` pass a live element and either a string
-  // literal name or none, so neither case is reachable from the pipeline.
+  // ARCHITECTURE.md RULE N2b: `allChildElements` returns `Element[]` unconditionally, with no
+  // `ofThis == null` or `name === ''` guard. This is the rule's required negative control,
+  // pinning what those inputs do instead. All 16 call sites in `src/` pass a live element and
+  // either a string literal name or none, so neither is reachable from the pipeline.
   it('throws on a null element now that the null guards are gone (RULE N2b)', () => {
     // @ts-expect-error the parameter is non-nullable — which is exactly what is being pinned
     expect(() => allChildElements(null)).toThrow();
@@ -256,13 +218,6 @@ describe('allChildElements', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// getAllDescendantsByName / getAllDescendantsWithAttribute
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// getAllDescendantsByName / getAllDescendantsWithAttribute
-// ---------------------------------------------------------------------------
 describe('getAllDescendantsByName', () => {
   it('should collect matching elements at every depth', () => {
     const chord = tree('chord', [el('note', { pname: 'c' }), el('note', { pname: 'e' })]);
@@ -308,13 +263,6 @@ describe('getAllDescendantsWithAttribute', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// sibling navigation
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// sibling navigation
-// ---------------------------------------------------------------------------
 describe('getNextSiblingElement', () => {
   it('should return the immediately following sibling', () => {
     const a = el('note', { n: '1' });
@@ -408,13 +356,6 @@ describe('getAllPreviousSiblingElements', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// addToMap
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// parent / ancestor access
-// ---------------------------------------------------------------------------
 describe('parentElement', () => {
   it('should return the parent element', () => {
     const note = el('note');
@@ -478,9 +419,7 @@ describe('getClosestByAttr', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// the require* siblings (ARCHITECTURE.md RULE N2a)
-// ---------------------------------------------------------------------------
+// ARCHITECTURE.md RULE N2a
 describe('require* accessors', () => {
   it('requireFirstChildElement returns what firstChildElement returns, in all three overloads', () => {
     const note = el('note');

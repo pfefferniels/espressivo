@@ -32,12 +32,9 @@ import { ImprecisionMap } from '../../../../src/mpm/elements/maps/ImprecisionMap
 import { TempoMap } from '../../../../src/mpm/elements/maps/TempoMap.js';
 
 /**
- * The dispatch table of `maps/map.ts`, which replaced `GenericMap`'s static mutable factory
- * registry.
- *
- * The oracle here is {@link EXPECTED_CLASS}: an independent transcription of the thirteen
- * name ⇒ class pairs, checked by *name string* rather than by `instanceof`, so a row of the
- * table pointing at the wrong factory is a failure rather than a tautology. It is driven off
+ * The oracle for the dispatch table of `maps/map.ts`: an independent transcription of the
+ * thirteen name ⇒ class pairs, checked by name string rather than by `instanceof`, so a row
+ * pointing at the wrong factory is a failure rather than a tautology. Driven off
  * `MAP_KINDS`, so a fourteenth kind is covered the moment its row is added.
  */
 const EXPECTED_CLASS: Record<MapKind, string> = {
@@ -112,8 +109,6 @@ describe('the map dispatch table', () => {
     expect(map.getType()).toBe('vendorMap');
   });
 
-  // Was: silence `console.error`, assert null. The silencing is gone with the printing, and
-  // the assertion says which element was refused and against which rule.
   it('reports an element that is no map at all', () => {
     expect(errOf(parseTypedMap(new Element('note')))).toEqual({
       kind: 'wrongLocalName',
@@ -126,9 +121,8 @@ describe('the map dispatch table', () => {
 
 describe('mapOfKind', () => {
   it('rejects a plain GenericMap filed under a typed name — the check the cast could not do', () => {
-    // This is exactly the object the tree-shaken bundle used to produce for every map: the
-    // right element name, the wrong class. `as TempoMap | null` accepted it and the first
-    // `getTempoDataOf` call then threw.
+    // The object a tree-shaken bundle produces: right element name, wrong class. A cast to
+    // `TempoMap | null` accepts it and the first `getTempoDataOf` call throws.
     const impostor = okValue(GenericMap.createGenericMap(TEMPO_MAP));
     expect(impostor.getType()).toBe(TEMPO_MAP);
     expect(mapOfKind(impostor, TEMPO_MAP)).toBeNull();
@@ -145,9 +139,8 @@ describe('mapOfKind', () => {
   });
 
   it('accepts any imprecision domain as any other — the domain is the Dated key, not the class', () => {
-    // Deliberate and documented: five kinds share one class, so the class test cannot tell
-    // them apart. What tells them apart is which key the caller looked under, which
-    // `Dated.getMapOfKind` supplies. The test below pins that end of it.
+    // Deliberate: five kinds share one class, so the class test cannot tell them apart. What
+    // does is the key the caller looked under, which `Dated.getMapOfKind` supplies.
     const timing = ImprecisionMap.createImprecisionMap('timing');
     expect(mapOfKind(timing, IMPRECISION_MAP_TUNING)).toBe(timing);
   });
@@ -192,18 +185,13 @@ describe('Dated.getMapOfKind', () => {
 });
 
 /**
- * The guard on the `sideEffects` deletion.
+ * A green suite proves nothing about tree-shaking — vitest does not tree-shake. The evidence
+ * is a bundle: rollup over the facade with `treeshake.moduleSideEffects: false` yields 13/13
+ * typed classes, where registration-by-import yielded 13/13 plain `GenericMap`s. That
+ * measurement needs a bundler and so does not live in this suite.
  *
- * A green suite proves nothing about tree-shaking — vitest does not tree-shake, which is
- * precisely why the incumbent's hazard survived unnoticed. The real evidence is a bundle:
- * rollup over the facade with `treeshake.moduleSideEffects: false` used to yield 13/13
- * plain `GenericMap`s and now yields 13/13 typed classes. That measurement needs a bundler
- * and so does not live in this suite.
- *
- * What DOES live here is the invariant that makes it stay true, and it is cheap to state:
- * nothing in `src/` may be imported for its side effects alone. Registration-by-import is
- * the only reason the `sideEffects` field ever existed, so a bare `import './x.js';`
- * reappearing anywhere in the tree is the regression, and this reds on it.
+ * What lives here is the invariant behind it: nothing in `src/` may be imported for its side
+ * effects alone, so a bare `import './x.js';` anywhere in the tree reds these.
  */
 describe('the sideEffects deletion', () => {
   const root = join(import.meta.dirname, '..', '..', '..', '..');
@@ -233,10 +221,9 @@ describe('the sideEffects deletion', () => {
   });
 
   it('reaches every map class from the dispatch table by an ordinary value import', () => {
-    // The load-bearing half: a bundler may drop a module nothing *uses*, and what uses these
-    // nine is MAP_SHAPE. Checked as text because the alternative — that they are imported —
-    // is exactly what a `import type` regression would leave true at runtime and false in
-    // the bundle.
+    // A bundler may drop a module nothing uses, and what uses these nine is MAP_SHAPE.
+    // Checked as text because an `import type` regression would leave the runtime behaviour
+    // right and only the bundle wrong.
     const table = readFileSync(join(root, 'src/mpm/elements/maps/map.ts'), 'utf8');
     for (const cls of new Set(Object.values(EXPECTED_CLASS))) {
       expect(table).toContain(`import { ${cls} } from './${cls}.js';`);
@@ -246,18 +233,9 @@ describe('the sideEffects deletion', () => {
 
 describe('construction without a virtual call from the base constructor', () => {
   /**
-   * `ImprecisionMap`'s name check used to live in a `parseData` override that
-   * `GenericMap`'s constructor reached by virtual dispatch. It then moved into
-   * `ImprecisionMap`'s own constructor after `super(...)` returned, and it now runs in its
-   * factory after construction — the same position in the sequence each time. These two pin
-   * that the check still fires and that the two validations still fire in the same ORDER,
-   * which is the observable each of those moves could have changed.
-   *
-   * The assertion used to read the first argument of a `console.error` spy for a substring.
-   * It reads the returned error instead, and is strictly stronger for it: a substring match
-   * would pass on a message that happened to mention the phrase, and `spy.mock.calls[0]`
-   * could not distinguish "this check fired first" from "this check fired at all while some
-   * other call had been made and restored".
+   * `ImprecisionMap`'s name check runs in its factory, after construction — so after
+   * `GenericMap`'s generic name-shape check. These two pin that it fires and that the two
+   * validations fire in that order.
    */
   it('rejects an element whose name is not an imprecisionMap', () => {
     expect(
@@ -280,13 +258,10 @@ describe('construction without a virtual call from the base constructor', () => 
   });
 
   /**
-   * The side effect of the rejection above, which is what keeps the check where it is.
-   *
-   * `GenericMap`'s constructor indexes and re-sorts the element's children, and it runs
-   * BEFORE `ImprecisionMap`'s own name test. So an element that is a map but not an
-   * imprecision map comes back with its children reordered and no map to show for it. Moving
-   * the test up beside its sibling would read better and would quietly stop touching the
-   * caller's document; this is the assertion that would notice.
+   * `GenericMap`'s constructor indexes and re-sorts the element's children before
+   * `ImprecisionMap`'s name test runs, so an element that is a map but not an imprecision map
+   * comes back with its children reordered and no map to show for it. Moving the test up
+   * beside its sibling would quietly stop touching the caller's document; this notices.
    */
   it('has already re-sorted the element it then rejects', () => {
     const xml = new Element(TEMPO_MAP, MPM_NAMESPACE);
@@ -305,9 +280,9 @@ describe('construction without a virtual call from the base constructor', () => 
   });
 
   it('refuses parseData as an entry point', () => {
-    // Protected, and reachable only through this cast — which is the point: nothing in the
-    // tree calls it, and a caller that finds it should get the reason rather than a map
-    // whose element and index have silently drifted apart.
+    // Protected and reachable only through this cast: nothing in the tree calls it, and a
+    // caller that finds it should get the reason rather than a map whose element and index
+    // have drifted apart.
     const map = okValue(GenericMap.createGenericMap(TEMPO_MAP)) as unknown as {
       parseData: (xml: Element) => void;
     };

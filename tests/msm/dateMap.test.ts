@@ -16,11 +16,6 @@ function tree(name: string, children: Element[]): Element {
   return parent;
 }
 
-// Moved verbatim from tests/mei/Helper.test.ts by T14: date-sorted MSM map insertion.
-
-// ---------------------------------------------------------------------------
-// addToMap
-// ---------------------------------------------------------------------------
 describe('addToMap', () => {
   const dates = (map: Element) => {
     const out: string[] = [];
@@ -73,7 +68,3 @@ describe('addToMap', () => {
     expect(dates(map)).toEqual(['0.0', '1440.0']);
   });
 });
-
-// ---------------------------------------------------------------------------
-// id copying
-// ---------------------------------------------------------------------------

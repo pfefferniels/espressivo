@@ -35,12 +35,8 @@ export class DynamicsMap extends GenericMap {
   }
 
   /**
-   * A fresh, empty `<dynamicsMap>`, or one read from an existing element.
-   *
-   * The two overloads return different things and that is the point. Building an empty
-   * map consults nothing the caller supplied, so it cannot fail and says so; reading an
-   * element can, and returns the reason instead of printing it. See
-   * {@link GenericMap.emptyMapElement}.
+   * A fresh, empty `<dynamicsMap>`, or one read from an existing element. The empty form is
+   * total, the parsing one is not; see {@link GenericMap.emptyMapElement}.
    */
   static createDynamicsMap(): DynamicsMap;
   static createDynamicsMap(xml: Element): Result<DynamicsMap, MpmParseError>;
@@ -105,13 +101,12 @@ export class DynamicsMap extends GenericMap {
   }
 
   /**
-   * Curvature is a fraction of the segment's own extent, so only `[0, 1]` denotes
-   * anything; a value outside it is corrected and reported rather than let through into
-   * the Bézier's control points. Both boundary guards are applied wherever a curve
-   * parameter enters or leaves the map — {@link DynamicsMap.getDynamicsDataOf} on the way
-   * in, {@link DynamicsMap.addDynamics} and {@link DynamicsMap.addDynamicsFromData} on
-   * the way out — so an out-of-range value can neither be written to a document nor be
-   * read back out of one.
+   * Curvature is a fraction of the segment's own extent, so only `[0, 1]` denotes anything; a
+   * value outside it is corrected and reported rather than let through into the Bézier's
+   * control points. Both guards run wherever a curve parameter enters or leaves the map —
+   * {@link DynamicsMap.getDynamicsDataOf} on the way in, {@link DynamicsMap.addDynamics} and
+   * {@link DynamicsMap.addDynamicsFromData} on the way out — so an out-of-range value can
+   * neither be written to a document nor read back out of one.
    */
   private static clampCurvature(curvature: number): number {
     if (curvature < 0.0) {
@@ -160,10 +155,7 @@ export class DynamicsMap extends GenericMap {
    *
    * What the declared shape leaves out, {@link resolveDynamics} fills in — an absent
    * `transition.to` becomes a target equal to `volume`, and absent curve parameters become
-   * 0.0. That is the incumbent's behaviour with the substitutions gathered into one place:
-   * the constant branch used to spell all four out here, while an absent `@curvature` on a
-   * *transition* was left null and defaulted to 0.0 much later, in place, by the method
-   * that computed the control points.
+   * 0.0.
    */
   getDynamicsDataOf(index: number): Dynamics | null {
     const i = this.resolveEntryIndex(index, 'dynamics');
@@ -188,8 +180,6 @@ export class DynamicsMap extends GenericMap {
       transitionToString,
       transitionTo:
         transitionToString === null ? null : numericDynamicsValue(transitionToString, style),
-      // Read only in the transition branch, exactly as before: a constant instruction's
-      // curve parameters are 0.0 whatever the element says.
       curvature:
         transitionToString === null
           ? null
@@ -227,8 +217,7 @@ export class DynamicsMap extends GenericMap {
    */
   renderDynamicsToMap(map: GenericMap | null): GenericMap | null {
     if (map === null || this.elements.length === 0) return null;
-    // `'channelVolumeMap'` contains "Map", so this cannot fail; `unwrapOr` keeps the `null`
-    // the guards below already test for rather than asserting the fact with a `!`.
+    // `'channelVolumeMap'` contains "Map", so this cannot fail.
     const chanVolMap = unwrapOr(GenericMap.createGenericMap('channelVolumeMap'), null);
     let mapIndex = 0;
     for (let dynamicsIndex = 0; dynamicsIndex < this.size(); ++dynamicsIndex) {
@@ -237,7 +226,6 @@ export class DynamicsMap extends GenericMap {
 
       if (chanVolMap !== null) {
         if (dd.subNoteDynamics && dynamicsIndex < this.size() - 1) {
-          // sub-note dynamics: generate volume curve events
           DynamicsMap.generateSubNoteDynamics(dd, chanVolMap);
           for (; mapIndex < map.size(); ++mapIndex) {
             const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
@@ -248,7 +236,6 @@ export class DynamicsMap extends GenericMap {
           }
           continue;
         }
-        // non-sub-note dynamics: add a volume=100 entry to channelVolumeMap
         if (
           chanVolMap.isEmpty() ||
           getAttributeValue('value', chanVolMap.getLastElement()) !== '100.0'
@@ -282,9 +269,7 @@ export class DynamicsMap extends GenericMap {
     channelVolumeMap: GenericMap,
   ): void {
     const segment = subNoteDynamicsSegment(dynamicsData, 2.0);
-    // Only the first event is ever read back, so it is remembered rather than the whole array
-    // being kept to index `[0]` out of once — which is also what removes the second
-    // allocation this method used to make per sub-note transition.
+    // Only the first event of the curve is marked mandatory.
     let first: Element | null = null;
     for (const event of segment) {
       const e = new Element('volume', channelVolumeMap.getXml().getNamespaceURI());
@@ -302,9 +287,6 @@ export class DynamicsMap extends GenericMap {
   ): GenericMap | null {
     if (dynamicsMap !== null) return dynamicsMap.renderDynamicsToMap(map);
     if (map === null) return null;
-    // Walking the index directly rather than `map.getElement(i)!` over `0 ..< map.size()`:
-    // same entries in the same order, and the map's own accessor stops having to be
-    // contradicted about the range its caller just established.
     for (const entry of map.getAllElements()) {
       const e = entry.getValue();
       if (e.getLocalName() === 'note') e.addAttribute(new Attribute('velocity', '100.0'));

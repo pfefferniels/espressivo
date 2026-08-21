@@ -3,11 +3,6 @@ import { addToListAttribute, addUUID, copyId, copyIdNoNs } from '../../src/xml/i
 import { getAttributeValue } from '../../src/xml/tree.js';
 import { Element, Attribute } from '../../src/xml/XomTypes.js';
 
-// Moved verbatim from tests/mei/Helper.test.ts by T14: xml:id handling and list attributes.
-
-// ---------------------------------------------------------------------------
-// addUUID
-// ---------------------------------------------------------------------------
 describe('addUUID', () => {
   it('should add an xml:id attribute', () => {
     const el = new Element('note');
@@ -19,13 +14,6 @@ describe('addUUID', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// prettyXml
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// addToListAttribute
-// ---------------------------------------------------------------------------
 describe('addToListAttribute', () => {
   it('should add a value to a new attribute', () => {
     const el = new Element('note');
@@ -47,9 +35,8 @@ describe('addToListAttribute', () => {
     expect(getAttributeValue('classes', el)).toBe('foo bar');
   });
 
-  // No cast: `addToListAttribute` declares all three parameters nullable, so every call
-  // below is one a typed caller can make. The `as unknown as string` these two used to carry
-  // was defeating a type system that was not in the way.
+  // `addToListAttribute` declares all three parameters nullable, so every call below is one
+  // a typed caller can make, with no cast.
   it('should do nothing with null/empty arguments', () => {
     addToListAttribute(null, 'x', 'y'); // Should not throw
     const el = new Element('note');
@@ -61,13 +48,6 @@ describe('addToListAttribute', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// getAllChildElements
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// id copying
-// ---------------------------------------------------------------------------
 describe('copyId / copyIdNoNs', () => {
   it('copyId should carry the xml:id over, namespace included', () => {
     const source = new Element('note');
@@ -95,7 +75,3 @@ describe('copyId / copyIdNoNs', () => {
     expect(copyIdNoNs(new Element('note'), new Element('note'))).toBeNull();
   });
 });
-
-// ---------------------------------------------------------------------------
-// parent / ancestor access
-// ---------------------------------------------------------------------------

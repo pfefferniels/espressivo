@@ -56,10 +56,8 @@ describe('Header', () => {
       const h = okValue(Header.createHeader(xml));
 
       expect(h.getAllStyleTypes().size).toBe(2);
-      // `styleOfKind` where this used to be `as TempoStyle` + `toBeInstanceOf(TempoStyle)`:
-      // one class now serves every kind, so what identifies a tempo style is its `kind`
-      // discriminant, and `styleOfKind` returning non-null IS that assertion — plus it is
-      // what gives `getDef` the `TempoDef` return type the cast used to supply.
+      // One class serves every kind, so `styleOfKind` returning non-null is the assertion
+      // that this is a tempo style; it also narrows `getDef` to `TempoDef`.
       const tempoStyle = styleOfKind(h.getStyleDef(Mpm.TEMPO_STYLE, 'default'), 'tempo');
       expect(tempoStyle).not.toBeNull();
       expect(tempoStyle!.getDef('Allegro')!.getValue()).toBe(147.0);
@@ -71,10 +69,6 @@ describe('Header', () => {
       expect(h.getAllStyleTypes().size).toBe(0);
     });
 
-    // Was: spy on `console.error`, assert the factory returned null, assert something was
-    // printed. The assertion that something was printed is what the `Result` replaces, and
-    // the replacement is stronger — "printed at all" could not tell a null element from any
-    // other exception the catch-all absorbed, and this names which one it was.
     it('reports a null element rather than printing it', () => {
       expect(errOf(Header.createHeader(null))).toEqual({
         kind: 'noElement',
@@ -118,10 +112,8 @@ describe('Header', () => {
         const h = okValue(Header.createHeader());
         h.adoptStyleType(element(type, {}, [styleDefElement('default', defs)]));
         const style = h.getStyleDef(type, 'default')!;
-        // Was `toBeInstanceOf(<the subclass>)`. The kind discriminant is what the six
-        // subclasses were carrying, so this is the same claim about the same fact — and the
-        // `size()` check below still proves the kind picked the right def parser, which is
-        // the part `instanceof` never actually established.
+        // `size()` is what proves the kind picked the right def parser: the wrong one leaves
+        // the styleDef empty.
         expect(style.kind).toBe(kind);
         expect(style.size()).toBe(1);
       }
@@ -166,18 +158,16 @@ describe('Header', () => {
     });
 
     /**
-     * The gap between how a style-type collection is FOUND and how it is later LOOKED UP.
+     * The gap between how a style-type collection is found and how it is later looked up.
      *
-     * `parseData` discovers `…Styles` collections by local name in any namespace — that is
-     * what makes vendor types work at all — but `addStyleDef` and `removeStyleDef` reach for
-     * the collection with a namespace-EXACT `getFirstChildElement(type, MPM_NAMESPACE)`. So
-     * a foreign-namespace `<tempoStyles>` is indexed under `tempoStyles` and then cannot be
-     * found again, and both writers used to fail with "Cannot read properties of null".
+     * `parseData` discovers `…Styles` collections by local name in any namespace, which is
+     * what makes vendor types work, but `addStyleDef` and `removeStyleDef` reach for the
+     * collection with a namespace-exact `getFirstChildElement(type, MPM_NAMESPACE)`. A
+     * foreign-namespace `<tempoStyles>` is therefore indexed under `tempoStyles` and cannot
+     * be found again by either writer.
      *
      * `Header.java:141,163` dereference the same lookup unguarded, so this is Java's
-     * behaviour and not a divergence; the two `!`s that used to spell it here are gone and
-     * the throw now names the missing collection. This test is what stops either half from
-     * being "tidied" into agreement with the other without a deliberate decision.
+     * behaviour and not a divergence, and the two halves are kept in disagreement on purpose.
      */
     it('indexes a foreign-namespace ...Styles collection that the writers cannot find again', () => {
       const foreign = new Element(Mpm.TEMPO_STYLE, 'http://example.com/not-mpm');
