@@ -42,6 +42,21 @@ restatement is worse than nothing — it costs a read and rots independently. De
   places. Two copies disagree eventually.
 - **Commented-out code**, and TODOs with no owner.
 
+## Auditing a comment pass
+
+Line counts do not tell you whether a pass lost anything. A comment that quietly drops its
+citation, or its scoping qualifier, still compiles and still reads well — and is now either
+unsupported or wrong. So when comments are edited in bulk, diff the **citation set** and the
+**measured-number set** of every file before and after, and account for each loss individually:
+
+- citations: `AD-nn`, `§n.n`, rule ids, `PARITY.md`, `docs/history/…`, `Foo.java:nn`
+- measured numbers: anything with `%`, `·10`, `ulp`, `nepers` — the record of a falsification
+
+Most losses are correct — a review-round id, a stale status note — but they should be losses
+someone decided on. In one pass over this tree the audit caught three that no line-count review
+would have: a forward pointer to another module's spec section, and two claims that lost a
+qualifier and silently widened.
+
 ## Form
 
 - Interface comment: one to three sentences, unless the contract genuinely needs more.
