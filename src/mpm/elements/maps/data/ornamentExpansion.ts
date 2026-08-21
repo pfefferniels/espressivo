@@ -1,33 +1,28 @@
 /**
- * The MPM v3 ornament **expansion engine**: it turns a parsed `note.order` (W2's AST), the
- * ornament's note pool and its principal note into the flat sequence of *slots* the
- * renderer instantiates as MSM notes — repetition groups multiplied out, chords kept as
- * single slots, pitches resolved to numbers, duplicates collapsed.
+ * The MPM v3 ornament **expansion engine**: it turns a parsed `note.order` (the AST of
+ * `noteOrder.ts`), the ornament's note pool and its principal note into the flat sequence of
+ * *slots* the renderer instantiates as MSM notes — repetition groups multiplied out, chords
+ * kept as single slots, pitches resolved to numbers, duplicates collapsed.
  *
- * Like `noteOrder.ts` and `bezier.ts` this is a **pure module** (RULE C3, architecture
- * brief §1.3): no XML, no classes, no state, no logging. Every diagnostic is *returned*
- * — warnings on the value, and a fatal reason instead of it — so the caller (W5) decides
- * what reaches the console, per RULE E1's log-and-skip. All types here are plain and
- * `readonly`; nothing in this file imports anything but W2's AST types and the prelude, which
- * is a leaf every layer may reach.
+ * A pure module (RULE C3): no XML, no classes, no state, no logging. Every diagnostic is
+ * *returned* — warnings on the value, and a fatal reason instead of it — so the caller decides
+ * what reaches the console, per RULE E1's log-and-skip.
  *
  * WHAT A SLOT IS. One slot is one *onset* — one position in the temporal spread the
  * `temporalSpread` transformer lays out over the ornament's frame. A slot holds one note
  * normally and more than one for a chord (`[ #a #b ]`), which is exactly the spec's
- * "chords occupy one spacing slot" (DESIGN.md D9). The engine's whole output is therefore
- * "n onsets, each with its pitches"; **timing is not this module's business** — the frame,
- * the power-function spacing, `noteoff.shift` and the multi-ornament layout all happen in
- * W5 against the slot count this returns.
+ * "chords occupy one spacing slot" (DESIGN.md D9). The output is therefore "n onsets, each
+ * with its pitches"; timing is not this module's business — the frame, the power-function
+ * spacing, `noteoff.shift` and the multi-ornament layout all happen in the renderer, against
+ * the slot count this returns.
  *
  * WHAT IT DOES NOT DO. The keyword variants of `note.order` (`ascending pitch` /
- * `descending pitch`) never arrive here: they are the v2 arpeggio behaviour, which keeps
- * its untouched v2 code path (DESIGN.md D6, D9 "≠Lars bug 3"), and the caller must not
- * route them through v3 expansion. That is enforced by the *type* of
- * {@link ExpansionInput.order} — it is the `list` variant alone, so a keyword order cannot
- * be passed without a deliberate cast. Id normalisation is likewise the caller's job: the
- * parser already strips the leading `#` of every reference, and `@noteid`'s optional `#`
- * (which the reference implementation famously fails to strip, blueprint §4.2) is stripped
- * by W5 before it fills in {@link Principal.id}. Here, ids are compared with plain `===`.
+ * `descending pitch`) never arrive here: they are the v2 arpeggio behaviour, which keeps its
+ * untouched v2 code path (DESIGN.md D6, D9 "≠Lars bug 3"), and {@link ExpansionInput.order}
+ * is typed as the `list` variant alone so that they cannot be passed without a cast. Ids
+ * arrive normalised: every reference has lost its leading `#` in the parser and `@noteid`'s
+ * optional one before it fills in {@link Principal.id} (the reference implementation fails to
+ * strip it, blueprint §4.2). Here, ids are compared with plain `===`.
  *
  * RELATION TO THE REFERENCE IMPLEMENTATION. The rules below are DESIGN.md D8 and D9. Where
  * D9 says "(=Lars)" this engine reproduces the *intent* of
@@ -37,33 +32,31 @@
  * sequence against the repeat budget. Each divergence is named at the rule it belongs to.
  *
  * TERMINATION AND DETERMINISM. Every loop here runs over a precomputed length: the number
- * of repeat passes is *computed arithmetically*, never discovered by a `while` that
- * appends until a budget is met (the reference's shape, which hangs on an empty group —
- * blueprint §4.2 "BUG (infinite loop / OOM)"). There is no randomness, no `Date`, no
- * iteration over a `Set`/`Map` whose order could vary: same input, same output, always.
- * The one unbounded quantity — how many slots the caller can ask for — is bounded by
- * {@link MAX_EXPANDED_SLOTS} rather than by the heap.
+ * of repeat passes is *computed arithmetically*, never discovered by a `while` that appends
+ * until a budget is met (the reference's shape, which hangs on an empty group — blueprint
+ * §4.2 "BUG (infinite loop / OOM)"). Same input, same output, always: no randomness, no
+ * `Date`, no iteration over a `Set`/`Map` whose order could vary. The one unbounded quantity
+ * — how many slots the caller can ask for — is bounded by {@link MAX_EXPANDED_SLOTS}.
  */
 
 import type { NoteOrder, RepeatGroup } from './noteOrder.js';
 import { elementAt } from '../../../../prelude/index.js';
 
-/** The `list` variant of W2's AST — the only `note.order` shape this module expands. */
+/** The `list` variant of the AST — the only `note.order` shape this module expands. */
 export type NoteOrderList = Extract<NoteOrder, { kind: 'list' }>;
 
 /**
  * How a pool `<note>` states its pitch: `midi.pitch` (absolute), `interval.chromatic`
  * (halftones relative to the principal, double — microtones are legal) or
  * `interval.diatonic` (scale steps relative to the principal, integer). The spec's
- * schematron allows **at most one** of the three, and zero means "the principal's pitch";
- * resolving that priority and that default is W3's job at the XML boundary, so by the time
- * a spec reaches this module it is exactly one of these three.
+ * schematron allows at most one of the three, and zero means "the principal's pitch";
+ * resolving that priority and that default happens at the XML boundary
+ * (`OrnamentNote.parsePitchSpec`), so a spec reaching this module is exactly one of the three.
  *
- * This is deliberately the *widened* shape (`kind` a union of literals, one `value`) rather
- * than a three-member discriminated union: W3 owns `OrnamentNote.pitchSpec` and may spell
- * it either way — a union of three singleton members is assignable to this, the reverse is
- * not — so keeping the permissive form here lets W5 hand W3's value straight over without
- * a converter. The module stays dependency-free either way; W5 reconciles the two names.
+ * Deliberately the *widened* shape (`kind` a union of literals, one `value`) rather than a
+ * three-member discriminated union, so that `OrnamentNote.pitchSpec` — which may spell it
+ * either way, a union of three singleton members being assignable to this and not the
+ * reverse — can be handed straight over without a converter.
  */
 export interface PitchSpec {
   readonly kind: 'midi' | 'chromatic' | 'diatonic';
@@ -84,7 +77,7 @@ export interface Principal {
 /**
  * The tonal context `interval.diatonic` is resolved against: the key signature as a
  * position on the circle of fifths, negative for flats (−7 = C♭ major … 0 = C major … +7 =
- * C♯ major). W5 reads it from the MSM key signature in force at the ornament's date.
+ * C♯ major). The renderer reads it from the MSM key signature in force at the ornament's date.
  */
 export interface DiatonicContext {
   readonly keyFifths: number;
@@ -97,9 +90,8 @@ export interface DiatonicContext {
  * carries fractional `midi.pitch` and only MIDI export rounds.
  *
  * `landing` marks the one note the landing rule appends (rule 4 of {@link expandOrnament}).
- * It is `?: true` and never `false`: its absence is "this note is not a landing note", so
- * a caller can test it with a plain truthiness check, and W5 uses it to give that note
- * provenance distinct from the authored sequence.
+ * It is `?: true` and never `false`: its absence is "this note is not a landing note", so a
+ * caller can test it with a plain truthiness check.
  */
 export interface ResolvedNote {
   readonly ref: string;
@@ -117,10 +109,9 @@ export interface ResolvedNote {
  * a slot outside every repeat group simply does not carry it, and neither does the landing
  * copy, which the landing rule appends *after* the last pass rather than as part of one.
  *
- * It exists for provenance, not for the engine: W5 stamps it onto the generated note as
- * `ornament.pass` so that a consumer can tell the third turn of a trill from the first
- * (conductor ruling 2026-08-09, "D10 provenance extension"). Adding it is what makes the
- * repeated slots below distinct objects rather than the shared ones the module used to emit.
+ * It exists for provenance, not for the engine: the renderer stamps it onto the generated note
+ * as `ornament.pass` so that a consumer can tell the third turn of a trill from the first
+ * (conductor ruling 2026-08-09, "D10 provenance extension").
  */
 export interface Slot {
   readonly notes: readonly ResolvedNote[];
@@ -139,27 +130,25 @@ export interface ExpansionInput {
   readonly msmNotes: ReadonlyMap<string, number>;
   /** `@repetitions`: extra passes of each repeat group, or the `-1` fill sentinel. */
   readonly repetitions: number;
-  /** Key context for `interval.diatonic`. */
   readonly diatonicContext: DiatonicContext;
   /**
-   * For `repetitions === -1` only: the total slot budget the frame affords, which W5
-   * computes as `ceil(frameLengthMs / 150)` (the reference's hard-coded 150 ms per repeat
-   * note, blueprint §4.2). `null` whenever `repetitions >= 0`, where it is unused.
+   * For `repetitions === -1` only: the total slot budget the frame affords, computed by the
+   * caller as `ceil(frameLengthMs / 150)` (the reference's hard-coded 150 ms per repeat note,
+   * blueprint §4.2). `null` whenever `repetitions >= 0`, where it is unused.
    */
   readonly frameNoteBudget: number | null;
 }
 
 /**
  * The result. The `ok: false` variant is DESIGN.md D9/RULE E1's log-and-skip: the ornament
- * cannot be rendered, W5 logs `reason` and moves on (still writing `note.order.perf` for
- * downstream visibility, per D7).
+ * cannot be rendered, the caller logs `reason` and moves on (still writing `note.order.perf`
+ * for downstream visibility, per D7).
  *
- * `warnings` rides on **both** variants, which widens the shape the wave brief sketched.
- * The reason is the same one W2 gives for putting `warnings` on every `NoteOrder` variant:
- * diagnostics collected before the fatal are still true and still worth logging (an
- * unresolvable reference is often *why* the sequence ended up empty), and a caller
- * collecting them should not have to narrow the union first. It is always an array, empty
- * when nothing was noted.
+ * `warnings` rides on both variants, for the reason `noteOrder.ts` puts them on every
+ * `NoteOrder` variant: diagnostics collected before the fatal are still true and still worth
+ * logging (an unresolvable reference is often *why* the sequence ended up empty), and a caller
+ * collecting them should not have to narrow the union first. It is always an array, empty when
+ * nothing was noted.
  */
 export type ExpansionResult =
   | {
@@ -181,7 +170,7 @@ export type ExpansionResult =
  * million slots is on the order of forty hours of music: no real ornament is anywhere near
  * it, while `repetitions="2147483647"` or an absurd frame budget is one array allocation
  * away from taking the process down. Exceeding it is a fatal (`ok: false`) — the module
- * stays total and never throws (DESIGN.md D16), and W5 logs it like any other skip.
+ * stays total and never throws (DESIGN.md D16).
  */
 export const MAX_EXPANDED_SLOTS = 1_000_000;
 
@@ -191,17 +180,16 @@ const MAJOR_SCALE_STEPS = [0, 2, 4, 5, 7, 9, 11] as const;
 /**
  * Expand a `note.order` into the sequence of slots the renderer instantiates.
  *
- * The five rules, in the order they are applied (DESIGN.md D8 and D9 are the authority;
- * the wave brief's numbering is kept so reviews can cite it):
+ * The five rules, in the order they are applied (DESIGN.md D8 and D9 are the authority):
  *
  * **1 — Reference resolution.** Each id of each item is looked up in this order: the note
- * **pool**; then the **principal**'s id; then the **MSM** notes. Pool first, because a pool
- * id is ornament-local and shadows anything outside it; the principal before the MSM map,
- * because the principal is itself an MSM note and the `'principal'` source is the more
- * informative answer. An id that no space answers is **dropped with a warning** — the v2
- * precedent, and the reference's behaviour too ("unresolvable references are silently
- * removed from the order"), except that here it is not silent. An item that loses *all* its
- * ids loses its slot, again with a warning.
+ * pool; then the principal's id; then the MSM notes. Pool first, because a pool id is
+ * ornament-local and shadows anything outside it; the principal before the MSM map, because
+ * the principal is itself an MSM note and the `'principal'` source is the more informative
+ * answer. An id that no space answers is dropped with a warning — the v2 precedent, and the
+ * reference's behaviour too ("unresolvable references are silently removed from the order"),
+ * except that here it is not silent. An item that loses *all* its ids loses its slot, again
+ * with a warning.
  *
  * **2 — Pitch resolution** (D8). `midi` is the value as-is. `chromatic` is
  * `principal.midiPitch + value` in plain double arithmetic, so microtonal offsets survive.
@@ -212,16 +200,16 @@ const MAJOR_SCALE_STEPS = [0, 2, 4, 5, 7, 9, 11] as const;
  * rendered correctly"). MSM references need no principal; they carry their own pitch.
  *
  * **3 — Repetition expansion.** A repeat group is played `repetitions + 1` times in total
- * (`repetitions` = 3 ⇒ played four times — spec exemplum, blueprint §3.4), expanded **in
- * place**: the group's slots are emitted back-to-back where the group stands, and whatever
- * follows the group follows the last pass. When `note.order` holds **several** groups, each
- * is expanded with the same count — `@repetitions` is one attribute on the ornament and
- * says nothing about a per-group count (≠Lars, who supports exactly one group). With no
- * group at all a non-zero `repetitions` has nothing to multiply and is noted as a warning.
+ * (`repetitions` = 3 ⇒ played four times — spec exemplum, blueprint §3.4), expanded in
+ * place: the group's slots are emitted back-to-back where the group stands, and whatever
+ * follows the group follows the last pass. When `note.order` holds several groups, each is
+ * expanded with the same count — `@repetitions` is one attribute on the ornament and says
+ * nothing about a per-group count (≠Lars, who supports exactly one group). With no group at
+ * all a non-zero `repetitions` has nothing to multiply and is noted as a warning.
  *
  * `repetitions === -1` is meico's undocumented fill-the-frame sentinel (schema-invalid —
  * the spec types the attribute `minInclusive 0`): the groups repeat as often as fit into
- * {@link ExpansionInput.frameNoteBudget} **total slots**, counting the non-repeated slots
+ * {@link ExpansionInput.frameNoteBudget} *total slots*, counting the non-repeated slots
  * too. With `S` slots authored and `G` slots inside groups, the extra pass count is
  * `max(0, floor((budget − S) / G))`, i.e. the largest `k` with `S + k·G ≤ budget` — which
  * is what the reference's append-while-it-fits loop computes for its single group, minus
@@ -229,45 +217,40 @@ const MAJOR_SCALE_STEPS = [0, 2, 4, 5, 7, 9, 11] as const;
  * the result is `ok: false`. Any other negative or non-integer `repetitions` is `ok: false`
  * as well.
  *
- * **4 — Landing** (=Lars). After a group has been expanded, if that group's **first slot**
- * is a single note *at the principal's pitch*, one more copy of that slot is appended
- * behind the group's last pass, flagged {@link ResolvedNote.landing}, "so the figure
- * resolves onto the principal note". Three notes on the trigger:
+ * **4 — Landing** (=Lars). After a group has been expanded, if that group's first slot is a
+ * single note at the principal's pitch, one more copy of that slot is appended behind the
+ * group's last pass, flagged {@link ResolvedNote.landing}, "so the figure resolves onto the
+ * principal note". Three notes on the trigger:
  * - The reference tests `intm == "0.0hs"` on the *pool child* whose id opens the group,
  *   i.e. "this note is a unison with the principal" — a pool-only lookup that cannot see a
- *   direct `#principal` reference. Testing the **resolved pitch** against the principal's,
- *   as here, is D9's own wording ("if the repeat group starts on a principal-pitch note")
- *   and covers the reference's case plus the one its lookup misses. A chord never triggers
- *   it: the reference strips the brackets and matches the result against a single id, which
- *   no chord can equal.
- * - Placement is **in place, behind the group**, not at the end of the sequence. That is
- *   where the reference puts it (its `notesToAdd` block is spliced in at the group's end),
- *   and for a trailing group — the common case, and the only one the brief's "append one
- *   landing copy" formulation describes — the two readings coincide. They differ only for a
- *   group with a tail behind it, e.g. the dictionary's *trill with mordent*
- *   `|: 0 1 :| 0 -1 0`, where the reference's own comment ("might add doubles -> need to
- *   sanitize") is evidence that it expects the landing copy to land next to the tail's
- *   leading `0` and be collapsed by rule 5.
+ *   direct `#principal` reference. Testing the resolved pitch against the principal's, as
+ *   here, is D9's own wording ("if the repeat group starts on a principal-pitch note") and
+ *   covers the reference's case plus the one its lookup misses. A chord never triggers it:
+ *   the reference strips the brackets and matches the result against a single id, which no
+ *   chord can equal.
+ * - Placement is in place, behind the group, not at the end of the sequence — where the
+ *   reference puts it (its `notesToAdd` block is spliced in at the group's end). The two
+ *   readings coincide for a trailing group and differ only for a group with a tail behind it,
+ *   e.g. the dictionary's *trill with mordent* `|: 0 1 :| 0 -1 0`, where the reference's own
+ *   comment ("might add doubles -> need to sanitize") shows it expects the landing copy to
+ *   land next to the tail's leading `0` and be collapsed by rule 5.
  * - It fires on the *presence* of a group, not on `repetitions > 0`: with `repetitions="0"`
  *   the group is still a repeat group, and the reference appends the landing copy there
  *   too. Without a principal it can never fire, since no pitch can equal the principal's.
  *
  * **5 — Dedup** (=Lars). Consecutive slots that are both single-note and of equal pitch
  * collapse to the first — the redundancy the reference sanitizes away, "which can occur due
- * to repetitions". Two exceptions: **chords never collapse** (neither with each other nor
- * with a single note — a chord is a different musical object even when it contains that
- * pitch), and a sequence in which *every* slot is the same single pitch is left alone, so a
- * genuine tremolo or repeated-note figure survives. The reference decides that exception
- * from the *pool* (are all pooled notes the same pitch?), which misfires whenever the pool
- * holds notes the order never uses — pool order and pool membership carry no meaning per
- * the spec — so the test here is over the expanded sequence, as D9 words it ("unless the
- * whole sequence is single-pitch"). Dedup runs **after** landing, so a landing note equal to
- * its predecessor is exactly what it drops; when a landing note survives, it survives with
- * its flag.
+ * to repetitions". Two exceptions: chords never collapse (neither with each other nor with a
+ * single note — a chord is a different musical object even when it contains that pitch), and
+ * a sequence in which *every* slot is the same single pitch is left alone, so a genuine
+ * tremolo or repeated-note figure survives. The test for that exception is over the expanded
+ * sequence, as D9 words it ("unless the whole sequence is single-pitch"), and not over the
+ * *pool* as in the reference, which misfires whenever the pool holds notes the order never
+ * uses. Dedup runs *after* landing, so a landing note equal to its predecessor is exactly
+ * what it drops; when a landing note survives, it survives with its flag.
  *
- * Rule 1's dropped slots are the reason `ok: false` can still come back from a well-formed
- * order: if nothing resolves, there is no ornament to render, and the caller gets one
- * reason rather than an empty success it would have to check for.
+ * A well-formed order can still come back `ok: false`, through rule 1: if nothing resolves
+ * there is no ornament to render, and the caller gets a reason rather than an empty success.
  */
 export function expandOrnament(input: ExpansionInput): ExpansionResult {
   const warnings: string[] = [];
@@ -321,42 +304,42 @@ export function expandOrnament(input: ExpansionInput): ExpansionResult {
 }
 
 /**
- * Resolve the diatonic step of an `interval.diatonic` pool note against a key signature —
- * **the D8 ruling**, spelled out here because no source states it: the spec says only that
+ * Resolve the diatonic step of an `interval.diatonic` pool note against a key signature — the
+ * D8 ruling, spelled out here because no source states it: the spec says only that
  * `interval.diatonic` is "context-sensitive", and the reference implementation avoids the
  * question at the MPM layer by resolving diatonic steps upstream in MEI and writing
  * halftones into an MSM `intm` attribute (blueprint §3.5). An MPM-authored document has no
  * upstream, so the resolution has to happen here.
  *
- * The algorithm, exhaustively:
+ * The algorithm:
  *
- * 1. **The scale.** `keyFifths` names a major key by its position on the circle of fifths;
+ * 1. *The scale.* `keyFifths` names a major key by its position on the circle of fifths;
  *    its tonic pitch class is `7 · keyFifths (mod 12)` — a fifth is seven semitones, so
  *    walking the circle is multiplying by seven — and the scale is that tonic plus the
  *    major-scale steps `0 2 4 5 7 9 11`, taken as a set of seven pitch classes sorted
  *    ascending within the octave. (Equivalently, and as the circle-of-fifths derivation is
  *    usually written: the seven pitch classes `7k (mod 12)` for `k` from `keyFifths − 1` to
  *    `keyFifths + 5`. Same set.) Sorting ascending inside `0…11` — rather than from the
- *    tonic — is what makes step 3's octave carry land on **C**, which is where MIDI octaves
+ *    tonic — is what makes step 3's octave carry land on C, which is where MIDI octaves
  *    begin; carrying at the tonic would transpose results by an octave in every key but C.
  *    Only the *major* scale is used: MSM key signatures are accidental counts, they do not
  *    record mode, and a minor key shares its signature's pitch classes anyway.
  *
- * 2. **The anchor.** The principal's pitch is placed on that scale. If it is a scale note,
+ * 2. *The anchor.* The principal's pitch is placed on that scale. If it is a scale note,
  *    it is its own anchor. If it is not — a chromatic principal, or a microtonal one — the
- *    anchor is the nearest scale pitch **below** it and the difference is remembered as
+ *    anchor is the nearest scale pitch *below* it and the difference is remembered as
  *    `chromaticDelta`. This is the only defensible reading of "context-sensitive" for a note
  *    outside the key: the step is counted in the key, and the principal's own alteration is
  *    carried along rather than silently corrected into the key.
  *
- * 3. **The step.** The anchor's scale degree is found by index, `steps` is added, and the
+ * 3. *The step.* The anchor's scale degree is found by index, `steps` is added, and the
  *    result is split into an octave carry (`floor(d / 7)`) and a degree within the octave
  *    (`d mod 7`, non-negative), so descending steps and multi-octave steps work by the same
  *    arithmetic as ascending ones. A non-integer `steps` is meaningless for a scale degree
  *    (the spec types the attribute `integer`); it is rounded, and the caller is expected to
  *    have parsed an integer in the first place.
  *
- * 4. **The delta comes back.** `chromaticDelta` is added to the stepped pitch, so E♭ in C
+ * 4. *The delta comes back.* `chromaticDelta` is added to the stepped pitch, so E♭ in C
  *    major moves to F (anchor D → E, plus the semitone), and a quarter-tone-sharp C moves to
  *    a quarter-tone-sharp D. `steps === 0` therefore returns the principal's pitch exactly,
  *    which is the spec's default for a pool note with no pitch attribute at all.
@@ -542,9 +525,9 @@ function mapGroups(
  * {@link Slot.repetitionPass}; every other slot is passed through by reference. Sharing is
  * invisible to a well-typed caller — everything in {@link Slot} and {@link ResolvedNote} is
  * `readonly` — and the `notes` arrays are shared in either case, so a million-slot budget
- * stays an array of small headers rather than a million deep copies. W5 instantiates a fresh
- * MSM note per *occurrence* and must therefore key its bookkeeping on the slot's index, never
- * on the slot's identity.
+ * stays an array of small headers rather than a million deep copies. A caller that
+ * instantiates a fresh MSM note per *occurrence* must therefore key its bookkeeping on the
+ * slot's index, never on the slot's identity.
  */
 function expand(
   slots: readonly Slot[],

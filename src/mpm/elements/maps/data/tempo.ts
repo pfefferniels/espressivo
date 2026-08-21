@@ -8,26 +8,14 @@ import { numericBpmValue, type TempoStyle } from '../../styles/style.js';
  *
  * `TempoData` — still in this directory, and still the type MEI export builds (see
  * {@link ../TempoData.ts}) — carries eleven `| null` fields for what is really a choice
- * between two shapes. A **constant** tempo has no `transition.to`, no `meanTempoAt` and no
- * `exponent`; a **transitioning** one always has all three. The nulls encode that sum, and
- * they encode it badly: reading them back cost `TempoMap` twelve non-null assertions, one
- * per place where the renderer knew something the type did not.
- *
- * Worse, the nulls admitted states the reader cannot produce and the renderer cannot
- * survive. `isConstantTempo()` was `transitionTo == null || bpm == null || transitionTo ==
- * bpm`, so a datum with a null `bpm` and a real `transitionTo` counted as *constant* — and
- * the constant path is `return tempoData.bpm!`, which hands a literal `null` back as a
- * `number`, and `15000 * … / (null * beatLength * ppq)`, which is a division by zero. That
- * state was unreachable in practice for exactly one reason ({@link numericBpmValue} falls
- * back to 100.0 and never returns null), and nothing in the type said so. Here `bpm` is a
- * `number` on both arms, which is the same fact, checked.
+ * between two shapes. A constant tempo has no `transition.to`, no `meanTempoAt` and no
+ * `exponent`; a transitioning one always has all three.
  *
  * ## Absence, and why there is none of it left
  *
- * The rule that governed the {@link ./distribution.ts} rewrite — *an absent attribute that
- * reaches the renderer as `null` and defines the rendered result must stay `null`* — does
- * not bite here, and it is worth saying why rather than leaving it to be rediscovered.
- * Every optional attribute of a `<tempo>` is resolved to a total value **before** any
+ * The rule that governs {@link ./distribution.ts} — *an absent attribute that reaches the
+ * renderer as `null` and defines the rendered result must stay `null`* — does not bite here.
+ * Every optional attribute of a `<tempo>` is resolved to a total value before any
  * arithmetic sees it, by the reader, not by this type:
  *
  * - `@bpm` and `@transition.to` are run through {@link numericBpmValue}, whose third step
@@ -41,24 +29,11 @@ import { numericBpmValue, type TempoStyle } from '../../styles/style.js';
  *
  * A malformed value still travels as `NaN` (`parseFloat('x')` for `@meanTempoAt` fails both
  * `<= 0` and `>= 1`, so it becomes an exponent of `log(0.5)/log(NaN)` = `NaN`, and every
- * tempo on the span reads `NaN`). That is the incumbent's behaviour and it is preserved
- * exactly: `NaN` is a number, and the arms hold numbers.
+ * tempo on the span reads `NaN`). That is Java's behaviour and it is preserved exactly:
+ * `NaN` is a number, and the arms hold numbers.
  *
- * ## What was dropped
- *
- * `xml`, `xmlId`, `styleName` and `style` were set by the reader on every instruction and
- * read by nothing: the renderer identifies a tempo by its position in the map, and the
- * style is an *input* to resolution, not a property of the resolved result. `meanTempoAt`
- * survives only on the transitioning arm — the two collapse cases (`<= 0`, `>= 1`) used to
- * leave it behind on a datum that had become constant, where again nothing read it.
- * `startDateMilliseconds` was scratch space `TempoMap.renderTempoToMap` wrote into the datum
- * and read back one iteration later; it now lives in that loop's own local, which is what it
- * always was. `exponent` was additionally filled in lazily at render time when null — dead
- * code, because the reader sets it on every transition it produces.
- *
- * Port of meico.mpm.elements.maps.data.TempoData, restructured. The Java class is the
- * union of this type and the {@link TempoData} payload; TypeScript can afford to say which
- * half it is holding.
+ * Port of meico.mpm.elements.maps.data.TempoData, restructured. The Java class is the union
+ * of this type and the {@link TempoData} payload.
  */
 
 /** The span a tempo instruction governs, and the beat its bpm is counted in. */
@@ -126,10 +101,8 @@ export type Tempo = ConstantTempo | TransitioningTempo;
  * `log(0.5) / log(meanTempoAt)` — the exponent of the power curve that reaches the mean
  * tempo at `meanTempoAt` of the way through the span.
  *
- * Not exported: a `TransitioningTempo` cannot be built without going through
- * {@link resolveTempo}, so there is nowhere else that needs it. `meanTempoAt` of 0.5 gives
- * exactly 1.0 (`x / x`), which is why the no-attribute default below can hardcode the 1.0
- * rather than round-tripping through a logarithm.
+ * A `meanTempoAt` of 0.5 gives exactly 1.0 (`x / x`), which is why the no-attribute default
+ * below can hardcode the 1.0 rather than round-tripping through a logarithm.
  */
 function computeExponent(meanTempoAt: number): number {
   return Math.log(0.5) / Math.log(meanTempoAt);
@@ -143,11 +116,10 @@ function constantTempo(span: TempoSpan, bpmString: string, bpm: number): Constan
 /**
  * Resolve the attributes of one `<tempo>` into the arm it names.
  *
- * The three normalisations that collapse a declared transition back to a constant are the
- * reason this is a function and not a constructor call: they matter because the two arms
- * select completely different (and very differently priced) millisecond computations —
- * one division against Simpson's rule over the whole span — and getting them wrong is not
- * visible until a timestamp moves.
+ * Three normalisations collapse a declared transition back to a constant, and they matter
+ * because the two arms select completely different (and very differently priced) millisecond
+ * computations — one division against Simpson's rule over the whole span — and getting them
+ * wrong is not visible until a timestamp moves.
  *
  * PARITY — the order of the tests is TempoMap.java's and must not be rearranged. In
  * particular `@meanTempoAt` is read only *after* `transition.to === bpm` has been ruled

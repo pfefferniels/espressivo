@@ -14,12 +14,10 @@ import {
  *
  * ## Why this one IS a sum, where {@link ./dynamics.ts Dynamics} is not
  *
- * The two classes were near-identical ports and shared their arithmetic (`bezier.ts`), but
- * they differ on exactly the point this rewrite turns on. `DynamicsMap` fills in an absent
- * `@transition.to` with the instruction's own `volume`, so a dynamics record always has a
- * target and "constant" is a predicate over values. `MovementMap` does not: `transitionTo`
- * stays **null**, `isConstantMovement()` tests for that null, and the two readings then take
- * structurally different paths —
+ * `DynamicsMap` fills in an absent `@transition.to` with the instruction's own `volume`, so a
+ * dynamics record always has a target and "constant" is a predicate over values.
+ * `MovementMap` does not: `transitionTo` stays null, `isConstantMovement()` tests for that
+ * null, and the two readings then take structurally different paths —
  *
  * - `getDatePosition` returns `[startDate, position]` for a constant and never touches the
  *   control points, where a transition evaluates the full Bézier;
@@ -27,38 +25,19 @@ import {
  *   transition and appends nothing for a constant, so the two produce different-length
  *   series from the same sampler.
  *
- * That is a sum type with two constructors, and `src/comparison/registry.ts` already
- * describes it as one ("Absent, the movement is CONSTANT — isConstantMovement tests for
- * null, so an unparseable `@transition.to` is NOT constant: it transitions towards NaN").
- * Note that last clause: `parseFloat('x')` is `NaN`, which is not null, so a malformed
- * target still builds the **transitioning** arm and poisons the span. That is preserved —
- * `resolveMovement` branches on absence, never on usability.
+ * `src/comparison/registry.ts` describes the same split ("Absent, the movement is CONSTANT —
+ * isConstantMovement tests for null, so an unparseable `@transition.to` is NOT constant: it
+ * transitions towards NaN"). Note that last clause: `parseFloat('x')` is `NaN`, which is not
+ * null, so a malformed target still builds the transitioning arm and poisons the span.
+ * {@link resolveMovement} branches on absence, never on usability.
  *
- * ## The nulls that were not a choice at all
+ * ## A deliberate divergence, on a path nothing calls
  *
- * Nine more fields were nullable and none of them could be null after
- * `MovementMap.getMovementDataOf`: `position` is parsed or inherited from the previous
- * movement's `transition.to`, and where neither is available the reader logs and rejects
- * the whole instruction (PARITY.md P2); `endDate` is `GenericMap.nextDateOfType`, which
- * answers `Number.MAX_VALUE`; `curvature` and `protraction` were declared `| null` *and
- * initialised* to 0.4 / 0.0, so their null was unreachable from the first line — note 0.4,
- * deliberately not `<dynamics>`'s 0.0 (§5.8/AD-13), which is why the shared machinery in
- * `bezier.ts` shares no default. And `x1`/`x2` were a lazily-filled cache whose null meant
- * "not computed yet"; {@link innerControlPointsXPositions} is pure, so they are derived
- * once here instead.
- *
- * ## One behaviour did change, on a path nothing calls
- *
- * `getPositionAt` on a **constant** movement past its own `startDate` used to fall through
- * to `return this.transitionTo!` and hand back a literal `null` typed as `number`, or, for
- * a date inside the span, evaluate `(3-2t)t²·(null - position) + position` — which
- * JavaScript coerces to `position·(1 - (3-2t)t²)`. Java does not agree with either: it
- * unboxes a null `Double` and throws a NullPointerException at both places
- * (MovementData.java:166 and :170). Neither language has a single caller of the method —
- * it is dead in `src/`, dead in meico, and reached only from this port's tests — so no
- * rendered byte depends on the answer, and {@link positionAt} now gives the one a reader
- * would expect: **a constant movement holds its position**. That is the same answer the
- * one branch of it that *was* reachable already gave (`date <= startDate`).
+ * {@link positionAt} on a constant movement past its own `startDate` answers `position`: a
+ * constant movement holds its position. Java disagrees — it unboxes a null `Double` and
+ * throws a NullPointerException at both places that could be asked (MovementData.java:166 and
+ * :170). The method has no caller in either language, being dead in `src/`, dead in meico and
+ * reached only from this port's tests, so no rendered byte depends on the answer.
  *
  * ## RENDERING MATH
  *
@@ -83,7 +62,7 @@ interface MovementCommon {
   readonly endDate: number;
   /** `@position`, normalized 0..1; {@link movementSegment} scales it to 0..127 on the way out. */
   readonly position: Normalized;
-  /** `@curvature`; **0.4** where the element omits it, and deliberately not dynamics' 0.0. */
+  /** `@curvature`; 0.4 where the element omits it — deliberately not dynamics' 0.0 (§5.8). */
   readonly curvature: number;
   /** `@protraction`; 0.0 where the element omits it. */
   readonly protraction: number;
@@ -91,9 +70,8 @@ interface MovementCommon {
   readonly controller: string;
   /**
    * The x-positions of the Bézier's two inner control points, derived from
-   * {@link curvature} and {@link protraction} once, at read time. Present on the constant
-   * arm too, where nothing reads them — see {@link resolveMovement} on why that is cheaper
-   * to say than to prevent.
+   * {@link curvature} and {@link protraction} once, at read time. Present on the constant arm
+   * too, where nothing reads them — see {@link resolveMovement}.
    */
   readonly x1: number;
   readonly x2: number;
@@ -116,7 +94,9 @@ export type Movement = ConstantMovement | TransitioningMovement;
 
 /**
  * A `<movement>` element's parameters **as the element declares them**, with `position`
- * already resolved (parsed, or inherited from the previous movement) by the caller.
+ * already resolved by the caller — parsed, or inherited from the previous movement's
+ * `@transition.to`, and where neither is available the reader rejects the whole instruction
+ * (PARITY.md P2).
  *
  * `transitionTo` null means "no `@transition.to`" and selects the constant arm;
  * `curvature`/`protraction` null mean "no attribute" and take the defaults above.
@@ -141,11 +121,9 @@ const DEFAULT_CONTROLLER = 'sustain';
 /**
  * Fill in what the element left out, derive the control points, and pick the arm.
  *
- * The control points are computed for both arms, although a constant movement never
- * consults them. Two reasons: the incumbent computed them for both too — `getMovementSegment`
- * called `computeInnerControlPointsXPositions()` before looking at `transitionTo` — and
- * `innerControlPointsXPositions` is a dozen flops on values the reader already holds, so
- * moving them onto the transitioning arm alone would buy a branch and cost the reader the
+ * The control points are computed for both arms, although a constant movement never consults
+ * them: `innerControlPointsXPositions` is a dozen flops on values the reader already holds,
+ * so moving them onto the transitioning arm alone would buy a branch and cost the reader the
  * ability to say `...common` once.
  */
 export function resolveMovement(declared: DeclaredMovement): Movement {
@@ -186,7 +164,7 @@ function tForMovementDate(m: TransitioningMovement, date: number): number {
  * The controller position at `date`, in the normalized 0..1 domain.
  *
  * Dead on the rendering path — `MovementMap` samples whole segments and never asks for a
- * single date — and dead in meico too. See the header on the one behaviour that changed.
+ * single date — and dead in meico too. See the header on the constant arm's divergence.
  */
 export function positionAt(m: Movement, date: number): number {
   if (date <= m.startDate) return m.position;
@@ -211,11 +189,8 @@ function datePosition(m: Movement, t: number): CurvePoint {
  * @param maxStepSize in the **normalized 0..1** position domain — the domain the
  *   subdivision compares against, not the 0..127 one the result is scaled into. Feeding it
  *   a 0..127 threshold is the 16129 bug of ARCHITECTURE.md §7.
- * @returns `[date, value]` pairs where `value` is already `Midi7Bit` (0..127) and `date` is
- *   symbolic ticks. {@link CurvePoint}, which is a MUTABLE pair and not a branded one (RULE
- *   U4a): this is the function's own working array, spliced and mutated in place, and a
- *   `readonly` tuple type would forbid exactly that — a mutable pair forbids nothing, and it
- *   is what makes the `tuple[1] *= 127` below a number rather than a `number | undefined`.
+ * @returns `[date, value]` pairs where `date` is symbolic ticks and `value` is already
+ *   0..127. The array is this function's own working state, spliced and mutated in place.
  */
 export function movementSegment(m: Movement, maxStepSize: Normalized): CurvePoint[] {
   const series = sampleSegment(maxStepSize, (t) => datePosition(m, t));

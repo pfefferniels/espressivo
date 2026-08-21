@@ -6,24 +6,23 @@ import type { OrnamentDef } from '../../styles/defs/OrnamentDef.js';
 /**
  * Read an `<ornament>`'s note pool: its `<note>` children, in document order (DESIGN.md D1).
  *
- * Shared by the three places that read an ornament — this class, and
- * `OrnamentationMap.getOrnamentDataOf` plus the inline reader in `OrnamentationMap.apply` —
- * so that a change to the pool grammar cannot land in one of them and miss the others.
- * Children that are not `<note>` are ignored, as elsewhere in this port; a `<note>` that
- * cannot be used is dropped with a log by {@link OrnamentNote.fromXml}.
+ * Shared by the two live readers of an ornament — `OrnamentationMap.getOrnamentDataOf` and the
+ * inline reader in `OrnamentationMap.apply` — so that a change to the pool grammar cannot land
+ * in one of them and miss the other. Children that are not `<note>` are ignored, as elsewhere
+ * in this port; a `<note>` that cannot be used is dropped with a log by
+ * {@link OrnamentNote.fromXml}.
  *
  * PARITY NOTE: v2 `<ornament>` elements are always empty, so this returns `[]` for every v2
  * document and cannot move a v2 byte.
  *
- * PERFORMANCE NOTE — `Element.getChildElements`, deliberately **not** `allChildElements` from
+ * PERFORMANCE NOTE — `Element.getChildElements`, deliberately not `allChildElements` from
  * `xml/tree.ts`, which is the house helper everywhere else. That one runs an XPath, and
  * `Element.query` serializes the whole subtree to text, re-parses it, and maps every hit back
  * onto the live tree by position (`XomTypes.ts`, `query`'s own doc). Measured on a built pool:
  * 250 notes 74 ms, 500 190 ms, 1000 795 ms, 2000 3158 ms — quadratic. This function runs once
- * per `<ornament>` on the render path, including for v2 ornaments that have no children at
- * all, so the XPath route would have put a serialize-and-reparse of every ornament into a path
- * that had none. `getChildElements(name)` is a plain scan of the child array with the same
- * local-name, namespace-agnostic matching.
+ * per `<ornament>` on the render path, including for v2 ornaments with no children at all.
+ * `getChildElements(name)` is a plain scan of the child array with the same local-name,
+ * namespace-agnostic matching.
  */
 export function parseOrnamentNotePool(xml: Element): OrnamentNote[] {
   const pool: OrnamentNote[] = [];
@@ -47,9 +46,9 @@ export function parseOrnamentNotePool(xml: Element): OrnamentNote[] {
  * expansion engine owns what a fractional repeat count means.
  *
  * The parse is `parseJavaDouble`, for the reason spelled out at `OrnamentNote.readPitchValue`
- * (DESIGN.md D16, the W9 ruling; PARITY.md §6.8): this attribute has no grammar either, so
- * `Number` differed from Java on real spellings — `repetitions=""` read as `0` and took the
- * default **silently**, where every other unusable value said so.
+ * (DESIGN.md D16; PARITY.md §6.8): this attribute has no grammar either, so the choice of
+ * parser is observable — `repetitions=""` is unusable here and says so, where `Number` read it
+ * as `0` and took the default silently.
  */
 export function parseOrnamentRepetitions(raw: string): number {
   const repetitions = readJavaDouble(raw);
@@ -74,8 +73,7 @@ export function parseOrnamentRepetitions(raw: string): number {
  * `spacing` is null whenever the notes already carry their final tick dates, which is every
  * tick-domain and `%` frame (DESIGN.md D4 resolves those in the symbolic phase). It is a
  * function rather than a `TemporalSpread` because a millisecond frame aligned `at end` writes
- * a marker the v2 class has no name for (the D5 amendment); the renderer decides which writer
- * applies and this class only has to run it in the right place — *after* the dynamics
+ * a marker the v2 class has no name for (the D5 amendment). It must run *after* the dynamics
  * gradient, which is the v2 transformer order and is observable in the attribute order of the
  * augmented MSM.
  */
@@ -101,22 +99,11 @@ export interface OrnamentGeneration {
  * ornament decorates). An ornament showing none of them is a v2 ornament and takes the
  * untouched v2 code path (DESIGN.md D6).
  *
- * NOTE that `noteOrder` here stays v2's flat `string[]`. The v3 grammar — chords `[ … ]`,
- * repeat groups `|: … :|` — is parsed by `noteOrder.ts` next door into an AST, and wiring
- * that in belongs to the renderer waves; keeping this field flat is what lets the v2 path
- * stay byte-frozen while both readings coexist.
- *
- * This is a **record plus its v2 `apply`**, and it does not parse XML. The port used to
- * carry a `constructor(xml)` transcribing `<ornament>`, but nothing called it and it
- * produced objects both live readers treat as unusable: it resolved neither `style` nor
- * `ornamentDef`, where {@link OrnamentationMap.getOrnamentDataOf} returns null unless it
- * can resolve BOTH and the inline reader in `OrnamentationMap.apply` `continue`s past the
- * entry. It was also the only reader here that could throw — `xml.getAttribute('date')!`
- * and `xml.getAttribute('name.ref')!` dereference unguarded, where both live readers
- * decline the entry instead. The three v3 field readers it shared with them
- * ({@link parseOrnamentNotePool}, {@link parseOrnamentRepetitions}, and the `note.order`
- * split) are module-level functions precisely so that agreement is structural; only the
- * duplicated, divergent entry point is gone.
+ * This class does not parse XML. Its readers are {@link OrnamentationMap.getOrnamentDataOf},
+ * which returns null unless it can resolve BOTH `style` and `ornamentDef`, and the inline
+ * reader in `OrnamentationMap.apply`, which `continue`s past an entry it cannot resolve. The
+ * v3 field readers they share ({@link parseOrnamentNotePool}, {@link parseOrnamentRepetitions}
+ * and the `note.order` split) are module-level functions so that agreement is structural.
  *
  * Port of meico.mpm.elements.maps.data.OrnamentData
  */
@@ -136,13 +123,13 @@ export class OrnamentData {
   /**
    * The `note.order` attribute **exactly as written**, or null when the ornament has none.
    *
-   * {@link noteOrder} above is a lossy view of it: v2's reader strips every `#` and splits on
-   * whitespace, which flattens the v3 grammar into indistinguishable tokens — `#n1` and the
-   * repeat mark `:|` come out as `n1` and `:|`, and re-prefixing everything with `#` on the
-   * way out would write the nonsense `#:|`. So the raw text is kept alongside it. It is what
-   * a writer re-emits (see `OrnamentationMap.addOrnamentFromData`) and what the expansion
-   * engine parses with `parseNoteOrder` from `noteOrder.ts`; the flat array stays exactly as
-   * it was so the v2 render path is untouched.
+   * {@link noteOrder} above stays v2's flat `string[]`, a lossy view of this: v2's reader
+   * strips every `#` and splits on whitespace, which flattens the v3 grammar into
+   * indistinguishable tokens — `#n1` and the repeat mark `:|` come out as `n1` and `:|`, and
+   * re-prefixing everything with `#` on the way out would write the nonsense `#:|`. Keeping
+   * that field flat is what lets the v2 render path stay byte-frozen. The raw text here is
+   * what a writer re-emits (see `OrnamentationMap.addOrnamentFromData`) and what the expansion
+   * engine parses with `parseNoteOrder` from `noteOrder.ts`.
    */
   noteOrderText: string | null = null;
 
@@ -172,11 +159,10 @@ export class OrnamentData {
   /**
    * The MPM v3 note generation, installed by the renderer (`ornamentInstantiation.ts`) just
    * before {@link apply} runs, and null on the v2 path — which is every ornament in every
-   * existing document, so the v2 branch of `apply` stays exactly what it was.
+   * existing document.
    *
    * It is state on the data object rather than an argument because `apply`'s signature is the
-   * v2 seam's, shared with the Java reference, and the loop that consumes its return value
-   * (`OrnamentationMap.apply`) is the code the contract is written for.
+   * v2 seam's, shared with the Java reference.
    */
   generation: OrnamentGeneration | null = null;
 
@@ -210,9 +196,8 @@ export class OrnamentData {
     c.notes = [...this.notes];
     c.repetitions = this.repetitions;
     c.noteid = this.noteid;
-    // `generation` is deliberately NOT copied: it is render state that lives for the length of
-    // one `apply` call and points at Element objects being inserted into one particular score.
-    // A clone is a fresh ornament, not a render in progress.
+    // `generation` is deliberately NOT copied: it is render state for one `apply` call, and it
+    // points at Element objects being inserted into one particular score.
     return c;
   }
 
@@ -223,19 +208,18 @@ export class OrnamentData {
    * (see {@link OrnamentationMap.renderAllNonmillisecondsModifiersToMap} and
    * {@link OrnamentationMap.renderMillisecondsModifiersToMap}).
    *
-   * On the v2 path the return value is **always an empty array**, and the Java reference is
-   * the same (OrnamentData.java, where a TODO marks the spot): a v2 ornament only ever
-   * *modifies* the notes it was given, so there is nothing for the caller to add, and the
-   * `for (const chord of od.apply(...))` loop in OrnamentationMap.apply is dead. That loop was
-   * documented as a contract rather than an oversight, and MPM v3 is what fills it: an
-   * ornament that *generates* notes returns them here, and the caller inserts them into the
-   * map (DESIGN.md D5, wave W5).
+   * On the v2 path the return value is always an empty array, and the Java reference is the
+   * same (OrnamentData.java, where a TODO marks the spot): a v2 ornament only ever *modifies*
+   * the notes it was given, so there is nothing for the caller to add and the
+   * `for (const chord of od.apply(...))` loop in OrnamentationMap.apply is dead. MPM v3 fills
+   * it: an ornament that *generates* notes returns them here, and the caller inserts them into
+   * the map (DESIGN.md D5).
    *
    * The v3 branch is {@link generation}. It runs the same two transformers in the same order —
    * the gradient before the spacing, which fixes the attribute insertion order the reference
    * augmented MSM shows verbatim — over the notes the renderer generated, and hands those
-   * notes back. It does **not** fall through to the v2 branch: `chordSequence` on that call is
-   * the generation itself, so running the v2 branch too would write every marker twice.
+   * notes back. It does not fall through to the v2 branch: `chordSequence` on that call is the
+   * generation itself, so running the v2 branch too would write every marker twice.
    *
    * `tempChordSequence` is inherited from the reference and protects nothing: the spread is
    * shallow, so the inner arrays and the Element objects are shared with the caller, and the
@@ -250,11 +234,9 @@ export class OrnamentData {
 
     const tempChordSequence: Element[][] = [...chordSequence];
 
-    // Java calls each getter twice — `if (getX() != null) getX().apply(...)` — and this
-    // port asserted on the second call. Both are plain field reads
-    // (`OrnamentDef.ts:116-118` and `:156-158`: `return this.temporalSpread;`), so binding
-    // the result once is the same two values in the same order, with nothing left to
-    // assert. This is the spelling {@link applyGeneration} below already uses.
+    // Java calls each getter twice — `if (getX() != null) getX().apply(...)`. Both are plain
+    // field reads (`OrnamentDef.ts:116-118` and `:156-158`), so binding the result once is the
+    // same two values in the same order.
     const gradient = this.ornamentDef.getDynamicsGradient();
     if (gradient !== null) gradient.apply(tempChordSequence, this.scale);
 
@@ -267,11 +249,9 @@ export class OrnamentData {
   /**
    * The v3 half of {@link apply}: the transformers over the generated notes, then the notes.
    *
-   * The shallow copy is kept for the same reason the v2 branch keeps it — the transformers
-   * mutate the elements, and the copy makes that explicit rather than hiding it — and the
-   * gradient is applied with this ornament's `scale`, exactly as in v2, so a v3 ornament's
+   * The gradient is applied with this ornament's `scale`, exactly as in v2, so a v3 ornament's
    * `ornament.dynamics` markers are folded into `velocity` by the same tick pass that folds a
-   * v2 arpeggio's.
+   * v2 arpeggio's. The copy is shallow, so the transformers mutate the caller's elements.
    */
   private applyGeneration(generation: OrnamentGeneration): Element[][] {
     if (this.ornamentDef === null) return [];

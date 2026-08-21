@@ -15,18 +15,8 @@ import type { Normalized } from '../../../../units.js';
  * `@transition.to`'s absence is not a missing field but a *choice of arm*, which is what
  * `movement.ts` says.
  *
- * ## What was dropped
- *
- * `xml`, `endDate`, the `x1`/`x2` control-point cache, `isConstantMovement()`,
- * `getPositionAt()` and `getMovementSegment()` were read-side apparatus no writer touched;
- * `addMovement` never serializes an end date, because a movement's span is defined by the
- * *next* instruction rather than by an attribute.
- *
- * `clone()` went with them, having had no caller in `src/` at all. It carried one piece of
- * knowledge worth keeping in prose: Java's `MovementData.clone()` copies `x1`/`x2` but
- * **not** `endDate`, so a cloned datum came back with its span forgotten and its control
- * points remembered. That asymmetry is a property of a mutable class with a lazily-filled
- * cache, and neither half of the split has one any more.
+ * There is no end date to carry: `addMovement` never serializes one, because a movement's
+ * span is defined by the *next* instruction rather than by an attribute.
  *
  * Port of the write half of meico.mpm.elements.maps.data.MovementData.
  */

@@ -13,51 +13,29 @@ import {
  * One MPM `distribution.*` element, read into the six-armed sum type the six families
  * actually form.
  *
- * ## Why this is six types and not one
- *
- * The incumbent `DistributionData` was a single class with a `type = ''` string, six
- * `static readonly` name constants to compare it against, and **ten** `| null` numeric
- * fields — every one of them parsed unconditionally regardless of the family, so each
- * family left the other families' fields null. A `distribution.gaussian` therefore carried
- * a `mode`, a `lowerClip`, a `maxStepWidth` and a `degreeOfCorrelation`, all null, all
- * meaningless, and all reachable. Reading the fields back cost thirty non-null assertions
- * in {@link ImprecisionMap} — thirty places where the code asserted a fact the type could
- * not know and the parser did not guarantee.
- *
- * Six constructors, each carrying exactly the parameters its own provider consumes, makes
- * those states unrepresentable: there is no `mode` on a gaussian to read, so there is
- * nothing to assert about. The arms are deliberately spelled out one by one rather than
- * factored over a shared "has limits" base — five of the six do share `limit.lower` and
- * `limit.upper`, but the point of the type is that each arm is a legible transcription of
- * one `RandomNumberProvider` factory signature, and a base class would hide exactly the
- * correspondence a reader comes here to check.
+ * Each arm carries exactly the parameters its own `RandomNumberProvider` factory consumes,
+ * spelled out one by one rather than factored over a shared "has limits" base: five of the
+ * six do share `limit.lower` and `limit.upper`, but the point of the type is that each arm
+ * is a legible transcription of one factory signature.
  *
  * ## Absence is a value here, and it must stay one
  *
- * The numeric fields are still `number | null`, and that is not the incumbent's laxity
- * surviving the rewrite — it is the format. MPM does not require these attributes, the
- * renderer does not reject a document that omits them, and **what an absent attribute
- * performs is a specified, measured, load-bearing part of this port's behaviour**: it
- * reaches `RandomNumberProvider` as a literal `null`, whose arithmetic then defines the
- * law. `src/comparison/imprecisionLaws.ts` tabulates all nine cases against executed
- * controls (a clip-less triangular performs exactly δ₀ via a `null` draw; a gaussian
- * missing `limit.upper` truncates to `[lower, 0]`; a compensating triangle missing
+ * The numeric fields are `number | null` because that is the format: MPM does not require
+ * these attributes, the renderer does not reject a document that omits them, and what an
+ * absent attribute performs is specified and measured. It reaches `RandomNumberProvider` as
+ * a literal `null`, whose arithmetic then defines the law.
+ * `src/comparison/imprecisionLaws.ts` tabulates all nine cases against executed controls (a
+ * clip-less triangular performs exactly δ₀ via a `null` draw; a gaussian missing
+ * `limit.upper` truncates to `[lower, 0]`; a compensating triangle missing
  * `degreeOfCorrelation` divides by zero and reaches ⊥), and
  * `tests/comparison/imprecisionDegenerate.test.ts` pins the first of them end to end.
+ * Turning an omission into a parse failure would retune every degenerate document in the
+ * corpus.
  *
- * So the honest type for a parameter MPM may omit is `number | null`, and turning an
- * omission into a parse failure would silently retune every degenerate document in the
- * corpus. What {@link parseDistribution}'s `Result` rejects is therefore the one thing
- * that genuinely has no reading — an element in the `distribution.` namespace whose family
- * this port does not know — and it hands back the one field the caller still needs from
- * such an element rather than discarding it (see {@link UnknownDistributionFamily}).
- *
- * ## What was dropped
- *
- * `xml:id` was parsed into a field nothing ever read (the renderer identifies a
- * distribution by its position in the map, not by id), and `clone()` had no caller in
- * `src/` at all. Both are gone; the arms are `readonly`, so a clone would have nothing to
- * defend against anyway.
+ * What {@link parseDistribution}'s `Result` rejects is therefore the one thing that has no
+ * reading at all — an element in the `distribution.` namespace whose family this port does
+ * not know — and it hands back the one field the caller still needs from such an element
+ * rather than discarding it (see {@link UnknownDistributionFamily}).
  *
  * Port of meico.mpm.elements.maps.data.DistributionData, restructured.
  */
@@ -97,11 +75,9 @@ export const DISTRIBUTION_LOCAL_NAME: Readonly<Record<DistributionKind, string>>
 };
 
 /**
- * The inverse of {@link DISTRIBUTION_LOCAL_NAME}, derived rather than written twice.
- *
- * The cast is sound by construction: `Object.entries` loses the key type of a `Record`, but
- * the record it is applied to is declared over {@link DistributionKind} exactly, so every
- * key it yields is one.
+ * The inverse of {@link DISTRIBUTION_LOCAL_NAME}, derived rather than written twice. The
+ * cast is sound by construction: `Object.entries` loses the key type of a `Record`, but the
+ * record it is applied to is declared over {@link DistributionKind} exactly.
  */
 const KIND_OF_LOCAL_NAME: ReadonlyMap<string, DistributionKind> = new Map(
   Object.entries(DISTRIBUTION_LOCAL_NAME).map(
@@ -119,7 +95,6 @@ const KIND_OF_LOCAL_NAME: ReadonlyMap<string, DistributionKind> = new Map(
  * two are not interchangeable.
  */
 interface DistributionCommon {
-  /** The element this was read from. */
   readonly xml: Element;
   /** `@date`, in ticks — where this distribution starts governing. 0 when absent. */
   readonly startDate: number;
@@ -229,10 +204,10 @@ export interface UnknownDistributionFamily {
  * `parseFloat` of an attribute, or null where the element does not carry it.
  *
  * Deliberately `Element.getAttribute` and not `xml/tree.ts`'s namespace-tolerant
- * `attribute()`: the incumbent parser used the plain form, a distribution's parameters are
- * unprefixed by the schema, and widening the lookup would change which documents parse.
- * `parseFloat` and not `parseJavaDouble` for the same reason — a malformed value becomes
- * `NaN` and travels, which is the ⊥ route `imprecisionLaws.ts` documents.
+ * `attribute()`: a distribution's parameters are unprefixed by the schema, and widening the
+ * lookup would change which documents parse. `parseFloat` and not `parseJavaDouble` for the
+ * same reason — a malformed value becomes `NaN` and travels, which is the ⊥ route
+ * `imprecisionLaws.ts` documents.
  */
 function floatAttribute(xml: Element, name: string): number | null {
   return mapPresent(xml.getAttribute(name), (a) => parseFloat(a.getValue()));
@@ -245,8 +220,6 @@ function intAttribute(xml: Element, name: string): number | null {
 
 /** The `<measurement value="…">` children, in document order. A child with no value is skipped. */
 function measurementValues(xml: Element): readonly number[] {
-  // `filterMap` takes an `Iterable`, and `Elements` is one — so the `toArray()` copy that
-  // used to stand between them is gone.
   return filterMap(xml.getChildElements('measurement'), (m) => floatAttribute(m, 'value'));
 }
 
@@ -308,13 +281,9 @@ const BUILD_DISTRIBUTION: {
 };
 
 /**
- * Read one `distribution.*` element.
- *
- * Only the attributes the element's own family consumes are read, where the incumbent read
- * all thirteen for every family. That is invisible at runtime — reading an attribute has no
- * effect on anything — and it is exactly the partition
- * `tests/comparison/registry.test.ts` already declares as the meaningful one ("the consumed
- * set is read off the factory calls").
+ * Read one `distribution.*` element. Only the attributes the element's own family consumes
+ * are read — the partition `tests/comparison/registry.test.ts` declares as the meaningful
+ * one ("the consumed set is read off the factory calls").
  */
 export function parseDistribution(xml: Element): Result<Distribution, UnknownDistributionFamily> {
   const localName = xml.getLocalName();
@@ -328,8 +297,8 @@ export function parseDistribution(xml: Element): Result<Distribution, UnknownDis
 
   const common: DistributionCommon = {
     xml,
-    // `?? 0.0` and not `?? 0` for the reader's sake only; and note it defends against
-    // absence, not against `NaN` — a malformed `@date` stays `NaN`, as it did.
+    // The default defends against absence, not against `NaN` — a malformed `@date` stays
+    // `NaN` and travels.
     startDate: floatAttribute(xml, 'date') ?? 0.0,
     seed: intAttribute(xml, 'seed'),
     millisecondsTimingBasis: floatAttribute(xml, 'milliseconds.timingBasis'),
@@ -346,10 +315,11 @@ export interface MinAndMax {
 
 /**
  * The smallest and largest measurement in a distribution list, or null for an empty one.
+ * Only the timing-basis derivation reads this.
  *
- * The `else if` is the incumbent's and is kept: it is correct here because `min <= max`
- * holds at every step, so a value below the running minimum cannot also be above the
- * running maximum. Only the timing-basis derivation reads this.
+ * The two tests are exclusive rather than independent, which is correct because `min <= max`
+ * holds at every step: a value below the running minimum cannot also be above the running
+ * maximum.
  */
 export function minAndMaxOfDistributionList(list: readonly number[]): MinAndMax | null {
   if (!isNonEmpty(list)) return null;

@@ -9,27 +9,19 @@
  * string `"?"` and whose `@transition.to` is `"-"` or `"+"` — placeholders a later pass
  * rewrites once the neighbouring instruction is known — and assembles them field by field
  * across some eighty lines of branching. There is no number to put in a `volume: number`
- * there, and no point at which the object is finished. The read half, which resolved every
- * name to a number and every absent curve parameter to 0.0 before any arithmetic saw it, is
- * a `readonly` record with no nullable field at all; it lives in `dynamics.ts`.
+ * there, and no point at which the object is finished. The read half resolves every name to a
+ * number and every absent curve parameter to 0.0 before any arithmetic sees it; it lives in
+ * `dynamics.ts`.
  *
- * The nulls that remain here are genuine optionality on the write side: `addDynamicsFromData`
- * branches on every one of them and omits the attribute it cannot fill.
+ * The nulls here are genuine optionality on the write side: `addDynamicsFromData` branches on
+ * every one of them and omits the attribute it cannot fill.
  *
  * ## Mutable on purpose, in two directions
  *
- * Besides the MEI converter's field-at-a-time assembly, `addDynamicsFromData` **writes the
- * clamped `curvature`/`protraction` back into the object it was given**, so that a caller
+ * Besides the MEI converter's field-at-a-time assembly, `addDynamicsFromData` writes the
+ * clamped `curvature`/`protraction` back into the object it was given, so that a caller
  * reusing it does not keep a value the document does not carry. That is Java's behaviour
- * (`DynamicsMap.java`), it is pinned by a test, and it is why this half cannot be `readonly`
- * either.
- *
- * ## What was dropped
- *
- * `xml`, `style`, `styleName`, the `x1`/`x2` control-point cache, `isConstantDynamics()`,
- * `getDynamicsAt()` and `getSubNoteDynamicsSegment()` were all read-side apparatus that no
- * writer touched — the Bézier evaluation now lives beside the type that can actually
- * guarantee its operands.
+ * (`DynamicsMap.java`) and it is pinned by a test.
  *
  * Port of the write half of meico.mpm.elements.maps.data.DynamicsData.
  */

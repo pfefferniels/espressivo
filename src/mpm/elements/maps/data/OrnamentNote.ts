@@ -13,17 +13,16 @@ import { elementAt } from '../../../../prelude/index.js';
  * `<ornament>` is the *score*, naming pool ids in playing order (see `noteOrder.ts` next
  * door). Pool order itself carries no meaning — `ornament.xml:78-79`: "the order of these
  * note elements have no semantic meaning". Turning ids plus pitch specs into real MSM notes
- * is the renderer's job (DESIGN.md D8/D10, wave W5); this class only reads and writes the
- * element.
+ * is the renderer's job (DESIGN.md D8/D10); this class only reads and writes the element.
  *
  * A class rather than a plain interface because it wraps a live XML subtree (RULE C1), in the
  * generate-on-demand shape of its sibling transformers (RULE C1a): {@link getXml} lazily
  * builds and caches an element for a note that was constructed in code.
  *
- * PARITY NOTE — **v3-only, with no Java precedent to match.** v2 ornaments never had children
- * at all, so nothing here can move a v2 byte. The reference implementation does read a pool,
- * but under the element name `ornamentNote`, which appears in no spec release and which its
- * own MEI converter never writes, so its pool is always empty
+ * PARITY NOTE — v3-only, with no Java precedent to match. v2 ornaments never had children at
+ * all, so nothing here can move a v2 byte. The reference implementation does read a pool, but
+ * under the element name `ornamentNote`, which appears in no spec release and which its own
+ * MEI converter never writes, so its pool is always empty
  * (research/lars-v3-implementation.md §5 note 2). DESIGN.md D1 rules that name out: the pool
  * child is `note`.
  */
@@ -66,23 +65,18 @@ const XML_NAMESPACE = 'http://www.w3.org/XML/1998/namespace';
 /**
  * Read one pitch attribute.
  *
- * **The parse is `parseJavaDouble`, DESIGN.md D16's rule for new v3 parse code** (the W9 ruling
- * on the deferred D16 question; PARITY.md §6.8). Unlike `TemporalValue`, which is exempt
- * because the spec's own regex admits only the decimal literals every parser agrees on, there
- * is no grammar here at all — `midi.pitch` is an unconstrained attribute value — so the choice
- * of parser is observable, and three differences from the `Number` this used to call are real:
+ * The parse is `parseJavaDouble`, DESIGN.md D16's rule for new v3 parse code (PARITY.md §6.8).
+ * Unlike `TemporalValue`, which is exempt because the spec's own regex admits only the decimal
+ * literals every parser agrees on, there is no grammar here at all — `midi.pitch` is an
+ * unconstrained attribute value — so the choice of parser is observable at the edges: `""` and
+ * `"0x10"` are rejected, where `Number` reads them as `0` (i.e. "at the principal's pitch")
+ * and `16`; `"1d"` / `"1f"` are 1, Java's own type suffixes, where `Number` reads `NaN`; and
+ * `"NaN"` / `"Infinity"` spelled out are accepted by the parser exactly as Java accepts them,
+ * then rejected by the finiteness check below, a pitch having to be a number a note can sound
+ * at.
  *
- * - `""` was `0`, i.e. an empty attribute silently meant "at the principal's pitch". Java
- *   rejects it and so does this now; a pool note with an unreadable pitch is skipped, which is
- *   the same answer the other malformed spellings already got.
- * - `"0x10"` was 16. Java rejects hexadecimal integer literals, and so does the grammar here.
- * - `"1d"` / `"1f"` were `NaN` and are now 1 — Java's own type suffixes, which its
- *   `Double.parseDouble` accepts.
- *
- * `"NaN"` and `"Infinity"` spelled out *are* accepted by the parser, exactly as Java accepts
- * them, and are then rejected by the finiteness check below: a pitch has to be a number a note
- * can sound at. The error is caught rather than propagated because there is no factory above
- * this to catch it and D16 forbids throwing on malformed v3 input.
+ * The error is caught rather than propagated because there is no factory above this to catch
+ * it and D16 forbids throwing on malformed v3 input.
  *
  * @returns null after logging when the value is not a usable number; the note is then skipped
  *   rather than silently sounding at the principal's pitch, which would invent a note the
@@ -104,21 +98,17 @@ function readPitchValue(kind: OrnamentPitchSpec['kind'], att: Attribute): Orname
  * caller — each of them says something different about what it could not read.
  *
  * Exported for the one sibling with the same problem, `OrnamentData.parseOrnamentRepetitions`:
- * both read a v3 attribute that has no grammar to lean on, both must not throw, and keeping one
- * adapter keeps the two from drifting into different ideas of what a number is. It lives here
- * because this is where the D16 ruling behind it is written down; `OrnamentData` already
- * imports this module, so it adds no edge to the import graph.
+ * both read a v3 attribute that has no grammar to lean on, both must not throw, and one
+ * adapter keeps the two from drifting into different ideas of what a number is.
  *
  * The bare `catch` is the shape the five def factories use for the same call (`TempoDef.ts:68`
  * and its four siblings, which mirror Java's `catch`), and it is exactly a `NumberFormatError`
- * catch: `parseJavaDouble` is the only thing inside the `try`, and it throws nothing else. An
- * `instanceof` test would be a branch no input can take and a permanently uncovered line.
+ * catch: `parseJavaDouble` is the only thing inside the `try`, and it throws nothing else.
  */
 export function readJavaDouble(text: string): number | null {
   try {
-    // The label goes into a message this discards on purpose — the callers each write their
-    // own, naming the attribute and what they did about it — so it is kept neutral rather
-    // than made to say "pitch" on behalf of a caller that is reading a repeat count.
+    // The label goes into a message this discards; the callers each write their own, naming
+    // the attribute and what they did about it, so it is kept neutral.
     return parseJavaDouble(text, 'an MPM v3 numeric attribute');
   } catch {
     return null;
@@ -198,14 +188,12 @@ export class OrnamentNote {
    * Build (and cache) the element for this note, in canonical spec form: `xml:id` first, then
    * the one pitch attribute.
    *
-   * The pitch attribute is written **unconditionally**, including the `interval.chromatic="0"`
-   * that a note with no pitch attribute at all decays to. That keeps the round trip stable
-   * (state in, same state out) at the price of restating a default, and it costs nothing in
-   * parity: this element is new in v3, no Java reference writes it — the reference writes
-   * `ornamentNote`, which no spec release defines — so no byte precedent binds the choice.
-   * Attribute order is fixed here for the same reason it matters elsewhere: it is
-   * byte-visible (CHARTER §79-80), and the spec's own exempla (`note.xml:60-70`) write it
-   * this way.
+   * The pitch attribute is written unconditionally, including the `interval.chromatic="0"`
+   * that a note with no pitch attribute at all decays to, so that the round trip is stable
+   * (state in, same state out). No parity is at stake: this element is new in v3 and no Java
+   * reference writes it — the reference writes `ornamentNote`, which no spec release defines.
+   * Attribute order is fixed because it is byte-visible (CHARTER §79-80), and the spec's own
+   * exempla (`note.xml:60-70`) write it this way.
    */
   generateXML(): Element {
     const note = new Element('note', MPM_NAMESPACE);

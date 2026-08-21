@@ -11,26 +11,16 @@
  * the literal string `"?"` and whose `@transition.to` is `"-"` or `"+"` — placeholders that
  * a later pass rewrites once the neighbouring instruction is known. There is no number to
  * put in a `bpm: number`, and demanding one would mean inventing one. The other half, the
- * one the renderer reads back out, resolved every name to a number before it ever reached
+ * one the renderer reads back out, resolves every name to a number before it ever reaches
  * arithmetic, so it is a two-armed sum with no nulls at all; it lives in `tempo.ts`.
  *
- * ## Why it is still a mutable class
+ * ## Why it is a mutable class
  *
- * `parseTempo` assembles it across some sixty lines of branching — `@mm`, then
- * `@midi.bpm`, then `@midi.mspb`, then the element's text, then `@label`, each overwriting
- * the last — and `addTempoToMpm` then rewrites `bpmString` again from the *preceding*
- * instruction's `@transition.to`. That is field-at-a-time construction, and turning it into
- * a `readonly` record means rewriting the MEI converter, which belongs to a different pass.
- * The nulls that remain are therefore genuine optionality on the write side: `addTempo`
- * branches on every one of them and omits the attribute it cannot fill.
- *
- * ## What was dropped
- *
- * `xml`, `style`, `styleName`, `exponent`, `startDateMilliseconds` and `isConstantTempo()`
- * were all read-side apparatus that no writer touched. Java's `clone()` deliberately omits
- * `startDateMilliseconds` (it is per-render scratch space, so a clone is expected to start
- * without it); with the field gone from this half entirely, so is the hazard the note
- * warned about.
+ * `parseTempo` assembles it across some sixty lines of branching — `@mm`, then `@midi.bpm`,
+ * then `@midi.mspb`, then the element's text, then `@label`, each overwriting the last — and
+ * `addTempoToMpm` then rewrites `bpmString` again from the *preceding* instruction's
+ * `@transition.to`. The nulls are genuine optionality on the write side: `addTempo` branches
+ * on every one of them and omits the attribute it cannot fill.
  *
  * Port of the write half of meico.mpm.elements.maps.data.TempoData.
  */

@@ -16,13 +16,8 @@
  * identity warp. That half is `rubato.ts`, and it has one null in the whole type: the
  * `Rubato | null` that `resolveRubato` returns.
  *
- * ## What was dropped
- *
- * `xml`, `style`, `styleName`, `rubatoDef` and `endDate` were read-side apparatus that no
- * writer touched — `addRubato` never serializes an end date, since a rubato's span is
- * defined by the *next* instruction rather than by an attribute. `clone()` went with them:
- * it had no caller anywhere in `src/`, and with the read half now a `readonly` record there
- * is nothing left for a defensive copy to defend against.
+ * There is no end date to carry: `addRubato` never serializes one, since a rubato's span is
+ * defined by the *next* instruction rather than by an attribute.
  *
  * Port of the write half of meico.mpm.elements.maps.data.RubatoData.
  */

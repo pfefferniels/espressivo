@@ -8,24 +8,20 @@ import type { ArticulationDef } from '../../styles/defs/ArticulationDef.js';
  * All data needed to articulate one note — a single MPM `<articulation>` element plus
  * the style context only {@link ArticulationMap} knows.
  *
- * The modifier fields come in two flavours that must not be mixed up. The **tick**
- * modifiers (`absoluteDuration`, `relativeDuration`, `absoluteDelay`, the velocity and
- * detune fields) are applied here and now, in {@link articulateNote}. The **ms**
- * modifiers (`absoluteDurationMs`, `absoluteDurationChangeMs`, `absoluteDelayMs`) can
- * not be: milliseconds do not exist yet at articulation time, because the tempo map has
- * not run. So `articulateNote` only *parks* them on the note as
- * `articulation.absoluteXMs` attributes, and
- * {@link ArticulationMap.renderArticulationToMap_millisecondModifiers} consumes and
+ * The modifier fields come in two flavours that must not be mixed up. The tick modifiers
+ * (`absoluteDuration`, `relativeDuration`, `absoluteDelay`, the velocity and detune fields)
+ * are applied here and now, in {@link articulateNote}. The ms modifiers
+ * (`absoluteDurationMs`, `absoluteDurationChangeMs`, `absoluteDelayMs`) cannot be:
+ * milliseconds do not exist yet at articulation time, because the tempo map has not run. So
+ * `articulateNote` only *parks* them on the note as `articulation.absoluteXMs` attributes,
+ * and {@link ArticulationMap.renderArticulationToMap_millisecondModifiers} consumes and
  * removes them in a later pass. This two-phase split is why the pipeline calls
  * ArticulationMap twice.
  *
- * This is a **record plus one behaviour** (`articulateNote`), with exactly one producer.
- * It does not parse XML — the port used to carry a `constructor(xml)` transcribing
- * `<articulation>`, but nothing called it and it stored `@noteid` verbatim where
- * {@link ArticulationMap.getArticulationDataOf} strips the leading `#`. Since the map is
- * keyed by bare IDs, an object built that way targeted a note that cannot exist. Build
- * these with `getArticulationDataOf`; it is the only reader that also resolves the style,
- * the `articulationDef` and the style switch's `defaultArticulation`.
+ * Build these with {@link ArticulationMap.getArticulationDataOf}. It is the only reader that
+ * resolves the style, the `articulationDef` and the style switch's `defaultArticulation`, and
+ * it strips the leading `#` off `@noteid` — the map is keyed by bare ids, so a `noteid` that
+ * keeps its `#` targets a note that cannot exist.
  *
  * Port of meico.mpm.elements.maps.data.ArticulationData
  */
@@ -87,17 +83,17 @@ export class ArticulationData {
    * Apply this articulation to `note`, in place. Returns whether the note's date moved,
    * which the caller needs because a moved note may have to be re-sorted into the map.
    *
-   * The referenced `articulationDef` is applied **first**, then these local modifiers on
-   * top, so a local value always wins over the def's. Within the duration block the
-   * write order is load-bearing: `duration` is read once, up front, and every branch
-   * computes from that original value rather than from what the previous branch wrote —
-   * so `absoluteDuration`, `relativeDuration` and `absoluteDurationChange` do not
-   * compose, the last one to fire simply overwrites. `absoluteDurationMs` short-circuits
-   * the entire tick-domain branch (see the class doc on the two-phase split).
+   * The referenced `articulationDef` is applied first, then these local modifiers on top, so
+   * a local value always wins over the def's. Within the duration block the write order is
+   * load-bearing: `duration` is read once, up front, and every branch computes from that
+   * original value rather than from what the previous branch wrote — so `absoluteDuration`,
+   * `relativeDuration` and `absoluteDurationChange` do not compose, the last one to fire
+   * simply overwrites. `absoluteDurationMs` short-circuits the entire tick-domain branch (see
+   * the class doc on the two-phase split).
    *
    * PARITY NOTE — the `absoluteDurationChange` branch is the one place where this port
    * knowingly does not reproduce the Java reference: Java's loop there never terminates.
-   * See DELIBERATE DIVERGENCE #1 at the site below for the full account.
+   * See DELIBERATE DIVERGENCE #1 at the site below.
    */
   articulateNote(note: Element | null): boolean {
     if (note === null) return false;
@@ -137,25 +133,23 @@ export class ArticulationData {
           durationAtt.setValue(String(duration * this.relativeDuration));
           addToListAttribute(note, 'modified', this.xmlId);
         }
-        // DELIBERATE DIVERGENCE #1 — refactor item TD1; ARCHITECTURE.md §6.3 row P3, §8.0.
+        // DELIBERATE DIVERGENCE #1 — ARCHITECTURE.md §6.3 row P3, §8.0.
         // Java writes this loop as `for (double reduce = 2.0; durNew >= 0.0; reduce *= 2.0)`
         // with no guard (ArticulationData.java:197), and that never terminates: `reduce`
         // doubles to Infinity, `durNew` converges back to the unchanged `duration`, and
-        // `>= 0.0` stays true forever. The comment on that same Java line — "as long as the
-        // duration change causes the duration to become 0.0 or negative" — describes the
-        // inverse test, so the code contradicts its author's stated intent. We therefore use
-        // the spelling Java's own ArticulationDef.java:420-423 gives the same computation:
-        // the `> 0.0` guard AND `durNew <= 0.0`. Both are needed — with `<=` but no guard, a
-        // note whose `duration.perf` is 0 or negative plus a negative change still spins
-        // forever, since `durNew` converges to a `duration` that is itself `<= 0.0`. And a
-        // zero `duration.perf` is not hypothetical: the reference output
+        // `>= 0.0` stays true forever — the inverse of the test the comment on that same Java
+        // line describes. We use the spelling Java's own ArticulationDef.java:420-423 gives
+        // the same computation: the `> 0.0` guard AND `durNew <= 0.0`. Both are needed — with
+        // `<=` but no guard, a note whose `duration.perf` is 0 or negative plus a negative
+        // change still spins forever, since `durNew` converges to a `duration` that is itself
+        // `<= 0.0`. And a zero `duration.perf` is not hypothetical: the reference output
         // tests/integration/fixtures/performance-reference/composite_advanced_augmented.msm
         // carries one.
         //
-        // Second observable consequence, beyond termination: the `modified` bookkeeping now
-        // sits inside the guard too, so a note with `duration.perf <= 0` no longer gets its
-        // `modified` list entry. ArticulationDef has no such bookkeeping to copy; keeping the
-        // write outside the guard would announce a modification that did not happen.
+        // Second observable consequence, beyond termination: the `modified` bookkeeping sits
+        // inside the guard too, so a note with `duration.perf <= 0` gets no `modified` list
+        // entry. ArticulationDef has no such bookkeeping to copy, and keeping the write
+        // outside the guard would announce a modification that did not happen.
         if (this.absoluteDurationChange !== 0.0) {
           if (duration > 0.0) {
             let durNew = duration + this.absoluteDurationChange;

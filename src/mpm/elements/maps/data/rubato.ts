@@ -6,43 +6,25 @@ import type { RubatoDef } from '../../styles/defs/RubatoDef.js';
  *
  * ## Why every field is total
  *
- * The incumbent `RubatoData` typed `frameLength`, `intensity`, `lateStart` and `earlyEnd`
- * as `number | null`, and `RubatoMap` then read them back with eleven non-null assertions —
- * four of them inside `computeRubatoTransformation`, which is three lines long and is
- * annotated RENDERING MATH. The nulls were never a possible state of a *read* rubato:
- *
- * - `frameLength` has no default at all. Where neither the element nor the referenced
- *   `rubatoDef` supplies one there is no frame to warp, so {@link resolveRubato} answers
- *   null for the whole instruction rather than carrying a null field forward. That is the
- *   hard reject the incumbent already performed; it is now the only null in the type.
- * - `intensity`, `lateStart` and `earlyEnd` were declared `number | null` *and initialised
- *   to 1.0 / 0.0 / 1.0*, so the null was unreachable from the first line. Those three
- *   values are the identity warp — `(τ/frameLength)^1 * (1 - 0) + 0`, i.e. τ — which is
- *   why "the element says nothing and there is no def" is a no-op here and not an error.
- *   `src/comparison/rubatoCurve.ts` documents the same three defaults from the other side.
+ * `frameLength` has no default at all: where neither the element nor the referenced
+ * `rubatoDef` supplies one there is no frame to warp, so {@link resolveRubato} answers null
+ * for the whole instruction rather than carrying a null field forward. That is the only null
+ * left in the type. `intensity`, `lateStart` and `earlyEnd` fall back to 1.0 / 0.0 / 1.0,
+ * which is the identity warp — `(τ/frameLength)^1 * (1 - 0) + 0`, i.e. τ — which is why "the
+ * element says nothing and there is no def" is a no-op here and not an error.
+ * `src/comparison/rubatoCurve.ts` documents the same three defaults from the other side.
  *
  * ## Presence, not usability — and NaN travels
  *
- * The rule the incumbent implemented, and which {@link resolveRubato} reproduces exactly,
- * is that an attribute the element **carries** wins over the def even when its value is
- * unusable. `<rubato frameLength="banana" name.ref="d">` does not fall back to `d`'s frame:
- * it warps by `NaN`, and every date under it comes out `NaN`.
+ * An attribute the element *carries* wins over the def even when its value is unusable.
+ * `<rubato frameLength="banana" name.ref="d">` does not fall back to `d`'s frame: it warps by
+ * `NaN`, and every date under it comes out `NaN`.
  * `tests/comparison/malformedValues.test.ts` pins that. So the `?? ` chains below are fed
  * *absence*, never `NaN` — a present-but-malformed value arrives as `NaN`, which is not
  * nullish, and therefore short-circuits the chain the way a usable value would.
  *
- * The same holds for the boundary clamps: `NaN < 0`, `NaN > 1` and `NaN >= x` are all
- * false, so a `NaN` window is left exactly as it arrived rather than being reset to
- * `[0, 1]`. The incumbent's `!== null &&` guards on those three comparisons are gone, being
- * vacuous once the fields are total, and the comparisons themselves are untouched.
- *
- * ## What was dropped
- *
- * `xml`, `xmlId`, `styleName`, `style`, `rubatoDefString` and `rubatoDef` were all set by
- * the reader and read by nobody after it: the def is an *input* to resolution — its four
- * numbers are copied out and it is never consulted again — and the renderer identifies a
- * rubato by its position in the map. What remains is what
- * `RubatoMap.computeRubatoTransformation` and `renderRubatoToMap` actually consume.
+ * The same holds for the boundary clamps: `NaN < 0`, `NaN > 1` and `NaN >= x` are all false,
+ * so a `NaN` window is left exactly as it arrived rather than being reset to `[0, 1]`.
  *
  * Port of the read half of meico.mpm.elements.maps.data.RubatoData.
  */
@@ -115,7 +97,6 @@ export function resolveRubato(
   let lateStart = declared.lateStart ?? def?.getLateStart() ?? 0.0;
   let earlyEnd = declared.earlyEnd ?? def?.getEarlyEnd() ?? 1.0;
 
-  // ensure boundaries
   if (lateStart < 0.0) lateStart = 0.0;
   if (earlyEnd > 1.0) earlyEnd = 1.0;
   if (lateStart >= earlyEnd) {

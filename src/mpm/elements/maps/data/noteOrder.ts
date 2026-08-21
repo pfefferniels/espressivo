@@ -15,47 +15,43 @@
  * attribute (see {@link formatNoteOrderPerf}); the authored `note.order` is never touched.
  *
  * GRAMMAR SOURCE. The authority is the schematron in the spec's `att.note.order.xml`, and
- * it is deliberately **wider than the ODD prose**: it admits every whitespace-separated
- * token that either starts with `#` or is exactly one of `[ ] | |: :| :|:`. So the bare
- * barline `|` and the compound `:|:` are legal although `mpm.odd:735` documents neither
+ * it is deliberately wider than the ODD prose: it admits every whitespace-separated token
+ * that either starts with `#` or is exactly one of `[ ] | |: :| :|:`. So the bare barline
+ * `|` and the compound `:|:` are legal although `mpm.odd:735` documents neither
  * (research/github-v3-design.md §3.3). `:|:` is normalised to `:| |:` before tokenizing,
  * following the reference implementation (research/lars-v3-implementation.md §4.2,
- * `OrnamentationMap.java:353`); this parser therefore treats it as "close the open group,
- * open the next one", which is how adjacent groups are spelled.
+ * `OrnamentationMap.java:353`), so it reads as "close the open group, open the next one".
  *
  * The same §3.3 records the grammar's own inconsistency: the `<desc>` inside
  * `att.note.order.xml` illustrates chords as `[#id1 #id2]`, which its own spaced-token
- * constraint rejects. Since the spec's own example uses that form, real documents will
- * too, so unspaced brackets are salvaged (split off as their own tokens) with a warning
- * rather than skipped.
+ * constraint rejects. Real documents will follow the spec's example, so unspaced brackets
+ * are salvaged (split off as their own tokens) with a warning rather than skipped.
  *
  * TERMINATION AND COST. The reference tokenizer loops over a mutable index that it fails to
  * advance for a token without `#`, so a bare id hangs it forever (lars report §4.2, bug 2).
- * This parser makes non-termination unrepresentable instead of merely unlikely: tokenization
- * is one forward pass over a fixed array, bracket salvage is two monotone index scans over a
- * fixed string, and no branch can revisit a token. Cost is linear in the input's length, the
- * diagnostics are capped ({@link MAX_NOTE_ORDER_WARNINGS}), and malformed input degrades to a
- * warning plus a skip rather than an exception (DESIGN.md D9, D16).
+ * Here tokenization is one forward pass over a fixed array and bracket salvage is two
+ * monotone index scans over a fixed string, so no branch can revisit a token. Cost is linear
+ * in the input's length, the diagnostics are capped ({@link MAX_NOTE_ORDER_WARNINGS}), and
+ * malformed input degrades to a warning plus a skip rather than an exception (DESIGN.md D9,
+ * D16).
  *
- * KNOWN LIMIT, measured rather than assumed. "Degrades rather than throws" is a statement about
- * the *grammar*, not about every input a hostile caller can construct: `tokens.push(...parts)`
- * spreads the salvaged tokens of one glued value as call arguments, so a single token holding
- * enough brackets overflows the call stack — `RangeError: Maximum call stack size exceeded`, at
- * **~100 000 brackets** (measured thresholds ranged 105 555–105 989 across runs on one
- * machine — it tracks stack headroom, not the runtime version). It is pre-existing, it is
- * two orders of magnitude past any authored `note.order`, and the pathological test in the suite
- * deliberately sits below it at 64 000. It is documented here rather than fixed because the fix
- * (push in a loop, or `concat`) belongs with the same shape elsewhere in this codebase —
- * `ornamentInstantiation`'s `Math.min(...dates)` has it too — and one wave should change both.
+ * KNOWN LIMIT, measured. `tokens.push(...parts)` spreads the salvaged tokens of one glued
+ * value as call arguments, so a single token holding enough brackets overflows the call stack
+ * — `RangeError: Maximum call stack size exceeded`, at ~100 000 brackets (measured thresholds
+ * ranged 105 555–105 989 across runs on one machine; it tracks stack headroom, not the
+ * runtime version). That is two orders of magnitude past any authored `note.order`, and the
+ * pathological test in the suite deliberately sits below it at 64 000. Not fixed here because
+ * the fix (push in a loop, or `concat`) belongs with the same shape in
+ * `ornamentInstantiation`'s `Math.min(...dates)`, and the two should change together.
  *
- * PARITY NOTE. **v2 had no grammar here beyond a whitespace-split list of IDs**:
- * `OrnamentData` stores `note.order` as either one magic string or `value.replace(/#/g,
- * '').split(/\s+/)`, and everything downstream reads that flat array. Nothing in v2 knows
- * what a bracket or a repeat sign means. This module is v3-only and must never be reached
- * from the v2 path — an ornament that shows no v3 feature keeps the untouched v2 code path
- * (DESIGN.md D6), and W3/W5 own that gate. Running this parser on v2 input would not
- * change the ID sequence for any v2-shaped value, but it would change the *type* of the
- * thing v2 rendering consumes, which is exactly the drift D6 exists to prevent.
+ * PARITY NOTE. v2 has no grammar here beyond a whitespace-split list of IDs: `OrnamentData`
+ * stores `note.order` as either one magic string or `value.replace(/#/g, '').split(/\s+/)`,
+ * and everything downstream reads that flat array. Nothing in v2 knows what a bracket or a
+ * repeat sign means. This module is v3-only and must never be reached from the v2 path — an
+ * ornament that shows no v3 feature keeps the untouched v2 code path (DESIGN.md D6). Running
+ * this parser on v2 input would not change the ID sequence for any v2-shaped value, but it
+ * would change the *type* of the thing v2 rendering consumes, which is exactly the drift D6
+ * exists to prevent.
  */
 
 /** One slot of the sequence: a single note, or a chord when more than one id is present. */
@@ -81,10 +77,9 @@ export interface RepeatGroup {
  * The parsed value. The two keyword variants carry no items — they are resolved against
  * the notes at the ornament's date, not against the pool.
  *
- * `warnings` is present on **every** variant, not just `list`. That is a deliberate widening
- * of the shape sketched in the wave brief: the trimmed-keyword lenience below has to report
- * itself somewhere, and a caller collecting diagnostics should not have to narrow the union
- * first. It is always an array, empty when the input was clean.
+ * `warnings` is present on every variant, not just `list`: the trimmed-keyword lenience below
+ * has to report itself somewhere, and a caller collecting diagnostics should not have to
+ * narrow the union first. It is always an array, empty when the input was clean.
  */
 export type NoteOrder =
   | { readonly kind: 'ascending'; readonly warnings: readonly string[] }
@@ -103,15 +98,13 @@ const KEYWORD_DESCENDING = 'descending pitch';
  * How many diagnostics one value may collect before the rest are counted instead of kept.
  *
  * A malformed value's warnings are proportional to its length — a 100 000-character token run
- * of `]` produced 100 000 strings, all of them the same sentence, and the caller logs every one
- * (W2 verifier advisory, LOG.md 2026-08-09). The cap bounds both the array and the console; the
- * suppressed ones are summarised in a final entry so the count is never silently lost. 100 is
- * far past the point where a reader learns anything new: no hand-written `note.order` has that
- * many distinct problems, and a machine-written one has the same problem 100 000 times.
+ * of `]` produced 100 000 strings, all of them the same sentence, and the caller logs every
+ * one (LOG.md 2026-08-09). The cap bounds both the array and the console; the suppressed ones
+ * are summarised in a final entry so the count is never silently lost.
  */
 export const MAX_NOTE_ORDER_WARNINGS = 100;
 
-/** Character codes of the two bracket tokens, for the index scan in {@link splitUnspacedBrackets}. */
+/** Character codes of the two bracket tokens, for {@link splitUnspacedBrackets}'s index scan. */
 const OPEN_BRACKET = 0x5b;
 const CLOSE_BRACKET = 0x5d;
 
@@ -121,17 +114,10 @@ const CLOSE_BRACKET = 0x5d;
  * unchanged, so `parts.length > 1` is exactly the "salvaged something" signal.
  *
  * Both bracket runs are located by an index scan, so a glued token costs time linear in its
- * length. The first draft peeled the string with `slice` **and collected the peeled brackets
- * with `tail.unshift(']')`**, and the second of those is what made it quadratic: `unshift`
- * re-indexes the whole array on every call. Isolated at 64 000 brackets on this machine, the
- * old pair costs ~1150 ms, the `unshift` alone ~975 ms of it, and a `slice`-only variant just
- * ~8 ms — so a mutation that restores only the `slice` shape is **not** a control for this fix,
- * which is how one was measured passing. The whole parse of that input now takes 6–21 ms across
- * runs. Same tokens out, same warning, same order; only the cost changed (W2 verifier advisory,
- * LOG.md 2026-08-09).
- *
- * Termination is structural rather than argued: two monotone index scans over a fixed string,
- * no loop over a value it also mutates.
+ * length and termination is structural: two monotone scans over a fixed string, no loop over
+ * a value it also mutates. Collecting the peeled brackets with `unshift` instead makes it
+ * quadratic — measured at 64 000 brackets, `unshift` alone costs ~975 ms of a ~1150 ms parse,
+ * where the whole parse now takes 6–21 ms across runs (LOG.md 2026-08-09).
  */
 function splitUnspacedBrackets(token: string): readonly string[] {
   let start = 0;
@@ -153,10 +139,10 @@ function splitUnspacedBrackets(token: string): readonly string[] {
  *
  * Returns `null` only for an empty or whitespace-only value — there is no order to speak
  * of, and the caller treats the ornament as if the attribute were absent. Every other
- * input yields a value: an input that survives tokenization with **zero** items still comes
- * back as a `list` with an empty `items` array plus the warnings explaining why, which
- * mirrors v2's "empty list, continue" handling of the same situation and keeps the
- * diagnostics reachable. Callers skip such an ornament; they must not treat it as `null`.
+ * input yields a value: one that survives tokenization with zero items still comes back as a
+ * `list` with an empty `items` array plus the warnings explaining why, which mirrors v2's
+ * "empty list, continue" handling and keeps the diagnostics reachable. Callers skip such an
+ * ornament; they must not treat it as `null`.
  *
  * Keyword matching is exact first. A value that only differs by surrounding whitespace is
  * accepted as the keyword too, with a warning: XML attribute values routinely pick up stray
@@ -182,8 +168,7 @@ export function parseNoteOrder(raw: string): NoteOrder | null {
 
   /**
    * Collect a diagnostic, up to {@link MAX_NOTE_ORDER_WARNINGS} of them. Past the cap only the
-   * count survives, and {@link summariseSuppressed} turns it into the array's last entry — so
-   * the array is bounded, and "there was more" is still said out loud.
+   * count survives, and {@link summariseSuppressed} turns it into the array's last entry.
    */
   let suppressed = 0;
   const warn = (message: string): void => {
@@ -293,9 +278,8 @@ export function parseNoteOrder(raw: string): NoteOrder | null {
 /**
  * Append the tally of the diagnostics {@link MAX_NOTE_ORDER_WARNINGS} kept out, if any.
  *
- * It is pushed past the cap on purpose — the cap bounds what is *collected*, and one more
- * entry saying how much was dropped is what keeps the array honest. So a capped result holds
- * exactly `MAX_NOTE_ORDER_WARNINGS + 1` entries and never more.
+ * It is pushed past the cap on purpose — the cap bounds what is *collected* — so a capped
+ * result holds exactly `MAX_NOTE_ORDER_WARNINGS + 1` entries and never more.
  */
 function summariseSuppressed(warnings: string[], suppressed: number): void {
   if (suppressed === 0) return;
@@ -343,12 +327,12 @@ export function formatNoteOrder(order: NoteOrder): string {
  * the notes actually generated, in playing order, space-separated and **without** the `#`
  * prefix.
  *
- * The missing `#` is not an oversight — it is what the reference writes
- * (`String.join(" ", noteOrder)` over ids it has already stripped, lars report §4.2), and
- * downstream consumers read `note.order.perf` as bare ids. A leading `#` on an incoming id
- * is stripped so that callers may pass either spelling; nothing else about the ids is
- * touched. Chord structure and repeat marks are deliberately absent: `note.order.perf`
- * records what was played, and by that point every chord has become its own notes.
+ * The missing `#` is what the reference writes (`String.join(" ", noteOrder)` over ids it has
+ * already stripped, lars report §4.2), and downstream consumers read `note.order.perf` as
+ * bare ids. A leading `#` on an incoming id is stripped so that callers may pass either
+ * spelling; nothing else about the ids is touched. Chord structure and repeat marks are
+ * deliberately absent: `note.order.perf` records what was played, and by that point every
+ * chord has become its own notes.
  */
 export function formatNoteOrderPerf(expandedIds: readonly string[]): string {
   return expandedIds.map((id) => (id.startsWith('#') ? id.slice(1) : id)).join(' ');

@@ -8,55 +8,27 @@ import {
 
 /**
  * One `<dynamics>` instruction as the renderer evaluates it: a loudness at the start, a
- * loudness at the end, and the cubic Bézier that gets from one to the other.
+ * loudness at the end, and the cubic Bézier that gets from one to the other. Every field is
+ * total — {@link resolveDynamics} fills in what the element left out, at read time, where it
+ * can be seen.
  *
- * ## Why every field is total, and why this is NOT a sum type
+ * ## Why this is not a sum type, where its twin {@link ./movement.ts Movement} is
  *
- * `DynamicsData` typed `endDate`, `volume`, `transitionTo`, `curvature`, `protraction`,
- * `x1` and `x2` as nullable and then read them back with fourteen non-null assertions —
- * every single one inside the Bézier evaluation. None of the seven nulls survives contact
- * with the reader:
- *
- * - `volume` and `transitionTo` come from `numericDynamicsValue`, whose third step is a
- *   hardcoded 100.0; an unresolvable name is a *number*, not an absence.
- * - `transitionTo` is set even when the element declares no `@transition.to` —
- *   `DynamicsMap.getDynamicsDataOf` deliberately sets it equal to `volume` so that the
- *   evaluation has one code path instead of a null branch. That decision is older than this
- *   rewrite and it is the reason the next paragraph holds.
- * - `curvature` and `protraction` were nulled for an absent attribute and then defaulted to
- *   0.0 *in place*, by the same method that computed the control points, on first use.
- *   {@link resolveDynamics} does that defaulting once, at read time, where it can be seen.
- * - `endDate` is `GenericMap.nextDateOfType`, which answers `Number.MAX_VALUE` rather than
- *   null for a last instruction.
- * - `x1` and `x2` were a lazily-filled cache whose null meant "not computed yet". They are
- *   computed here instead: {@link innerControlPointsXPositions} is pure, so eager and lazy
- *   give the same two doubles, and a nullable cache field is a strange thing for a record
- *   to carry when its one producer knows both inputs already.
- *
- * A **sum type would be wrong here**, and it is worth saying why, because its twin
- * {@link ./movement.ts MovementData} genuinely is one. "Constant" for dynamics is a
- * predicate over *values* — `transitionTo === volume` — not a structural fact: an
- * instruction that spells out `transition.to="p"` while `volume="p"` is constant, and one
- * that spells out no target at all is constant with `transitionTo` filled in to match. And
- * both still carry a live Bézier, because `DynamicsMap.generateSubNoteDynamics` samples the
- * curve of *any* sub-note span, constant ones included — it just comes out flat. There is
- * no arm on which `transitionTo`, `x1` or `x2` would be absent, so there is nothing for two
- * constructors to separate. {@link isConstantDynamics} stays a predicate, as it was.
- *
- * ## What was dropped
- *
- * `xml`, `xmlId`, `styleName` and `style` were set by the reader and read by nobody after
- * it. The mutability went with them: the in-place defaulting of `curvature`/`protraction`
- * described above was the class's only remaining reason to be a class, and the `clone()`
- * that had to defend against it lives on only in the write payload (`DynamicsData`), where
- * `Mei2MsmMpmConverter` really does clone one per staff.
+ * "Constant" for dynamics is a predicate over *values* — `transitionTo === volume` — not a
+ * structural fact: an instruction that spells out `transition.to="p"` while `volume="p"` is
+ * constant, and one that spells out no target at all is constant with `transitionTo` filled
+ * in to match, because `DynamicsMap.getDynamicsDataOf` sets it equal to `volume`. Both still
+ * carry a live Bézier, because `DynamicsMap.generateSubNoteDynamics` samples the curve of
+ * *any* sub-note span, constant ones included — it just comes out flat. So there is no arm on
+ * which `transitionTo`, `x1` or `x2` would be absent, and {@link isConstantDynamics} is a
+ * predicate rather than a discriminant.
  *
  * ## RENDERING MATH
  *
  * Everything below reproduces the Java reference bit for bit and the order is load-bearing;
  * see the header of `bezier.ts`, which owns the arithmetic these three functions arrange.
  * The two `t` endpoints in {@link tForDynamicsDate} are answers the binary search would only
- * approximate, so they are not shortcuts and must not be removed.
+ * approximate, so they are not shortcuts.
  *
  * Port of the read half of meico.mpm.elements.maps.data.DynamicsData.
  */
@@ -70,7 +42,10 @@ export interface Dynamics {
   readonly endDate: number;
   /** `@volume` as written — a number, or a style-relative name such as `"forte"`. */
   readonly volumeString: string;
-  /** {@link volumeString} resolved through the style in scope; never null, see the header. */
+  /**
+   * {@link volumeString} resolved through the style in scope. Total: `numericDynamicsValue`
+   * falls back to a hardcoded 100.0, so an unresolvable name is a number, not an absence.
+   */
   readonly volume: number;
   /** `@transition.to` as written, or {@link volumeString} where the element declares none. */
   readonly transitionToString: string;
@@ -87,8 +62,7 @@ export interface Dynamics {
    * {@link curvature} and {@link protraction} once, at read time.
    *
    * Part of the record rather than recomputed per sample because the sub-note sampler asks
-   * for a curve point once per subdivision step, and per-note velocity asks for one per
-   * note; the incumbent cached them for the same reason, just in a nullable field.
+   * for a curve point once per subdivision step, and per-note velocity asks for one per note.
    */
   readonly x1: number;
   readonly x2: number;
@@ -100,8 +74,7 @@ export interface Dynamics {
  *
  * The two nullable pairs are not symmetrical. `transitionToString`/`transitionTo` null
  * means "no `@transition.to`", and {@link resolveDynamics} fills both from `volume`;
- * `curvature`/`protraction` null means "no attribute", and it fills both with 0.0. Both
- * substitutions are the incumbent reader's, moved to one place.
+ * `curvature`/`protraction` null means "no attribute", and it fills both with 0.0.
  */
 export interface DeclaredDynamics {
   readonly startDate: number;
@@ -136,14 +109,7 @@ export function resolveDynamics(declared: DeclaredDynamics): Dynamics {
   };
 }
 
-/**
- * Whether this instruction holds one level rather than moving between two.
- *
- * Was `transitionTo === null || volume === null || transitionTo === volume`; the first two
- * disjuncts described states the reader cannot produce, and the type now says so.
- * `src/expression/applier.ts` calls this and `TempoData.isConstantTempo` "the same
- * predicate over different attribute names", which they still are.
- */
+/** Whether this instruction holds one level rather than moving between two. */
 export function isConstantDynamics(d: Dynamics): boolean {
   return d.transitionTo === d.volume;
 }
