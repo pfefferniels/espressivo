@@ -725,16 +725,6 @@ export class Msm extends AbstractMsm {
   }
 
   /**
-   * The msm document as an XML string, or null if there is no document.
-   *
-   * @param _filename inert. It mirrors Java's `writeMsm(String filename)`, which this port
-   *   cannot honour without a file system; kept so ported call sites still compile.
-   */
-  writeMsmString(_filename?: string): string | null {
-    return this.exportXml();
-  }
-
-  /**
    * Render this MSM as plain, non-expressive MIDI: symbolic dates as MIDI ticks, one
    * initial tempo event, a fixed velocity of 100 for every note.
    *

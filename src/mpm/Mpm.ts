@@ -306,12 +306,4 @@ export class Mpm extends AbstractMsm {
   writeMpm(): string | null {
     return this.exportXml();
   }
-
-  /**
-   * The mpm document as an XML string, or null. Nothing is written to disk — the filename is
-   * ignored, and the parameter is kept only so the Java signature still type-checks.
-   */
-  writeMpmString(_filename?: string): string | null {
-    return this.exportXml();
-  }
 }

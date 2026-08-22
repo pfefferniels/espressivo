@@ -323,11 +323,6 @@ describe('Msm', () => {
       expect(xml!).toContain('title="Test"');
       expect(xml!).toContain('pulsesPerQuarter="720"');
     });
-
-    it('writeMsmString should return the same XML, ignoring the filename argument', () => {
-      const msm = Msm.createMsm('Test', null, 720);
-      expect(msm.writeMsmString('ignored.msm')).toBe(msm.writeMsm());
-    });
   });
 
   // getTitle fallbacks (Msm.java:164-178)
