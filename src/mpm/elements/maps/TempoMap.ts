@@ -71,7 +71,7 @@ export class TempoMap extends GenericMap {
    */
   static createTempoMap(): TempoMap;
   static createTempoMap(xml: Element): Result<TempoMap, MpmParseError>;
-  static createTempoMap(xml?: Element | null): TempoMap | Result<TempoMap, MpmParseError> {
+  static createTempoMap(xml?: Element): TempoMap | Result<TempoMap, MpmParseError> {
     return xml === undefined
       ? new TempoMap(GenericMap.emptyMapElement('tempoMap'))
       : GenericMap.makeMap(xml, 'TempoMap', (elt) => new TempoMap(elt));

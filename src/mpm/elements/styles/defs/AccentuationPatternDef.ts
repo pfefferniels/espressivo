@@ -159,7 +159,7 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
     value: number,
     transitionFrom: number,
     transitionTo: number,
-    id?: string | null,
+    id?: string,
   ): number {
     const accElt = new Element('accentuation', MPM_NAMESPACE);
     accElt.addAttribute(new Attribute('beat', String(beat)));
@@ -167,7 +167,7 @@ export class AccentuationPatternDef extends AbstractXmlSubtree {
     accElt.addAttribute(new Attribute('transition.from', String(transitionFrom)));
     accElt.addAttribute(new Attribute('transition.to', String(transitionTo)));
 
-    if (id !== undefined && id !== null) {
+    if (id !== undefined) {
       accElt.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id));
     }
 

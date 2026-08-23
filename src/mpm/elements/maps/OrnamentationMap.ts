@@ -126,7 +126,7 @@ export class OrnamentationMap extends GenericMap {
   static createOrnamentationMap(): OrnamentationMap;
   static createOrnamentationMap(xml: Element): Result<OrnamentationMap, MpmParseError>;
   static createOrnamentationMap(
-    xml?: Element | null,
+    xml?: Element,
   ): OrnamentationMap | Result<OrnamentationMap, MpmParseError> {
     return xml === undefined
       ? new OrnamentationMap(GenericMap.emptyMapElement('ornamentationMap'))

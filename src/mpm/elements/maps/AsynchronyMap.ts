@@ -30,9 +30,7 @@ export class AsynchronyMap extends GenericMap {
    */
   static createAsynchronyMap(): AsynchronyMap;
   static createAsynchronyMap(xml: Element): Result<AsynchronyMap, MpmParseError>;
-  static createAsynchronyMap(
-    xml?: Element | null,
-  ): AsynchronyMap | Result<AsynchronyMap, MpmParseError> {
+  static createAsynchronyMap(xml?: Element): AsynchronyMap | Result<AsynchronyMap, MpmParseError> {
     return xml === undefined
       ? new AsynchronyMap(GenericMap.emptyMapElement('asynchronyMap'))
       : GenericMap.makeMap(xml, 'AsynchronyMap', (elt) => new AsynchronyMap(elt));

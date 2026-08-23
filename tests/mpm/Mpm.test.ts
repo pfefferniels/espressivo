@@ -141,8 +141,7 @@ describe('Mpm', () => {
   describe('addPerformance', () => {
     it('should add a performance object with getXml', () => {
       const mpm = Mpm.createMpm();
-      const result = mpm.addPerformance(performance('default'));
-      expect(result).toBe(true);
+      mpm.addPerformance(performance('default'));
       expect(mpm.size()).toBe(1);
     });
 
@@ -179,13 +178,6 @@ describe('Mpm', () => {
 
       expect(mpm.size()).toBe(3);
       expect(mpm.getAllPerformances().length).toBe(3);
-    });
-
-    it('should reject null performance', () => {
-      const mpm = Mpm.createMpm();
-      const result = mpm.addPerformance(null);
-      expect(result).toBe(false);
-      expect(mpm.size()).toBe(0);
     });
 
     it('should append performance XML to the root element', () => {

@@ -347,10 +347,6 @@ describe('Metadata', () => {
       expect(a.getXml()!.getParent()).toBe(m.getXml());
     });
 
-    it('addAuthor rejects null', () => {
-      expect(metadata().addAuthor(null as never)).toBe(-1);
-    });
-
     it('getAuthorByIndex returns the author or null when out of range', () => {
       const m = metadata();
       const a = okValue(Author.fromName('Axel', 1, null));
@@ -413,10 +409,6 @@ describe('Metadata', () => {
       expect(m.addComment(okValue(Comment.fromText('second', null)))).toBe(1);
       expect(m.getComments().length).toBe(2);
       expect(c.getXml()!.getParent()).toBe(m.getXml());
-    });
-
-    it('addComment rejects null', () => {
-      expect(metadata().addComment(null as never)).toBe(-1);
     });
 
     it('getComment returns the comment at an index', () => {

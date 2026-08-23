@@ -64,7 +64,7 @@ export class MovementMap extends GenericMap {
    */
   static createMovementMap(): MovementMap;
   static createMovementMap(xml: Element): Result<MovementMap, MpmParseError>;
-  static createMovementMap(xml?: Element | null): MovementMap | Result<MovementMap, MpmParseError> {
+  static createMovementMap(xml?: Element): MovementMap | Result<MovementMap, MpmParseError> {
     return xml === undefined
       ? new MovementMap(GenericMap.emptyMapElement('movementMap'))
       : GenericMap.makeMap(xml, 'MovementMap', (elt) => new MovementMap(elt));

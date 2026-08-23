@@ -76,7 +76,7 @@ export class ArticulationMap extends GenericMap {
   static createArticulationMap(): ArticulationMap;
   static createArticulationMap(xml: Element): Result<ArticulationMap, MpmParseError>;
   static createArticulationMap(
-    xml?: Element | null,
+    xml?: Element,
   ): ArticulationMap | Result<ArticulationMap, MpmParseError> {
     return xml === undefined
       ? new ArticulationMap(GenericMap.emptyMapElement('articulationMap'))
@@ -309,11 +309,10 @@ export class ArticulationMap extends GenericMap {
   }
 
   static renderArticulationToMap_noMillisecondModifiers(
-    map: GenericMap | null,
-    articulationMap: ArticulationMap | null,
+    map: GenericMap,
+    articulationMap: ArticulationMap,
   ): void {
-    if (articulationMap !== null)
-      articulationMap.renderArticulationToMap_noMillisecondModifiers(map);
+    articulationMap.renderArticulationToMap_noMillisecondModifiers(map);
   }
 
   /**

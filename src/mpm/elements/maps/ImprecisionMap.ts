@@ -315,7 +315,7 @@ export class ImprecisionMap extends GenericMap {
   static createImprecisionMap(domain: string): ImprecisionMap;
   static createImprecisionMap(xml: Element): Result<ImprecisionMap, MpmParseError>;
   static createImprecisionMap(
-    domainOrXml: string | Element | null,
+    domainOrXml: string | Element,
   ): ImprecisionMap | Result<ImprecisionMap, MpmParseError> {
     // Total for a domain: the name is built from this class's own prefix, so it passes both
     // checks by construction — `imprecisionMap` contains "Map", and contains "imprecisionMap".
@@ -345,8 +345,8 @@ export class ImprecisionMap extends GenericMap {
    * cannot do. The domain is therefore fixed at construction. Nothing in the
    * MEI/MSM ⇒ MIDI pipeline calls this.
    */
-  setDomain(domain: string | null): void {
-    if (domain === null || domain === '') {
+  setDomain(domain: string): void {
+    if (domain === '') {
       return;
     }
   }

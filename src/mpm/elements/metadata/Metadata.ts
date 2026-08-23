@@ -135,9 +135,7 @@ export class Metadata extends AbstractXmlSubtree {
     }
   }
 
-  /** Null is accepted and ignored (Metadata.java:187). */
-  addAuthor(author: Author | null): number {
-    if (author === null) return -1;
+  addAuthor(author: Author): number {
     this.getXml().appendChild(author.getXml());
     this.authors.push(author);
     return this.authors.length - 1;
@@ -173,8 +171,7 @@ export class Metadata extends AbstractXmlSubtree {
   }
 
   /** As {@link addAuthor}: null is accepted and ignored. */
-  addComment(comment: Comment | null): number {
-    if (comment === null) return -1;
+  addComment(comment: Comment): number {
     this.getXml().appendChild(comment.getXml());
     this.comments.push(comment);
     return this.comments.length - 1;

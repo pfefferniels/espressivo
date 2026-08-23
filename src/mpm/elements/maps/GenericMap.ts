@@ -387,12 +387,8 @@ export class GenericMap extends AbstractXmlSubtree {
     return this.elements.findIndex((e) => e.value === element);
   }
 
-  /** Null is accepted and refused with a reason on stderr, as `GenericMap.java` does. */
-  addElement(xml: Element | null): number {
-    if (xml === null) {
-      console.error('Cannot add the Element to GenericMap. XML Element is null.');
-      return -1;
-    }
+  /** An element without a `date` is refused with a reason on stderr, and `-1` says so. */
+  addElement(xml: Element): number {
     const dateAtt = xml.getAttribute('date');
     if (dateAtt === null) {
       console.error("Cannot add the Element to GenericMap. Missing attribute 'date'.");
@@ -469,11 +465,11 @@ export class GenericMap extends AbstractXmlSubtree {
     this.elements.splice(at, 1);
   }
 
-  addStyleSwitch(date: number, styleName: string, id?: string | null): number {
+  addStyleSwitch(date: number, styleName: string, id?: string): number {
     const e = new Element('style', MPM_NAMESPACE);
     e.addAttribute(new Attribute('date', String(date)));
     e.addAttribute(new Attribute('name.ref', styleName));
-    if (id !== undefined && id !== null)
+    if (id !== undefined)
       e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id));
     return this.insertElement({ key: date, value: e }, true);
   }

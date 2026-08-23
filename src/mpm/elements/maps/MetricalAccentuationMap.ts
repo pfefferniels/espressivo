@@ -32,7 +32,7 @@ export class MetricalAccentuationMap extends GenericMap {
     xml: Element,
   ): Result<MetricalAccentuationMap, MpmParseError>;
   static createMetricalAccentuationMap(
-    xml?: Element | null,
+    xml?: Element,
   ): MetricalAccentuationMap | Result<MetricalAccentuationMap, MpmParseError> {
     return xml === undefined
       ? new MetricalAccentuationMap(GenericMap.emptyMapElement('metricalAccentuationMap'))
@@ -181,12 +181,11 @@ export class MetricalAccentuationMap extends GenericMap {
   }
 
   static renderMetricalAccentuationToMap(
-    map: GenericMap | null,
-    metricalAccentuationMap: MetricalAccentuationMap | null,
-    timeSignatureMap: GenericMap | null,
+    map: GenericMap,
+    metricalAccentuationMap: MetricalAccentuationMap,
+    timeSignatureMap: GenericMap,
     ppq: number,
   ): void {
-    if (metricalAccentuationMap !== null)
-      metricalAccentuationMap.renderMetricalAccentuationToMap(map, timeSignatureMap, ppq);
+    metricalAccentuationMap.renderMetricalAccentuationToMap(map, timeSignatureMap, ppq);
   }
 }

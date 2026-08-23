@@ -31,9 +31,8 @@ export class Global extends AbstractXmlSubtree {
    *
    * Reports the reason rather than printing it — see `elements/parseError.ts`.
    */
-  static createGlobal(xml?: Element | null): Result<Global, MpmParseError> {
+  static createGlobal(xml?: Element): Result<Global, MpmParseError> {
     const source = xml === undefined ? new Element('global', MPM_NAMESPACE) : xml;
-    if (source === null) return err({ kind: 'noElement', what: 'Global' });
     return new Global().readFrom(source);
   }
 

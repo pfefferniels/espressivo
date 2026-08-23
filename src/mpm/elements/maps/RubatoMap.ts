@@ -49,7 +49,7 @@ export class RubatoMap extends GenericMap {
    */
   static createRubatoMap(): RubatoMap;
   static createRubatoMap(xml: Element): Result<RubatoMap, MpmParseError>;
-  static createRubatoMap(xml?: Element | null): RubatoMap | Result<RubatoMap, MpmParseError> {
+  static createRubatoMap(xml?: Element): RubatoMap | Result<RubatoMap, MpmParseError> {
     return xml === undefined
       ? new RubatoMap(GenericMap.emptyMapElement('rubatoMap'))
       : GenericMap.makeMap(xml, 'RubatoMap', (elt) => new RubatoMap(elt));

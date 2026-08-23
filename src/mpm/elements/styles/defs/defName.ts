@@ -15,14 +15,11 @@ import type { MpmParseError } from '../../parseError.js';
 
 /**
  * @param what the def's element name, for the message — `'tempoDef'`, `'rubatoDef'`, …
- * @throws {MissingNodeError} if the element is null or carries no `@name`. Every def factory
+ * @throws {MissingNodeError} if the element carries no `@name`. Every def factory
  *   funnels that through {@link skipMalformedDef}, so the style skips a def it cannot read —
  *   Java's behaviour, where `AbstractDef`'s constructor threw the same two exceptions.
  */
-export function requireDefName(xml: Element | null, what: string): Attribute {
-  if (xml === null)
-    throw new MissingNodeError(`Cannot generate ${what} object. XML Element is null.`);
-
+export function requireDefName(xml: Element, what: string): Attribute {
   const name = attribute('name', xml);
   if (name === null)
     throw new MissingNodeError(`Cannot generate ${what} object. Missing name attribute.`);

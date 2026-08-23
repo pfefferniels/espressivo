@@ -271,15 +271,12 @@ export class Mpm extends AbstractMsm {
    * Add a performance to this mpm. Duplicate names are allowed; {@link getPerformanceByName}
    * then answers only the first of them.
    *
-   * Java additionally guards `performance.getXml() != null` before appending. Here it cannot
-   * be null: a `Performance` only escapes its factory after `readFrom` has called `setXml`.
-   * The null check below, which Java also has, is the one an untyped caller CAN reach.
+   * No `getXml()` null check: a `Performance` only escapes its factory after `readFrom` has
+   * called `setXml`.
    */
-  addPerformance(performance: Performance | null): boolean {
-    if (performance === null) return false;
+  addPerformance(performance: Performance): void {
     this.requireRootElement().appendChild(performance.getXml());
     this.performances.push(performance);
-    return true;
   }
 
   /** Remove all performances with the specified name from this mpm. */

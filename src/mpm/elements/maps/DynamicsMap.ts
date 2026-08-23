@@ -65,7 +65,7 @@ export class DynamicsMap extends GenericMap {
    */
   static createDynamicsMap(): DynamicsMap;
   static createDynamicsMap(xml: Element): Result<DynamicsMap, MpmParseError>;
-  static createDynamicsMap(xml?: Element | null): DynamicsMap | Result<DynamicsMap, MpmParseError> {
+  static createDynamicsMap(xml?: Element): DynamicsMap | Result<DynamicsMap, MpmParseError> {
     return xml === undefined
       ? new DynamicsMap(GenericMap.emptyMapElement('dynamicsMap'))
       : GenericMap.makeMap(xml, 'DynamicsMap', (elt) => new DynamicsMap(elt));

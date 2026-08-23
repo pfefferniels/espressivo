@@ -334,8 +334,8 @@ export class Performance extends AbstractXmlSubtree {
   }
 
   /** Null is accepted and refused, as `Performance.java`'s `part == null` does. */
-  addPart(part: Part | null): boolean {
-    if (part === null || this.parts.includes(part)) return false;
+  addPart(part: Part): boolean {
+    if (this.parts.includes(part)) return false;
     const parent = part.getXml().getParent();
     if (parent === null || parent !== this.getXml()) {
       part.getXml().detach();
@@ -461,8 +461,8 @@ export class Performance extends AbstractXmlSubtree {
    * `.perf` attributes and leaves the symbolic `date`/`duration`/`date.end` untouched, so
    * the original musical time stays readable next to the performed time.
    */
-  private static addPerformanceTimingAttributes(map: GenericMap | null): void {
-    if (map === null || map.isEmpty()) return;
+  private static addPerformanceTimingAttributes(map: GenericMap): void {
+    if (map.isEmpty()) return;
     for (const e of map.getAllElements()) {
       e.value.addAttribute(new Attribute('date.perf', getAttributeValue('date', e.value)));
       const duration = attribute('duration', e.value);
@@ -475,8 +475,8 @@ export class Performance extends AbstractXmlSubtree {
   }
 
   /** Mark every element of the map as touched by performance rendering (empty `modified`). */
-  private static addModifiedAttributes(map: GenericMap | null): void {
-    if (map === null || map.isEmpty()) return;
+  private static addModifiedAttributes(map: GenericMap): void {
+    if (map.isEmpty()) return;
     for (const e of map.getAllElements()) e.value.addAttribute(new Attribute('modified', ''));
   }
 
