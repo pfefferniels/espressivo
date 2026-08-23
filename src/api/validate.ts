@@ -12,8 +12,16 @@
  * The error payload is a bare `string`: the sentence {@link InvalidOptionError} will carry,
  * and nothing else. Every consumer of these values is `orInvalidOption`, which turns the
  * payload into a message and forgets the rest, so any extra field would be write-only.
+ *
+ * What is checked here is the **domain**, not the type (RULE E4). The domain predicates are
+ * total by construction — `Number.isFinite`, `Number.isInteger`, `Array.isArray` and
+ * `includes` all reject a non-number without coercing it — so a wrong type falls into the
+ * domain row it was already going to fail. The one thing that needs stating is {@link readable}:
+ * a check that *reads a field* has to establish that the field can be read first, or it faults
+ * before its own domain row runs.
  */
 import {
+  andThen,
   err,
   mapOk,
   ok,
@@ -58,6 +66,44 @@ export function allOf(...checks: readonly Checked[]): Checked {
 }
 
 /**
+ * An optional nested option object, narrowed to something whose fields can actually be read.
+ *
+ * This is what makes a check that reads a field **total** (RULE E4). `checkWindow` and friends
+ * are domain checks — "start before end", "bins in [1,256]" — but they have to reach the field
+ * to say so, and `window.start` on a non-object faults before the domain row runs. Absent stays
+ * absent; anything else must be readable or it is rejected here, one level at a time.
+ *
+ * The reject sentence names the field rather than the domain, because at this point nothing
+ * about the domain has been established — `window: 3` has no `start` to be out of range.
+ */
+export function readable<T extends object>(
+  name: string,
+  value: T | undefined,
+): Result<T | undefined, OptionProblem> {
+  if (value === undefined) return ok(undefined);
+  const opaque: unknown = value;
+  return typeof opaque !== 'object' || opaque === null
+    ? err(`${name} must be an object, got ${describeValue(opaque)}`)
+    : ok(value);
+}
+
+/** What arrived, in the one word a reject sentence can carry. */
+export function describeValue(value: unknown): string {
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return 'an array';
+  return `a ${typeof value}`;
+}
+
+/** Run `check` on a nested option object once {@link readable} has established it can be read. */
+export function checkNested<T extends object>(
+  name: string,
+  value: T | undefined,
+  check: (value: T) => Checked,
+): Checked {
+  return andThen(readable(name, value), (bag) => (bag === undefined ? accepted : check(bag)));
+}
+
+/**
  * The vocabulary-plus-values shape that four of the comparison validators share: a record whose
  * keys must come from a closed set, and whose present values must each satisfy a predicate.
  *
@@ -68,34 +114,37 @@ export function allOf(...checks: readonly Checked[]): Checked {
  * `{ tempo: undefined }` is how an exactOptionalPropertyTypes-free caller spells "not supplied"
  * and every one of the four already read it that way.
  *
- * `Object.entries` widens to `[string, unknown]` deliberately: a JavaScript caller can put
- * anything under a known key, and comparing against the declared value type would let the
- * compiler prove the predicate dead and the linter delete it.
+ * `Object.entries` widens to `[string, unknown]` because the value predicate is a domain
+ * predicate and domain predicates are total: they take what is there and say whether it is in
+ * range, without a type test in front of them.
  */
 export function checkKeyedRecord(
+  name: string,
   record: object | undefined,
   vocabulary: ReadonlySet<string>,
   unknownKeys: (keys: readonly string[]) => OptionProblem,
   checkEntry: (key: string, value: unknown) => Checked,
 ): Checked {
-  if (record === undefined) return accepted;
-  const unrecognized = Object.keys(record).filter((key) => !vocabulary.has(key));
-  if (unrecognized.length > 0) return rejected(unknownKeys(unrecognized));
-  return mapOk(
-    traverse(Object.entries(record) as readonly (readonly [string, unknown])[], ([key, value]) =>
-      value === undefined ? accepted : checkEntry(key, value),
-    ),
-    () => undefined,
-  );
+  return checkNested(name, record, (present) => {
+    const unrecognized = Object.keys(present).filter((key) => !vocabulary.has(key));
+    if (unrecognized.length > 0) return rejected(unknownKeys(unrecognized));
+    return mapOk(
+      traverse(
+        Object.entries(present) as readonly (readonly [string, unknown])[],
+        ([key, value]) => (value === undefined ? accepted : checkEntry(key, value)),
+      ),
+      () => undefined,
+    );
+  });
 }
 
 /**
- * The guard every facade entry point opens with: the option bag is an object at all.
+ * {@link readable}, applied to the outermost bag — where the field being read is every option.
  *
- * Read as `unknown` deliberately: the guard exists for callers arriving from JavaScript, where
- * the parameter type guarantees nothing, and comparing against the declared type would let the
- * compiler prove it dead and the linter delete it. Without it a missing required field fails
- * with a `TypeError` from inside `Object.keys` instead of with this module's own error type.
+ * It is the same rule and not a separate courtesy: everything downstream reads fields off this
+ * object, so a check sequence that starts anywhere else starts with a fault. The problem
+ * sentence is the caller's rather than this module's because the outermost bag is the one whose
+ * required fields can be named ("at least `a`"), and naming them is the whole message.
  *
  * It returns the bag rather than nothing so that it chains with `andThen`, which every caller
  * needs because their later checks read fields off it.

@@ -1174,6 +1174,44 @@ MSM carries no performance attributes; call performMsm first") when **no** note 
 document has `milliseconds.date`. When *some* do, it returns what is there and the per-note
 `milliseconds` values are whatever the interior produced — do not invent a repair.
 
+**RULE E4 (validate domains, not types).** RULE E2 says the facade validates. This says what.
+
+A **domain** constraint is one the type system cannot express — `ppq > 0`, `window.start <
+window.end`, `scape.bins` in `[1,256]`, a key drawn from `COMPARISON_DIMENSIONS`. It must be
+checked at runtime, for every caller, and it is what `InvalidOptionError` is for.
+
+A **type** constraint is the compiler's job. Do not re-assert it. It costs a branch no
+TypeScript caller can reach, it can only be tested by casting through `as unknown as T`, and —
+measured 2026-08-23, before this rule existed — it was applied so unevenly that all nine nested
+option objects on the comparison surface faulted with a raw `TypeError` on `null` while the
+outer bag was airtight across 105 probes.
+
+The reason this costs almost nothing is that **the domain predicates are already total**.
+`Number.isFinite`, `Number.isInteger`, `Array.isArray` and `Array.prototype.includes` do not
+coerce: each returns `false` for every value of the wrong type. So
+
+```ts
+typeof bins === 'number' && Number.isInteger(bins) && bins >= 1   // the first conjunct is dead
+```
+
+Write the domain row alone and it rejects `null`, `'3'`, `[]` and `true` for free.
+
+The one obligation that remains is **totality**: a check that *reads a field* must first
+establish that the field can be read, or it faults before its own domain row runs. That is not
+a type test in disguise — it is the predicate being defined on its whole input. `validate.ts`
+spells it once as `readable` / `checkNested` (an optional nested object) and `requireOptionBag`
+(a required one, including an array element); every field-reading check goes through one of
+them. A list read element by element states the same row with `Array.isArray`.
+
+Two things stay type tests on purpose, and both say why at the site:
+
+- **`requireXmlText`** (§6.2's parse boundary). The document arrives as text from a file or a
+  socket, so "is it text" is a fact about the input, not about the caller's spelling.
+- **anti-coercion flags**, where a truthy non-boolean would silently select the wrong branch —
+  `expandOrnaments: 'false'` reaching `!expandOrnaments` reads as *expand*. Reject the shape;
+  never coerce it. State the hazard in the true direction: the failing values there are truthy
+  strings, and `0` suppresses correctly.
+
 ### 6.3 The parity ledger
 
 Five divergences from Java are recorded across `log.md` and belong to this policy. **P1, P2

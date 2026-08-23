@@ -11,12 +11,16 @@ import type { XmlText } from './types.js';
 /** Which of the three formats a message is about. */
 export type DocumentKind = 'MEI' | 'MSM' | 'MPM';
 
-/** Reject anything that is not non-blank XML text, before it reaches a parser. */
+/**
+ * Reject anything that is not non-blank XML text, before it reaches a parser.
+ *
+ * The one place the facade tests a type rather than a domain (RULE E4), and it is the parse
+ * boundary that earns it: the document arrives as text from a file, a socket or a form, so
+ * whether it is text at all is a fact about the input rather than about the caller's spelling.
+ * `null` and `undefined` are what a failed read hands over, and naming them beats a `TypeError`
+ * raised three frames inside the parser.
+ */
 export function requireXmlText(kind: DocumentKind, text: XmlText): void {
-  // The `typeof` guard is for untyped callers: a plain-JS `null` would otherwise fail with a
-  // `TypeError` from inside the parser instead of this module's own error type. The message
-  // names what arrived, because an untyped caller who passed the wrong variable is exactly
-  // its reader.
   if (typeof text !== 'string' || text.trim() === '')
     throw new ParseError(`${kind}: expected XML text, got ${describe(text)}`);
 }

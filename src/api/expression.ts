@@ -160,9 +160,8 @@ function toEngineOptions(options: ExaggerateOptions): EngineOptions {
  * {@link applyResolvedExaggeration}, so the engine resolves nothing a second time.
  */
 function resolveExaggerateOptions(options: ExaggerateOptions): Result<ResolvedRun, string> {
-  // The two bag guards exist for callers arriving from JavaScript, where the parameter type
-  // guarantees nothing. Without them a missing `factors` fails with a `TypeError` from inside
-  // `Object.keys` instead of with this module's own error type.
+  // Two bags, so two readability rows before any domain row (RULE E4): `resolveRun` walks
+  // `factors` key by key, and `Object.keys` faults rather than reporting.
   return andThen(
     andThen(
       requireOptionBag(options, 'options must be an object carrying at least `factors`'),
@@ -470,10 +469,10 @@ function spotlightFactors(
 /**
  * §4's pre-parse validation for spotlight, returning the attenuation it accepted.
  *
- * `ids` and `attenuation` are read as `unknown` for the same reason
- * {@link resolveExaggerateOptions} reads its bag that way: the guards exist for callers
- * arriving from JavaScript, and comparing against the declared type would let the compiler
- * prove them dead and the linter delete them.
+ * `ids` is read as `unknown` because being a list of strings is its readability row: the
+ * selection is walked element by element and matched against the document's ids, so a
+ * non-string element resolves nothing and would be reported as a missing id rather than as
+ * the wrong shape. `attenuation` needs no such row — `Number.isFinite` is total.
  */
 function checkSpotlightOptions(options: SpotlightOptions): Result<number, string> {
   return andThen(
@@ -483,8 +482,8 @@ function checkSpotlightOptions(options: SpotlightOptions): Result<number, string
       if (!Array.isArray(ids) || ids.some((id) => typeof id !== 'string'))
         return err('options.ids must be an array of xml:id strings; pass [] for no selection');
 
-      const attenuation: unknown = options.attenuation;
-      if (typeof attenuation !== 'number' || !Number.isFinite(attenuation))
+      const attenuation = options.attenuation;
+      if (!Number.isFinite(attenuation))
         return err(
           `options.attenuation is required and must be a finite number in (0,1], got ${String(attenuation)}`,
         );

@@ -82,6 +82,8 @@ import {
   accepted,
   allOf,
   checkKeyedRecord,
+  checkNested,
+  describeValue,
   orInvalidOption,
   rejected,
   requireOptionBag,
@@ -605,8 +607,17 @@ function checkCorpusOptions(options: CompareCorpusOptions): Checked {
         checkJnd(options.jnd),
         checkPlausibleRange(options.plausibleRange),
         checkInvariance(options.invariance),
+        // An item is a required bag, not an optional field: `requireOptionBag` and not
+        // `checkNested`, because a hole in the list is a mistake where an absent `window` is
+        // not. Both `compareMpmCorpus` and the row below read it field by field.
         checkEach(options.items, (item, index) =>
-          checkSelector(`items[${String(index)}].performance`, item.performance),
+          andThen(
+            requireOptionBag(
+              item,
+              `items[${String(index)}] must be an object carrying at least \`mpm\``,
+            ),
+            ({ performance }) => checkSelector(`items[${String(index)}].performance`, performance),
+          ),
         ),
         checkScape(options.scape),
         checkNonNegativeInteger('maxItems', options.maxItems),
@@ -673,36 +684,37 @@ function checkEnum(
 
 /** §9.4's row: `scape.bins` is an integer in `[1, 256]`, and out of range is a caller error. */
 function checkScape(scape: { readonly bins: number } | undefined): Checked {
-  if (scape === undefined) return accepted;
-  const bins: unknown = scape.bins;
-  return typeof bins === 'number' && Number.isInteger(bins) && bins >= 1 && bins <= SCAPE_MAX_BINS
-    ? accepted
-    : rejected(
-        `scape.bins must be an integer in [1, ${String(SCAPE_MAX_BINS)}], got ${String(bins)}`,
-      );
+  return checkNested('scape', scape, ({ bins }) =>
+    Number.isInteger(bins) && bins >= 1 && bins <= SCAPE_MAX_BINS
+      ? accepted
+      : rejected(
+          `scape.bins must be an integer in [1, ${String(SCAPE_MAX_BINS)}], got ${String(bins)}`,
+        ),
+  );
 }
 
 function checkWindow(window: ComparisonSettings['window']): Checked {
-  if (window === undefined) return accepted;
-  const { start, end } = window;
-  if (!Number.isFinite(start) || !Number.isFinite(end))
-    return rejected(
-      `window.start and window.end must be finite, got ${String(start)} and ${String(end)}`,
-    );
-  if (start < 0) return rejected(`window.start must be >= 0, got ${String(start)}`);
-  return start < end
-    ? accepted
-    : rejected(`window.start must be < window.end, got ${String(start)} and ${String(end)}`);
+  return checkNested('window', window, ({ start, end }) => {
+    if (!Number.isFinite(start) || !Number.isFinite(end))
+      return rejected(
+        `window.start and window.end must be finite, got ${String(start)} and ${String(end)}`,
+      );
+    if (start < 0) return rejected(`window.start must be >= 0, got ${String(start)}`);
+    return start < end
+      ? accepted
+      : rejected(`window.start must be < window.end, got ${String(start)} and ${String(end)}`);
+  });
 }
 
 function checkWeights(weights: ComparisonSettings['weights']): Checked {
   return checkKeyedRecord(
+    'weights',
     weights,
     DIMENSION_SET,
     (keys) =>
       `unknown weight dimension(s): ${keys.join(', ')}; expected one of ${COMPARISON_DIMENSIONS.join(', ')}`,
     (key, value) =>
-      typeof value === 'number' && Number.isFinite(value) && value >= 0
+      Number.isFinite(value) && (value as number) >= 0
         ? accepted
         : rejected(`weight for '${key}' must be a finite number >= 0, got ${String(value)}`),
   );
@@ -710,13 +722,14 @@ function checkWeights(weights: ComparisonSettings['weights']): Checked {
 
 function checkJnd(jnd: ComparisonSettings['jnd']): Checked {
   return checkKeyedRecord(
+    'jnd',
     jnd,
     JND_KEY_SET,
     (keys) => `unknown jnd key(s): ${keys.join(', ')}; the vocabulary is COMPARISON_JND_KEYS`,
     // Not merely non-negative: a zero JND is a division, and the row's whole content is the
     // scale it divides by.
     (key, value) =>
-      typeof value === 'number' && Number.isFinite(value) && value > 0
+      Number.isFinite(value) && (value as number) > 0
         ? accepted
         : rejected(`jnd for '${key}' must be a finite number > 0, got ${String(value)}`),
   );
@@ -724,6 +737,7 @@ function checkJnd(jnd: ComparisonSettings['jnd']): Checked {
 
 function checkPlausibleRange(ranges: ComparisonSettings['plausibleRange']): Checked {
   return checkKeyedRecord(
+    'plausibleRange',
     ranges,
     JND_KEY_SET,
     (keys) =>
@@ -733,7 +747,7 @@ function checkPlausibleRange(ranges: ComparisonSettings['plausibleRange']): Chec
     (key, band) =>
       Array.isArray(band) &&
       band.length === 2 &&
-      band.every((value) => typeof value === 'number' && Number.isFinite(value)) &&
+      band.every((value) => Number.isFinite(value)) &&
       (band[0] as number) <= (band[1] as number)
         ? accepted
         : rejected(
@@ -744,6 +758,7 @@ function checkPlausibleRange(ranges: ComparisonSettings['plausibleRange']): Chec
 
 function checkInvariance(invariance: ComparisonSettings['invariance']): Checked {
   return checkKeyedRecord(
+    'invariance',
     invariance,
     DIMENSION_SET,
     (keys) => `unknown invariance dimension(s): ${keys.join(', ')}`,
@@ -771,15 +786,21 @@ function checkSelector(name: string, selector: string | number | undefined): Che
 }
 
 function checkProfile(profile: CompareMpmOptions['profile']): Checked {
-  if (profile === undefined) return accepted;
-  const unrecognized = (profile.dimensions ?? []).filter((key) => !DIMENSION_SET.has(key));
-  if (unrecognized.length > 0)
-    return rejected(`unknown profile dimension(s): ${unrecognized.join(', ')}`);
-  const grid = profile.grid;
-  if (grid === undefined || grid === 'refinement') return accepted;
-  return Number.isFinite(grid.step) && grid.step > 0
-    ? accepted
-    : rejected(`profile.grid.step must be a finite number > 0, got ${String(grid.step)}`);
+  return checkNested('profile', profile, ({ dimensions, grid }) => {
+    // `dimensions` is read as a list, so being a list is part of reaching its domain row —
+    // the same obligation `checkNested` discharges for an object.
+    if (dimensions !== undefined && !Array.isArray(dimensions))
+      return rejected(`profile.dimensions must be an array, got ${describeValue(dimensions)}`);
+    const unrecognized = (dimensions ?? []).filter((key) => !DIMENSION_SET.has(key));
+    if (unrecognized.length > 0)
+      return rejected(`unknown profile dimension(s): ${unrecognized.join(', ')}`);
+    if (grid === 'refinement') return accepted;
+    return checkNested('profile.grid', grid, ({ step }) =>
+      Number.isFinite(step) && step > 0
+        ? accepted
+        : rejected(`profile.grid.step must be a finite number > 0, got ${String(step)}`),
+    );
+  });
 }
 
 // ---------------------------------------------------------------------------
