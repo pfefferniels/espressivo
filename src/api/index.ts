@@ -2,14 +2,17 @@
  * The public facade (ARCHITECTURE.md §2), in one import.
  *
  * ```ts
- * import { convertMeiToMsmMpm, exaggerateMpm, performMsmToData, renderExpressiveMidi } from 'espressivo';
+ * import { convertMeiToMsm, exaggerateMpm, performMsmToData, renderExpressiveMidi } from 'espressivo';
  *
- * const [movement] = convertMeiToMsmMpm(meiText, { sourceName: 'sonata.mei' });
- * const data = performMsmToData(movement);              // plain per-note data
- * const bytes = renderExpressiveMidi(movement);         // Uint8Array, ready to write
+ * // Two inputs, both from outside: the score, and the performance to apply to it.
+ * const [movement] = convertMeiToMsm(meiText, { sourceName: 'sonata.mei' });
+ * const input = { msm: movement.msm, mpm: readFileSync('sonata.mpm', 'utf-8') };
  *
- * const wilder = exaggerateMpm(movement.mpm, { factors: { tempo: 1.6, dynamics: 1.4 } });
- * const louder = performMsmToData({ msm: movement.msm, mpm: wilder.mpm });
+ * const data = performMsmToData(input);                 // plain per-note data
+ * const bytes = renderExpressiveMidi(input);            // Uint8Array, ready to write
+ *
+ * const wilder = exaggerateMpm(input.mpm, { factors: { tempo: 1.6, dynamics: 1.4 } });
+ * const louder = performMsmToData({ msm: input.msm, mpm: wilder.mpm });
  * ```
  *
  * Everything here is plain data in and plain data out — see `types.ts` for what that means

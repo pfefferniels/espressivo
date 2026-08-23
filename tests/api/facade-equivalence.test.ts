@@ -17,7 +17,7 @@ import { Mei } from '../../src/mei/Mei.js';
 import { Mei2MsmMpmConverter } from '../../src/mei/Mei2MsmMpmConverter.js';
 import { Msm } from '../../src/msm/Msm.js';
 import {
-  convertMeiToMsmMpm,
+  convertMeiToMsm,
   performMsm,
   renderExpressiveMidi,
   renderMidi,
@@ -32,6 +32,7 @@ const movementAt = (movements: readonly MovementDocuments[], index = 0): Movemen
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '..', 'integration', 'fixtures');
 const MEI_DIR = join(FIXTURES, 'mei');
+const REF_DIR = join(FIXTURES, 'reference');
 const MAPS_DIR = join(FIXTURES, 'all-maps-reference');
 
 const meiFixtures = readdirSync(MEI_DIR)
@@ -97,34 +98,29 @@ describe('facade == classic class API (RULE F2 round trip)', () => {
       // --- classic: objects all the way through, no serialization in between
       const mei = Mei.fromXml(meiText);
       mei.setFile(`${fixture}.mei`);
-      // The fifth argument is `expandOrnaments`, spelled out because the two sides default it
-      // differently on purpose: the facade turns MEI ornament expansion on, the bare converter
-      // leaves it off so that tests/integration can keep comparing against Java references that
-      // contain no expansion. This gate asks whether the same settings produce the same bytes
-      // across the serialization boundary, so both sides state it. `true` is also what carries
-      // composite_advanced's trill through the round trip.
-      const converted = new Mei2MsmMpmConverter(720, true, false, true, true).convert(mei);
-      const classicMsm = elementAt(converted.key, 0, 'the classic converter’s MSMs');
-      const classicMpm = elementAt(converted.value, 0, 'the classic converter’s MPMs');
+      const converted = new Mei2MsmMpmConverter(720, true, false, true).convert(mei);
+      const classicMsm = elementAt(converted, 0, 'the classic converter’s MSMs');
+      // The performance is the Java reference's own: the converter derives none (PARITY.md §9).
+      const classicMpm = new Mpm(readFileSync(join(REF_DIR, `${fixture}.mpm`), 'utf-8'));
       const classicPerformance = elementAt(
         classicMpm.getAllPerformances(),
         0,
-        'the classic MPM’s performances',
+        'the reference MPM’s performances',
       );
 
       // --- facade: XML text at every boundary
-      const movements = convertMeiToMsmMpm(meiText, { sourceName: `${fixture}.mei` });
+      const movements = convertMeiToMsm(meiText, { sourceName: `${fixture}.mei` });
 
-      expect(movements).toHaveLength(converted.key.length);
+      expect(movements).toHaveLength(converted.length);
       const first = movementAt(movements);
       expect(canonicalise(first.msm)).toBe(canonicalise(classicMsm.getRootElement()!.toXML()));
-      expect(canonicalise(first.mpm)).toBe(canonicalise(classicMpm.getRootElement()!.toXML()));
-      expect(movements.map((m) => m.title)).toEqual(converted.key.map((m) => m.getTitle()));
+      expect(movements.map((m) => m.title)).toEqual(converted.map((m) => m.getTitle()));
 
-      expect(canonicalise(performMsm(first))).toBe(
+      const mpmText = classicMpm.getRootElement()!.toXML();
+      expect(canonicalise(performMsm({ msm: first.msm, mpm: mpmText }))).toBe(
         canonicalise(classicPerformance.perform(classicMsm).getRootElement()!.toXML()),
       );
-      expect(hex(renderExpressiveMidi(first))).toBe(
+      expect(hex(renderExpressiveMidi({ msm: first.msm, mpm: mpmText }))).toBe(
         hex(classicMsm.exportExpressiveMidi(classicPerformance, true)!.exportMidi()),
       );
       expect(hex(renderMidi({ msm: first.msm }))).toBe(
@@ -136,39 +132,33 @@ describe('facade == classic class API (RULE F2 round trip)', () => {
   it('the MIDI canonicalisation erases generated ids and nothing else', () => {
     // A guard on the helper above: a normalisation strong enough to hide a real regression
     // would make every comparison in this file pass for the wrong reason.
+    //
+    // A v3 ornament is what draws a fresh `meico_<uuid>` per render — MEI ornament signs no
+    // longer author one, since the converter writes no performance at all.
+    const V3 = join(dirname(fileURLToPath(import.meta.url)), '..', 'integration', 'fixtures-v3');
     const expressiveMidiOf = (fixture: string) =>
-      renderExpressiveMidi(
-        movementAt(
-          convertMeiToMsmMpm(readFileSync(join(MEI_DIR, `${fixture}.mei`), 'utf-8'), {
-            sourceName: `${fixture}.mei`,
-          }),
-        ),
-      );
+      renderExpressiveMidi({
+        msm: readFileSync(join(V3, `${fixture}.msm`), 'utf-8'),
+        mpm: readFileSync(join(V3, `${fixture}.mpm`), 'utf-8'),
+      });
     const raw = (bytes: Uint8Array) => Buffer.from(bytes).toString('hex');
 
-    // composite_advanced carries a <trill>, so the facade expands it and its generated notes draw
-    // a fresh uuid on every run — the raw bytes of two identical conversions really do differ.
-    const first = expressiveMidiOf('composite_advanced');
-    const second = expressiveMidiOf('composite_advanced');
+    const first = expressiveMidiOf('turn-atstart');
+    const second = expressiveMidiOf('turn-atstart');
     expect(raw(first)).not.toBe(raw(second));
     expect(hex(first)).toBe(hex(second));
 
     // Still fine enough to separate two different performances, and still length-preserving.
-    expect(hex(first)).not.toBe(hex(expressiveMidiOf('simple_notes')));
+    expect(hex(first)).not.toBe(hex(expressiveMidiOf('trill-repetitions')));
     expect(hex(first)).toHaveLength(raw(first).length);
   });
 
   it('reproduces the file-less converter branch when sourceName is omitted', () => {
     const meiText = readFileSync(join(MEI_DIR, 'dynamics.mei'), 'utf-8');
-    // Fifth argument as above: match the facade's setting rather than the converter's default.
-    const classic = new Mei2MsmMpmConverter(720, true, false, true, true).convert(
-      Mei.fromXml(meiText),
-    );
+    const classic = new Mei2MsmMpmConverter(720, true, false, true).convert(Mei.fromXml(meiText));
 
-    expect(canonicalise(movementAt(convertMeiToMsmMpm(meiText)).mpm)).toBe(
-      canonicalise(
-        elementAt(classic.value, 0, 'the classic converter’s MPMs').getRootElement()!.toXML(),
-      ),
+    expect(canonicalise(movementAt(convertMeiToMsm(meiText)).msm)).toBe(
+      canonicalise(elementAt(classic, 0, 'the classic converter’s MSMs').getRootElement()!.toXML()),
     );
   });
 
@@ -177,31 +167,26 @@ describe('facade == classic class API (RULE F2 round trip)', () => {
 
     // Each option is checked against a classic converter built with the same flag, which proves
     // the threading without needing a fixture that exercises the flag's semantics — no fixture
-    // has the ten parts `dontUseChannel10` would need, for instance. Every row states
-    // `expandOrnaments` in fifth place, for the reason above.
+    // has the ten parts `dontUseChannel10` would need, for instance.
     for (const [options, args] of [
-      [{ ppq: 480 }, [480, true, false, true, true]],
-      [{ dontUseChannel10: false }, [720, false, false, true, true]],
-      [{ ignoreExpansions: true }, [720, true, true, true, true]],
-      [{ cleanup: false }, [720, true, false, false, true]],
-      [{ expandOrnaments: false }, [720, true, false, true, false]],
-    ] as [
-      Parameters<typeof convertMeiToMsmMpm>[1],
-      [number, boolean, boolean, boolean, boolean],
-    ][]) {
+      [{ ppq: 480 }, [480, true, false, true]],
+      [{ dontUseChannel10: false }, [720, false, false, true]],
+      [{ ignoreExpansions: true }, [720, true, true, true]],
+      [{ cleanup: false }, [720, true, false, false]],
+    ] as [Parameters<typeof convertMeiToMsm>[1], [number, boolean, boolean, boolean]][]) {
       const mei = Mei.fromXml(meiText);
       mei.setFile('repeats_endings.mei');
       const classic = new Mei2MsmMpmConverter(...args).convert(mei);
 
       expect(
         canonicalise(
-          movementAt(convertMeiToMsmMpm(meiText, { ...options, sourceName: 'repeats_endings.mei' }))
+          movementAt(convertMeiToMsm(meiText, { ...options, sourceName: 'repeats_endings.mei' }))
             .msm,
         ),
         `option ${JSON.stringify(options)}`,
       ).toBe(
         canonicalise(
-          elementAt(classic.key, 0, 'the classic converter’s MSMs').getRootElement()!.toXML(),
+          elementAt(classic, 0, 'the classic converter’s MSMs').getRootElement()!.toXML(),
         ),
       );
     }

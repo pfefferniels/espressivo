@@ -114,6 +114,11 @@ separately):
 | `msm → midi` | 3 | `Msm.exportMidi` builds a `Midi` |
 | `mei → (root)` | 1 | `Meico.version`, and it is serialization-visible — see RULE M6 |
 
+> **Since measured:** both directions of the `mei ⇄ mpm` cycle are gone. RULE M2 dissolved
+> `Helper`, removing all 33 `mpm → mei` edges; PARITY.md §9 removed the converter's MPM half,
+> taking the 22 `mei → mpm` runtime edges to **0**. One type-only edge remains, `Mpm` in
+> `Mei.exportMsm`'s throwing shim. `src/mei/**` is now a leaf on `msm` and `xml`.
+
 So there is exactly **one** package-level cycle, `mei ⇄ mpm`, and **one** module-level cycle,
 `Mpm ⇄ GenericStyle`/`maps/*`. Both have a single cause each, and both causes are removable
 without touching any rendering code:
@@ -459,8 +464,8 @@ export interface PerformanceData {
 
 // ---------- src/api/pipeline.ts ----------
 
-/** MEI ⇒ one MSM + MPM pair per `mdiv`, index-aligned. */
-export function convertMeiToMsmMpm(
+/** MEI ⇒ one MSM per `mdiv`. The performance is supplied, not derived — PARITY.md §9. */
+export function convertMeiToMsm(
   mei: XmlText,
   options?: ConvertOptions,
 ): readonly MovementDocuments[];

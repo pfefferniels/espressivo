@@ -1,28 +1,40 @@
 # Equivalence with Java meico
 
-> How the port's correctness is enforced, and the eight places where it deliberately departs from
-> the reference. The complete ledger — every divergence, every bug reproduced on purpose, with Java
+> How the port's correctness is enforced, what it covers since the MEI → MPM half of the
+> converter was removed, and the places where it deliberately departs from the reference. The complete ledger — every divergence, every bug reproduced on purpose, with Java
 > line citations — is [PARITY.md](../PARITY.md).
 >
 > Back to the [README](../README.md).
 
 The port's correctness criterion is not "passes its tests", it is **"produces what meico
-produces"**. That is enforced mechanically:
+produces"** — over the part of meico espressivo ports. One large piece is deliberately not
+ported: the converter derives no MPM from an MEI, because a performance comes from outside
+([PARITY.md §9](../PARITY.md)). So the claim is now two claims, gated separately:
+
+| stage                            | gated by                                              | against                            |
+| -------------------------------- | ----------------------------------------------------- | ---------------------------------- |
+| MEI ⇒ MSM                        | `cross-validation`                                    | `fixtures/reference/*.msm`         |
+| MSM + MPM ⇒ augmented MSM ⇒ MIDI | `full-xml`, `performance`, `midi-byte`, `midi-export` | `fixtures/performance-reference/*` |
+
+The second row reads its **inputs** from `fixtures/reference/` too — Java's own MSM and MPM —
+so no output of this port stands between the fixture and the comparison. That is stricter than
+converting first: a converter defect can no longer cancel against a renderer defect.
+
+Both are enforced mechanically:
 
 - **Java-generated ground truth.** `tests/integration/fixtures/` holds 16 MEI inputs and the
   reference output the Java library produces for each: MSM + MPM (32 files), augmented MSM plus
   raw and expressive MIDI (48 files), and 40 programmatically built per-map fixtures covering
   rubato, asynchrony, metrical accentuation, movement, imprecision and a combined case. These
   files are **immutable** — regenerating them is a governed act with its own provenance record.
-- **Seven equivalence suites** compare against them: MEI ⇒ MSM/MPM cross-validation, full XML
+- **Six equivalence suites** compare against them: MEI ⇒ MSM cross-validation, full XML
   equivalence of the augmented MSM, performance equivalence, per-map equivalence, MIDI **byte**
-  equivalence event by event, the MIDI export pipeline, and the layer-splitting pass (whose
-  reference set lives beside the frozen one, in `tests/integration/fixtures-layers-to-staffs/`,
-  and is generated the same way — see [PARITY.md §8](../PARITY.md)).
-  They auto-discover every `.mei` fixture, so a missing reference is
-  a **failure, not a skip**, and they canonicalize generated `meico_<uuid>` identifiers by
-  first-occurrence order — which keeps `goto` → `marker` wiring verifiable rather than deleting it.
-- **5434 tests across 126 files**, run as a gate (`npm run verify` = clean build + typecheck of the
+  equivalence event by event, and the MIDI export pipeline. They auto-discover every fixture, so
+  a missing reference is a **failure, not a skip**. `cross-validation` canonicalizes generated
+  `meico_<uuid>` identifiers by first-occurrence order — which keeps `goto` → `marker` wiring
+  verifiable rather than deleting it; the render suites need no such step, both sides now
+  carrying the reference's ids.
+- **6197 tests across 145 files**, run as a gate (`npm run verify` = clean build + typecheck of the
   test sources + the full suite) before every single commit of the refactor that produced this
   codebase, and of every campaign since.
 - **Byte probes for every refactor.** Beyond the suite, each structural change was proven with a
@@ -44,9 +56,9 @@ The whole byte surface is four suites, and they run in **about 2.5 seconds**:
 npm run gate
 ```
 
-That is `cross-validation` (MEI ⇒ MSM/MPM), `full-xml-equivalence` (the augmented MSM),
+That is `cross-validation` (MEI ⇒ MSM), `full-xml-equivalence` (the augmented MSM),
 `midi-byte-equivalence` (event by event, `tickTolerance = 0`) and `all-maps-equivalence` (the 40
-programmatic per-map fixtures) — 121 tests covering MSM+MPM text, augmented MSM, raw MIDI and
+programmatic per-map fixtures) — 105 tests covering MSM text, augmented MSM, raw MIDI and
 expressive MIDI, from both MEI input and programmatic MSM+MPM input. Their comparison strengths
 differ and the difference matters: **`cross-validation` is the only strict string-equality
 suite**, so it is the one that catches numeric formatting; the others compare per-attribute
@@ -102,7 +114,9 @@ because the Java library has no counterpart to be equivalent to:
 specification and hand-computed vectors instead, in its own fixture directory — including the proof
 that it moves no byte of anything above. [`Mei.layersToStaffs`](layers-to-staffs.md) is a third
 case again: it exists upstream but postdates the reference fork, so ground truth for it was
-constructed rather than exempted ([PARITY.md §8](../PARITY.md)).
+constructed rather than exempted ([PARITY.md §8](../PARITY.md)). **It no longer has a suite** —
+the pass is only observable through a conversion's MPM, and [PARITY.md §9](../PARITY.md)
+removed that; §9.4 records the loss.
 
 ## Where this deliberately differs from Java
 

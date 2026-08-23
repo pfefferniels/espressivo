@@ -2,8 +2,6 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync, readdirSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { Mei } from '../../src/mei/Mei.js';
-import { Mei2MsmMpmConverter } from '../../src/mei/Mei2MsmMpmConverter.js';
 import { Msm } from '../../src/msm/Msm.js';
 import { Mpm } from '../../src/mpm/Mpm.js';
 import { Performance } from '../../src/mpm/elements/Performance.js';
@@ -13,6 +11,7 @@ const __dirname2 = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(__dirname2, 'fixtures');
 const MEI_DIR = join(FIXTURES, 'mei');
 const PERF_REF_DIR = join(FIXTURES, 'performance-reference');
+const REF_DIR = join(FIXTURES, 'reference');
 
 /** Java's "60.0" and this port's "60" are the same number, so attributes compare as numbers. */
 function normalizeNum(s: string): number {
@@ -123,13 +122,8 @@ describe('Performance equivalence: TypeScript vs Java reference', () => {
       let performance: Performance;
 
       beforeAll(() => {
-        const meiXml = readFileSync(join(MEI_DIR, `${fixture}.mei`), 'utf-8');
-        const mei = Mei.fromXml(meiXml);
-        mei.setFile(`${fixture}.mei`);
-        const converter = new Mei2MsmMpmConverter(720, true, false, true);
-        const result = converter.convert(mei);
-        msm = result.key[0];
-        mpm = result.value[0];
+        msm = new Msm(readFileSync(join(REF_DIR, `${fixture}.msm`), 'utf-8'));
+        mpm = new Mpm(readFileSync(join(REF_DIR, `${fixture}.mpm`), 'utf-8'));
         performance = mpm.getAllPerformances()[0];
       });
 
@@ -260,13 +254,8 @@ describe('Performance equivalence: TypeScript vs Java reference', () => {
     });
 
     it('should handle performance with no matching parts', () => {
-      const meiXml = readFileSync(join(MEI_DIR, 'simple_notes.mei'), 'utf-8');
-      const mei = Mei.fromXml(meiXml);
-      mei.setFile('simple_notes.mei');
-      const converter = new Mei2MsmMpmConverter(720, true, false, true);
-      const result = converter.convert(mei);
-      const msm = result.key[0];
-      const mpm = result.value[0];
+      const msm = new Msm(readFileSync(join(REF_DIR, 'simple_notes.msm'), 'utf-8'));
+      const mpm = new Mpm(readFileSync(join(REF_DIR, 'simple_notes.mpm'), 'utf-8'));
       const perf = mpm.getAllPerformances()[0];
 
       const augmented = perf.perform(msm);
@@ -276,13 +265,8 @@ describe('Performance equivalence: TypeScript vs Java reference', () => {
     });
 
     it('should produce consistent output across multiple calls', () => {
-      const meiXml = readFileSync(join(MEI_DIR, 'simple_notes.mei'), 'utf-8');
-      const mei = Mei.fromXml(meiXml);
-      mei.setFile('simple_notes.mei');
-      const converter = new Mei2MsmMpmConverter(720, true, false, true);
-      const result = converter.convert(mei);
-      const msm = result.key[0];
-      const mpm = result.value[0];
+      const msm = new Msm(readFileSync(join(REF_DIR, 'simple_notes.msm'), 'utf-8'));
+      const mpm = new Mpm(readFileSync(join(REF_DIR, 'simple_notes.mpm'), 'utf-8'));
       const perf = mpm.getAllPerformances()[0];
 
       const augmented1 = perf.perform(msm);
@@ -300,13 +284,8 @@ describe('Performance equivalence: TypeScript vs Java reference', () => {
     });
 
     it('should not modify the original MSM during perform()', () => {
-      const meiXml = readFileSync(join(MEI_DIR, 'simple_notes.mei'), 'utf-8');
-      const mei = Mei.fromXml(meiXml);
-      mei.setFile('simple_notes.mei');
-      const converter = new Mei2MsmMpmConverter(720, true, false, true);
-      const result = converter.convert(mei);
-      const msm = result.key[0];
-      const mpm = result.value[0];
+      const msm = new Msm(readFileSync(join(REF_DIR, 'simple_notes.msm'), 'utf-8'));
+      const mpm = new Mpm(readFileSync(join(REF_DIR, 'simple_notes.mpm'), 'utf-8'));
       const perf = mpm.getAllPerformances()[0];
 
       const originalXml = msm.getRootElement()!.toXML();
@@ -320,13 +299,8 @@ describe('Performance equivalence: TypeScript vs Java reference', () => {
   describe('Full pipeline: MEI → MSM+MPM → perform → expressive MIDI', () => {
     for (const fixture of fixtures) {
       it(`${fixture}: end-to-end pipeline produces valid output`, () => {
-        const meiXml = readFileSync(join(MEI_DIR, `${fixture}.mei`), 'utf-8');
-        const mei = Mei.fromXml(meiXml);
-        mei.setFile(`${fixture}.mei`);
-        const converter = new Mei2MsmMpmConverter(720, true, false, true);
-        const result = converter.convert(mei);
-        const msm = result.key[0];
-        const mpm = result.value[0];
+        const msm = new Msm(readFileSync(join(REF_DIR, `${fixture}.msm`), 'utf-8'));
+        const mpm = new Mpm(readFileSync(join(REF_DIR, `${fixture}.mpm`), 'utf-8'));
         const perf = mpm.getAllPerformances()[0];
 
         const augmented = perf.perform(msm);

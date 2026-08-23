@@ -1,4 +1,4 @@
-# Ornamentation: MEI signs become real notes
+# Ornamentation: MPM ornaments become real notes
 
 > **An espressivo addition, and the one feature outside the equivalence claim.** Java meico does
 > not implement MPM v3, so there is nothing to be byte-identical to. This is verified against the
@@ -11,16 +11,16 @@
 >
 > Back to the [README](../README.md).
 
-A `<trill>`, `<mordent>` or `<turn>` in the MEI is not a note, and most tools leave it that way.
-espressivo implements the **MPM v3 ornamentation model** — designed by Lars Engeln and Axel
-Berndt — so an ornament sign becomes an MPM
-`<ornament>` carrying the notes it plays — a note pool, the playing order (`|: #a #b :|` for a
-repeated figure), and an `<ornamentDef>` saying where in time the figure sits and how it is
-spaced — and the renderer then generates those notes into the performance.
+An ornament is not a note, and most tools leave it that way. espressivo implements the **MPM v3
+ornamentation model** — designed by Lars Engeln and Axel Berndt — in which an `<ornament>` carries
+the notes it plays: a note pool, the playing order (`|: #a #b :|` for a repeated figure), and an
+`<ornamentDef>` saying where in time the figure sits and how it is spaced. The renderer generates
+those notes into the performance.
 
-Nothing extra is needed to get it. `convertMeiToMsmMpm` writes the ornaments, `performMsm` plays
-them, and the trill in `composite_advanced.mei` comes out of `performMsmToData` as three sounding
-notes where the score had one:
+The ornaments come from the MPM, which comes from outside — espressivo does not read `<trill>`,
+`<mordent>` or `<turn>` out of an MEI and write them for you ([PARITY.md §9](../PARITY.md)).
+Given an MPM that carries one, `performMsm` plays it, and a trill comes out of `performMsmToData`
+as three sounding notes where the score had one:
 
 | `id`      | `pitch` | `milliseconds` | `ornamented` | `ornamentSource` | `ornamentSlot` | `ornamentAnchor` |
 | --------- | ------- | -------------- | ------------ | ---------------- | -------------- | ---------------- |
@@ -50,12 +50,12 @@ gradients across the figure.
 
 ## Turning it off
 
-Two switches, both defaulting to on, and they compose:
+One switch, defaulting to on:
 
 ```ts
-convertMeiToMsmMpm(mei, { expandOrnaments: false }); // don't write ornaments into the MPM
 performMsm(movement, { expandOrnaments: false }); // keep them in the MPM, don't play them
 ```
 
-Why there are two rather than one, and which one a caller wants, is
-[PARITY.md §6.6](../PARITY.md).
+The ornaments stay in the document — a consumer still reads them — and the score is performed
+without them. There was once a second flag of the same name on the conversion side; it went with
+[PARITY.md §9](../PARITY.md), and §6.6 records why the two were distinct.

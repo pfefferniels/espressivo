@@ -13,7 +13,6 @@ import {
 import { foldl } from '../prelude/index.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { Msm } from '../msm/Msm.js';
-import type { Mpm } from '../mpm/Mpm.js';
 
 /**
  * The document an empty {@link Mei} starts from. Java loads the equivalent from the resource
@@ -264,20 +263,7 @@ export class Mei extends XmlBase {
   }
 
   /**
-   * Convert to MSM only, discarding the performance side. Just
-   * {@link Mei.exportMsmMpm} with the MPM half dropped.
-   */
-  exportMsm(
-    ppq?: number,
-    dontUseChannel10?: boolean,
-    ignoreExpansions?: boolean,
-    cleanup?: boolean,
-  ): Msm[] {
-    return this.exportMsmMpm(ppq, dontUseChannel10, ignoreExpansions, cleanup).key;
-  }
-
-  /**
-   * Convert this MEI into one MSM plus one MPM per movement (`mdiv`).
+   * Convert this MEI into one MSM per movement (`mdiv`).
    *
    * @param ppq pulses per quarter note. A floor, not a fixed value: the converter compares
    *   it against {@link Mei.computeMinimalPPQ} and silently raises it if this resolution
@@ -291,22 +277,15 @@ export class Mei extends XmlBase {
    * @param cleanup strip the conversion's working attributes and helper elements from the
    *   MSM before returning, and restore this MEI to its pre-conversion state. Pass false
    *   to inspect the intermediate state.
-   * @return the MSMs and the matching MPMs, index-aligned
    *
    * Not usable: this method throws. `Mei2MsmMpmConverter` imports this module for
-   * `Mei.getLayer`/`getStaff` and for the `instanceof Mei` that discriminates its two `convert`
-   * overloads, so a top-level import here would close a value cycle between the two modules.
-   * Construct the converter yourself, as `tests/integration` does:
+   * `Mei.getLayer`/`getStaff`, so a top-level import here would close a value cycle between
+   * the two modules. Construct the converter yourself, as `tests/integration` does:
    * `new Mei2MsmMpmConverter(ppq, …).convert(mei)`.
    */
-  exportMsmMpm(
-    ppq = 720,
-    dontUseChannel10 = true,
-    ignoreExpansions = false,
-    cleanup = true,
-  ): KeyValue<Msm[], Mpm[]> {
+  exportMsm(ppq = 720, dontUseChannel10 = true, ignoreExpansions = false, cleanup = true): Msm[] {
     throw new Error(
-      'Mei.exportMsmMpm is not available: importing Mei2MsmMpmConverter from Mei would close a ' +
+      'Mei.exportMsm is not available: importing Mei2MsmMpmConverter from Mei would close a ' +
         'module cycle between the two. Run the conversion directly instead — ' +
         `new Mei2MsmMpmConverter(${ppq}, ${dontUseChannel10}, ${ignoreExpansions}, ${cleanup})` +
         '.convert(mei)',
@@ -693,7 +672,7 @@ export class Mei extends XmlBase {
    * the encoding so each voice arrives as its own staff, and therefore its own part, channel
    * and instrument — what per-voice performance rendering needs. It is not part of the
    * conversion pipeline; the converter never calls it, so call it yourself before
-   * `exportMsm`/`exportMsmMpm`.
+   * `exportMsm`.
    *
    * It mutates the instance, like the other preprocessing passes — clone first if the original
    * is still needed. Unlike them it is not undone by the converter's `cleanup` flag, because

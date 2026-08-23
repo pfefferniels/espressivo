@@ -34,8 +34,6 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { Mei } from '../../src/mei/Mei.js';
-import { Mei2MsmMpmConverter } from '../../src/mei/Mei2MsmMpmConverter.js';
 import { Msm } from '../../src/msm/Msm.js';
 import { Mpm } from '../../src/mpm/Mpm.js';
 import { Midi } from '../../src/midi/Midi.js';
@@ -50,6 +48,7 @@ import {
 
 const __dirname2 = dirname(fileURLToPath(import.meta.url));
 const MEI_DIR = join(__dirname2, 'fixtures', 'mei');
+const REF_DIR = join(__dirname2, 'fixtures', 'reference');
 const PERF_REF = join(__dirname2, 'fixtures', 'performance-reference');
 const MAPS_REF = join(__dirname2, 'fixtures', 'all-maps-reference');
 
@@ -199,13 +198,8 @@ describe('Expressive MIDI event-level equivalence (MEI fixtures)', () => {
       const refPath = join(PERF_REF, `${fixture}_expressive.mid`);
       expect(existsSync(refPath), `missing Java reference: ${refPath}`).toBe(true);
 
-      const meiXml = readFileSync(join(MEI_DIR, `${fixture}.mei`), 'utf-8');
-      const mei = Mei.fromXml(meiXml);
-      mei.setFile(`${fixture}.mei`);
-      const converter = new Mei2MsmMpmConverter(720, true, false, true);
-      const result = converter.convert(mei);
-      const msm = result.key[0];
-      const mpm = result.value[0];
+      const msm = new Msm(readFileSync(join(REF_DIR, `${fixture}.msm`), 'utf-8'));
+      const mpm = new Mpm(readFileSync(join(REF_DIR, `${fixture}.mpm`), 'utf-8'));
       const perf = mpm.getAllPerformances()[0];
 
       const tsMidi = msm.exportExpressiveMidi(perf, true)!;
@@ -228,12 +222,7 @@ describe('Expressive MIDI event-level equivalence (MEI fixtures)', () => {
       const refPath = join(PERF_REF, `${fixture}_raw.mid`);
       expect(existsSync(refPath), `missing Java reference: ${refPath}`).toBe(true);
 
-      const meiXml = readFileSync(join(MEI_DIR, `${fixture}.mei`), 'utf-8');
-      const mei = Mei.fromXml(meiXml);
-      mei.setFile(`${fixture}.mei`);
-      const converter = new Mei2MsmMpmConverter(720, true, false, true);
-      const result = converter.convert(mei);
-      const msm = result.key[0];
+      const msm = new Msm(readFileSync(join(REF_DIR, `${fixture}.msm`), 'utf-8'));
 
       const tsMidi = msm.exportMidi(120, true)!;
       expect(tsMidi).not.toBeNull();

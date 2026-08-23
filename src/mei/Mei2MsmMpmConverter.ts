@@ -1,6 +1,5 @@
 import { Element, Attribute, Elements, Document } from '../xml/XomTypes.js';
 import { addToMap } from '../msm/dateMap.js';
-import { duration2decimal } from '../music/duration.js';
 import { accidString2decimal, pname2midi } from '../music/pitch.js';
 import { extractAllIntegersFromString, getFilenameWithoutExtension } from '../music/text.js';
 import { copyId } from '../xml/ids.js';
@@ -21,49 +20,12 @@ import {
   parentElement,
 } from '../xml/tree.js';
 import { MissingNodeError } from '../xml/errors.js';
-import { describeMpmParseError } from '../mpm/elements/parseError.js';
 import { Mei } from './Mei.js';
-import { buildOrnament, createMeiOrnamentDef, resolveOrnamentSign } from './MeiOrnamentExpander.js';
-import { VERSION } from '../version.js';
 import type { KeyValue } from '../supplementary/KeyValue.js';
 import { Goto } from '../msm/Goto.js';
 import { Msm } from '../msm/Msm.js';
-import { Mpm } from '../mpm/Mpm.js';
 import { v4 as uuidv4 } from 'uuid';
-import { Performance } from '../mpm/elements/Performance.js';
-import type { Header } from '../mpm/elements/Header.js';
-import type { Dated } from '../mpm/elements/Dated.js';
-import { Part as MpmPart } from '../mpm/elements/Part.js';
-import { GenericMap } from '../mpm/elements/maps/GenericMap.js';
-import { TempoMap, type AddTempoOptions } from '../mpm/elements/maps/TempoMap.js';
-import { DynamicsMap, type AddDynamicsOptions } from '../mpm/elements/maps/DynamicsMap.js';
-import { ArticulationMap } from '../mpm/elements/maps/ArticulationMap.js';
-import { OrnamentationMap } from '../mpm/elements/maps/OrnamentationMap.js';
-import type {
-  ArticulationStyle,
-  DynamicsStyle,
-  OrnamentationStyle,
-  TempoStyle,
-} from '../mpm/elements/styles/style.js';
-import { TempoDef } from '../mpm/elements/styles/defs/TempoDef.js';
-import { DynamicsDef } from '../mpm/elements/styles/defs/DynamicsDef.js';
-import { ArticulationDef } from '../mpm/elements/styles/defs/ArticulationDef.js';
-import { OrnamentDef } from '../mpm/elements/styles/defs/OrnamentDef.js';
-import { NO_V3_ORNAMENT_FIELDS, type Ornament } from '../mpm/elements/maps/data/ornament.js';
-import { Author } from '../mpm/elements/metadata/Author.js';
-import { Comment } from '../mpm/elements/metadata/Comment.js';
-import { RelatedResource } from '../mpm/elements/metadata/RelatedResource.js';
-import {
-  firstPresent,
-  foldl,
-  head,
-  isErr,
-  isNonEmpty,
-  isOk,
-  mapPresent,
-  orDefault,
-  unwrapOr,
-} from '../prelude/index.js';
+import { firstPresent, foldl, head, isNonEmpty, mapPresent, orDefault } from '../prelude/index.js';
 import { elementAt, findLast, removeAt } from '../prelude/seq.js';
 
 /**
@@ -106,9 +68,9 @@ const CIRCLE_OF_FIFTHS_FLATWARD = [
 type Traversal = 'done' | 'descend';
 
 /**
- * The movement being converted: the MSM and the MPM performance being filled, and the
- * `meiHead` `work` this `mdiv` claims, if any. Ambient context for everything below the
- * `mdiv` — every method there reads the same three values and none may change one.
+ * The movement being converted: the MSM being filled, and the `meiHead` `work` this `mdiv`
+ * claims, if any. Ambient context for everything below the `mdiv` — every method there reads
+ * the same two values and none may change one.
  *
  * `work` is set only when the `mdiv` claims one by `@decls` or matches one by `@n`, and it
  * supplies the movement's fallback tempo and `<meter>`. It has to be per-movement for that
@@ -120,8 +82,6 @@ interface MovementContext {
   readonly msm: Element;
   /** the `meiHead` `work` this movement claims, or null if it claims none */
   readonly work: Element | null;
-  /** the MPM performance being filled */
-  readonly performance: Performance;
 }
 
 /**
@@ -180,11 +140,6 @@ function requireMovement(ctx: WalkContext): MovementContext {
   return ctx.movement;
 }
 
-/** the MPM performance being filled; see {@link requireMovement} */
-function requirePerformance(ctx: WalkContext): Performance {
-  return requireMovement(ctx).performance;
-}
-
 /**
  * The `global/dated/<name>` map of the MSM movement being filled, or null if it holds no such
  * map. `global` and `dated` are required — {@link Msm.createMsm} builds them unconditionally —
@@ -198,28 +153,6 @@ function globalDatedMap(ctx: WalkContext, name: string): Element | null {
 /** {@link globalDatedMap} for the callers that read or write the map; see {@link requireDatedMap} */
 function requireGlobalDatedMap(ctx: WalkContext, name: string): Element {
   return requireDatedMap(requireFirstChildElement(requireMovement(ctx).msm, 'global'), name);
-}
-
-/**
- * The MPM performance's global `header`, where the styles this converter authors live.
- * `Performance.fromName` builds `global`, its `header` and its `dated` together, so
- * neither can be absent once a performance exists.
- */
-function globalHeader(ctx: WalkContext): Header {
-  const global = requirePerformance(ctx).getGlobal();
-  if (global === null) throw new MissingNodeError('the MPM performance has no global section');
-  const header = global.getHeader();
-  if (header === null) throw new MissingNodeError('the MPM global section has no header');
-  return header;
-}
-
-/** the MPM performance's global `dated`, where its maps live; see {@link globalHeader} */
-function globalDated(ctx: WalkContext): Dated {
-  const global = requirePerformance(ctx).getGlobal();
-  if (global === null) throw new MissingNodeError('the MPM performance has no global section');
-  const dated = global.getDated();
-  if (dated === null) throw new MissingNodeError('the MPM global section has no dated');
-  return dated;
 }
 
 /**
@@ -309,33 +242,6 @@ function advancePartClock(part: Element, ticks: number): void {
   clock.setValue(String(parseFloat(clock.getValue()) + ticks));
 }
 
-/**
- * An MPM part's `dated`, where the part-local maps live. `Part.fromValues` builds a part's
- * `header` and `dated` in one go and nothing removes either. The counterpart of
- * {@link globalDated}, which does the same for the performance's global section.
- */
-function mpmDated(part: MpmPart): Dated {
-  const dated = part.getDated();
-  if (dated === null)
-    throw new MissingNodeError(`the MPM part '${part.getName()}' has no dated environment`);
-  return dated;
-}
-
-/**
- * The element an MPM map holds at `index`, where the index came from the map itself.
- *
- * `GenericMap.getElement` answers null for an out-of-range index, which cannot happen at the
- * call sites: each was handed the index by `addDynamicsFromData`, `addTempoData`,
- * `addOrnamentFromData` or the map's own `size()`. Java dereferences the same lookup unguarded
- * and would NPE; this names what was missing instead.
- */
-function mapElement(map: GenericMap, index: number): Element {
-  const element = map.getElement(index);
-  if (element === null)
-    throw new MissingNodeError(`the MPM map holds no element at index ${index}`);
-  return element;
-}
-
 /** element without effect on the sounding result: skipped whole, not descended into */
 const IGNORE: ElementHandler = () => 'done';
 
@@ -343,9 +249,13 @@ const IGNORE: ElementHandler = () => 'done';
 const DESCEND: ElementHandler = () => 'descend';
 
 /**
- * Converts MEI into MSM (the score, as written) plus MPM (the performance instructions that
- * make it expressive). Essentially all the musical knowledge in the port lives here;
- * {@link Mei} only owns the tree and {@link Msm}/{@link Mpm} only own the output formats.
+ * Converts MEI into MSM — the score, as written. Essentially all the musical knowledge in the
+ * port lives here; {@link Mei} only owns the tree and {@link Msm} only owns the output format.
+ *
+ * It converts what is played, not how. The score's performance markings — `tempo`, `dynam`,
+ * `artic`, `slur`, `arpeg`, the ornament signs — are skipped: espressivo applies an MPM that
+ * comes from outside, and a transcription of the score's own markings is not one
+ * (PARITY.md §9).
  *
  * One converter, one conversion: {@link convert} is not re-entrant, because the object *is*
  * the conversion's working state. Instantiate, call `convert(mei)`, discard.
@@ -359,10 +269,9 @@ const DESCEND: ElementHandler = () => 'descend';
  * 3. snapshot the MEI document if `cleanup` is set, since the next step rewrites it;
  * 4. preprocess: resolve `copyof`/`sameas`, drop `rend`, resolve `expansion`s (unless
  *    `ignoreExpansions`) — see {@link Mei} for what each does;
- * 5. walk each `body` with {@link convertElement}, which is where the MSMs and MPMs get
- *    built and pushed onto {@link movements} / {@link performances};
- * 6. postprocess the MPMs, restore `ppq` and the MEI document, clean the MSMs, and name
- *    the outputs after the source file.
+ * 5. walk each `body` with {@link convertElement}, which is where the MSMs get built and
+ *    pushed onto {@link movements};
+ * 6. restore `ppq` and the MEI document, clean the MSMs, and name them after the source file.
  *
  * Step 5 is the recursive heart: {@link convertElement} looks every MEI element name up in
  * {@link ELEMENT_HANDLERS} and either handles it, descends into it, or skips it. Everything
@@ -379,13 +288,12 @@ const DESCEND: ElementHandler = () => 'descend';
  *   {@link WalkContext.movement}: built once per `mdiv`, read by everything below it, never
  *   changed.
  * - Genuinely sequential state stays a field, because it is an accumulator and not a
- *   position: the deferred lists (`accid`, `endids`, `tstamp2s`, `lyrics`, `arpeggiosToSort`)
- *   and {@link endingCounter}. They exist because MEI lets an element refer forward: an
- *   `accid` applies to notes that come later in the measure, an `endid`/`tstamp2` closes a
- *   span whose end has not been walked yet, and an arpeggio's note order is not known until
- *   every note it names has a pitch. Each is drained at a defined point — `accid` per measure,
- *   `endids`/`tstamp2s` as the referenced elements are met ({@link checkEndid}),
- *   `arpeggiosToSort` at the end of the movement. {@link reset} clears exactly these.
+ *   position: the deferred lists (`accid`, `endids`, `tstamp2s`, `lyrics`) and
+ *   {@link endingCounter}. They exist because MEI lets an element refer forward: an `accid`
+ *   applies to notes that come later in the measure, and an `endid`/`tstamp2` closes a span
+ *   whose end has not been walked yet. Each is drained at a defined point — `accid` per
+ *   measure, `endids`/`tstamp2s` as the referenced elements are met ({@link checkEndid}).
+ *   {@link reset} clears exactly these.
  * - The running clock is not a field at all: it is `part/@currentDate`, an attribute on the
  *   MSM output document, advanced by `processNote`/`processChord`/`processRest` and erased by
  *   `msmCleanupSingle` before delivery. See {@link partClock}.
@@ -405,39 +313,10 @@ const DESCEND: ElementHandler = () => 'descend';
  * Port of `meico.mei.Mei2MsmMpmConverter`.
  * @author Axel Berndt
  */
-/**
- * What {@link Mei2MsmMpmConverter.parseTempo} can determine from a `<tempo>` element alone.
- *
- * The date is not among it: the same element is placed at 0.0 when it is the work-level tempo
- * and at the walk's current position otherwise, so the caller supplies it. Spelling that as
- * `Omit` rather than as a mutable field the caller fills in later means the half-built state
- * cannot reach a writer.
- */
-type UndatedTempo = Omit<AddTempoOptions, 'date'>;
-
-/** The `ornamentDef` an MEI `<arpeg>` is exported as, and defined under in the MEI-export style. */
-const ARPEGGIO_DEF_NAME = 'arpeggio';
-
 export class Mei2MsmMpmConverter {
   private mei: Mei | null = null;
   private readonly ignoreExpansions: boolean = false;
   private readonly cleanup: boolean = true;
-  /**
-   * Whether `<trill>`, `<mordent>` and `<turn>` are expanded into MPM ornaments
-   * ({@link MeiOrnamentExpander}). Defaults to false, and the default is load-bearing.
-   *
-   * Expansion authors MPM the Java reference does not author, so a converter that expanded by
-   * default would change the output of every fixture carrying an ornament sign and break the
-   * MEI equivalence suites against their Java references. The layering that avoids this is the
-   * reference's own: in Java the expansion is a pre-pass in `Mei.exportMsmMpm`, and
-   * `new Mei2MsmMpmConverter(…).convert(mei)` — which is what those suites call, and what
-   * `Mei.exportMsmMpm` throws in favour of here (see {@link Mei.exportMsmMpm}) — never expands.
-   *
-   * The facade turns it on: `convertMeiToMsmMpm` passes `ConvertOptions.expandOrnaments ?? true`,
-   * matching the `ignoreOrnaments` CLI flag. The product therefore expands by default and the
-   * parity harness does not.
-   */
-  private readonly expandOrnaments: boolean = false;
 
   /** the tick grid; raised during {@link convertMei} if the source needs finer resolution */
   protected ppq = 720;
@@ -455,11 +334,8 @@ export class Mei2MsmMpmConverter {
   protected lyrics: Element[] = [];
   /** every note and chord of the current mdiv, by id — the target of `startid`/`plist` */
   protected allNotesAndChords = new Map<string, Element>();
-  /** arpeggio note lists to order by pitch once all pitches are known; the flag is "upwards" */
-  protected arpeggiosToSort: KeyValue<Attribute, boolean>[] = [];
 
   protected movements: Msm[] = [];
-  protected performances: Mpm[] = [];
 
   /** the MEI being converted, set by {@link convertMei} before anything below it runs */
   private requireMei(): Mei {
@@ -472,18 +348,11 @@ export class Mei2MsmMpmConverter {
    * set. Here every setting other than `ppq` is a parameter default, and those defaults are the
    * field initialisers above spelled a second time; the two have to be kept in step.
    */
-  constructor(
-    ppq: number,
-    dontUseChannel10 = true,
-    ignoreExpansions = false,
-    cleanup = true,
-    expandOrnaments = false,
-  ) {
+  constructor(ppq: number, dontUseChannel10 = true, ignoreExpansions = false, cleanup = true) {
     this.ppq = ppq;
     this.dontUseChannel10 = dontUseChannel10;
     this.ignoreExpansions = ignoreExpansions;
     this.cleanup = cleanup;
-    this.expandOrnaments = expandOrnaments;
   }
 
   /**
@@ -493,12 +362,12 @@ export class Mei2MsmMpmConverter {
    * recursive walker. The walker is {@link convertElement} here and is private, so this method
    * has one signature and no `instanceof` dispatch.
    */
-  convert(mei: Mei): KeyValue<Msm[], Mpm[]> {
+  convert(mei: Mei): Msm[] {
     return this.convertMei(mei);
   }
 
   /** the whole conversion, step by step; see the class comment for the outline */
-  private convertMei(mei: Mei): KeyValue<Msm[], Mpm[]> {
+  private convertMei(mei: Mei): Msm[] {
     // Java opens with `if (mei == null)` and closes with two progress banners; neither is
     // reproduced. Nothing can reach the null branch — {@link convert}'s parameter is a
     // non-nullable `Mei` — and the case it was really guarding, a `Mei` with nothing in it, is
@@ -507,7 +376,7 @@ export class Mei2MsmMpmConverter {
 
     const music = this.mei.getMusic();
     if (music === null || music.getFirstChildElement('body', music.getNamespaceURI()) === null)
-      return { key: [], value: [] };
+      return [];
 
     const minPPQ = this.mei.computeMinimalPPQ();
     const originalPPQ = this.ppq;
@@ -542,9 +411,6 @@ export class Mei2MsmMpmConverter {
     for (let b = 0; b < bodies.size(); ++b) this.convertElement(bodies.get(b), NOTHING_OPEN);
 
     const msms: Msm[] = [...this.movements];
-    const mpms: Mpm[] = [...this.performances];
-
-    Mei2MsmMpmConverter.mpmPostprocessing(mpms);
 
     this.ppq = originalPPQ;
 
@@ -562,26 +428,9 @@ export class Mei2MsmMpmConverter {
         count === 1 ? `${stem}.${extension}` : `${stem}-${index}.${extension}`;
 
       msms.forEach((msm, i) => msm.setFile(exportName(i, msms.length, 'msm')));
-      mpms.forEach((mpm, i) => mpm.setFile(exportName(i, mpms.length, 'mpm')));
-
-      // A lone performance additionally carries a back-reference to the movement it renders.
-      // `makeMovement` appends to `movements` and `performances` together, so one performance
-      // means one movement.
-      if (mpms.length === 1 && isNonEmpty(msms) && isNonEmpty(mpms)) {
-        const onlyMsm = head(msms);
-        const onlyMpm = head(mpms);
-        const msmFile = onlyMsm.getFile();
-        if (msmFile !== null) {
-          // `fromUri` cannot fail here — both arguments are non-null strings — and the `isOk`
-          // check below is what says so, in place of an `!`.
-          const msmRelatedResource = RelatedResource.fromUri(msmFile, 'msm');
-          if (isOk(msmRelatedResource))
-            onlyMpm.getMetadata()?.addRelatedResource(msmRelatedResource.value);
-        }
-      }
     }
 
-    return { key: msms, value: mpms };
+    return msms;
   }
 
   /**
@@ -611,11 +460,9 @@ export class Mei2MsmMpmConverter {
    * `reg`, `sic`, `subst`, `supplied` and `unclear` are descended into (their content is
    * music), while `abbr`, `damage` and `gap` are skipped.
    *
-   * `trill`, `mordent` and `turn` route to {@link processOrnamentSign}, which expands them into
-   * MPM v3 ornaments only when {@link expandOrnaments} is on; with the flag off — the default —
-   * the dispatch behaves exactly as `IGNORE` does, which is what upstream meico does with all
-   * three. See {@link expandOrnaments}. `arpeg` is untouched by any of this: it keeps its own
-   * v2 path through {@link processArpeg} (DESIGN.md D6).
+   * The performance signs — `tempo`, `dynam`, `hairpin`, `artic`, `slur`, `breath`, `arpeg`,
+   * `trill`, `mordent`, `turn` — are all `IGNORE`. They say how the score is played, and the
+   * performance comes from outside (PARITY.md §9).
    *
    * The null prototype is load-bearing. On a plain object literal the lookup below inherits
    * from `Object.prototype`, so an element named `valueOf`, `hasOwnProperty`, `isPrototypeOf`,
@@ -640,14 +487,8 @@ export class Mei2MsmMpmConverter {
         c.processApp(e, ctx);
         return 'done';
       },
-      arpeg: (c, e, ctx) => {
-        c.processArpeg(e, ctx);
-        return 'done';
-      },
-      artic: (c, e, ctx) => {
-        c.processArtic(e, ctx);
-        return 'done';
-      },
+      arpeg: IGNORE,
+      artic: IGNORE,
       barline: IGNORE,
       beam: DESCEND,
       beamSpan: IGNORE,
@@ -656,10 +497,7 @@ export class Mei2MsmMpmConverter {
         return 'done';
       },
       bend: IGNORE,
-      breath: (c, e, ctx) => {
-        c.processBreath(e, ctx);
-        return 'done';
-      },
+      breath: IGNORE,
       bTrem: (c, e, ctx) => {
         c.processChord(e, ctx);
         return 'done';
@@ -691,10 +529,7 @@ export class Mei2MsmMpmConverter {
         c.processDot(e);
         return 'done';
       },
-      dynam: (c, e, ctx) => {
-        c.processDynam(e, ctx);
-        return 'done';
-      },
+      dynam: IGNORE,
       ending: (c, e, ctx) => {
         c.processEnding(e, ctx);
         return 'done';
@@ -709,10 +544,7 @@ export class Mei2MsmMpmConverter {
       gap: IGNORE,
       gliss: IGNORE,
       grpSym: IGNORE,
-      hairpin: (c, e, ctx) => {
-        c.processDynam(e, ctx);
-        return 'done';
-      },
+      hairpin: IGNORE,
       halfmRpt: (c, e, ctx) => {
         c.processHalfmRpt(e, ctx);
         return 'descend';
@@ -759,10 +591,7 @@ export class Mei2MsmMpmConverter {
       },
       meterSigGrp: DESCEND,
       midi: IGNORE,
-      mordent: (c, e, ctx) => {
-        c.processOrnamentSign(e, ctx);
-        return 'done';
-      },
+      mordent: IGNORE,
       mRest: (c, e, ctx) => {
         c.processMeasureRest(e, ctx);
         return 'done';
@@ -851,10 +680,7 @@ export class Mei2MsmMpmConverter {
         c.processSpace(e, ctx);
         return 'done';
       },
-      slur: (c, e, ctx) => {
-        c.processSlur(e, ctx);
-        return 'done';
-      },
+      slur: IGNORE,
       stack: IGNORE,
       staff: (c, e, ctx) => {
         c.processStaff(e, ctx);
@@ -874,19 +700,13 @@ export class Mei2MsmMpmConverter {
       syllable: IGNORE,
       symbol: IGNORE,
       symbolTable: IGNORE,
-      tempo: (c, e, ctx) => {
-        c.processTempo(e, ctx);
-        return 'done';
-      },
+      tempo: IGNORE,
       tie: (c, e, ctx) => {
         c.processTie(e, ctx);
         return 'done';
       },
       timeline: IGNORE,
-      trill: (c, e, ctx) => {
-        c.processOrnamentSign(e, ctx);
-        return 'done';
-      },
+      trill: IGNORE,
       tuplet: (c, e, ctx) => {
         if (c.processTuplet(e, ctx)) return 'done';
         return 'descend';
@@ -895,10 +715,7 @@ export class Mei2MsmMpmConverter {
         c.processTupletSpan(e, ctx);
         return 'done';
       },
-      turn: (c, e, ctx) => {
-        c.processOrnamentSign(e, ctx);
-        return 'done';
-      },
+      turn: IGNORE,
       unclear: DESCEND,
       uneume: IGNORE,
       verse: DESCEND,
@@ -968,46 +785,6 @@ export class Mei2MsmMpmConverter {
     const msm = Msm.createMsm(titleString, movementId, this.ppq);
     this.movements.push(msm);
 
-    const mpm = Mpm.createMpm();
-
-    // None of the three metadata factories below can fail — every argument is a non-null
-    // string — so their reasons are flattened to null with `unwrapOr` and the array keeps its
-    // nullable element type. A null must be propagated rather than skipped: `Mpm.addMetadata`
-    // passes the array to `Metadata.fromParts`, which treats a null element as a caller error
-    // and refuses to build the metadata at all, so skipping one would emit a metadata block the
-    // Java reference does not.
-    const relatedResources: (RelatedResource | null)[] = [];
-    const meiFile = this.requireMei().getFile();
-    const meicoAuthor = (): Author | null => unwrapOr(Author.fromName('meico', null, null), null);
-    if (meiFile !== null) {
-      relatedResources.push(unwrapOr(RelatedResource.fromUri(meiFile, 'mei'), null));
-      const comment = Comment.fromText(
-        `This MPM has been generated from '${meiFile}' using the meico MEI converter v${VERSION}.`,
-        null,
-      );
-      mpm.addMetadata(meicoAuthor(), unwrapOr(comment, null), relatedResources);
-    } else {
-      const comment = Comment.fromText(
-        `This MPM has been generated from MEI code using the meico MEI converter v${VERSION}.`,
-        null,
-      );
-      mpm.addMetadata(meicoAuthor(), unwrapOr(comment, null), null);
-    }
-
-    // The failure arm returns before any {@link MovementContext} is built, which is why every
-    // context the walk below sees carries a performance.
-    const created = Performance.fromName('MEI export performance');
-    if (isErr(created)) {
-      console.error(
-        `Failed to generate an instance of Performance. Skipping mdiv ${titleString}. ${describeMpmParseError(created.error)}`,
-      );
-      return;
-    }
-    const performance = created.value;
-    performance.setPulsesPerQuarter(this.ppq);
-    mpm.addPerformance(performance);
-    this.performances.push(mpm);
-
     this.reset();
     this.indexNotesAndChords(mdiv);
 
@@ -1067,78 +844,11 @@ export class Mei2MsmMpmConverter {
     if (msmRoot === null)
       throw new MissingNodeError('no MSM movement is currently being converted');
 
-    const movement: MovementContext = { msm: msmRoot, work, performance };
+    const movement: MovementContext = { msm: msmRoot, work };
 
     // a movement begins with nothing else open
     const inMovement: WalkContext = { ...NOTHING_OPEN, movement };
     this.convertElement(mdiv, inMovement);
-
-    // postprocess arpeggios
-    for (const arpeggioNoteOrder of this.arpeggiosToSort) {
-      const notePitchList: KeyValue<string, number>[] = [];
-      for (const noteId of arpeggioNoteOrder.key.getValue().replace(/#/g, '').split(/\s+/)) {
-        const note = this.allNotesAndChords.get(noteId);
-        if (note === undefined) continue;
-        const pitchAtt = attribute('pnum', note);
-        if (pitchAtt === null) continue;
-        const pitch = parseFloat(pitchAtt.getValue());
-        notePitchList.push({ key: noteId, value: pitch });
-      }
-
-      notePitchList.sort((n1, n2) => {
-        return arpeggioNoteOrder.value
-          ? Math.sign(n1.value - n2.value)
-          : Math.sign(n2.value - n1.value);
-      });
-
-      let noteIdsString = '';
-      for (const noteId of notePitchList)
-        noteIdsString += ` #${noteId.key.trim().replace(/#/g, '')}`;
-      arpeggioNoteOrder.key.setValue(noteIdsString.trim());
-    }
-
-    // finalize the tempoMap
-    let globalTempoMap = performance.getGlobal()?.getDated()?.getMap(Mpm.TEMPO_MAP) as
-      TempoMap | null | undefined;
-    if (
-      (globalTempoMap === null ||
-        globalTempoMap === undefined ||
-        globalTempoMap.getElementBeforeAt(0.0) === null) &&
-      work !== null
-    ) {
-      const tempo = firstChildElement('tempo', work);
-      if (tempo !== null) {
-        const tempoData = this.parseTempo(tempo, null, inMovement);
-        if (tempoData !== null) {
-          if (globalTempoMap === null || globalTempoMap === undefined) {
-            globalTempoMap = performance
-              .getGlobal()
-              ?.getDated()
-              ?.addMap(TempoMap.createTempoMap()) as TempoMap | null | undefined;
-
-            // A divergence from Java, pinned rather than fixed. Java guards this with
-            // `if (…getAllStyleTypes().get(Mpm.TEMPO_STYLE) != null)` — switch to the
-            // MEI-export tempo style only if one was actually defined. Transcribed literally,
-            // the `!= null` landed on a `Map.get` that answers `undefined` for an absent key,
-            // so the test held whatever the header contained and the switch was written
-            // unconditionally. It is written unconditionally here too. The same Java line in
-            // `parseTempo` is transcribed `!== undefined` and is correct, which identifies this
-            // one as a slip rather than a decision.
-            //
-            // The reachable consequence is a dangling reference: an MEI whose
-            // `workList/work/tempo` is a purely directional descriptor ("ritardando",
-            // "accelerando", "calando") never reaches the arm of `parseTempo` that defines the
-            // style, so the MPM gets `<style … name.ref="MEI export"/>` in a document with no
-            // `<tempoStyles>` element at all. No fixture carries a work-level tempo of that
-            // shape, which is why aligning the condition with Java leaves all 6208 tests green
-            // — measured. See PARITY.md, and the test in
-            // `tests/mei/Mei2MsmMpmConverter.test.ts` that reds if someone aligns it.
-            globalTempoMap?.addStyleSwitch(0.0, 'MEI export');
-          }
-          globalTempoMap?.addTempo({ ...tempoData, date: 0.0 });
-        }
-      }
-    }
   }
 
   /**
@@ -2053,14 +1763,6 @@ export class Mei2MsmMpmConverter {
 
     requireMovement(ctx).msm.appendChild(part);
 
-    // The matching MPM part. {@link MovementContext} carries the performance beside the MSM, so
-    // a walk context that has a movement has a performance too and this is unconditional.
-    const performancePart = MpmPart.fromValues(label, parseInt(number), midiChannel, midiPort);
-    if (isOk(performancePart)) {
-      requirePerformance(ctx).addPart(performancePart.value);
-      if (xmlId !== null) performancePart.value.setId(xmlId.getValue());
-    }
-
     return part;
   }
 
@@ -2270,11 +1972,10 @@ export class Mei2MsmMpmConverter {
     // not, since it reads the enclosing chord's `dur` when this one has none.
     const inChord: WalkContext = { ...ctx, chord };
 
-    this.checkSlurs(chord, inChord);
-
+    // marks the chord so `processNote` mints ids for its members: an anonymous note in an
+    // articulated chord reaches the MSM with an `xml:id` and the reference expects it there.
     if (chord.query("descendant::*[local-name()='artic']").size() > 0)
       chord.addAttribute(new Attribute('hasArticulations', 'true'));
-    this.processArtic(chord, inChord);
 
     this.convertElement(chord, inChord);
     // The clock advances once, for the outermost chord only: an inner chord's notes sound
@@ -2373,820 +2074,6 @@ export class Mei2MsmMpmConverter {
     }
   }
 
-  /**
-   * Convert an MEI `arpeg` into an MPM ornament referencing the `arpeggio` ornament
-   * definition.
-   *
-   * `order="nonarp"` means "explicitly not arpeggiated" and is rejected up front. The note
-   * order is then determined one of two ways:
-   * - no `plist`: the order is symbolic — `'ascending pitch'`, or `'descending pitch'` for
-   *   `order="down"`. MPM resolves it at rendering time and nothing more is needed;
-   * - with a `plist`: the order is the listed notes, in listed order. A `plist` entry naming a
-   *   chord is expanded into its notes, minting ids for any that lack one.
-   *
-   * The `plist` case cannot be finished here, because a note's pitch is only known after
-   * {@link processNote} has run on it. So the ornament's `note.order` attribute is parked
-   * on {@link arpeggiosToSort} together with a direction flag and sorted at the end of
-   * {@link makeMovement}, once every `pnum` exists.
-   */
-  private processArpeg(arpeg: Element, ctx: WalkContext): void {
-    // check if this is really an arpeggio
-    const order = attribute('order', arpeg);
-    if (order !== null && order.getValue().trim() === 'nonarp') return;
-
-    const timingData = this.computeControlEventTiming(arpeg, ctx.part, ctx);
-    if (timingData === null) return;
-
-    // determine the note order
-    let noteOrder: string[] | null = null;
-    let needsPostprocessing = 0;
-    const plist = attribute('plist', arpeg);
-    if (plist === null) {
-      if (order !== null) {
-        noteOrder = [];
-        if (order.getValue().trim() === 'down') noteOrder.push('descending pitch');
-        else noteOrder.push('ascending pitch');
-      }
-    } else {
-      noteOrder = [];
-      for (const ref of plist.getValue().trim().split(/\s+/)) {
-        const e = this.allNotesAndChords.get(ref.replace(/#/g, ''));
-        if (e === undefined) continue;
-        if (e.getLocalName() === 'note') {
-          noteOrder.push(ref);
-          continue;
-        }
-        if (e.getLocalName() === 'chord') {
-          const notes = e.query("descendant::*[local-name()='note']");
-          for (let n = 0; n < notes.size(); ++n) {
-            const note = notes.get(n) as unknown as Element;
-            let noteId = attribute('id', note);
-            if (noteId === null) {
-              noteId = new Attribute(
-                'xml:id',
-                'http://www.w3.org/XML/1998/namespace',
-                `meico_${uuidv4()}`,
-              );
-              this.allNotesAndChords.set(noteId.getValue(), note);
-              note.addAttribute(noteId);
-            }
-            noteOrder.push(`#${noteId.getValue()}`);
-          }
-        }
-      }
-
-      if (order !== null) {
-        if (order.getValue().trim() === 'down') needsPostprocessing = -1;
-        else if (order.getValue().trim() === 'up') needsPostprocessing = 1;
-      }
-    }
-
-    const id = attribute('id', arpeg);
-    const od: Ornament = {
-      date: timingData[0],
-      ornamentDefName: ARPEGGIO_DEF_NAME,
-      ornamentDef: null,
-      scale: 0.0,
-      xmlId: id === null ? null : id.getValue(),
-      noteOrder,
-      ...NO_V3_ORNAMENT_FIELDS,
-    };
-
-    // Make sure that the arpeggio is defined in a global ornamentation style. Only the
-    // `getStyleDef` lookup can come back null; `addStyleDef` returns the style it just created.
-    let ornamentationStyle = globalHeader(ctx).getStyleDef(
-      Mpm.ORNAMENTATION_STYLE,
-      'MEI export',
-    ) as OrnamentationStyle | null;
-    if (ornamentationStyle === null)
-      ornamentationStyle = globalHeader(ctx).addStyleDef(
-        Mpm.ORNAMENTATION_STYLE,
-        'MEI export',
-      ) as OrnamentationStyle;
-    if (ornamentationStyle.getDef(ARPEGGIO_DEF_NAME) === undefined) {
-      const def = OrnamentDef.createDefaultOrnamentDef(ARPEGGIO_DEF_NAME);
-      if (isOk(def)) ornamentationStyle.addDef(def.value);
-    }
-
-    let ornamentationMap: OrnamentationMap | null;
-    let att = arpeg.getAttribute('part');
-    if (att === null) att = arpeg.getAttribute('staff');
-    if (att === null || att.getValue() === '' || att.getValue() === '%all') {
-      ornamentationMap = globalDated(ctx).getMap(Mpm.ORNAMENTATION_MAP) as OrnamentationMap | null;
-      if (ornamentationMap === null) {
-        ornamentationMap = globalDated(ctx).addMap(
-          OrnamentationMap.createOrnamentationMap(),
-        ) as OrnamentationMap;
-        ornamentationMap.addStyleSwitch(0.0, 'MEI export');
-      }
-      const index = ornamentationMap.addOrnament(od);
-      if (needsPostprocessing !== 0)
-        this.arpeggiosToSort.push({
-          key: requireAttribute('note.order', mapElement(ornamentationMap, index)),
-          value: needsPostprocessing > 0,
-        });
-    } else {
-      let multiIDs = false;
-      const staffs = att.getValue().split(/\s+/);
-
-      for (const staff of staffs) {
-        const part = requirePerformance(ctx).getPart(parseInt(staff));
-        if (part === null) continue;
-
-        ornamentationMap = mpmDated(part).getMap(Mpm.ORNAMENTATION_MAP) as OrnamentationMap | null;
-        if (ornamentationMap === null) {
-          ornamentationMap = mpmDated(part).addMap(
-            OrnamentationMap.createOrnamentationMap(),
-          ) as OrnamentationMap;
-          ornamentationMap.addStyleSwitch(0.0, 'MEI export');
-        }
-
-        const odd: Ornament =
-          od.xmlId !== null && multiIDs ? { ...od, xmlId: `${od.xmlId}_meico_${uuidv4()}` } : od;
-
-        const index = ornamentationMap.addOrnament(odd);
-        if (needsPostprocessing !== 0)
-          this.arpeggiosToSort.push({
-            key: requireAttribute('note.order', mapElement(ornamentationMap, index)),
-            value: needsPostprocessing > 0,
-          });
-
-        multiIDs = true;
-      }
-    }
-  }
-
-  /**
-   * Expand one `<trill>`, `<mordent>` or `<turn>` into an MPM v3 ornament (DESIGN.md D17).
-   *
-   * A no-op unless {@link expandOrnaments} is on — see that field for why it is off by default.
-   *
-   * The shape follows {@link processArpeg}: a date from {@link computeControlEventTiming}, an
-   * `ornamentDef` in a global `"MEI export"` style, and an `ornamentationMap` on each part the
-   * event applies to, created on demand with a style switch at date 0. What differs is what is
-   * authored — {@link buildOrnament} produces a v3 ornament with a note pool and a
-   * `note.order`, where an arpeggio produces a v2 one with neither — and that the
-   * arpeggio-specific pitch-sorting postprocessing has no counterpart here, a dictionary
-   * sequence already fixing the playing order.
-   */
-  private processOrnamentSign(sign: Element, ctx: WalkContext): void {
-    if (!this.expandOrnaments) return;
-
-    const resolved = resolveOrnamentSign(sign);
-    if (resolved === null) return;
-
-    // The principal must be a note of this movement. `computeControlEventTiming` below would
-    // also fail to find it, but silently and by a different route (it would fall through to a
-    // tstamp of null and date the ornament at the part's current position), so the reference is
-    // checked explicitly and the ornament dropped with a message that names the missing id.
-    if (!this.allNotesAndChords.has(resolved.principalId)) {
-      console.error(
-        `Warning: ${sign.toXML()} names no note of this movement in its startid; the ornament is skipped.`,
-      );
-      return;
-    }
-
-    // Null means the event carried a startid but no tstamp and has just been moved next to its
-    // principal note; the walk will reach it again there, where the date resolves. Same contract
-    // as processArpeg.
-    const timingData = this.computeControlEventTiming(sign, ctx.part, ctx);
-    if (timingData === null) return;
-
-    const idAtt = attribute('id', sign);
-    const idBase = idAtt === null ? `meico_${uuidv4()}` : idAtt.getValue();
-    const date = timingData[0];
-
-    // make sure that the ornament is defined in a global ornamentation style
-    let ornamentationStyle = globalHeader(ctx).getStyleDef(
-      Mpm.ORNAMENTATION_STYLE,
-      'MEI export',
-    ) as OrnamentationStyle | null;
-    if (ornamentationStyle === null)
-      ornamentationStyle = globalHeader(ctx).addStyleDef(
-        Mpm.ORNAMENTATION_STYLE,
-        'MEI export',
-      ) as OrnamentationStyle;
-    if (ornamentationStyle.getDef(resolved.defName) === undefined) {
-      const def = createMeiOrnamentDef(resolved.defName);
-      if (isOk(def)) ornamentationStyle.addDef(def.value);
-    }
-
-    let ornamentationMap: OrnamentationMap | null;
-    let att = sign.getAttribute('part');
-    if (att === null) att = sign.getAttribute('staff');
-    if (att === null || att.getValue() === '' || att.getValue() === '%all') {
-      ornamentationMap = globalDated(ctx).getMap(Mpm.ORNAMENTATION_MAP) as OrnamentationMap | null;
-      if (ornamentationMap === null) {
-        ornamentationMap = globalDated(ctx).addMap(
-          OrnamentationMap.createOrnamentationMap(),
-        ) as OrnamentationMap;
-        ornamentationMap.addStyleSwitch(0.0, 'MEI export');
-      }
-      ornamentationMap.addOrnament(
-        buildOrnament(resolved.shape, resolved.defName, resolved.principalId, date, idBase),
-      );
-      return;
-    }
-
-    let multiIDs = false;
-    for (const staff of att.getValue().split(/\s+/)) {
-      const part = requirePerformance(ctx).getPart(parseInt(staff));
-      if (part === null) continue;
-
-      ornamentationMap = mpmDated(part).getMap(Mpm.ORNAMENTATION_MAP) as OrnamentationMap | null;
-      if (ornamentationMap === null) {
-        ornamentationMap = mpmDated(part).addMap(
-          OrnamentationMap.createOrnamentationMap(),
-        ) as OrnamentationMap;
-        ornamentationMap.addStyleSwitch(0.0, 'MEI export');
-      }
-
-      // Built per part rather than cloned from one shared object: cloning would carry the pool
-      // notes' `xml:id`s along with it, so a sign naming two staves would emit `<note
-      // xml:id="tr1_n0">` twice in one MPM. The stem follows processArpeg's `_meico_<uuid>`
-      // convention for the second and later staves, so the first staff keeps the readable id.
-      const stem = multiIDs ? `${idBase}_meico_${uuidv4()}` : idBase;
-      ornamentationMap.addOrnament(
-        buildOrnament(resolved.shape, resolved.defName, resolved.principalId, date, stem),
-      );
-
-      multiIDs = true;
-    }
-  }
-
-  private processDynam(dynam: Element, ctx: WalkContext): void {
-    let volume: string;
-    let transitionTo: string | undefined;
-
-    switch (dynam.getLocalName()) {
-      case 'dynam':
-        volume = dynam.getValue();
-        if (volume === '') {
-          const label = dynam.getAttribute('label');
-          if (label !== null) volume = label.getValue();
-        }
-        if (volume === '') {
-          console.error(
-            `Cannot process MEI element ${dynam.toXML()}. No value or label specified.`,
-          );
-          return;
-        }
-        if (volume.includes('dim') || volume.includes('decresc')) {
-          volume = '?';
-          transitionTo = '-';
-        } else if (volume.includes('cresc')) {
-          volume = '?';
-          transitionTo = '+';
-        } else {
-          let dynamicsStyle = globalHeader(ctx).getStyleDef(
-            Mpm.DYNAMICS_STYLE,
-            'MEI export',
-          ) as DynamicsStyle | null;
-          if (dynamicsStyle === null)
-            dynamicsStyle = globalHeader(ctx).addStyleDef(
-              Mpm.DYNAMICS_STYLE,
-              'MEI export',
-            ) as DynamicsStyle;
-
-          if (dynamicsStyle.getDef(volume) === undefined) {
-            const def = DynamicsDef.createDefaultDynamicsDef(volume);
-            if (isOk(def)) dynamicsStyle.addDef(def.value);
-          }
-        }
-        break;
-      case 'hairpin': {
-        volume = '?';
-        const form = dynam.getAttribute('form');
-        if (form === null) {
-          console.error(
-            `Cannot process MEI element ${dynam.toXML()}. Attribute 'form' is missing.`,
-          );
-          return;
-        }
-        if (form.getValue() === 'cres') transitionTo = '+';
-        else if (form.getValue() === 'dim') transitionTo = '-';
-        else {
-          console.error(
-            `Cannot process MEI element ${dynam.toXML()}. Value of attribute 'form' is neither 'cres' nor 'dim'.`,
-          );
-          return;
-        }
-        break;
-      }
-      default:
-        console.error(`Unknown MEI dynamics instruction ${dynam.toXML()}.`);
-        return;
-    }
-
-    const timingData = this.computeControlEventTiming(dynam, ctx.part, ctx);
-    if (timingData === null) return;
-    // The end date closes the span; it is not a `<dynamics>` attribute, so it travels beside
-    // the instruction the way `tstamp2` and `endid` already do.
-    const endDate = timingData[1];
-    const tstamp2 = timingData[2];
-    const endid = timingData[3];
-
-    const id = attribute('id', dynam);
-    const dd: AddDynamicsOptions = {
-      date: timingData[0],
-      volume,
-      // A transition gets an explicit straight curve rather than the reader's default.
-      ...(transitionTo !== undefined && { transitionTo, curvature: 0.0, protraction: 0.0 }),
-      ...(id !== null && { id: id.getValue() }),
-    };
-
-    let dynamicsMap: DynamicsMap | null;
-    let att = dynam.getAttribute('part');
-    if (att === null) att = dynam.getAttribute('staff');
-    if (att === null || att.getValue() === '' || att.getValue() === '%all') {
-      dynamicsMap = globalDated(ctx).getMap(Mpm.DYNAMICS_MAP) as DynamicsMap | null;
-      if (dynamicsMap === null) {
-        dynamicsMap = globalDated(ctx).addMap(DynamicsMap.createDynamicsMap()) as DynamicsMap;
-        dynamicsMap.addStyleSwitch(0.0, 'MEI export');
-      }
-
-      this.addDynamicsToMpm(dd, dynamicsMap, endDate, endid, tstamp2);
-    } else {
-      let multiIDs = false;
-      const staffs = att.getValue().split(/\s+/);
-
-      for (const staff of staffs) {
-        const part = requirePerformance(ctx).getPart(parseInt(staff));
-        if (part === null) continue;
-
-        dynamicsMap = mpmDated(part).getMap(Mpm.DYNAMICS_MAP) as DynamicsMap | null;
-        if (dynamicsMap === null) {
-          dynamicsMap = mpmDated(part).addMap(DynamicsMap.createDynamicsMap()) as DynamicsMap;
-          dynamicsMap.addStyleSwitch(0.0, 'MEI export');
-        }
-
-        // A fresh instruction per staff: each part's map has its own predecessor, and
-        // `addDynamicsToMpm` resolves `volume` against it.
-        const ddd: AddDynamicsOptions =
-          dd.id !== undefined && multiIDs ? { ...dd, id: `${dd.id}_meico_${uuidv4()}` } : dd;
-
-        this.addDynamicsToMpm(ddd, dynamicsMap, endDate, endid, tstamp2);
-
-        multiIDs = true;
-      }
-    }
-  }
-
-  private addDynamicsToMpm(
-    dynamicsData: AddDynamicsOptions,
-    dynamicsMap: DynamicsMap,
-    endDate: number | null,
-    endid: Attribute | null,
-    tstamp2: Attribute | null,
-  ): number {
-    // the instruction this one continues from: the last entry that starts at or before it
-    const previousDynamics = dynamicsMap.getAllElements();
-    const predecessor = findLast(previousDynamics, (entry) => entry.key <= dynamicsData.date);
-    let volume = dynamicsData.volume;
-    if (predecessor !== null) {
-      const trans = predecessor.value.getAttribute('transition.to');
-      if (dynamicsData.transitionTo === undefined) {
-        // this instruction is where the predecessor's open transition lands
-        if (trans !== null) trans.setValue(String(volume));
-      } else if (trans !== null) {
-        volume = trans.getValue();
-      } else {
-        // `?` is the placeholder a later pass rewrites; Java reaches the same value by leaving
-        // `volumeString` null here and defaulting it on the next line.
-        volume = predecessor.value.getAttributeValue('volume') ?? '?';
-      }
-    }
-
-    const index = dynamicsMap.addDynamics({ ...dynamicsData, volume });
-    const dynamics = mapElement(dynamicsMap, index);
-    if (endDate !== null) {
-      dynamics.addAttribute(new Attribute('date.end', String(endDate)));
-    } else if (tstamp2 !== null) {
-      dynamics.addAttribute(new Attribute('tstamp2', tstamp2.getValue()));
-      this.tstamp2s.push(dynamics);
-    } else if (endid !== null) {
-      dynamics.addAttribute(new Attribute('endid', endid.getValue()));
-      this.endids.push(dynamics);
-    }
-
-    return index;
-  }
-
-  private processTempo(tempo: Element, ctx: WalkContext): void {
-    const parsed = this.parseTempo(tempo, ctx.part, ctx);
-    if (parsed === null) return;
-
-    const timingData = this.computeControlEventTiming(tempo, ctx.part, ctx);
-    if (timingData === null) return;
-    const tempoData: AddTempoOptions = { ...parsed, date: timingData[0] };
-    // The end date closes the span; it is not a `<tempo>` attribute, so it travels beside the
-    // instruction the way `tstamp2` and `endid` already do.
-    const endDate = timingData[1];
-    const tstamp2 = timingData[2];
-    const endid = timingData[3];
-
-    let tempoMap: TempoMap | null;
-    let att = tempo.getAttribute('part');
-    if (att === null) att = tempo.getAttribute('staff');
-    if (att === null || att.getValue() === '' || att.getValue() === '%all') {
-      tempoMap = globalDated(ctx).getMap(Mpm.TEMPO_MAP) as TempoMap | null;
-      if (tempoMap === null) {
-        tempoMap = globalDated(ctx).addMap(TempoMap.createTempoMap()) as TempoMap;
-
-        if (globalHeader(ctx).getAllStyleTypes().get(Mpm.TEMPO_STYLE) !== undefined)
-          tempoMap.addStyleSwitch(0.0, 'MEI export');
-      }
-
-      this.addTempoToMpm(tempoData, tempoMap, endDate, endid, tstamp2);
-    } else {
-      let multiIDs = false;
-      const staffs = att.getValue().split(/\s+/);
-
-      for (const staff of staffs) {
-        const part = requirePerformance(ctx).getPart(parseInt(staff));
-        if (part === null) continue;
-
-        tempoMap = mpmDated(part).getMap(Mpm.TEMPO_MAP) as TempoMap | null;
-        if (tempoMap === null) {
-          tempoMap = mpmDated(part).addMap(TempoMap.createTempoMap()) as TempoMap;
-          tempoMap.addStyleSwitch(0.0, 'MEI export');
-        }
-
-        // A fresh instruction per staff: each part's map has its own predecessor, and
-        // `addTempoToMpm` resolves `bpm` against it.
-        const td: AddTempoOptions =
-          tempoData.id !== undefined && multiIDs
-            ? { ...tempoData, id: `${tempoData.id}_meico_${uuidv4()}` }
-            : tempoData;
-
-        this.addTempoToMpm(td, tempoMap, endDate, endid, tstamp2);
-        multiIDs = true;
-      }
-    }
-  }
-
-  private addTempoToMpm(
-    tempoData: AddTempoOptions,
-    tempoMap: TempoMap,
-    endDate: number | null,
-    endid: Attribute | null,
-    tstamp2: Attribute | null,
-  ): number {
-    // The same backwards search as {@link addDynamicsToMpm}, over `bpm` instead of `volume`.
-    const previousTempo = tempoMap.getAllElements();
-    const predecessor = findLast(previousTempo, (entry) => entry.key <= tempoData.date);
-    let bpm = tempoData.bpm;
-    if (predecessor !== null) {
-      const trans = predecessor.value.getAttribute('transition.to');
-      if (tempoData.transitionTo === undefined) {
-        // this instruction is where the predecessor's open transition lands
-        if (trans !== null) trans.setValue(String(bpm));
-      } else if (trans !== null) {
-        bpm = trans.getValue();
-      } else {
-        // Java reads the predecessor's `@bpm` unguarded and NPEs when it has none. Every
-        // `<tempo>` this converter writes carries one, so the branch is unreachable from an
-        // MEI import; reporting it is the same refusal `addTempoData` used to make one call
-        // later, moved to where the missing value actually arises.
-        const inherited = predecessor.value.getAttributeValue('bpm');
-        if (inherited === null) {
-          console.error('Cannot add tempo, bpm not specified.');
-          return -1;
-        }
-        bpm = inherited;
-      }
-    }
-
-    const index = tempoMap.addTempo({ ...tempoData, bpm });
-    const tempoElement = mapElement(tempoMap, index);
-    if (endDate !== null) {
-      tempoElement.addAttribute(new Attribute('date.end', String(endDate)));
-    } else if (tstamp2 !== null) {
-      tempoElement.addAttribute(new Attribute('tstamp2', tstamp2.getValue()));
-      this.tstamp2s.push(tempoElement);
-    } else if (endid !== null) {
-      tempoElement.addAttribute(new Attribute('endid', endid.getValue()));
-      this.endids.push(tempoElement);
-    }
-
-    return index;
-  }
-
-  private processArtic(artic: Element, ctx: WalkContext): void {
-    if (ctx.part === null) return;
-
-    let att = artic.getAttribute('artic.ges');
-    const slur = artic.getAttribute('slur');
-    if (att === null) {
-      att = artic.getAttribute('artic');
-      if (att === null && slur === null) return;
-    }
-
-    let xmlid: string | null = null;
-    const articId = attribute('id', artic);
-    if (articId !== null) xmlid = articId.getValue();
-
-    let articulationStyle = globalHeader(ctx).getStyleDef(
-      Mpm.ARTICULATION_STYLE,
-      'MEI export',
-    ) as ArticulationStyle | null;
-    if (articulationStyle === null) {
-      articulationStyle = globalHeader(ctx).addStyleDef(
-        Mpm.ARTICULATION_STYLE,
-        'MEI export',
-      ) as ArticulationStyle;
-      const nonlegatoDef = ArticulationDef.createDefaultArticulationDef('nonlegato');
-      if (isOk(nonlegatoDef)) articulationStyle.addDef(nonlegatoDef.value);
-    }
-
-    const date = this.getMidiTime(ctx);
-    // Unlike the `staff`-list loops elsewhere in this class, which skip a part they cannot
-    // find, Java dereferences this one straight away and would NPE — the current MSM part
-    // always has an MPM twin, because `makePart` appends to both in the same call.
-    const partNumber = parseInt(requireAttributeValue('number', ctx.part));
-    const part = requirePerformance(ctx).getPart(partNumber);
-    if (part === null)
-      throw new MissingNodeError(`the MPM performance has no part numbered ${partNumber}`);
-    let map = mpmDated(part).getMap(Mpm.ARTICULATION_MAP) as ArticulationMap | null;
-    if (map === null) {
-      map = mpmDated(part).addMap(ArticulationMap.createArticulationMap()) as ArticulationMap;
-      map.addArticulationStyleSwitch(0.0, 'MEI export', 'nonlegato');
-    }
-
-    for (
-      let parent: Element | null = artic;
-      parent !== null && parent !== this.requireMei().getRootElement();
-      parent = parent.getParent()
-    ) {
-      if (parent.getLocalName() === 'note') {
-        let noteId = getAttributeValue('id', parent);
-        if (noteId === '') {
-          noteId = `meico_${uuidv4()}`;
-          parent.addAttribute(
-            new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', noteId),
-          );
-        }
-        if (att !== null)
-          this.addArticulationToMap(date, att.getValue(), xmlid, noteId, map, articulationStyle);
-        if (slur !== null) {
-          const slurid = artic.getAttributeValue('slurid');
-          if (slur.getValue().includes('t'))
-            this.addArticulationToMap(date, 'legatoStop', slurid, noteId, map, articulationStyle);
-          else if (slur.getValue().includes('i') || slur.getValue().includes('m'))
-            this.addArticulationToMap(date, 'legato', slurid, noteId, map, articulationStyle);
-        }
-        return;
-      }
-      if (parent.getLocalName() === 'chord') {
-        let multiIDs = false;
-        let multiSlurIDs = false;
-        const notes = parent.query("descendant::*[local-name()='note']");
-        for (let i = 0; i < notes.size(); ++i) {
-          const note = notes.get(i) as unknown as Element;
-          const subArtics = note.query("descendant::*[local-name()='artic']");
-          if (
-            note.getAttribute('artic') !== null ||
-            note.getAttribute('artic.ges') !== null ||
-            subArtics.size() > 0
-          )
-            continue;
-
-          if (note.getAttribute('date') !== null) {
-            const noteId = getAttributeValue('id', note);
-            if (att !== null) {
-              this.addArticulationToMap(
-                date,
-                att.getValue(),
-                xmlid === null ? null : xmlid + (multiIDs ? `_meico_${uuidv4()}` : ''),
-                noteId,
-                map,
-                articulationStyle,
-              );
-              multiIDs = true;
-            }
-            if (slur !== null) {
-              const slurid = artic.getAttributeValue('slurid');
-              if (slurid !== null) {
-                note.addAttribute(
-                  new Attribute('slurid', multiSlurIDs ? `${slurid}_meico_${uuidv4()}` : slurid),
-                );
-                multiSlurIDs = true;
-              }
-              if (slur.getValue().includes('t'))
-                this.addArticulationToMap(
-                  date,
-                  'legatoStop',
-                  slurid,
-                  noteId,
-                  map,
-                  articulationStyle,
-                );
-              else if (slur.getValue().includes('i') || slur.getValue().includes('m'))
-                this.addArticulationToMap(date, 'legato', slurid, noteId, map, articulationStyle);
-            }
-          } else {
-            if (att !== null) {
-              const newArtic = new Element('artic');
-              newArtic.addAttribute(new Attribute(att.getLocalName(), att.getValue()));
-              if (xmlid !== null)
-                newArtic.addAttribute(
-                  new Attribute(
-                    'xml:id',
-                    'http://www.w3.org/XML/1998/namespace',
-                    xmlid + (multiIDs ? `_meico_${uuidv4()}` : ''),
-                  ),
-                );
-              note.appendChild(newArtic);
-              multiIDs = true;
-            }
-            if (slur !== null) {
-              note.addAttribute(new Attribute('slur', slur.getValue()));
-              const slurid = artic.getAttributeValue('slurid');
-              if (slurid !== null) {
-                note.addAttribute(
-                  new Attribute('slurid', multiSlurIDs ? `${slurid}_meico_${uuidv4()}` : slurid),
-                );
-                multiSlurIDs = true;
-              }
-            }
-          }
-        }
-        return;
-      }
-      if (
-        (parent === ctx.layer || parent.getLocalName() === 'staff' || parent === ctx.measure) &&
-        att !== null
-      ) {
-        this.addArticulationToMap(date, att.getValue(), xmlid, null, map, articulationStyle);
-        return;
-      }
-    }
-  }
-
-  private addArticulationToMap(
-    date: number,
-    articulation: string,
-    id: string | null,
-    noteid: string | null,
-    articulationMap: ArticulationMap,
-    articulationStyle: ArticulationStyle,
-  ): void {
-    const articulations = articulation.trim().split(/\s+/);
-
-    for (const artic of articulations) {
-      if (articulationStyle.getDef(artic) === undefined) {
-        const def = ArticulationDef.createDefaultArticulationDef(artic);
-        if (isErr(def)) {
-          console.error(
-            `Failed to generate articulationDef for "${artic}". ${describeMpmParseError(def.error)}`,
-          );
-          continue;
-        }
-        articulationStyle.addDef(def.value);
-      }
-      articulationMap.addArticulation({
-        date,
-        nameRef: artic,
-        ...(noteid !== null && { noteid: `#${noteid}` }),
-        ...(id !== null && { id }),
-      });
-    }
-  }
-
-  private processBreath(breath: Element, ctx: WalkContext): void {
-    if (ctx.measure === null) return;
-
-    let xmlid: string | null = null;
-    const id = attribute('id', breath);
-    if (id !== null) xmlid = id.getValue();
-
-    // the breath must specify the notes/chords that precede it
-    let prevs: string[] | null = null;
-    let att = breath.getAttribute('prev');
-    if (att === null) {
-      att = breath.getAttribute('follows');
-      if (att === null) {
-        att = breath.getAttribute('startid');
-        if (att === null) {
-          att = breath.getAttribute('tstamp.ges');
-          if (att === null) {
-            att = breath.getAttribute('tstamp');
-            if (att === null) {
-              console.error(
-                `Cannot process MEI element ${breath.toXML()}. At least one of the attributes 'prev', 'follows' or 'startid' should be specified to indicate the preceding notes or chords affected by the breath. Alternatively, but not recommended(!), attribute 'tstamp.ges' or 'tstamp' may be defined at the risk that the breath does not coincide with a note's date and will, thus, have no effect on the music.`,
-              );
-              return;
-            }
-          }
-
-          // create the articulation from tstamp/tstamp.ges
-          console.error(
-            `MEI element ${breath.toXML()} is not associated with a note or chord. If its 'tstamp.ges' or 'tstamp' does not coincide with a note it will have no effect on the music!`,
-          );
-          const tstamp = att.getValue();
-
-          let articulationStyle = globalHeader(ctx).getStyleDef(
-            Mpm.ARTICULATION_STYLE,
-            'MEI export',
-          ) as ArticulationStyle | null;
-          if (articulationStyle === null) {
-            articulationStyle = globalHeader(ctx).addStyleDef(
-              Mpm.ARTICULATION_STYLE,
-              'MEI export',
-            ) as ArticulationStyle;
-            articulationStyle.getDef('defaultArticulation');
-          }
-
-          let articulationMap: ArticulationMap | null;
-          att = breath.getAttribute('part');
-          if (att === null) att = breath.getAttribute('staff');
-          if (att === null || att.getValue() === '' || att.getValue() === '%all') {
-            articulationMap = globalDated(ctx).getMap(
-              Mpm.ARTICULATION_MAP,
-            ) as ArticulationMap | null;
-            if (articulationMap === null) {
-              articulationMap = globalDated(ctx).addMap(
-                ArticulationMap.createArticulationMap(),
-              ) as ArticulationMap;
-              articulationMap.addArticulationStyleSwitch(0.0, 'MEI export', 'nonlegato');
-            }
-            const date = this.tstampToTicks(tstamp, ctx.part, ctx);
-            this.addArticulationToMap(
-              date,
-              'breath',
-              xmlid,
-              null,
-              articulationMap,
-              articulationStyle,
-            );
-          } else {
-            const staffs = att.getValue().split(/\s+/);
-            let multiIds = false;
-
-            for (const staff of staffs) {
-              const mpmPart = requirePerformance(ctx).getPart(parseInt(staff));
-              if (mpmPart === null) continue;
-
-              articulationMap = mpmDated(mpmPart).getMap(
-                Mpm.ARTICULATION_MAP,
-              ) as ArticulationMap | null;
-              if (articulationMap === null) {
-                articulationMap = mpmDated(mpmPart).addMap(
-                  ArticulationMap.createArticulationMap(),
-                ) as ArticulationMap;
-                articulationMap.addArticulationStyleSwitch(0.0, 'MEI export', 'nonlegato');
-              }
-
-              // find corresponding MSM part
-              let msmPart: Element | null = null;
-              const parts = requireMovement(ctx).msm.getChildElements('part');
-              for (let p = 0; p < parts.size(); ++p) {
-                if (parts.get(p).getAttributeValue('number') === staff) {
-                  msmPart = parts.get(p);
-                  break;
-                }
-              }
-
-              const date = this.tstampToTicks(tstamp, msmPart, ctx);
-              this.addArticulationToMap(
-                date,
-                'breath',
-                xmlid === null ? null : multiIds ? `${xmlid}_meico_${uuidv4()}` : xmlid,
-                null,
-                articulationMap,
-                articulationStyle,
-              );
-              multiIds = true;
-            }
-          }
-          return;
-        }
-      }
-    }
-    prevs = att.getValue().trim().replace(/#/g, '').split(/\s+/);
-
-    // create breath articulations in MEI and add them to the notes/chords indicated by their ids
-    let multiIds = false;
-    for (const prev of prevs) {
-      const note = this.allNotesAndChords.get(prev);
-      if (note !== undefined) {
-        const articElem = new Element('artic');
-        articElem.addAttribute(new Attribute('artic.ges', 'breath'));
-        if (xmlid !== null) {
-          articElem.addAttribute(
-            new Attribute(
-              'xml:id',
-              'http://www.w3.org/XML/1998/namespace',
-              multiIds ? `${xmlid}_meico_${uuidv4()}` : xmlid,
-            ),
-          );
-          multiIds = true;
-        }
-        note.appendChild(articElem);
-      }
-    }
-  }
-
   private processTie(tie: Element, ctx: WalkContext): void {
     const startid = tie.getAttributeValue('startid');
     if (ctx.measure === null || startid === null || tie.getAttribute('endid') === null) return;
@@ -3210,193 +2097,6 @@ export class Mei2MsmMpmConverter {
         else if (a.getValue() === 'n') a.setValue('t');
       } else {
         note.addAttribute(new Attribute('tie', 't'));
-      }
-    }
-  }
-
-  /**
-   * Convert a `slur` into the `slur` entries the articulation pass later reads.
-   *
-   * Three routes, in Java's order:
-   *
-   * 1. `plist` — the slur names its notes explicitly. They are marked directly, `im` ("in the
-   *    middle") on all but the last, `t` (terminal) on the last, and no miscMap entry is
-   *    produced at all. The bow's final note is deliberately excluded from the `im` run: it
-   *    ends the legato rather than continuing it.
-   * 2. local — the slur carries `part` or `staff`, so it belongs to specific staffs. One entry
-   *    per named staff, in that staff's part `miscMap`. A staff number matching no MSM part
-   *    contributes nothing, which is how a dangling reference is dropped.
-   * 3. global — no association, or `%all`: one entry in the global `miscMap`.
-   *
-   * Before routing, a slur with both `startid` and `endid` gets its `staff` and then its
-   * `layer` filled in from those endpoints when both sit in the same one — so a slur
-   * written without an explicit association still stays inside its voice.
-   *
-   * The `xml:id` is copied to the first entry only; every further one gets
-   * `<id>_meico_<uuid>`, since ids must stay unique across the document. That draws a UUID
-   * per extra entry and is therefore on the order-sensitive path ({@link addUUID}).
-   */
-  private processSlur(slur: Element, ctx: WalkContext): void {
-    if (ctx.measure === null)
-      // we process slurs only when they are in a measure environment
-      return;
-
-    const id = attribute('id', slur);
-    const xmlid = id !== null ? id.getValue() : null;
-
-    const plistAtt = slur.getAttribute('plist');
-    if (plistAtt !== null) {
-      const startidAtt = slur.getAttribute('startid');
-      if (startidAtt !== null) {
-        const startid = startidAtt.getValue();
-        if (!plistAtt.getValue().includes(startid))
-          plistAtt.setValue(`${startid} ${plistAtt.getValue()}`);
-      }
-
-      const endidAtt = slur.getAttribute('endid');
-      if (endidAtt !== null) {
-        const endid = endidAtt.getValue();
-        if (!plistAtt.getValue().includes(endid))
-          plistAtt.setValue(`${plistAtt.getValue()} ${endid}`);
-      }
-
-      const plist = plistAtt.getValue().trim().replace(/#/g, '').split(/\s+/);
-      let multiIds = false;
-
-      // All but the last: the end of the legato bow is not played legato. The backwards order
-      // is load-bearing — the ids drawn below are canonicalised by first occurrence, so a
-      // forwards walk would move fixture bytes. `slice(0, -1)` of a one- or zero-element list
-      // is empty, and the loop does not run.
-      for (const ref of plist.slice(0, -1).reverse()) {
-        const note = this.allNotesAndChords.get(ref);
-        if (note !== undefined) {
-          note.addAttribute(new Attribute('slur', 'im'));
-          if (xmlid !== null) {
-            note.addAttribute(
-              new Attribute(
-                'xml:id',
-                'http://www.w3.org/XML/1998/namespace',
-                multiIds ? `${xmlid}_meico_${uuidv4()}` : xmlid,
-              ),
-            );
-            multiIds = true;
-          }
-        }
-      }
-
-      if (plist.length > 2) {
-        const note = this.allNotesAndChords.get(
-          elementAt(plist, plist.length - 1, "a slur's plist"),
-        );
-        if (note !== undefined) {
-          note.addAttribute(new Attribute('slur', 't'));
-          if (xmlid !== null) {
-            note.addAttribute(
-              new Attribute(
-                'xml:id',
-                'http://www.w3.org/XML/1998/namespace',
-                multiIds ? `${xmlid}_meico_${uuidv4()}` : xmlid,
-              ),
-            );
-          }
-        }
-      }
-      return;
-    }
-
-    const timingData = this.computeControlEventTiming(slur, ctx.part, ctx);
-    if (timingData === null)
-      // the event has been repositioned in accordance to a startid attribute
-      return;
-    const date = timingData[0];
-    const endDate = timingData[1];
-    const tstamp2 = timingData[2];
-    const endid = timingData[3];
-    const startid = slur.getAttribute('startid');
-
-    let layerId = '';
-    if (startid !== null && endid !== null) {
-      if (slur.getAttribute('staff') === null) {
-        const staffId = this.isSameStaff(startid.getValue(), endid.getValue());
-        if (staffId !== '') slur.addAttribute(new Attribute('staff', staffId));
-      }
-      // looking for the layer makes only sense if we are in a specific staff
-      if (slur.getAttribute('staff') !== null && slur.getAttribute('layer') === null) {
-        layerId = this.isSameLayerInstance(startid.getValue(), endid.getValue());
-        if (layerId !== '') slur.addAttribute(new Attribute('layer', layerId));
-      }
-    }
-
-    // MEI 4.0's part attribute wins over staff
-    // (https://github.com/music-encoding/music-encoding/issues/435)
-    let att = slur.getAttribute('part');
-    if (att === null) att = slur.getAttribute('staff');
-
-    // Both branches below append attributes in Java's order: the serialized attribute sequence
-    // is compared byte-for-byte against the reference.
-    if (att === null || att.getValue() === '' || att.getValue() === '%all') {
-      // no part or staff association: a global instruction
-      const slurMisc = new Element('slur');
-      slurMisc.addAttribute(new Attribute('date', String(date)));
-      copyId(slur, slurMisc);
-
-      if (endid !== null) {
-        slurMisc.addAttribute(new Attribute('endid', endid.getValue()));
-        this.endids.push(slurMisc);
-      }
-
-      if (endDate !== null) slurMisc.addAttribute(new Attribute('date.end', String(endDate)));
-
-      if (tstamp2 !== null) {
-        slurMisc.addAttribute(new Attribute('tstamp2', tstamp2.getValue()));
-        this.tstamp2s.push(slurMisc);
-      }
-
-      addToMap(slurMisc, requireGlobalDatedMap(ctx, 'miscMap'));
-      return;
-    }
-
-    // there are staffs, hence a local slur
-    const staffs = att.getValue().split(/\s+/);
-    const parts = requireMovement(ctx).msm.getChildElements('part');
-    let multiIds = false;
-
-    for (const staff of staffs) {
-      for (let p = 0; p < parts.size(); ++p) {
-        const part = parts.get(p);
-        if (part.getAttributeValue('number') !== staff) continue;
-
-        const slurMisc = new Element('slur');
-        slurMisc.addAttribute(new Attribute('date', String(date)));
-
-        if (xmlid !== null) {
-          slurMisc.addAttribute(
-            new Attribute(
-              'xml:id',
-              'http://www.w3.org/XML/1998/namespace',
-              multiIds ? `${xmlid}_meico_${uuidv4()}` : xmlid,
-            ),
-          );
-          multiIds = true;
-        }
-
-        slurMisc.addAttribute(new Attribute('staff', staff));
-
-        if (layerId !== '') slurMisc.addAttribute(new Attribute('layer', layerId));
-
-        if (endid !== null) {
-          slurMisc.addAttribute(new Attribute('endid', endid.getValue()));
-          this.endids.push(slurMisc);
-        }
-
-        if (endDate !== null) slurMisc.addAttribute(new Attribute('date.end', String(endDate)));
-
-        if (tstamp2 !== null) {
-          slurMisc.addAttribute(new Attribute('tstamp2', tstamp2.getValue()));
-          this.tstamp2s.push(slurMisc);
-        }
-
-        addToMap(slurMisc, requireDatedMap(part, 'miscMap'));
       }
     }
   }
@@ -3791,8 +2491,6 @@ export class Mei2MsmMpmConverter {
     }
 
     this.convertElement(note, ctx);
-    this.checkSlurs(note, ctx);
-    this.processArtic(note, ctx);
 
     const date = this.getMidiTime(ctx);
     const s = new Element('note');
@@ -3879,18 +2577,7 @@ export class Mei2MsmMpmConverter {
   }
 
   /**
-   * Clear the per-movement accumulators. {@link makeMovement} calls it before it installs the
-   * new cursor, so a movement never inherits the previous one's accidentals, open spans or
-   * note index. {@link ppq}, {@link dontUseChannel10}, {@link movements} and
-   * {@link performances} survive: they belong to the conversion, not to a movement.
-   *
-   * {@link arpeggiosToSort} has to be cleared here. It is drained at the end of
-   * {@link makeMovement}, and an entry surviving into the next `mdiv` would carry a
-   * `note.order` attribute belonging to the previous movement's MPM while the note ids it
-   * names are looked up in an {@link allNotesAndChords} refilled from the new mdiv: every
-   * lookup misses, the sort produces an empty list, and the empty string is written over a
-   * finished movement's note order. No fixture can see it, each holding one `mdiv`, so the
-   * proof is `tests/mei/Mei2MsmMpmConverter.test.ts`'s "clears the parked arpeggios".
+   * Clear the per-movement deferred state, so a second `mdiv` starts from nothing.
    *
    * Two lines are belt-and-braces: `allNotesAndChords.clear()` is redundant, because
    * {@link indexNotesAndChords} clears the map before filling it, and `accid = []` cannot
@@ -3905,7 +2592,6 @@ export class Mei2MsmMpmConverter {
     this.endids = [];
     this.tstamp2s = [];
     this.lyrics = [];
-    this.arpeggiosToSort = [];
     this.allNotesAndChords.clear();
   }
 
@@ -4053,93 +2739,6 @@ export class Mei2MsmMpmConverter {
     if (layerId !== null) toThis.addAttribute(new Attribute('layer', layerId));
   }
 
-  public parseTempo(
-    tempo: Element,
-    msmPartContext: Element | null,
-    ctx: WalkContext,
-  ): UndatedTempo | null {
-    // determine numeric tempo if such a value is specified
-    let bpm: string | null = null;
-    const mm = tempo.getAttribute('mm');
-    if (mm !== null) bpm = mm.getValue();
-    else {
-      const midiBpm = tempo.getAttribute('midi.bpm');
-      if (midiBpm !== null) bpm = midiBpm.getValue();
-      else {
-        const midiMspb = tempo.getAttribute('midi.mspb');
-        if (midiMspb !== null) bpm = String(60000000.0 / parseFloat(midiMspb.getValue()));
-      }
-    }
-
-    const mmUnit = tempo.getAttribute('mm.unit');
-    let beatLength =
-      mmUnit !== null
-        ? duration2decimal(mmUnit.getValue())
-        : 1.0 / this.getCurrentTimeSignature(msmPartContext, ctx)[1];
-    const mmDots = tempo.getAttribute('mm.dots');
-    if (mmDots !== null) {
-      let dots = parseInt(mmDots.getValue());
-      for (let d = beatLength; dots > 0; --dots) {
-        d /= 2;
-        beatLength += d;
-      }
-    }
-
-    // process tempo descriptor
-    let transitionTo: string | undefined;
-    let descriptor = tempo.getValue();
-    if (descriptor === '') {
-      const label = tempo.getAttribute('label');
-      if (label !== null) descriptor = label.getValue();
-    }
-    if (descriptor !== '') {
-      if (
-        descriptor.includes('rit') ||
-        descriptor.includes('rall') ||
-        descriptor.includes('largando') ||
-        descriptor.includes('calando')
-      ) {
-        if (bpm === null) bpm = '?';
-        transitionTo = '-';
-      } else if (descriptor.includes('accel') || descriptor.includes('string')) {
-        if (bpm === null) bpm = '?';
-        transitionTo = '+';
-      } else {
-        // this instruction might be added to the global styleDef
-        let tempoStyle = globalHeader(ctx).getStyleDef(
-          Mpm.TEMPO_STYLE,
-          'MEI export',
-        ) as TempoStyle | null;
-        if (tempoStyle === null)
-          tempoStyle = globalHeader(ctx).addStyleDef(Mpm.TEMPO_STYLE, 'MEI export') as TempoStyle;
-
-        if (tempoStyle.getDef(descriptor) === undefined) {
-          const tempoDef =
-            bpm === null
-              ? TempoDef.createDefaultTempoDef(descriptor)
-              : TempoDef.fromNameValue(descriptor, parseFloat(bpm));
-          if (isOk(tempoDef)) tempoStyle.addDef(tempoDef.value);
-        }
-        bpm = descriptor;
-      }
-    }
-    if (bpm === null) {
-      console.error(
-        `Cannot process MEI element ${tempo.toXML()}. No text or any of the attributes 'mm', 'midi.bpm', 'midi.mspb', or 'label' is specified.`,
-      );
-      return null;
-    }
-
-    const id = attribute('id', tempo);
-
-    return {
-      bpm,
-      ...(transitionTo !== undefined && { transitionTo, meanTempoAt: 0.5 }),
-      beatLength,
-      ...(id !== null && { id: id.getValue() }),
-    };
-  }
-
   /**
    * The position of the first parked span whose `endid` is `id`, or `-1` — Java's contract.
    *
@@ -4184,69 +2783,6 @@ export class Mei2MsmMpmConverter {
           ),
         ),
       );
-    }
-  }
-
-  /**
-   * Mark note `e` with its slur state, reading the `slur` entries parked in the global and
-   * part-local `miscMap`s.
-   *
-   * The value written is `'im'` — "inside my slur", i.e. legato continues past this note —
-   * unless the note falls exactly on the slur's `date.end`, in which case it is `'t'` for
-   * terminal and the method returns immediately, so a terminating slur wins over any further
-   * slur that might also cover this note. Downstream, MPM's articulation rendering reads these
-   * to decide where legato stops.
-   *
-   * Global slurs are checked first and part-local ones second, and the part-local pass
-   * additionally filters by layer ({@link isSameLayer}) so a slur in one voice does not
-   * bind notes in another. Both passes walk backwards, so the most recently opened slur is
-   * considered first.
-   */
-  protected checkSlurs(e: Element, ctx: WalkContext): void {
-    let slurs = requireGlobalDatedMap(ctx, 'miscMap').getChildElements('slur');
-
-    for (let i = slurs.size() - 1; i >= 0; --i) {
-      if (
-        slurs.get(i).getAttributeValue('date') !== null &&
-        parseFloat(requireAttributeValue('date', slurs.get(i))) > this.getMidiTime(ctx)
-      )
-        continue;
-      if (slurs.get(i).getAttribute('date.end') !== null) {
-        const endDate = parseFloat(requireAttributeValue('date.end', slurs.get(i)));
-        if (endDate < this.getMidiTime(ctx)) continue;
-        if (endDate === this.getMidiTime(ctx)) {
-          e.addAttribute(new Attribute('slur', 't'));
-          Mei2MsmMpmConverter.addSlurId(slurs.get(i), e);
-          return;
-        }
-      }
-      e.addAttribute(new Attribute('slur', 'im'));
-      Mei2MsmMpmConverter.addSlurId(slurs.get(i), e);
-    }
-
-    if (ctx.part !== null) {
-      const layerId = Mei.getLayerId(Mei.getLayer(e));
-      slurs = requirePartDatedMap(ctx, 'miscMap').getChildElements('slur');
-
-      for (let i = slurs.size() - 1; i >= 0; --i) {
-        if (!Mei2MsmMpmConverter.isSameLayer(slurs.get(i), layerId)) continue;
-        if (
-          slurs.get(i).getAttributeValue('date') !== null &&
-          parseFloat(requireAttributeValue('date', slurs.get(i))) > this.getMidiTime(ctx)
-        )
-          continue;
-        if (slurs.get(i).getAttribute('date.end') !== null) {
-          const endDate = parseFloat(requireAttributeValue('date.end', slurs.get(i)));
-          if (endDate < this.getMidiTime(ctx)) continue;
-          if (endDate === this.getMidiTime(ctx)) {
-            e.addAttribute(new Attribute('slur', 't'));
-            Mei2MsmMpmConverter.addSlurId(slurs.get(i), e);
-            return;
-          }
-        }
-        e.addAttribute(new Attribute('slur', 'im'));
-        Mei2MsmMpmConverter.addSlurId(slurs.get(i), e);
-      }
     }
   }
 
@@ -4987,89 +3523,6 @@ export class Mei2MsmMpmConverter {
       }
     }
     return doomed;
-  }
-
-  public static mpmPostprocessing(mpms: Mpm[]): void {
-    for (const mpm of mpms) Mei2MsmMpmConverter.mpmPostprocessingSingle(mpm);
-  }
-
-  /**
-   * Finish the MPM's continuous maps once the whole movement is known.
-   *
-   * Continuous instructions — a crescendo, an accelerando — are written as a start value
-   * plus `transition.to`, and they need a *following* instruction to transition into. This
-   * pass supplies the missing one: for every entry with a `date.end`, if no later
-   * instruction already starts at or before that date, a synthetic instruction carrying the
-   * `transition.to` value is inserted there (as `volume` for dynamics, `bpm` for tempo).
-   * Without it the transition would have no endpoint and would extend to the end of the
-   * piece.
-   *
-   * It also drops the working attributes `endid`, `tstamp2` and `date.end` — the MPM
-   * counterpart of what {@link msmCleanupSingle} does for MSM, except that this one runs
-   * unconditionally rather than under the `cleanup` flag, because these attributes are not
-   * valid MPM.
-   */
-  public static mpmPostprocessingSingle(mpm: Mpm): void {
-    const maps: GenericMap[] = [];
-
-    for (let p = 0; p < mpm.size(); ++p) {
-      const perf = mpm.getPerformance(p);
-      if (perf === null) continue;
-
-      // collect all global and local dynamicsMaps and tempoMaps
-      let aMap = perf.getGlobal()?.getDated()?.getMap(Mpm.DYNAMICS_MAP) ?? null;
-      if (aMap !== null) maps.push(aMap);
-
-      aMap = perf.getGlobal()?.getDated()?.getMap(Mpm.TEMPO_MAP) ?? null;
-      if (aMap !== null) maps.push(aMap);
-
-      for (const part of perf.getAllParts()) {
-        aMap = part.getDated()?.getMap(Mpm.DYNAMICS_MAP) ?? null;
-        if (aMap !== null) maps.push(aMap);
-
-        aMap = part.getDated()?.getMap(Mpm.TEMPO_MAP) ?? null;
-        if (aMap !== null) maps.push(aMap);
-      }
-    }
-
-    for (const map of maps) {
-      for (let e = 0; e < map.size(); ++e) {
-        const d = mapElement(map, e);
-
-        const endid = d.getAttribute('endid');
-        if (endid !== null) d.removeAttribute(endid);
-
-        const tstamp2 = d.getAttribute('tstamp2');
-        if (tstamp2 !== null) d.removeAttribute(tstamp2);
-
-        const end = d.getAttribute('date.end');
-        if (end !== null) {
-          const endDate = parseFloat(end.getValue());
-          d.removeAttribute(end);
-          const next = map.getElement(e + 1);
-          if (next === null || parseFloat(requireAttributeValue('date', next)) > endDate) {
-            const t = d.getAttribute('transition.to');
-            if (t !== null) {
-              const elementType = d.getLocalName();
-              const endElement = new Element(elementType, Mpm.MPM_NAMESPACE);
-              endElement.addAttribute(new Attribute('date', String(endDate)));
-
-              switch (elementType) {
-                case 'dynamics':
-                  endElement.addAttribute(new Attribute('volume', t.getValue()));
-                  break;
-                case 'tempo':
-                  endElement.addAttribute(new Attribute('bpm', t.getValue()));
-                  break;
-                default:
-                  continue;
-              }
-              map.addElement(endElement);
-            }
-          }
-        }
-      }
-    }
   }
 
   /**

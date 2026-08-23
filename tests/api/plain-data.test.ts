@@ -9,7 +9,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { MessageChannel } from 'worker_threads';
 import {
-  convertMeiToMsmMpm,
+  convertMeiToMsm,
   extractPerformanceData,
   listPerformances,
   performMsm,
@@ -26,12 +26,8 @@ const allMaps = (name: string, ext: 'msm' | 'mpm') =>
 
 /** A movement with notes, sub-note dynamics and a movement (position) stream. */
 const movementInput = { msm: allMaps('movement', 'msm'), mpm: allMaps('movement', 'mpm') };
-const meiMovement = () =>
-  elementAt(
-    convertMeiToMsmMpm(mei('comprehensive'), { sourceName: 'x.mei' }),
-    0,
-    'the converted movement list',
-  );
+/** The Java reference's performance for that movement — the converter derives none. */
+const referenceMpm = readFileSync(join(FIXTURES, 'reference', 'comprehensive.mpm'), 'utf-8');
 
 /**
  * An MPM v3 document whose ornament generates notes, so the walks below visit the six
@@ -57,8 +53,8 @@ const ornamentedInput = {
  * value-equality comparison of two separate calls has to canonicalise those ids first.
  */
 const samples: { name: string; call: () => unknown; json: boolean; freshIds?: true }[] = [
-  { name: 'convertMeiToMsmMpm', call: () => convertMeiToMsmMpm(mei('simple_notes')), json: true },
-  { name: 'listPerformances', call: () => listPerformances(meiMovement().mpm), json: true },
+  { name: 'convertMeiToMsm', call: () => convertMeiToMsm(mei('simple_notes')), json: true },
+  { name: 'listPerformances', call: () => listPerformances(referenceMpm), json: true },
   { name: 'performMsm', call: () => performMsm(movementInput), json: true },
   { name: 'performMsmToData', call: () => performMsmToData(movementInput), json: true },
   {

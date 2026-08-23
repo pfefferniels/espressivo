@@ -67,21 +67,16 @@ describe('Cross-validation: TypeScript port vs Java reference', () => {
 
     describe(baseName, () => {
       let actualMsms: any[];
-      let actualMpms: any[];
 
       beforeAll(() => {
         const meiXml = readFileSync(join(MEI_DIR, meiFile), 'utf-8');
         const mei = Mei.fromXml(meiXml);
         mei.setFile(meiFile);
-        const converter = new Mei2MsmMpmConverter(720, true, false, true);
-        const result = converter.convert(mei);
-        actualMsms = result.key;
-        actualMpms = result.value;
+        actualMsms = new Mei2MsmMpmConverter(720, true, false, true).convert(mei);
       });
 
-      it('should produce 1 MSM and 1 MPM', () => {
+      it('should produce 1 MSM', () => {
         expect(actualMsms.length).toBe(1);
-        expect(actualMpms.length).toBe(1);
       });
 
       it('MSM output should match Java reference', () => {
@@ -89,13 +84,6 @@ describe('Cross-validation: TypeScript port vs Java reference', () => {
         const actualMsmXml = actualMsms[0].toXML();
 
         expect(normalizeXml(actualMsmXml)).toBe(normalizeXml(refMsm));
-      });
-
-      it('MPM output should match Java reference', () => {
-        const refMpm = readFileSync(join(REF_DIR, `${baseName}.mpm`), 'utf-8');
-        const actualMpmXml = actualMpms[0].toXML();
-
-        expect(normalizeXml(actualMpmXml)).toBe(normalizeXml(refMpm));
       });
     });
   }

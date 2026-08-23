@@ -34,7 +34,14 @@ import {
   PerformanceNotFoundError,
 } from './errors.js';
 import { parseOrThrow, requireXmlText, type DocumentKind } from './parse.js';
-import { accepted, allOf, orInvalidOption, rejected, type Checked } from './validate.js';
+import {
+  accepted,
+  allOf,
+  describeValue,
+  orInvalidOption,
+  rejected,
+  type Checked,
+} from './validate.js';
 import type {
   ControlChangePoint,
   ControlChangeStream,
@@ -48,7 +55,7 @@ import type {
   PerformedPart,
   XmlText,
 } from './types.js';
-import { groupBy, zipWith } from '../prelude/seq.js';
+import { groupBy } from '../prelude/seq.js';
 
 /** The library version. It is serialization-visible — the converter writes it into MPM metadata. */
 export { VERSION } from '../version.js';
@@ -110,14 +117,20 @@ function checkConvertOptions(options: ConvertOptions | undefined): Checked {
     options.ppq === undefined || (Number.isInteger(options.ppq) && options.ppq > 0)
       ? accepted
       : rejected(`ppq must be a positive integer, got ${String(options.ppq)}`),
-    options.sourceName === undefined || options.sourceName.trim() !== ''
-      ? accepted
-      : rejected('sourceName must be a non-empty name; omit it for the file-less variant'),
-    // Checked rather than coerced, for the same reason as the render-side flag next door: a
-    // falsy-but-not-false value from an untyped caller would read as "expand" and silently
-    // author ornaments the caller meant to suppress.
-    checkOrnamentFlag(options.expandOrnaments),
+    checkSourceName(options.sourceName),
   );
+}
+
+/** A non-blank label. Absent and blank are different answers; only the second is a mistake. */
+function checkSourceName(sourceName: string | undefined): Checked {
+  if (sourceName === undefined) return accepted;
+  // `.trim()` is a member read, so being a string is this check's readability row (RULE E4).
+  // `setFile` writes the value into the document, so nothing downstream re-establishes it.
+  if (typeof sourceName !== 'string')
+    return rejected(`sourceName must be a string, got ${describeValue(sourceName)}`);
+  return sourceName.trim() !== ''
+    ? accepted
+    : rejected('sourceName must be a non-empty name; omit it for the file-less variant');
 }
 
 function checkPerformOptions(options: PerformOptions | undefined): Checked {
@@ -133,13 +146,14 @@ function checkPerformOptions(options: PerformOptions | undefined): Checked {
           `movementSampleMaxStep must be a positive finite number, got ${String(options.movementSampleMaxStep)}` +
             ' — the movement subdivision compares against it and never terminates at zero',
         ),
-    // Checked rather than coerced: `expandOrnaments: 0` from an untyped caller would otherwise
-    // read as "expand", the opposite of what was meant, and silently render the ornaments.
+    // Checked rather than coerced: the flag reaches `OrnamentationMap` through `??`, so a
+    // truthy non-boolean from an untyped caller ('false', 'no') expands what was meant to be
+    // suppressed.
     checkOrnamentFlag(options.expandOrnaments),
   );
 }
 
-/** The one rule both option surfaces share, and the reason they can now share its spelling. */
+/** Anti-coercion for the render-side ornament flag; see RULE E4's named exceptions. */
 function checkOrnamentFlag(expandOrnaments: boolean | undefined): Checked {
   return expandOrnaments === undefined || typeof expandOrnaments === 'boolean'
     ? accepted
@@ -416,59 +430,40 @@ function readPerformanceData(msm: Msm): PerformanceData {
 // ---------------------------------------------------------------------------
 
 /**
- * MEI ⇒ one MSM + MPM pair per `mdiv`, index-aligned.
+ * MEI ⇒ one MSM per `mdiv`, in the converter's movement order.
+ *
+ * The performance is not derived here: espressivo applies an MPM that comes from outside, and
+ * a score's own markings are not one. See PARITY.md §9.
  *
  * @throws {ParseError} the text is not a well-formed `<mei>` document
  * @throws {EmptyDocumentError} the MEI holds no convertible movement
  * @throws {InvalidOptionError} `ppq` is not a positive integer, or `sourceName` is blank
  */
-export function convertMeiToMsmMpm(
+export function convertMeiToMsm(
   mei: XmlText,
   options?: ConvertOptions,
 ): readonly MovementDocuments[] {
   orInvalidOption(checkConvertOptions(options));
 
   const document = parseMei(mei);
-  // `sourceName` is the file name the class API would have derived from a path: it drives the
-  // converter's `getFile() !== null` branch, and with it BOTH the MPM metadata's
-  // `RelatedResource` URI and the generated `<comment>` text (§8.4). Setting it is what makes
-  // facade output byte-identical to the classic path for the same source name.
+  // `sourceName` is the file name the class API would have derived from a path. An MEI with no
+  // `<title>` titles its movement from it, so it reaches `<msm title>` and is output-visible.
   if (options?.sourceName !== undefined) document.setFile(options.sourceName);
 
-  const converter = new Mei2MsmMpmConverter(
+  const msms = new Mei2MsmMpmConverter(
     options?.ppq ?? 720,
     options?.dontUseChannel10 ?? true,
     options?.ignoreExpansions ?? false,
     options?.cleanup ?? true,
-    // Defaulted to true HERE and to false in the converter, deliberately. The facade is this
-    // library's product surface and mirrors PR #32's CLI, where expansion is on unless
-    // `--ignore-ornaments` says otherwise; the converter's own default keeps the direct
-    // `new Mei2MsmMpmConverter(…).convert(…)` path — the one the MEI equivalence suites drive,
-    // and the one Java's converter corresponds to — free of MPM the Java reference never wrote.
-    options?.expandOrnaments ?? true,
-  );
-  const converted = converter.convert(document);
-  const msms = converted.key;
-  const mpms = converted.value;
+  ).convert(document);
 
   if (msms.length === 0)
     throw new EmptyDocumentError('MEI: no convertible movement (mdiv) in this document');
 
-  // Index alignment is the converter's contract, one pair per mdiv. It can only break if the
-  // interior logged a failure and skipped a movement half-way, which would make every index
-  // after it wrong — better a typed error than silently mismatched pairs.
-  if (msms.length !== mpms.length)
-    throw new EmptyDocumentError(
-      `MEI: the conversion produced ${msms.length} MSM(s) but ${mpms.length} MPM(s); see the log for the movement it failed on`,
-    );
-
-  // `zipWith` rather than `map` plus `mpms[index]`: what makes that index safe is the
-  // equal-length check three statements up, which a type cannot follow.
-  return zipWith(msms, mpms, (msm, mpm, index) => ({
+  return msms.map((msm, index) => ({
     index,
     title: msm.getTitle(),
     msm: serialize(msm, 'MSM'),
-    mpm: serialize(mpm, 'MPM'),
   }));
 }
 

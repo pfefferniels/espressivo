@@ -20,7 +20,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import {
   canonicalMpm,
-  convertMeiToMsmMpm,
+  convertMeiToMsm,
   exaggerateMpm,
   listPerformances,
   performMsm,
@@ -85,15 +85,12 @@ describe('UTF-8 BOM tolerance at the facade', () => {
   });
 
   describe('MEI', () => {
-    it('convertMeiToMsmMpm produces identical MSM and MPM', () => {
-      const canonicalise = (documents: readonly { msm: XmlText; mpm: XmlText }[]) =>
-        documents.map((movement) => ({
-          msm: canonicaliseGeneratedIds(movement.msm),
-          mpm: canonicaliseGeneratedIds(movement.mpm),
-        }));
+    it('convertMeiToMsm produces an identical MSM', () => {
+      const canonicalise = (documents: readonly { msm: XmlText }[]) =>
+        documents.map((movement) => ({ msm: canonicaliseGeneratedIds(movement.msm) }));
 
-      expect(canonicalise(convertMeiToMsmMpm(withBom(SIMPLE_MEI)))).toEqual(
-        canonicalise(convertMeiToMsmMpm(SIMPLE_MEI)),
+      expect(canonicalise(convertMeiToMsm(withBom(SIMPLE_MEI)))).toEqual(
+        canonicalise(convertMeiToMsm(SIMPLE_MEI)),
       );
     });
   });

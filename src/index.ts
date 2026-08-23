@@ -50,7 +50,7 @@ import { VERSION } from './version.js';
 // and two star exports of one name are ambiguous. `src/api/index.ts` is the one-import
 // entry point for consumers who only want the facade.
 export {
-  convertMeiToMsmMpm,
+  convertMeiToMsm,
   listPerformances,
   performMsm,
   extractPerformanceData,

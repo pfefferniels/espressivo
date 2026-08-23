@@ -53,20 +53,9 @@ function score(sections: string): string {
 
 /** convert `xml`, returning the single MSM's root element */
 function convertToMsm(xml: string, cleanup = true): Element {
-  const result = new Mei2MsmMpmConverter(720, true, false, cleanup).convert(Mei.fromXml(xml));
-  const msms = result.key;
+  const msms = new Mei2MsmMpmConverter(720, true, false, cleanup).convert(Mei.fromXml(xml));
   expect(msms.length).toBe(1);
   const root = msms[0]?.getRootElement();
-  expect(root).not.toBeNull();
-  return root as Element;
-}
-
-/** convert `xml`, returning the single MPM's root element */
-function convertToMpm(xml: string): Element {
-  const result = new Mei2MsmMpmConverter(720, true, false, true).convert(Mei.fromXml(xml));
-  const mpms = result.value;
-  expect(mpms.length).toBe(1);
-  const root = mpms[0]?.getRootElement();
   expect(root).not.toBeNull();
   return root as Element;
 }
@@ -286,15 +275,9 @@ function rootOf(document: { getRootElement(): Element | null }): Element {
 }
 
 /** convert a multi-movement document; `cleanup` defaults to *off* so working state is visible */
-function convertMovements(
-  xml: string,
-  cleanup = false,
-  ppq = 720,
-): { msm: Element[]; mpm: Element[] } {
-  const result = new Mei2MsmMpmConverter(ppq, true, false, cleanup).convert(Mei.fromXml(xml));
+function convertMovements(xml: string, cleanup = false, ppq = 720): { msm: Element[] } {
   return {
-    msm: result.key.map(rootOf),
-    mpm: result.value.map(rootOf),
+    msm: new Mei2MsmMpmConverter(ppq, true, false, cleanup).convert(Mei.fromXml(xml)).map(rootOf),
   };
 }
 
@@ -306,13 +289,12 @@ function measure(n: number, noteId: string, pname: string, extra = ''): string {
 }
 
 describe('Mei2MsmMpmConverter – what reset() clears between two mdivs', () => {
-  it('gives each mdiv its own MSM and MPM, in document order', () => {
-    const { msm, mpm } = convertMovements(
+  it('gives each mdiv its own MSM, in document order', () => {
+    const { msm } = convertMovements(
       twoMovements(measure(1, 'm1n1', 'c'), measure(1, 'm2n1', 'e')),
     );
 
     expect(msm.length).toBe(2);
-    expect(mpm.length).toBe(2);
     // the title is the work title plus the mdiv's `n`, so it names which movement is which
     expect(elementAt(msm, 0, 'the converted movements').getAttributeValue('title')).toBe(
       'Oracle - 1',
@@ -356,148 +338,25 @@ describe('Mei2MsmMpmConverter – what reset() clears between two mdivs', () => 
     expect(messages(elementAt(msm, 1, 'the converted movements'))).toEqual(['ending0']);
   });
 
-  // control: drop `this.allNotesAndChords.clear()` from reset()
-  it('clears the note index, so a startid cannot reach into the previous movement', () => {
-    const { mpm } = convertMovements(
-      twoMovements(
-        // `m1n2` is the second quarter of movement 1, i.e. at date 720
-        `<measure n="1"><staff n="1"><layer n="1">
-           <note xml:id="m1n1" pname="c" oct="4" dur="4"/>
-           <note xml:id="m1n2" pname="d" oct="4" dur="4"/>
-         </layer></staff></measure>`,
-        measure(1, 'm2n1', 'e', '<dynam xml:id="m2dyn" startid="#m1n2">f</dynam>'),
-      ),
-    );
-
-    const dynamics = descendants(elementAt(mpm, 1, 'the converted performances'), 'dynamics');
-    expect(dynamics.length).toBe(1);
-    // the reference resolves to nothing, so the dynamic falls back to the current date — 0.
-    // A leaked index would find `m1n2`, whose `date` attribute movement 1 wrote as 720.
-    expect(elementAt(dynamics, 0, 'the second movement dynamics').getAttributeValue('date')).toBe(
-      '0',
-    );
-  });
-
   // control: drop `this.endids = []` from reset()
   it('drops unresolved endids, so a span cannot be closed by the next movement', () => {
     const { msm } = convertMovements(
       twoMovements(
-        measure(1, 'm1n1', 'c', '<slur xml:id="m1slur" startid="#m1n1" endid="#m2n1"/>'),
+        measure(1, 'm1n1', 'c', '<pedal xml:id="m1ped" dir="down" endid="#m2n1"/>'),
         measure(1, 'm2n1', 'e'),
       ),
     );
 
-    // the parked MSM entry stays in movement 1's global miscMap, still naming its endid…
-    const slurs = descendants(elementAt(msm, 0, 'the converted movements'), 'slur');
-    expect(slurs.length).toBe(1);
-    const slur = elementAt(slurs, 0, "movement 1's slurs");
+    // the parked MSM entry stays in movement 1's global pedalMap, still naming its endid…
+    const pedals = descendants(elementAt(msm, 0, 'the converted movements'), 'pedal');
+    expect(pedals.length).toBe(1);
+    const slur = elementAt(pedals, 0, "movement 1's pedals");
     expect(slur.getAttributeValue('endid')).toBe('#m2n1');
     // …and never gains a `date.end`, which is what `checkEndid` would write had the parked
     // entry survived into the walk that meets `m2n1`
     expect(slur.getAttributeValue('date.end')).toBeNull();
     // nor does the span leak the other way, into the movement that holds the target
     expect(descendants(elementAt(msm, 1, 'the converted movements'), 'slur').length).toBe(0);
-  });
-
-  // control: drop `this.tstamp2s = []` from reset()
-  it('drops unresolved tstamp2s, so a later movement cannot count one down', () => {
-    /** one 4/4 measure holding a whole note */
-    const wholeNote = (n: number, id: string, pname: string, extra = ''): string =>
-      `<measure n="${n}"><staff n="1"><layer n="1">
-         <note xml:id="${id}" pname="${pname}" oct="4" dur="1"/>
-       </layer></staff>${extra}</measure>`;
-
-    // `3m+1` means "three measures on, beat one", and movement 1 has no three more measures,
-    // so the entry is still parked when the movement ends. Movement 2 has four.
-    const { mpm } = convertMovements(`<?xml version="1.0" encoding="UTF-8"?>
-<mei xmlns="http://www.music-encoding.org/ns/mei">
-  <meiHead><fileDesc><titleStmt><title>Oracle</title></titleStmt><pubStmt/></fileDesc></meiHead>
-  <music><body>
-    <mdiv n="1" xml:id="mdivOne"><score>
-      <scoreDef meter.count="4" meter.unit="4"><staffGrp><staffDef n="1" lines="5"/></staffGrp></scoreDef>
-      <section>${wholeNote(1, 'm1n1', 'c', '<hairpin xml:id="m1hp" form="cres" tstamp="1" tstamp2="3m+1"/>')}</section>
-    </score></mdiv>
-    <mdiv n="2" xml:id="mdivTwo"><score>
-      <scoreDef meter.count="4" meter.unit="4"><staffGrp><staffDef n="1" lines="5"/></staffGrp></scoreDef>
-      <section>${wholeNote(1, 'm2n1', 'd')}${wholeNote(2, 'm2n2', 'e')}${wholeNote(3, 'm2n3', 'f')}${wholeNote(4, 'm2n4', 'g')}</section>
-    </score></mdiv>
-  </body></music>
-</mei>`);
-
-    // the hairpin's own entry, and nothing else: a leaked `tstamp2s` list makes movement 2's
-    // third measure resolve movement 1's parked span and append a second `<dynamics>` — at a
-    // date measured in movement 2's ticks — to a performance that was finished
-    const dynamics = descendants(elementAt(mpm, 0, 'the converted performances'), 'dynamics');
-    expect(dynamics.length).toBe(1);
-    expect(elementAt(dynamics, 0, "movement 1's dynamics").getAttributeValue('xml:id')).toBe(
-      'm1hp',
-    );
-    expect(descendants(elementAt(mpm, 1, 'the converted performances'), 'dynamics').length).toBe(0);
-  });
-
-  // control: drop `this.currentWork = null` from reset()
-  it('forgets the work element, so its fallback tempo reaches only its own movement', () => {
-    // Two works, so the single-work shortcut in `makeMovement` cannot fire: movement 1 claims
-    // `w1` by `@decls`, movement 2 matches neither by `@decls` nor by `@n` and must end up
-    // with no work at all. `currentWork` is assigned *conditionally*, so only `reset()`
-    // standing between the two movements stops movement 1's work from serving movement 2.
-    const { mpm } = convertMovements(`<?xml version="1.0" encoding="UTF-8"?>
-<mei xmlns="http://www.music-encoding.org/ns/mei">
-  <meiHead><fileDesc><titleStmt><title>Oracle</title></titleStmt><pubStmt/></fileDesc>
-    <workList>
-      <work xml:id="w1"><title>One</title><tempo>Allegro 120</tempo></work>
-      <work xml:id="w2"><title>Two</title></work>
-    </workList>
-  </meiHead>
-  <music><body>
-    <mdiv n="1" decls="#w1" xml:id="mdivOne"><score>
-      <scoreDef><staffGrp><staffDef n="1" lines="5"/></staffGrp></scoreDef>
-      <section>${measure(1, 'm1n1', 'c')}</section>
-    </score></mdiv>
-    <mdiv n="9" xml:id="mdivTwo"><score>
-      <scoreDef><staffGrp><staffDef n="1" lines="5"/></staffGrp></scoreDef>
-      <section>${measure(1, 'm2n1', 'e')}</section>
-    </score></mdiv>
-  </body></music>
-</mei>`);
-
-    // the movement that claimed the work gets the fallback tempo at date 0…
-    const tempi = descendants(elementAt(mpm, 0, 'the converted performances'), 'tempo');
-    expect(tempi.length).toBe(1);
-    expect(elementAt(tempi, 0, "movement 1's tempi").getAttributeValue('bpm')).toBe('Allegro 120');
-    // …and the movement that claimed none gets no tempoMap at all
-    expect(descendants(elementAt(mpm, 1, 'the converted performances'), 'tempo').length).toBe(0);
-  });
-
-  /**
-   * The one field `reset()` was missing, and the only test in this file that failed when it
-   * was written. `arpeggiosToSort` parks a live `note.order` attribute of the MPM ornament
-   * it belongs to, and `makeMovement` drains the list after the walk without emptying it —
-   * so without the clear, movement 2's drain re-sorts movement 1's ornament against movement
-   * 2's (freshly cleared) note index, finds none of the ids, and writes the empty string
-   * over it.
-   */
-  it('clears the parked arpeggios, so the previous movement keeps its note order', () => {
-    const { mpm } = convertMovements(
-      twoMovements(
-        `<measure n="1"><staff n="1"><layer n="1">
-           <chord xml:id="m1c1" dur="4">
-             <note xml:id="m1n1" pname="c" oct="4"/>
-             <note xml:id="m1n2" pname="g" oct="4"/>
-             <note xml:id="m1n3" pname="e" oct="4"/>
-           </chord>
-         </layer></staff>
-         <arpeg xml:id="m1arp" plist="#m1n1 #m1n2 #m1n3" order="up"/></measure>`,
-        measure(1, 'm2n1', 'f'),
-      ),
-    );
-
-    const ornaments = descendants(elementAt(mpm, 0, 'the converted performances'), 'ornament');
-    expect(ornaments.length).toBe(1);
-    // ascending pitch: c4 (60), e4 (64), g4 (67) — the order the chord does *not* spell
-    expect(elementAt(ornaments, 0, "movement 1's ornaments").getAttributeValue('note.order')).toBe(
-      '#m1n1 #m1n3 #m1n2',
-    );
   });
 
   // control: move the `computeMinimalPPQ` raise in `convertMei` inside the per-mdiv loop
@@ -534,9 +393,9 @@ describe('Mei2MsmMpmConverter – the meiHead work a movement claims', () => {
    * `4 * ppq / denominator`, so the work's `unit` moves a control event's date.
    */
   it('supplies the time signature when neither the part nor the score states one', () => {
-    /** the MPM date of the one `<dynamics>` entry, for a document whose work carries `meter` */
-    const dynamicsDate = (meter: string): string | null => {
-      const result = new Mei2MsmMpmConverter(720, true, false, false).convert(
+    /** the MSM date of the one `<pedal>` entry, for a document whose work carries `meter` */
+    const pedalDate = (meter: string): string | null => {
+      const msms = new Mei2MsmMpmConverter(720, true, false, false).convert(
         Mei.fromXml(`<?xml version="1.0" encoding="UTF-8"?>
 <mei xmlns="http://www.music-encoding.org/ns/mei">
   <meiHead><fileDesc><titleStmt><title>Oracle</title></titleStmt><pubStmt/></fileDesc>
@@ -547,22 +406,22 @@ describe('Mei2MsmMpmConverter – the meiHead work a movement claims', () => {
     <section>
       <measure n="1">
         <staff n="1"><layer n="1"><note xml:id="n1" pname="c" oct="4" dur="1"/></layer></staff>
-        <dynam xml:id="d1" tstamp="3">f</dynam>
+        <pedal xml:id="p1" tstamp="3" dir="down"/>
       </measure>
     </section>
   </score></mdiv></body></music>
 </mei>`),
       );
-      const mpm = rootOf(elementAt(result.value, 0, 'the converted performances'));
-      const dynamics = descendants(mpm, 'dynamics');
-      expect(dynamics.length).toBe(1);
-      return elementAt(dynamics, 0, 'the dynamics entries').getAttributeValue('date');
+      const msm = rootOf(elementAt(msms, 0, 'the converted movements'));
+      const pedals = descendants(msm, 'pedal');
+      expect(pedals.length).toBe(1);
+      return elementAt(pedals, 0, 'the pedal entries').getAttributeValue('date');
     };
 
     // beat 3 of a half-note beat: (3 - 1) * 4 * 720 / 2
-    expect(dynamicsDate('<meter count="3" unit="2"/>')).toBe('2880');
+    expect(pedalDate('<meter count="3" unit="2"/>')).toBe('2880');
     // …and 4/4 is the default the same document falls back to with no work meter at all
-    expect(dynamicsDate('')).toBe('1440');
+    expect(pedalDate('')).toBe('1440');
   });
 });
 
@@ -725,48 +584,3 @@ describe('Mei2MsmMpmConverter – processChoice picks one editorial reading', ()
  * These tests pin the behaviour as it is, so that correcting it is a deliberate act with a
  * red test attached rather than a silent byte change. See PARITY.md, "Known divergences".
  */
-describe('Mei2MsmMpmConverter – the work-level tempo style switch (Java divergence)', () => {
-  /** an MEI whose only tempo is the work-level one, so `finishMdiv`'s seeding branch runs */
-  function workTempo(descriptor: string): string {
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<mei xmlns="http://www.music-encoding.org/ns/mei">
-  <meiHead>
-    <fileDesc><titleStmt><title>Oracle</title></titleStmt><pubStmt/></fileDesc>
-    <workList><work><title>Oracle</title><tempo>${descriptor}</tempo></work></workList>
-  </meiHead>
-  <music><body><mdiv><score>
-    <scoreDef><staffGrp><staffDef n="1" lines="5"/></staffGrp></scoreDef>
-    <section>
-      <measure n="1"><staff n="1"><layer n="1"><note pname="c" oct="4" dur="4"/></layer></staff></measure>
-    </section>
-  </score></mdiv></body></music>
-</mei>`;
-  }
-
-  /** the `name.ref`s of every style switch in the MPM, and whether a tempoStyles def exists */
-  function styleSwitches(mpm: Element): {
-    readonly refs: string[];
-    readonly hasTempoStyles: boolean;
-  } {
-    return {
-      refs: descendants(mpm, 'style').map((s) => s.getAttributeValue('name.ref') ?? ''),
-      hasTempoStyles: descendants(mpm, 'tempoStyles').length > 0,
-    };
-  }
-
-  it('a named tempo defines the style and switches to it — where Java and this port agree', () => {
-    const { refs, hasTempoStyles } = styleSwitches(convertToMpm(workTempo('Allegro')));
-    expect(hasTempoStyles).toBe(true);
-    expect(refs).toContain('MEI export');
-  });
-
-  it.each(['ritardando', 'accelerando', 'calando'])(
-    'a directional tempo (%s) still emits the switch, with nothing for it to refer to',
-    (descriptor) => {
-      const { refs, hasTempoStyles } = styleSwitches(convertToMpm(workTempo(descriptor)));
-      // This is the divergence: Java writes no <style> here, because no tempoStyles exists.
-      expect(hasTempoStyles).toBe(false);
-      expect(refs).toContain('MEI export');
-    },
-  );
-});

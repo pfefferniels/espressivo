@@ -2,19 +2,17 @@
  * Full XML equivalence: the complete augmented MSM output — all elements, all attributes,
  * all maps — compared against the Java reference.
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { Mei } from '../../src/mei/Mei.js';
-import { Mei2MsmMpmConverter } from '../../src/mei/Mei2MsmMpmConverter.js';
 import { Msm } from '../../src/msm/Msm.js';
 import { Mpm } from '../../src/mpm/Mpm.js';
-import { Performance } from '../../src/mpm/elements/Performance.js';
 
 const __dirname2 = dirname(fileURLToPath(import.meta.url));
 const MEI_DIR = join(__dirname2, 'fixtures', 'mei');
 const PERF_REF_DIR = join(__dirname2, 'fixtures', 'performance-reference');
+const REF_DIR = join(__dirname2, 'fixtures', 'reference');
 
 interface ParsedAttr {
   name: string;
@@ -210,13 +208,8 @@ function canonicalizeUuids(xml: string): string {
 }
 
 function runFullComparison(fixture: string): { diffs: string[]; tsXml: string; refXml: string } {
-  const meiXml = readFileSync(join(MEI_DIR, `${fixture}.mei`), 'utf-8');
-  const mei = Mei.fromXml(meiXml);
-  mei.setFile(`${fixture}.mei`);
-  const converter = new Mei2MsmMpmConverter(720, true, false, true);
-  const result = converter.convert(mei);
-  const msm = result.key[0];
-  const mpm = result.value[0];
+  const msm = new Msm(readFileSync(join(REF_DIR, `${fixture}.msm`), 'utf-8'));
+  const mpm = new Mpm(readFileSync(join(REF_DIR, `${fixture}.mpm`), 'utf-8'));
   const performance = mpm.getAllPerformances()[0];
 
   const augmented = performance.perform(msm);
@@ -277,13 +270,8 @@ describe('Attribute-level coverage audit', () => {
       const refPath = join(PERF_REF_DIR, `${fixture}_augmented.msm`);
       expect(existsSync(refPath), `missing Java reference for ${fixture}`).toBe(true);
 
-      const meiXml = readFileSync(join(MEI_DIR, `${fixture}.mei`), 'utf-8');
-      const mei = Mei.fromXml(meiXml);
-      mei.setFile(`${fixture}.mei`);
-      const converter = new Mei2MsmMpmConverter(720, true, false, true);
-      const result = converter.convert(mei);
-      const msm = result.key[0];
-      const mpm = result.value[0];
+      const msm = new Msm(readFileSync(join(REF_DIR, `${fixture}.msm`), 'utf-8'));
+      const mpm = new Mpm(readFileSync(join(REF_DIR, `${fixture}.mpm`), 'utf-8'));
       const perf = mpm.getAllPerformances()[0];
 
       const augmented = perf.perform(msm);
@@ -319,13 +307,8 @@ describe('Attribute-level coverage audit', () => {
       const refXml = readFileSync(refPath, 'utf-8');
       if (!refXml.includes('channelVolumeMap')) continue;
 
-      const meiXml = readFileSync(join(MEI_DIR, `${fixture}.mei`), 'utf-8');
-      const mei = Mei.fromXml(meiXml);
-      mei.setFile(`${fixture}.mei`);
-      const converter = new Mei2MsmMpmConverter(720, true, false, true);
-      const result = converter.convert(mei);
-      const msm = result.key[0];
-      const mpm = result.value[0];
+      const msm = new Msm(readFileSync(join(REF_DIR, `${fixture}.msm`), 'utf-8'));
+      const mpm = new Mpm(readFileSync(join(REF_DIR, `${fixture}.mpm`), 'utf-8'));
       const perf = mpm.getAllPerformances()[0];
 
       const augmented = perf.perform(msm);
@@ -339,13 +322,8 @@ describe('Attribute-level coverage audit', () => {
       const refPath = join(PERF_REF_DIR, `${fixture}_augmented.msm`);
       expect(existsSync(refPath), `missing Java reference for ${fixture}`).toBe(true);
 
-      const meiXml = readFileSync(join(MEI_DIR, `${fixture}.mei`), 'utf-8');
-      const mei = Mei.fromXml(meiXml);
-      mei.setFile(`${fixture}.mei`);
-      const converter = new Mei2MsmMpmConverter(720, true, false, true);
-      const result = converter.convert(mei);
-      const msm = result.key[0];
-      const mpm = result.value[0];
+      const msm = new Msm(readFileSync(join(REF_DIR, `${fixture}.msm`), 'utf-8'));
+      const mpm = new Mpm(readFileSync(join(REF_DIR, `${fixture}.mpm`), 'utf-8'));
       const perf = mpm.getAllPerformances()[0];
 
       const augmented = perf.perform(msm);

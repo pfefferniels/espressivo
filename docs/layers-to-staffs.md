@@ -7,6 +7,12 @@
 > from that. The construction, the two upstream behaviours reproduced, and the one deliberate
 > hardening are in [PARITY.md §8](../PARITY.md).
 >
+> **The equivalence suite for this pass no longer exists.** What it compared was the MPM a
+> conversion derived alongside the MSM, and [PARITY.md §9](../PARITY.md) removed that half of
+> the converter; the 32 generated files went with it. The method, its return value and §8's
+> rulings all stand — the byte gate under them does not. §9.4 records the loss, and §8 says
+> what regenerating would take.
+>
 > Back to the [README](../README.md).
 
 MEI keeps the voices of a keyboard or divisi staff as sibling `<layer>` elements inside one
@@ -21,7 +27,7 @@ import { Mei, Mei2MsmMpmConverter } from 'espressivo';
 const mei = Mei.fromXml(readFileSync('piano.mei', 'utf8'));
 const [provenance] = mei.layersToStaffs(); // staff 1 / layers 1,2  ->  staffs 11, 12
 
-const [msm] = new Mei2MsmMpmConverter(720, true, false, true).convert(mei).getKey();
+const [msm] = new Mei2MsmMpmConverter(720, true, false, true).convert(mei);
 // two parts now, numbered 11 and 12, on MIDI channels 0 and 1
 
 provenance.get('11'); // { origStaff: '1', origLayer: '1' }

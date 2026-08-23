@@ -11,7 +11,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import {
   VERSION,
-  convertMeiToMsmMpm,
+  convertMeiToMsm,
   extractPerformanceData,
   listPerformances,
   performMsm,
@@ -36,6 +36,14 @@ const augmented = (name: string) =>
   readFileSync(join(FIXTURES, 'performance-reference', `${name}_augmented.msm`), 'utf-8');
 const allMaps = (name: string, ext: 'msm' | 'mpm') =>
   readFileSync(join(FIXTURES, 'all-maps-reference', `${name}.${ext}`), 'utf-8');
+/**
+ * A fixture's score and the performance to apply to it. The MSM is converted here; the MPM is
+ * the Java reference's, because the converter derives none (PARITY.md §9).
+ */
+const scored = (name: string) => ({
+  msm: movementAt(convertMeiToMsm(mei(name), { sourceName: `${name}.mei` })).msm,
+  mpm: readFileSync(join(FIXTURES, 'reference', `${name}.mpm`), 'utf-8'),
+});
 
 /**
  * The spec-derived MPM v3 documents, read where they live. They are the integration suite's
@@ -86,7 +94,7 @@ const ONE_NOTE =
 
 /**
  * The movement at `index` of a conversion, checked. Written as
- * `convertMeiToMsmMpm(...)[0].msm`, a conversion that returned nothing fails as "cannot read
+ * `convertMeiToMsm(...)[0].msm`, a conversion that returned nothing fails as "cannot read
  * properties of undefined" inside whichever assertion touches it first; this fails at the read,
  * saying how many movements there actually were.
  */
@@ -97,91 +105,80 @@ const movementAt = (movements: readonly MovementDocuments[], index = 0): Movemen
 const partAt = (data: PerformanceData, index = 0) =>
   elementAt(data.parts, index, 'the performance’s part list');
 
-describe('facade: convertMeiToMsmMpm', () => {
-  it('returns one index-aligned MSM+MPM pair per mdiv, as text', () => {
-    const movements = convertMeiToMsmMpm(mei('simple_notes'));
+describe('facade: convertMeiToMsm', () => {
+  it('returns one MSM per mdiv, as text', () => {
+    const movements = convertMeiToMsm(mei('simple_notes'));
 
     expect(movements).toHaveLength(1);
     const only = movementAt(movements);
     expect(only.index).toBe(0);
     expect(only.title).toBe('Simple Notes Test');
     expect(only.msm.startsWith('<msm ')).toBe(true);
-    expect(only.mpm.startsWith('<mpm ')).toBe(true);
+    expect(only).not.toHaveProperty('mpm');
   });
 
   it('serializes without an XML declaration (RULE F2a)', () => {
     // The declaration-free form is what the equivalence fixtures are compared as; the two
     // other spellings in the tree (`Document.toXML`, the Java fixtures) both add one.
-    const only = movementAt(convertMeiToMsmMpm(mei('simple_notes')));
+    const only = scored('simple_notes');
     expect(only.msm).not.toContain('<?xml');
-    expect(only.mpm).not.toContain('<?xml');
   });
 
   it('honours ppq as a floor', () => {
-    expect(movementAt(convertMeiToMsmMpm(mei('simple_notes'), { ppq: 480 })).msm).toContain(
+    expect(movementAt(convertMeiToMsm(mei('simple_notes'), { ppq: 480 })).msm).toContain(
       'pulsesPerQuarter="480"',
     );
     // …but raises it where the source needs a finer grid than the floor allows.
-    expect(movementAt(convertMeiToMsmMpm(mei('tuplets'), { ppq: 1 })).msm).not.toContain(
+    expect(movementAt(convertMeiToMsm(mei('tuplets'), { ppq: 1 })).msm).not.toContain(
       'pulsesPerQuarter="1"',
     );
   });
 
-  it('sets both the relatedResource URI and the comment text from sourceName (§8.4)', () => {
-    const withName = movementAt(
-      convertMeiToMsmMpm(mei('dynamics'), { sourceName: 'dynamics.mei' }),
-    ).mpm;
-    expect(withName).toContain('uri="dynamics.mei"');
-    expect(withName).toContain('uri="dynamics.msm"');
-    expect(withName).toContain("generated from 'dynamics.mei' using the meico MEI converter");
-
-    const withoutName = movementAt(convertMeiToMsmMpm(mei('dynamics'))).mpm;
-    expect(withoutName).not.toContain('uri=');
-    expect(withoutName).toContain('generated from MEI code using the meico MEI converter');
+  it('titles a movement from sourceName when the MEI carries no title', () => {
+    // `Mei.getTitle` falls back to the file name, and `makeMovement` writes it to `<msm title>`,
+    // which is the whole of what `sourceName` still reaches.
+    const untitled = mei('dynamics').replace(/<title[^>]*>[^<]*<\/title>|<title\s*\/>/, '');
+    expect(movementAt(convertMeiToMsm(untitled, { sourceName: 'dynamics.mei' })).msm).toContain(
+      'title="dynamics"',
+    );
   });
 
   it('threads ignoreExpansions and cleanup through to the converter', () => {
-    const expanded = movementAt(convertMeiToMsmMpm(mei('repeats_endings'))).msm;
+    const expanded = movementAt(convertMeiToMsm(mei('repeats_endings'))).msm;
     const asWritten = movementAt(
-      convertMeiToMsmMpm(mei('repeats_endings'), { ignoreExpansions: true }),
+      convertMeiToMsm(mei('repeats_endings'), { ignoreExpansions: true }),
     ).msm;
     expect(asWritten).not.toBe(expanded);
 
-    const cleaned = movementAt(convertMeiToMsmMpm(mei('ties_dots'))).msm;
-    const uncleaned = movementAt(convertMeiToMsmMpm(mei('ties_dots'), { cleanup: false })).msm;
+    const cleaned = movementAt(convertMeiToMsm(mei('ties_dots'))).msm;
+    const uncleaned = movementAt(convertMeiToMsm(mei('ties_dots'), { cleanup: false })).msm;
     expect(uncleaned.length).toBeGreaterThan(cleaned.length);
   });
 
   it('rejects nonsense options before parsing anything', () => {
-    expect(() => convertMeiToMsmMpm(mei('simple_notes'), { ppq: 0 })).toThrow(InvalidOptionError);
-    expect(() => convertMeiToMsmMpm(mei('simple_notes'), { ppq: -720 })).toThrow(
-      InvalidOptionError,
-    );
-    expect(() => convertMeiToMsmMpm(mei('simple_notes'), { ppq: 720.5 })).toThrow(
-      InvalidOptionError,
-    );
-    expect(() => convertMeiToMsmMpm(mei('simple_notes'), { sourceName: '  ' })).toThrow(
+    expect(() => convertMeiToMsm(mei('simple_notes'), { ppq: 0 })).toThrow(InvalidOptionError);
+    expect(() => convertMeiToMsm(mei('simple_notes'), { ppq: -720 })).toThrow(InvalidOptionError);
+    expect(() => convertMeiToMsm(mei('simple_notes'), { ppq: 720.5 })).toThrow(InvalidOptionError);
+    expect(() => convertMeiToMsm(mei('simple_notes'), { sourceName: '  ' })).toThrow(
       InvalidOptionError,
     );
   });
 
   it('rejects input that is not a well-formed MEI document', () => {
-    expect(() => convertMeiToMsmMpm('')).toThrow(ParseError);
-    expect(() => convertMeiToMsmMpm('not xml at all')).toThrow(ParseError);
-    expect(() => convertMeiToMsmMpm('<mei><unclosed></mei>')).toThrow(ParseError);
-    expect(() => convertMeiToMsmMpm(allMaps('movement', 'msm'))).toThrow(ParseError);
+    expect(() => convertMeiToMsm('')).toThrow(ParseError);
+    expect(() => convertMeiToMsm('not xml at all')).toThrow(ParseError);
+    expect(() => convertMeiToMsm('<mei><unclosed></mei>')).toThrow(ParseError);
+    expect(() => convertMeiToMsm(allMaps('movement', 'msm'))).toThrow(ParseError);
   });
 
   it('throws rather than returning an empty list when there is nothing to convert', () => {
-    expect(() => convertMeiToMsmMpm('<mei><music><body /></music></mei>')).toThrow(
-      EmptyDocumentError,
-    );
+    expect(() => convertMeiToMsm('<mei><music><body /></music></mei>')).toThrow(EmptyDocumentError);
   });
 });
 
 describe('facade: listPerformances', () => {
   it('reports the performances an MPM offers', () => {
-    const movement = movementAt(convertMeiToMsmMpm(mei('simple_notes')));
+    const movement = scored('simple_notes');
     expect(listPerformances(movement.mpm)).toEqual([
       { index: 0, name: 'MEI export performance', ppq: 720 },
     ]);
@@ -193,7 +190,7 @@ describe('facade: listPerformances', () => {
 });
 
 describe('facade: performMsm', () => {
-  const movement = () => movementAt(convertMeiToMsmMpm(mei('dynamics')));
+  const movement = () => scored('dynamics');
 
   it('augments the MSM with performance attributes', () => {
     const result = performMsm(movement());
@@ -768,7 +765,7 @@ describe('facade: expandOrnaments (D15)', () => {
 });
 
 describe('facade: renderMidi / renderExpressiveMidi', () => {
-  const movement = () => movementAt(convertMeiToMsmMpm(mei('comprehensive')));
+  const movement = () => scored('comprehensive');
 
   it('writes a MIDI file as bytes', () => {
     const bytes = renderMidi({ msm: movement().msm });
@@ -818,7 +815,7 @@ describe('facade: renderMidi / renderExpressiveMidi', () => {
 describe('facade: error hierarchy (RULE E2)', () => {
   it('roots every facade error in the one MeicoError the interior also throws', () => {
     for (const thrower of [
-      () => convertMeiToMsmMpm('nonsense'),
+      () => convertMeiToMsm('nonsense'),
       () => extractPerformanceData(allMaps('movement', 'msm')),
       () =>
         performMsm(
@@ -842,7 +839,7 @@ describe('facade: error hierarchy (RULE E2)', () => {
   });
 
   it('never returns null (RULE N4/E2)', () => {
-    const movement = movementAt(convertMeiToMsmMpm(mei('simple_notes')));
+    const movement = scored('simple_notes');
     expect(performMsm(movement)).not.toBeNull();
     expect(performMsmToData(movement)).not.toBeNull();
     expect(renderMidi({ msm: movement.msm })).not.toBeNull();
@@ -853,8 +850,6 @@ describe('facade: error hierarchy (RULE E2)', () => {
 describe('facade: VERSION', () => {
   it('is the serialization-visible converter version, not package.json’s', () => {
     expect(VERSION).toBe('0.11.2');
-    expect(movementAt(convertMeiToMsmMpm(mei('simple_notes'))).mpm).toContain(
-      `meico MEI converter v${VERSION}`,
-    );
+    expect(scored('simple_notes').mpm).toContain(`meico MEI converter v${VERSION}`);
   });
 });

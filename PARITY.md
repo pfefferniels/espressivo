@@ -9,11 +9,17 @@ That rule has one carve-out, added on the maintainer's instruction in August 202
 bug** gets fixed rather than reproduced, provided the fix is proven not to move the bytes of any
 reference fixture — or, where it does, provided the Java fork is patched and the affected ground
 truth regenerated in the same step, so the port is never silently ahead of its reference.
-Everything below is therefore one of four things — a bug fixed under that carve-out (§1), a
+Everything below is therefore one of five things — a bug fixed under that carve-out (§1), a
 difference deliberately left in place (§2, §3), a behaviour that reads as a bug and is not
-(§5), or a feature measured against a Java baseline the reference fork predates (§8). Nothing is
-undocumented, and this file is the audit trail for
-[README.md](README.md#equivalence-with-java-meico)'s equivalence claim.
+(§5), a feature measured against a Java baseline the reference fork predates (§8), or a piece
+of the reference deliberately **not** ported (§9). Nothing is undocumented, and this file is
+the audit trail for [README.md](README.md#equivalence-with-java-meico)'s equivalence claim.
+
+**One divergence is large enough to change what the claim covers.** §9 removes the MEI → MPM
+half of the converter: espressivo derives no performance from a score, so `convertMeiToMsm`
+returns an MSM and nothing else. The equivalence claim is unchanged in kind but narrower in
+scope — MEI → MSM is still byte-compared against the reference, and MSM + MPM → augmented
+MSM → MIDI now runs on the reference's own documents rather than this port's.
 
 **Two parts of the library are outside that frame entirely**, and each is separated out for
 exactly that reason. The **expression module** (§7) implements a feature the Java reference does
@@ -28,7 +34,8 @@ directly, which is where their references come from — nothing in §6 moves a b
 than argued. There is exactly one place where §6 does change output against a Java reference, and
 it is a default rather than a divergence: through the **facade**, `composite_advanced.mei`'s
 `<trill>` becomes an ornament the reference has no counterpart for. §6.5 states that in full, and
-states what makes the two paths agree again.
+states what makes the two paths agree again. **§9 has since removed that path** — the converter
+writes no ornament, so the two agree unconditionally; §6.5 is kept as the record of the ruling.
 
 Java citations are `File.java:line` in
 [pfefferniels/meico](https://github.com/pfefferniels/meico) (a fork of cemfi/meico); TypeScript
@@ -1645,3 +1652,96 @@ It is a straight port of `XmlBase.java:448` — first occurrence keeps its id, e
 reassigned `meico_<uuid>` — and that asymmetry is what keeps the original's references valid while
 the copies move. It draws a UUID per duplicate and so is not idempotent in the ids it produces,
 only in the property it establishes. It existed in the fork already; only this port lacked it.
+
+## 9. The MEI → MPM half of the converter, removed
+
+**This is the largest deliberate divergence in the ledger, and it is a scope decision rather
+than a behaviour one.** `Mei2MsmMpmConverter` converts MEI into MSM only. The half that wrote
+an MPM is gone.
+
+### 9.1 What was removed and why
+
+Java meico's converter emits two documents per `mdiv`: an MSM (what is played) and an MPM
+named `"MEI export performance"`, transcribed from the score's own markings — `<tempo>` into
+`tempoDef`/`tempoMap`, `<dynam>` and hairpins into `dynamicsMap`, `<artic>` and `<slur>` into
+`articulationMap`, `<arpeg>` and the ornament signs into `ornamentationMap`.
+
+espressivo applies a performance to a score; it does not derive one. Both of its inputs come
+from outside, and a transcription of what the score already notates is not a performance in
+the sense the rest of the library means. Keeping it also made the pipeline ambiguous: a
+conversion that hands back an MPM, next to the MPM a caller supplies, leaves open which one
+is the performance.
+
+Removed: `processTempo`/`addTempoToMpm`, `processDynam`/`addDynamicsToMpm`,
+`processArtic`/`addArticulationToMap`, `processSlur`, `checkSlurs`, `processBreath`,
+`processArpeg`, `processOrnamentSign`, `parseTempo`, `mpmPostprocessing`, the MPM skeleton in
+`makeMovement`/`makePart`, and `src/mei/MeiOrnamentExpander.ts` + `src/mei/ornamentsDict.ts`
+whole — 1220 lines of `src/`. The eleven MEI elements they handled are now `IGNORE` in
+`ELEMENT_HANDLERS`. `<pedal>` is **not** among them: it writes the MSM's `pedalMap` and stays.
+
+`convertMeiToMsmMpm` is now `convertMeiToMsm` and returns `{ index, title, msm }`.
+`ConvertOptions.expandOrnaments` is gone with it; `PerformOptions.expandOrnaments`, which
+governs whether v3 ornaments **already in an MPM** generate their notes, is untouched.
+
+### 9.2 The MSM output is unchanged
+
+Every MSM byte the converter produced before, it produces now. `cross-validation.test.ts`
+still compares all 16 fixtures against the Java reference MSMs and still passes.
+
+Two removals needed care, because they touch the MSM:
+
+- **the `hasArticulations` marker.** `processChord` sets it, and `processNote` reads it to
+  mint an `xml:id` for an anonymous note in an articulated chord. That id is written onto the
+  MEI note and `copyId` carries it into the MSM, so it is output-visible. It is kept, even
+  though the articulations it existed for are gone.
+- **`checkSlurs`.** It writes `@slur` onto MEI notes, and the attribute is not in
+  `MSM_SCAFFOLDING_ATTRIBUTES` — so a reader might expect it in the output. It never reaches
+  one: no reference MSM in the corpus contains `slur`, because the attribute is consumed by
+  the articulation pass. Removed with that pass.
+
+### 9.3 What the equivalence suites measure now
+
+The renderer suites no longer convert. `full-xml-equivalence`, `performance-equivalence`,
+`midi-byte-equivalence` and `midi-export` read `fixtures/reference/{name}.msm` and
+`{name}.mpm` — Java's own conversion output, already committed — and perform those. This is a
+**stronger** gate than before: the input is the reference implementation's bytes rather than
+this port's, so a converter defect can no longer cancel against a renderer defect. It also
+makes the UUID canonicalisation unnecessary on that path, both sides carrying the same ids.
+
+The split is now clean: `cross-validation` gates MEI → MSM, and the four suites above gate
+MSM + MPM → augmented MSM → MIDI.
+
+### 9.4 Coverage this cost
+
+126 tests, 6323 → 6197. Deleted whole: `tests/integration/mei-ornament-expansion.test.ts`,
+`tests/mei/MeiOrnamentExpander.test.ts`, `tests/mei/ornamentsDict.test.ts`, and
+`cross-validation`'s MPM comparison.
+
+Three losses are worth naming, because nothing replaces them:
+
+1. **`Mei.layersToStaffs` has no equivalence suite.** The pass is only observable through a
+   conversion, and what it changes — MSM part numbering — was compared against 32
+   Java-generated files in `fixtures-layers-to-staffs/`. Those and
+   `layers-to-staffs-equivalence.test.ts` are deleted. The method, its `StaffProvenance`
+   return and §8 above all stand; the gate under them does not. See §8 for what regenerating
+   would require.
+2. **Two `reset()` controls.** The tests for `allNotesAndChords` and `currentWork` observed
+   their subject through MPM output and had no MSM-visible equivalent. The `endids` and
+   work-level `<meter>` controls were saved by re-pointing them at `<pedal>`, which parks on
+   the same deferred list and reaches the same `tstampToTicks`.
+3. **The work-level tempo style switch** (§3, the transcription slip that wrote
+   `name.ref="MEI export"` into a document with no `<tempoStyles>`) is no longer reachable,
+   and its regression test is gone. The ruling is kept above as a record, not as a live
+   divergence.
+
+### 9.5 Recovering the removed code
+
+The last commit carrying it is tagged:
+
+```
+git show mei-to-mpm-converter-final:src/mei/Mei2MsmMpmConverter.ts
+git worktree add ../espressivo-converter mei-to-mpm-converter-final
+```
+
+espressivo is not published to npm, so a downstream consumer that needs an MEI-derived MPM
+pins that tag or a commit, rather than a released version.

@@ -59,7 +59,7 @@ export const DEFAULT_MOVEMENT_SAMPLE_MAX_STEP = 0.1 as Normalized;
  * Ornament expansion is on unless a caller turns it off, so that omitting
  * {@link RenderOptions.expandOrnaments} renders the MPM as written.
  *
- * Mirrors meico's own opt-out (`Mei.exportMsmMpm`'s `ignoreOrnaments`, CLI `-eo`), whose
+ * Mirrors meico's own opt-out (`ignoreOrnaments`, CLI `-eo`), whose
  * default is likewise "expand"; only the polarity of the name is flipped.
  */
 export const DEFAULT_EXPAND_ORNAMENTS = true;

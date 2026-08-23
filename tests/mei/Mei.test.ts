@@ -698,17 +698,12 @@ describe('Mei – staff and layer identification', () => {
   });
 });
 
-describe('Mei – the export entry points', () => {
-  // Java converts right here (Mei.java exportMsm/exportMsmMpm). The port defers the import
-  // of the converter to dodge the Mei <-> Mei2MsmMpmConverter cycle, but does so with
-  // require(), which does not exist in this ESM package, so every caller has to build the
-  // converter itself, as tests/integration does. These tests pin that limitation, not a
-  // contract.
-  it('exportMsmMpm cannot load the converter in this ESM build', () => {
-    expect(() => new Mei(SAMPLE_MEI).exportMsmMpm()).toThrow(/Mei2MsmMpmConverter/);
-  });
-
-  it('exportMsm fails for the same reason, it delegates to exportMsmMpm', () => {
+describe('Mei – the export entry point', () => {
+  // Java converts right here (Mei.java exportMsm). The port defers the import of the converter
+  // to dodge the Mei <-> Mei2MsmMpmConverter cycle, but does so with require(), which does not
+  // exist in this ESM package, so every caller has to build the converter itself, as
+  // tests/integration does. This test pins that limitation, not a contract.
+  it('exportMsm cannot load the converter in this ESM build', () => {
     expect(() => new Mei(SAMPLE_MEI).exportMsm()).toThrow(/Mei2MsmMpmConverter/);
   });
 });

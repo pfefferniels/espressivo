@@ -38,26 +38,17 @@ const pedalTags = (xml: string): string[] => [...xml.matchAll(/<pedal [^>]*>/g)]
 
 describe('<pedal> against the Java reference', () => {
   let msmXml: string;
-  let mpmXml: string;
 
   beforeAll(() => {
     const mei = Mei.fromXml(read('pedal.mei'));
     mei.setFile('pedal.mei');
-    const result = new Mei2MsmMpmConverter(720, true, false, true).convert(mei);
-    const msms = result.key;
-    const mpms = result.value;
+    const msms = new Mei2MsmMpmConverter(720, true, false, true).convert(mei);
     expect(msms.length).toBe(1);
-    expect(mpms.length).toBe(1);
     msmXml = msms[0]!.toXML();
-    mpmXml = mpms[0]!.toXML();
   });
 
   it('converts MEI to MSM byte for byte', () => {
     expect(normalize(msmXml)).toBe(normalize(read('pedal.msm')));
-  });
-
-  it('converts MEI to MPM byte for byte', () => {
-    expect(normalize(mpmXml)).toBe(normalize(read('pedal.mpm')));
   });
 
   it('produces five pedals, not an empty pedalMap', () => {
