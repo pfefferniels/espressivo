@@ -80,7 +80,7 @@ export interface StaffProvenance {
  * tree, offers navigation helpers over it (`getMeiHead`, `getMusic`, `getAllMdivs`, …), and
  * three preprocessing passes that rewrite the tree in place before conversion:
  * {@link Mei.resolveCopyofs}, {@link Mei.removeRendElements} and {@link Mei.resolveExpansions}.
- * All musical interpretation lives in {@link Mei2MsmMpmConverter}, which calls those three in
+ * All musical interpretation lives in {@link Mei2MsmConverter}, which calls those three in
  * that order (see its `convertMei`) and then walks the `body` subtrees.
  *
  * The preprocessing passes mutate this instance. The converter works around that by copying the
@@ -278,16 +278,16 @@ export class Mei extends XmlBase {
    *   MSM before returning, and restore this MEI to its pre-conversion state. Pass false
    *   to inspect the intermediate state.
    *
-   * Not usable: this method throws. `Mei2MsmMpmConverter` imports this module for
+   * Not usable: this method throws. `Mei2MsmConverter` imports this module for
    * `Mei.getLayer`/`getStaff`, so a top-level import here would close a value cycle between
    * the two modules. Construct the converter yourself, as `tests/integration` does:
-   * `new Mei2MsmMpmConverter(ppq, …).convert(mei)`.
+   * `new Mei2MsmConverter(ppq, …).convert(mei)`.
    */
   exportMsm(ppq = 720, dontUseChannel10 = true, ignoreExpansions = false, cleanup = true): Msm[] {
     throw new Error(
-      'Mei.exportMsm is not available: importing Mei2MsmMpmConverter from Mei would close a ' +
+      'Mei.exportMsm is not available: importing Mei2MsmConverter from Mei would close a ' +
         'module cycle between the two. Run the conversion directly instead — ' +
-        `new Mei2MsmMpmConverter(${ppq}, ${dontUseChannel10}, ${ignoreExpansions}, ${cleanup})` +
+        `new Mei2MsmConverter(${ppq}, ${dontUseChannel10}, ${ignoreExpansions}, ${cleanup})` +
         '.convert(mei)',
     );
   }
@@ -667,7 +667,7 @@ export class Mei extends XmlBase {
    * conversion downstream emits one MSM `part` per MEI layer instead of one per staff.
    *
    * MEI keeps the voices of a keyboard or divisi staff as sibling `layer` elements inside one
-   * `staff`, and {@link Mei2MsmMpmConverter} makes one MSM part per `staffDef`, so those voices
+   * `staff`, and {@link Mei2MsmConverter} makes one MSM part per `staffDef`, so those voices
    * merge into a single part sharing one MIDI channel and one instrument. This pass rewrites
    * the encoding so each voice arrives as its own staff, and therefore its own part, channel
    * and instrument — what per-voice performance rendering needs. It is not part of the

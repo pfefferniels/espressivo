@@ -944,7 +944,7 @@ describe('Msm', () => {
     });
 
     /**
-     * `Mei2MsmMpmConverter` writes a sharp as exactly `1.0`, so counting with `value > 1.0` /
+     * `Mei2MsmConverter` writes a sharp as exactly `1.0`, so counting with `value > 1.0` /
      * `< 1.0` rather than `> 0` / `< 0` misses every sharp while still counting flats. The
      * fork fixed that (`meico@db83c7c5`), the reference MIDI has been regenerated from it,
      * and the counts below are the ones a key signature should always have produced.

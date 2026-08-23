@@ -22,12 +22,12 @@ rewrites the encoding first, giving every layer its own staff and therefore **it
 channel and instrument**:
 
 ```ts
-import { Mei, Mei2MsmMpmConverter } from 'espressivo';
+import { Mei, Mei2MsmConverter } from 'espressivo';
 
 const mei = Mei.fromXml(readFileSync('piano.mei', 'utf8'));
 const [provenance] = mei.layersToStaffs(); // staff 1 / layers 1,2  ->  staffs 11, 12
 
-const [msm] = new Mei2MsmMpmConverter(720, true, false, true).convert(mei);
+const [msm] = new Mei2MsmConverter(720, true, false, true).convert(mei);
 // two parts now, numbered 11 and 12, on MIDI channels 0 and 1
 
 provenance.get('11'); // { origStaff: '1', origLayer: '1' }

@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { Mei } from '../../src/mei/Mei.js';
-import { Mei2MsmMpmConverter } from '../../src/mei/Mei2MsmMpmConverter.js';
+import { Mei2MsmConverter } from '../../src/mei/Mei2MsmConverter.js';
 
 const __dirname2 = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(__dirname2, 'fixtures');
@@ -72,7 +72,7 @@ describe('Cross-validation: TypeScript port vs Java reference', () => {
         const meiXml = readFileSync(join(MEI_DIR, meiFile), 'utf-8');
         const mei = Mei.fromXml(meiXml);
         mei.setFile(meiFile);
-        actualMsms = new Mei2MsmMpmConverter(720, true, false, true).convert(mei);
+        actualMsms = new Mei2MsmConverter(720, true, false, true).convert(mei);
       });
 
       it('should produce 1 MSM', () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Mei } from '../../src/mei/Mei.js';
-import { Mei2MsmMpmConverter } from '../../src/mei/Mei2MsmMpmConverter.js';
+import { Mei2MsmConverter } from '../../src/mei/Mei2MsmConverter.js';
 import { elementAt } from '../../src/prelude/index.js';
 import type { Element } from '../../src/xml/XomTypes.js';
 
@@ -53,7 +53,7 @@ function score(sections: string): string {
 
 /** convert `xml`, returning the single MSM's root element */
 function convertToMsm(xml: string, cleanup = true): Element {
-  const msms = new Mei2MsmMpmConverter(720, true, false, cleanup).convert(Mei.fromXml(xml));
+  const msms = new Mei2MsmConverter(720, true, false, cleanup).convert(Mei.fromXml(xml));
   expect(msms.length).toBe(1);
   const root = msms[0]?.getRootElement();
   expect(root).not.toBeNull();
@@ -69,7 +69,7 @@ function descendants(root: Element, localName: string): Element[] {
 }
 
 // control: make `labelOrN` return null unconditionally
-describe('Mei2MsmMpmConverter – the label an MSM sectionMap entry carries', () => {
+describe('Mei2MsmConverter – the label an MSM sectionMap entry carries', () => {
   it('prefers @label over @n, and falls back to @n', () => {
     const msm = convertToMsm(
       score(`
@@ -97,7 +97,7 @@ describe('Mei2MsmMpmConverter – the label an MSM sectionMap entry carries', ()
 });
 
 // control: make `addLayerAttribute` write nothing
-describe('Mei2MsmMpmConverter – the layer an MSM note remembers it came from', () => {
+describe('Mei2MsmConverter – the layer an MSM note remembers it came from', () => {
   /**
    * `cleanup: false` is what makes this observable at all; with the default `true`,
    * `msmCleanup` deletes every `layer` attribute on the way out, which is why the Java
@@ -149,7 +149,7 @@ describe('Mei2MsmMpmConverter – the layer an MSM note remembers it came from',
 });
 
 // control: drop `this.accid.push(accid)` from processAccid
-describe('Mei2MsmMpmConverter – an <accid> element carries to later notes in the measure', () => {
+describe('Mei2MsmConverter – an <accid> element carries to later notes in the measure', () => {
   /**
    * `keys_accidentals.mei` is the one fixture with a standalone `<accid>`, and it puts it on
    * the only note of that pitch in its measure — so the whole deferred-accidental mechanism
@@ -277,7 +277,7 @@ function rootOf(document: { getRootElement(): Element | null }): Element {
 /** convert a multi-movement document; `cleanup` defaults to *off* so working state is visible */
 function convertMovements(xml: string, cleanup = false, ppq = 720): { msm: Element[] } {
   return {
-    msm: new Mei2MsmMpmConverter(ppq, true, false, cleanup).convert(Mei.fromXml(xml)).map(rootOf),
+    msm: new Mei2MsmConverter(ppq, true, false, cleanup).convert(Mei.fromXml(xml)).map(rootOf),
   };
 }
 
@@ -288,7 +288,7 @@ function measure(n: number, noteId: string, pname: string, extra = ''): string {
   </layer></staff>${extra}</measure>`;
 }
 
-describe('Mei2MsmMpmConverter – what reset() clears between two mdivs', () => {
+describe('Mei2MsmConverter – what reset() clears between two mdivs', () => {
   it('gives each mdiv its own MSM, in document order', () => {
     const { msm } = convertMovements(
       twoMovements(measure(1, 'm1n1', 'c'), measure(1, 'm2n1', 'e')),
@@ -380,7 +380,7 @@ describe('Mei2MsmMpmConverter – what reset() clears between two mdivs', () => 
 });
 
 // control: give the movement context `work: null` unconditionally
-describe('Mei2MsmMpmConverter – the meiHead work a movement claims', () => {
+describe('Mei2MsmConverter – the meiHead work a movement claims', () => {
   /**
    * The `work` a movement claims has exactly one ambient read — the `<meter>` fallback in
    * `getCurrentTimeSignature`, taken only when neither the part's nor the global
@@ -395,7 +395,7 @@ describe('Mei2MsmMpmConverter – the meiHead work a movement claims', () => {
   it('supplies the time signature when neither the part nor the score states one', () => {
     /** the MSM date of the one `<pedal>` entry, for a document whose work carries `meter` */
     const pedalDate = (meter: string): string | null => {
-      const msms = new Mei2MsmMpmConverter(720, true, false, false).convert(
+      const msms = new Mei2MsmConverter(720, true, false, false).convert(
         Mei.fromXml(`<?xml version="1.0" encoding="UTF-8"?>
 <mei xmlns="http://www.music-encoding.org/ns/mei">
   <meiHead><fileDesc><titleStmt><title>Oracle</title></titleStmt><pubStmt/></fileDesc>
@@ -426,7 +426,7 @@ describe('Mei2MsmMpmConverter – the meiHead work a movement claims', () => {
 });
 
 // control: delete `this.currentLayer = parentLayer` from processLayer
-describe('Mei2MsmMpmConverter – a cursor stops applying when the walk leaves its element', () => {
+describe('Mei2MsmConverter – a cursor stops applying when the walk leaves its element', () => {
   /**
    * The four other cursor restores are pinned by the byte corpus — deleting any of
    * `processStaffDef`'s or `processStaff`'s `this.currentPart = parentPart`,
@@ -516,7 +516,7 @@ describe('Mei2MsmMpmConverter – a cursor stops applying when the walk leaves i
  * preference order over the nine editorial names, the recursion into a nested `choice`, and
  * the any-name fallback for a `choice` holding none of the nine.
  */
-describe('Mei2MsmMpmConverter – processChoice picks one editorial reading', () => {
+describe('Mei2MsmConverter – processChoice picks one editorial reading', () => {
   /** the `xml:id`s of the MSM notes, which is which MEI branch survived selection */
   const noteIds = (msm: Element): (string | null)[] =>
     descendants(msm, 'note').map((n) => n.getAttributeValue('xml:id'));

@@ -82,9 +82,9 @@ function recordRepetitionId(repetitionIDs: Map<string, string>, copy: Element, r
 
 /**
  * A document in MSM format (Musical Sequence Markup), the middle of the pipeline:
- * `Mei2MsmMpmConverter` turns an MEI score into an MSM (what is played, in symbolic time) plus
- * an MPM (how it is played), and this class turns an MSM back into MIDI. Its two exports are the
- * two halves of that:
+ * `Mei2MsmConverter` turns an MEI score into an MSM (what is played, in symbolic time), an MPM
+ * supplied from outside says how it is played, and this class turns an MSM back into MIDI. Its
+ * two exports are the two halves of that:
  *
  * - {@link exportMidi} — the score as written. Dates are MSM ticks, one tempo event, one
  *   velocity for every note.
@@ -128,7 +128,7 @@ export class Msm extends AbstractMsm {
    * @param id an id for the root element, or null for a random UUID. Unlike {@link addUUID} that
    *   UUID is bare, with no `meico_` prefix (as Java does, `Msm.java:121`), so the equivalence
    *   tests' `meico_` canonicalisation does not cover it and a null `id` yields output that
-   *   differs run to run. The pipeline never takes that branch — `Mei2MsmMpmConverter` always
+   *   differs run to run. The pipeline never takes that branch — `Mei2MsmConverter` always
    *   passes an explicit movement id.
    */
   static createMsm(title: string, id: string | null, ppq: number): Msm {
@@ -497,7 +497,7 @@ export class Msm extends AbstractMsm {
    * it.
    *
    * Nothing in `src/` calls this, in this port or in Java — it is opt-in API. The MEI converter
-   * writes sequencingMaps (`Mei2MsmMpmConverter.processEnding` builds the `<goto>`s) but leaves
+   * writes sequencingMaps (`Mei2MsmConverter.processEnding` builds the `<goto>`s) but leaves
    * them unexpanded, so an MSM straight out of the pipeline still has its repeats encoded by
    * reference and the reference fixtures contain `<goto>` elements. The fixture pipeline
    * therefore does not exercise the expansion below; `tests/msm/MsmSequencing.test.ts` covers it.
@@ -1161,7 +1161,7 @@ export class Msm extends AbstractMsm {
    * MIDI states a key as a signed count of accidentals, so the MSM's list of
    * `<accidental>` children is reduced to one number: a positive `value` adds, a negative
    * one subtracts. `value` is a semitone offset, so a sharp is `1.0` and a flat is `-1.0`
-   * (`Mei2MsmMpmConverter` writes exactly those two, and the reference fixtures contain
+   * (`Mei2MsmConverter` writes exactly those two, and the reference fixtures contain
    * nothing else).
    *
    * The thresholds are `> 0` / `< 0`, not Java's original `> 1.0` / `< 1.0`, which a sharp —

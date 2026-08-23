@@ -3,7 +3,7 @@ import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { Mei } from '../../src/mei/Mei.js';
-import { Mei2MsmMpmConverter } from '../../src/mei/Mei2MsmMpmConverter.js';
+import { Mei2MsmConverter } from '../../src/mei/Mei2MsmConverter.js';
 import { Msm } from '../../src/msm/Msm.js';
 import { Mpm } from '../../src/mpm/Mpm.js';
 
@@ -42,7 +42,7 @@ describe('<pedal> against the Java reference', () => {
   beforeAll(() => {
     const mei = Mei.fromXml(read('pedal.mei'));
     mei.setFile('pedal.mei');
-    const msms = new Mei2MsmMpmConverter(720, true, false, true).convert(mei);
+    const msms = new Mei2MsmConverter(720, true, false, true).convert(mei);
     expect(msms.length).toBe(1);
     msmXml = msms[0]!.toXML();
   });

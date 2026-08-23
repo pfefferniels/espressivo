@@ -222,12 +222,12 @@ just apply it. It mirrors meico's Java classes closely enough that the Java docu
 
 ```ts
 import { readFileSync } from 'node:fs';
-import { Mei, Mei2MsmMpmConverter, Mpm } from 'espressivo';
+import { Mei, Mei2MsmConverter, Mpm } from 'espressivo';
 
 const mei = Mei.fromXml(readFileSync('sonata.mei', 'utf-8'));
 mei.setFile('sonata.mei');
 
-const [msm] = new Mei2MsmMpmConverter(720, true, false, true).convert(mei); // Msm[]
+const [msm] = new Mei2MsmConverter(720, true, false, true).convert(mei); // Msm[]
 const mpm = new Mpm(readFileSync('sonata.mpm', 'utf-8'));
 
 const performance = mpm.getPerformance(0);

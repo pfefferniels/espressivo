@@ -14,7 +14,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { Mpm } from '../../src/mpm/Mpm.js';
 import { Mei } from '../../src/mei/Mei.js';
-import { Mei2MsmMpmConverter } from '../../src/mei/Mei2MsmMpmConverter.js';
+import { Mei2MsmConverter } from '../../src/mei/Mei2MsmConverter.js';
 import { Msm } from '../../src/msm/Msm.js';
 import {
   convertMeiToMsm,
@@ -98,7 +98,7 @@ describe('facade == classic class API (RULE F2 round trip)', () => {
       // --- classic: objects all the way through, no serialization in between
       const mei = Mei.fromXml(meiText);
       mei.setFile(`${fixture}.mei`);
-      const converted = new Mei2MsmMpmConverter(720, true, false, true).convert(mei);
+      const converted = new Mei2MsmConverter(720, true, false, true).convert(mei);
       const classicMsm = elementAt(converted, 0, 'the classic converter’s MSMs');
       // The performance is the Java reference's own: the converter derives none (PARITY.md §9).
       const classicMpm = new Mpm(readFileSync(join(REF_DIR, `${fixture}.mpm`), 'utf-8'));
@@ -155,7 +155,7 @@ describe('facade == classic class API (RULE F2 round trip)', () => {
 
   it('reproduces the file-less converter branch when sourceName is omitted', () => {
     const meiText = readFileSync(join(MEI_DIR, 'dynamics.mei'), 'utf-8');
-    const classic = new Mei2MsmMpmConverter(720, true, false, true).convert(Mei.fromXml(meiText));
+    const classic = new Mei2MsmConverter(720, true, false, true).convert(Mei.fromXml(meiText));
 
     expect(canonicalise(movementAt(convertMeiToMsm(meiText)).msm)).toBe(
       canonicalise(elementAt(classic, 0, 'the classic converter’s MSMs').getRootElement()!.toXML()),
@@ -176,7 +176,7 @@ describe('facade == classic class API (RULE F2 round trip)', () => {
     ] as [Parameters<typeof convertMeiToMsm>[1], [number, boolean, boolean, boolean]][]) {
       const mei = Mei.fromXml(meiText);
       mei.setFile('repeats_endings.mei');
-      const classic = new Mei2MsmMpmConverter(...args).convert(mei);
+      const classic = new Mei2MsmConverter(...args).convert(mei);
 
       expect(
         canonicalise(

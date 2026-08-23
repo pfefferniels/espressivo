@@ -87,7 +87,7 @@ interface MovementContext {
 /**
  * Where in the MEI the walk currently is: the movement being filled, plus the part, layer,
  * measure and chord enclosing the element being converted. Threaded down
- * {@link Mei2MsmMpmConverter.convertElement}, so a method that takes `ctx` reads its enclosing
+ * {@link Mei2MsmConverter.convertElement}, so a method that takes `ctx` reads its enclosing
  * context and a method that does not, does not.
  *
  * Every field is `readonly` and the record is never mutated: a descent builds a new one
@@ -99,7 +99,7 @@ interface WalkContext {
   /**
    * the movement being filled, or null before any `mdiv` has been entered
    *
-   * {@link Mei2MsmMpmConverter.getMidiTime} and {@link Mei2MsmMpmConverter.processReh} branch
+   * {@link Mei2MsmConverter.getMidiTime} and {@link Mei2MsmConverter.processReh} branch
    * on the null: a `body` is walked before any movement exists, and an element outside every
    * `mdiv` still reaches the dispatch table.
    */
@@ -116,8 +116,8 @@ interface WalkContext {
 
 /**
  * The context of an element that no movement, part, layer, measure or chord encloses.
- * {@link Mei2MsmMpmConverter.convertMei} starts from it, walking a `body` whose children are
- * `mdiv`s; {@link Mei2MsmMpmConverter.makeMovement} starts each movement from
+ * {@link Mei2MsmConverter.convertMei} starts from it, walking a `body` whose children are
+ * `mdiv`s; {@link Mei2MsmConverter.makeMovement} starts each movement from
  * `{ ...NOTHING_OPEN, movement }`.
  */
 const NOTHING_OPEN: WalkContext = {
@@ -131,8 +131,8 @@ const NOTHING_OPEN: WalkContext = {
 /**
  * The movement the walk is inside. Null here is a broken invariant rather than an outcome:
  * every caller of this is below a handler `makeMovement` dispatched. The two places where an
- * absent movement is a real outcome — {@link Mei2MsmMpmConverter.getMidiTime} and
- * {@link Mei2MsmMpmConverter.processReh} — branch on `ctx.movement === null` themselves.
+ * absent movement is a real outcome — {@link Mei2MsmConverter.getMidiTime} and
+ * {@link Mei2MsmConverter.processReh} — branch on `ctx.movement === null` themselves.
  */
 function requireMovement(ctx: WalkContext): MovementContext {
   if (ctx.movement === null)
@@ -177,20 +177,20 @@ function requirePartDatedMap(ctx: WalkContext, name: string): Element {
 }
 
 /**
- * One entry of {@link Mei2MsmMpmConverter.ELEMENT_HANDLERS}.
+ * One entry of {@link Mei2MsmConverter.ELEMENT_HANDLERS}.
  *
  * Handlers are free functions rather than methods so the table can be a single static value;
  * they receive the converter explicitly because the conversion's output state — the movement
  * being filled, the deferred work lists — lives there. Where the walk *is* is the third
  * parameter: see {@link WalkContext}.
  */
-type ElementHandler = (c: Mei2MsmMpmConverter, e: Element, ctx: WalkContext) => Traversal;
+type ElementHandler = (c: Mei2MsmConverter, e: Element, ctx: WalkContext) => Traversal;
 
 /**
  * The `dated/<name>` map of an MSM `global` or `part` element, or null if it holds no such map.
  *
  * MSM puts every timed list under a `dated` wrapper, so every map access here is a two-step
- * descent. `dated` is required — {@link Msm.createMsm} and {@link Mei2MsmMpmConverter.makePart}
+ * descent. `dated` is required — {@link Msm.createMsm} and {@link Mei2MsmConverter.makePart}
  * build it unconditionally — while the map itself stays nullable: maps are created on demand,
  * and most callers pass the result straight to `addToMap`, whose contract already includes
  * "null map, nothing to do".
@@ -228,8 +228,8 @@ function labelOrN(ofThis: Element): string | null {
  * An MSM part's running clock: its `currentDate` attribute, as an attribute rather than a
  * value, so a caller can read and advance it through the same handle.
  *
- * Every part carries one from the moment {@link Mei2MsmMpmConverter.makePart} creates it, and
- * {@link Mei2MsmMpmConverter.processStaff} refreshes it on re-entry, so its absence is a broken
+ * Every part carries one from the moment {@link Mei2MsmConverter.makePart} creates it, and
+ * {@link Mei2MsmConverter.processStaff} refreshes it on re-entry, so its absence is a broken
  * MSM and not a case to branch on. The value is in MIDI ticks.
  */
 function partClock(part: Element): Attribute {
@@ -310,10 +310,10 @@ const DESCEND: ElementHandler = () => 'descend';
  * which elements are descended into, and moving an element between the traversal groups changes
  * what gets visited.
  *
- * Port of `meico.mei.Mei2MsmMpmConverter`.
+ * Port of `meico.mei.Mei2MsmConverter`.
  * @author Axel Berndt
  */
-export class Mei2MsmMpmConverter {
+export class Mei2MsmConverter {
   private mei: Mei | null = null;
   private readonly ignoreExpansions: boolean = false;
   private readonly cleanup: boolean = true;
@@ -416,7 +416,7 @@ export class Mei2MsmMpmConverter {
 
     if (this.cleanup) {
       if (orig !== null) this.mei.setDocument(orig);
-      Mei2MsmMpmConverter.msmCleanup(msms);
+      Mei2MsmConverter.msmCleanup(msms);
     }
 
     const meiFile = this.mei.getFile();
@@ -737,7 +737,7 @@ export class Mei2MsmMpmConverter {
 
       this.checkEndid(e, ctx);
 
-      const handler = Mei2MsmMpmConverter.ELEMENT_HANDLERS[e.getLocalName()];
+      const handler = Mei2MsmConverter.ELEMENT_HANDLERS[e.getLocalName()];
       if (handler === undefined) continue;
       if (handler(this, e, ctx) === 'descend') this.convertElement(e, ctx);
     }
@@ -899,7 +899,7 @@ export class Mei2MsmMpmConverter {
       const transSemi = scoreDef.getAttributeValue('trans.semi');
       let trans = 0;
       trans = transSemi === null ? 0.0 : parseFloat(transSemi);
-      trans += Mei2MsmMpmConverter.processClefDis();
+      trans += Mei2MsmConverter.processClefDis();
       const d = new Element('transposition');
       d.addAttribute(new Attribute('date', this.getMidiTimeAsString(ctx)));
       d.addAttribute(new Attribute('semi', String(trans)));
@@ -955,7 +955,7 @@ export class Mei2MsmMpmConverter {
       const transSemi = staffDef.getAttributeValue('trans.semi');
       let trans = 0;
       trans = transSemi === null ? 0.0 : parseFloat(transSemi);
-      trans += Mei2MsmMpmConverter.processClefDis();
+      trans += Mei2MsmConverter.processClefDis();
       const d = new Element('transposition');
       d.addAttribute(new Attribute('semi', String(trans)));
       d.addAttribute(new Attribute('date', this.getMidiTimeAsString(inPart)));
@@ -1371,7 +1371,7 @@ export class Mei2MsmMpmConverter {
       return false;
     });
 
-    Mei2MsmMpmConverter.reorderMeasureContent(measure);
+    Mei2MsmConverter.reorderMeasureContent(measure);
 
     this.convertElement(measure, inMeasure);
     this.accid = [];
@@ -1471,14 +1471,14 @@ export class Mei2MsmMpmConverter {
     // two guards run in is part of the compared output.
     const leftBarline = measure.getAttributeValue('left');
     if (leftBarline !== null)
-      Mei2MsmMpmConverter.barline2SequencingCommand(
+      Mei2MsmConverter.barline2SequencingCommand(
         leftBarline,
         startDate,
         requireGlobalDatedMap(ctx, 'sequencingMap'),
       );
     const rightBarline = measure.getAttributeValue('right');
     if (rightBarline !== null)
-      Mei2MsmMpmConverter.barline2SequencingCommand(
+      Mei2MsmConverter.barline2SequencingCommand(
         rightBarline,
         endDate,
         requireGlobalDatedMap(ctx, 'sequencingMap'),
@@ -3042,7 +3042,7 @@ export class Mei2MsmMpmConverter {
         );
         continue;
       }
-      if (!Mei2MsmMpmConverter.isSameLayer(ts, Mei.getLayerId(ctx.layer))) continue;
+      if (!Mei2MsmConverter.isSameLayer(ts, Mei.getLayerId(ctx.layer))) continue;
       // `date`, `numbase` and `num` are written together by `processTupletSpan`, so a span
       // missing any of them is a defect in this converter rather than in the score.
       if (parseFloat(requireAttributeValue('date', ts)) <= this.getMidiTime(ctx))
@@ -3287,7 +3287,7 @@ export class Mei2MsmMpmConverter {
               this.getMidiTime(ctx)
           )
             break;
-          if (!Mei2MsmMpmConverter.isSameLayer(globalTrans.get(i), layerId)) continue;
+          if (!Mei2MsmConverter.isSameLayer(globalTrans.get(i), layerId)) continue;
           trans += parseFloat(requireAttributeValue('semi', globalTrans.get(i)));
           break;
         }
@@ -3308,7 +3308,7 @@ export class Mei2MsmMpmConverter {
               this.getMidiTime(ctx)
           )
             continue;
-          if (!Mei2MsmMpmConverter.isSameLayer(globalAddTrans.get(i), layerId)) continue;
+          if (!Mei2MsmConverter.isSameLayer(globalAddTrans.get(i), layerId)) continue;
           trans += parseFloat(requireAttributeValue('semi', globalAddTrans.get(i)));
         }
       }
@@ -3327,7 +3327,7 @@ export class Mei2MsmMpmConverter {
                 this.getMidiTime(ctx)
             )
               break;
-            if (!Mei2MsmMpmConverter.isSameLayer(localTrans.get(i), layerId)) continue;
+            if (!Mei2MsmConverter.isSameLayer(localTrans.get(i), layerId)) continue;
             trans += parseFloat(requireAttributeValue('semi', localTrans.get(i)));
             break;
           }
@@ -3349,7 +3349,7 @@ export class Mei2MsmMpmConverter {
                 this.getMidiTime(ctx)
             )
               continue;
-            if (!Mei2MsmMpmConverter.isSameLayer(localAddTrans.get(i), layerId)) continue;
+            if (!Mei2MsmConverter.isSameLayer(localAddTrans.get(i), layerId)) continue;
             trans += parseFloat(requireAttributeValue('semi', localAddTrans.get(i)));
           }
         }
@@ -3454,7 +3454,7 @@ export class Mei2MsmMpmConverter {
 
   /** strip the conversion's scaffolding from every MSM; see {@link msmCleanupSingle} */
   public static msmCleanup(msms: Msm[]): void {
-    for (const msm of msms) Mei2MsmMpmConverter.msmCleanupSingle(msm);
+    for (const msm of msms) Mei2MsmConverter.msmCleanupSingle(msm);
   }
 
   /**
@@ -3472,7 +3472,7 @@ export class Mei2MsmMpmConverter {
   public static msmCleanupSingle(msm: Msm): void {
     const root = msm.getRootElement();
     if (root === null) throw new MissingNodeError('this MSM movement holds no document');
-    for (const node of Mei2MsmMpmConverter.msmScaffolding(root)) {
+    for (const node of Mei2MsmConverter.msmScaffolding(root)) {
       if (node instanceof Element) {
         const parent = node.getParent();
         if (parent) parent.removeChild(node);
@@ -3513,7 +3513,7 @@ export class Mei2MsmMpmConverter {
     for (const element of descendantElements(root, () => true)) {
       const name = element.getLocalName();
       if (name === 'miscMap') doomed.push(element);
-      for (const attributeName of Mei2MsmMpmConverter.MSM_SCAFFOLDING_ATTRIBUTES) {
+      for (const attributeName of Mei2MsmConverter.MSM_SCAFFOLDING_ATTRIBUTES) {
         const found = element.getAttribute(attributeName);
         if (found) doomed.push(found);
       }

@@ -18,7 +18,7 @@
  */
 import { EventMaker } from '../midi/EventMaker.js';
 import { Mei } from '../mei/Mei.js';
-import { Mei2MsmMpmConverter } from '../mei/Mei2MsmMpmConverter.js';
+import { Mei2MsmConverter } from '../mei/Mei2MsmConverter.js';
 import { Msm } from '../msm/Msm.js';
 import { Mpm } from '../mpm/Mpm.js';
 import type { Performance } from '../mpm/elements/Performance.js';
@@ -57,7 +57,7 @@ import type {
 } from './types.js';
 import { groupBy } from '../prelude/seq.js';
 
-/** The library version. It is serialization-visible — the converter writes it into MPM metadata. */
+/** The library version: the meico release whose behaviour this reproduces, not the npm one. */
 export { VERSION } from '../version.js';
 
 // ---------------------------------------------------------------------------
@@ -450,7 +450,7 @@ export function convertMeiToMsm(
   // `<title>` titles its movement from it, so it reaches `<msm title>` and is output-visible.
   if (options?.sourceName !== undefined) document.setFile(options.sourceName);
 
-  const msms = new Mei2MsmMpmConverter(
+  const msms = new Mei2MsmConverter(
     options?.ppq ?? 720,
     options?.dontUseChannel10 ?? true,
     options?.ignoreExpansions ?? false,

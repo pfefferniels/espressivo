@@ -161,12 +161,16 @@ L4  src/mpm/names.ts          the ~20 string constants                     (NEW,
     src/mpm/RenderOptions.ts  seed + sampling knobs                        (NEW, T19a)
     src/mpm/**                Mpm, elements/**
 
-L5  src/mei/**                Mei, Mei2MsmMpmConverter (+ dispatch table), mei-local helpers
+L5  src/mei/**                Mei, Mei2MsmConverter (+ dispatch table), mei-local helpers
 
 L6  src/api/**                the public facade                            (NEW, T13)
 
 L7  src/index.ts              barrel: facade + the existing class surface
 ```
+
+> **A note on the name.** Journal entries below cite `Mei2MsmMpmConverter.ts`, which is what
+> the file was called until PARITY.md §9 removed its MPM half. It is `Mei2MsmConverter.ts`
+> now; the citations are left as written, because they are the record of what was there then.
 
 **RULE M1 (dependency direction).** `src/mpm/**` must not import anything from `src/mei/**`.
 `src/msm/**` must not import anything from `src/mpm/**` or `src/mei/**` except `import type`.
@@ -258,9 +262,11 @@ eliding the bare barrel import. Bundling the facade with rollup's
 `treeshake.moduleSideEffects: false` — exactly the licence an absent `sideEffects` field
 grants — produced a build in which **all thirteen map names parsed into a plain
 `GenericMap`**, with the whole vitest suite green throughout, because vitest does not
-tree-shake. `Mei2MsmMpmConverter` value-imports four of the nine map modules, so the same
+tree-shake. `Mei2MsmMpmConverter` value-imported four of the nine map modules, so the same
 hazard was already live in a partial form for anyone reaching it without going through
-`Mpm.ts`.
+`Mpm.ts`. PARITY.md §9 has since removed those imports — `src/mei/**` reaches no map module
+at all now — so `Mpm.ts` is the only door left, and the `sideEffects` field is the whole of
+what protects it.
 
 So: **the dispatch table is `MAP_SHAPE` in `src/mpm/elements/maps/map.ts`**, a
 `Record<MapKind, MapShape>` declared total over the thirteen `<dated>` child names
@@ -275,11 +281,17 @@ churns `vitest.config.ts`'s coverage include list). `src/xml/XomTypes.ts` keeps 
 see RULE T17-A. The only new directories are `src/music/`, `src/compat/`, `src/api/`.
 
 **RULE M6 (`Meico.version` is output, not metadata).** `Meico.ts` becomes
-`src/version.ts` with `export const VERSION = '0.11.2';`. The string is
-**serialization-visible** — `Mei2MsmMpmConverter.ts:646,653` writes it into MPM metadata —
+`src/version.ts` with `export const VERSION = '0.11.2';`. The string was
+**serialization-visible** — `Mei2MsmMpmConverter.ts:646,653` wrote it into MPM metadata —
 so it must **not** be synced to `package.json`'s `version` (currently `0.8.8`) by T14, T22,
-or anyone else. Changing it changes fixture bytes. `index.ts` keeps exporting a `Meico`
+or anyone else. Changing it changed fixture bytes. `index.ts` keeps exporting a `Meico`
 object with a `version` property for source compatibility.
+
+> **Since written:** PARITY.md §9 removed the MPM metadata, so nothing writes `VERSION` into
+> a document any more and the rule's premise no longer holds. The rule's *conclusion* stands
+> for a different reason: `VERSION` names the meico release whose behaviour is reproduced,
+> `package.json`'s names the npm package, and conflating them would make the parity claim
+> unreadable. Do not sync them.
 
 > **EQ-RISK (M2, M3).** Moving a module changes module *evaluation order*, and this tree has
 > a live import cycle whose failure mode is order-dependent. A split that looks like a pure
@@ -354,8 +366,9 @@ and F1's JSON test excludes the byte fields.
 **RULE F4 (no file I/O, no process access).** Nothing under `src/api/` imports `fs`, `path`,
 `process`, or calls `require`. No facade function takes or returns a file path. (The `file`
 fields the interior classes carry — `Mei.getFile()`, `Msm.setFile()` — stay interior; note
-that they *are* serialization-visible via the MPM `RelatedResource`, so an optional
-`sourceName` option exists on the convert call to reproduce that behaviour, see §2.2.)
+that they *are* serialization-visible, so an optional `sourceName` option exists on the
+convert call to reproduce that behaviour, see §2.2. It reached the MPM `RelatedResource` until
+PARITY.md §9; what it still reaches is `<msm title>`, for an MEI carrying no `<title>`.)
 
 ### 2.2 Signatures
 

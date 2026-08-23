@@ -29,13 +29,18 @@ touches no path the equivalence suites drive.
 The other is **MPM v3 ornamentation** (§6), which implements a specification the Java reference does
 not implement, so there is no output to be equivalent to. Its correctness standard is the spec plus
 hand-computed vectors, not a reference file. Every fixture file in `tests/integration/fixtures/`
-is untouched by it, and on the path the equivalence suites drive — `Mei2MsmMpmConverter` built
+is untouched by it, and on the path the equivalence suites drive — the converter built
 directly, which is where their references come from — nothing in §6 moves a byte, measured rather
 than argued. There is exactly one place where §6 does change output against a Java reference, and
 it is a default rather than a divergence: through the **facade**, `composite_advanced.mei`'s
 `<trill>` becomes an ornament the reference has no counterpart for. §6.5 states that in full, and
 states what makes the two paths agree again. **§9 has since removed that path** — the converter
 writes no ornament, so the two agree unconditionally; §6.5 is kept as the record of the ruling.
+
+**A note on the name.** Entries below cite `Mei2MsmMpmConverter.ts`, which is what the file was
+called until §9 removed its MPM half. It is `src/mei/Mei2MsmConverter.ts` now, and the class is
+`Mei2MsmConverter`. Older citations are left as written — they are the record of what was there
+then — and §9.5's `git show` path is deliberately the old one, because that is the path at the tag.
 
 Java citations are `File.java:line` in
 [pfefferniels/meico](https://github.com/pfefferniels/meico) (a fork of cemfi/meico); TypeScript
@@ -1348,8 +1353,12 @@ not fields of their own. _Pinned:_ `tests/api/pipeline.test.ts`, `tests/api/plai
 ornaments — a pool, a `note.order` from the standard ornament dictionary, and an `<ornamentDef>`
 in an `"MEI export"` style. **Which entry point you use decides whether that happens:**
 
-- `new Mei2MsmMpmConverter(…).convert(mei)` — the class API — does **not** expand. Default `false`.
-- `convertMeiToMsmMpm(mei, options)` — the facade — **does**, unless `expandOrnaments: false`.
+- `new Mei2MsmConverter(…).convert(mei)` — the class API — does **not** expand. Default `false`.
+- `convertMeiToMsmMpm(mei, options)` — the facade — **did**, unless `expandOrnaments: false`.
+
+**§9 has closed this.** Neither entry point expands, because neither writes an MPM: the facade
+is `convertMeiToMsm` and returns an MSM alone. What follows is the record of the ruling while
+the two paths differed.
 
 That asymmetry mirrors Java's own layering, where expansion is a document pre-pass in
 `Mei.exportMsmMpm` and the converter itself never expands. It is also what keeps the four
@@ -1551,7 +1560,7 @@ it the voices of a keyboard or divisi staff are merged into a single part and sh
 channel and one instrument; with it each voice becomes independently addressable, which is what
 per-voice performance rendering needs.
 
-It is **not** part of the conversion pipeline. `Mei2MsmMpmConverter` never calls it, the default
+It is **not** part of the conversion pipeline. `Mei2MsmConverter` never calls it, the default
 output is unchanged, and unlike the three passes in `convertMei` it is not undone by the `cleanup`
 flag — it mutates the instance, so a caller who needs the original clones first. Nothing in this
 section is reachable unless a caller invokes the method.
@@ -1656,7 +1665,7 @@ only in the property it establishes. It existed in the fork already; only this p
 ## 9. The MEI → MPM half of the converter, removed
 
 **This is the largest deliberate divergence in the ledger, and it is a scope decision rather
-than a behaviour one.** `Mei2MsmMpmConverter` converts MEI into MSM only. The half that wrote
+than a behaviour one.** `Mei2MsmConverter` converts MEI into MSM only. The half that wrote
 an MPM is gone.
 
 ### 9.1 What was removed and why
