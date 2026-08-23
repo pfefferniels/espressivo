@@ -9,12 +9,18 @@ repository. See [Equivalence with Java meico](#equivalence-with-java-meico) for 
 proves, and [PARITY.md](PARITY.md) for the complete list of places where the two deliberately
 differ.
 
+**It takes two documents, and both come from outside.** espressivo applies a performance to a
+score; it does not invent one. An MEI is converted to an MSM — what is played — and the MPM
+saying _how_ it is played is yours to supply. meico also transcribes a score's own tempo,
+dynamics and articulation markings into an MPM; that half is deliberately not ported
+([PARITY.md §9](PARITY.md)).
+
 ```mermaid
 flowchart LR
   MEI["MEI"] --> CONVERT(["convert"])
   CONVERT --> MSM["MSM<br/>score"]
   MSM --> PERFORM(["perform"])
-  MPM["MPM<br/>performance"] --> PERFORM
+  MPM["MPM<br/>performance<br/><i>supplied</i>"] --> PERFORM
   PERFORM --> AUG["augmented MSM"]
   AUG --> RENDER(["render"])
   RENDER --> MIDI["MIDI"]
@@ -36,21 +42,23 @@ Chrome 122, Firefox 131 or Safari 18.4 and up.
 
 ## Quick start
 
-Score to expressive MIDI, in four lines:
+Score plus performance to expressive MIDI:
 
 ```ts
 import { readFileSync, writeFileSync } from 'node:fs';
-import { convertMeiToMsmMpm, renderExpressiveMidi } from 'espressivo';
+import { convertMeiToMsm, renderExpressiveMidi } from 'espressivo';
 
-const [movement] = convertMeiToMsmMpm(readFileSync('sonata.mei', 'utf-8'), {
+const [movement] = convertMeiToMsm(readFileSync('sonata.mei', 'utf-8'), {
   sourceName: 'sonata.mei',
 });
+const mpm = readFileSync('sonata.mpm', 'utf-8');
 
-writeFileSync('sonata.mid', renderExpressiveMidi(movement));
+writeFileSync('sonata.mid', renderExpressiveMidi({ msm: movement.msm, mpm }));
 ```
 
-`convertMeiToMsmMpm` returns **one MSM + MPM pair per `mdiv`** — one per movement — so a
-multi-movement MEI gives you an array to iterate.
+`convertMeiToMsm` returns **one MSM per `mdiv`** — one per movement — so a multi-movement MEI
+gives you an array to iterate. `renderExpressiveMidi` can also be called with `{ msm }` alone,
+which performs the score with no expression at all.
 
 ### Per-note performance data
 
@@ -59,10 +67,13 @@ feed a sampler — `performMsmToData` gives you plain objects:
 
 ```ts
 import { readFileSync } from 'node:fs';
-import { convertMeiToMsmMpm, performMsmToData } from 'espressivo';
+import { convertMeiToMsm, performMsmToData } from 'espressivo';
 
-const [movement] = convertMeiToMsmMpm(readFileSync('multi_part.mei', 'utf-8'));
-const data = performMsmToData(movement);
+const [movement] = convertMeiToMsm(readFileSync('multi_part.mei', 'utf-8'));
+const data = performMsmToData({
+  msm: movement.msm,
+  mpm: readFileSync('multi_part.mpm', 'utf-8'),
+});
 
 for (const part of data.parts) {
   console.log(
@@ -105,29 +116,28 @@ crosses the boundary as **XML text**, so you can store or ship any intermediate 
 
 ```ts
 import { readFileSync } from 'node:fs';
-import {
-  convertMeiToMsmMpm,
-  extractPerformanceData,
-  listPerformances,
-  performMsm,
-} from 'espressivo';
+import { convertMeiToMsm, extractPerformanceData, listPerformances, performMsm } from 'espressivo';
 
-const [movement] = convertMeiToMsmMpm(readFileSync('sonata.mei', 'utf-8'));
+const [movement] = convertMeiToMsm(readFileSync('sonata.mei', 'utf-8'));
+const mpm = readFileSync('sonata.mpm', 'utf-8');
 
-for (const p of listPerformances(movement.mpm)) {
+for (const p of listPerformances(mpm)) {
   console.log(`${p.index}: ${p.name} @ ${p.ppq} ppq`);
 }
 
-const augmentedMsm = performMsm(movement, {
-  performance: 'MEI export performance', // or an index; default is 0
-  seed: 42, // base seed for imprecision — see the caveat below
-  movementSampleMaxStep: 0.05, // denser pedalling/movement sampling
-});
+const augmentedMsm = performMsm(
+  { msm: movement.msm, mpm },
+  {
+    performance: 'Ansermet 1954', // name or index; default is 0
+    seed: 42, // base seed for imprecision — see the caveat below
+    movementSampleMaxStep: 0.05, // denser pedalling/movement sampling
+  },
+);
 
 const data = extractPerformanceData(augmentedMsm);
 ```
 
-`performMsmToData(movement, options)` is the same thing without the serialize/re-parse in the
+`performMsmToData({ msm, mpm }, options)` is the same thing without the serialize/re-parse in the
 middle, and is tested to produce exactly what the two-step path produces.
 
 ### Errors
@@ -135,10 +145,10 @@ middle, and is tested to produce exactly what the two-step path produces.
 The facade validates its inputs and throws typed errors — it never returns `null`:
 
 ```ts
-import { convertMeiToMsmMpm, EmptyDocumentError, MeicoError, ParseError } from 'espressivo';
+import { convertMeiToMsm, EmptyDocumentError, MeicoError, ParseError } from 'espressivo';
 
 try {
-  convertMeiToMsmMpm('<not-mei />');
+  convertMeiToMsm('<not-mei />');
 } catch (error) {
   if (error instanceof ParseError) console.error('not a well-formed MEI document');
   else if (error instanceof EmptyDocumentError) console.error('nothing to convert');
@@ -162,15 +172,15 @@ memoization works.
 
 The pipeline — the part that reproduces meico:
 
-| Function                                        | In                 | Out                                         |
-| ----------------------------------------------- | ------------------ | ------------------------------------------- |
-| `convertMeiToMsmMpm(mei, options?)`             | MEI text           | one `{ index, title, msm, mpm }` per `mdiv` |
-| `listPerformances(mpm)`                         | MPM text           | `{ index, name, ppq }[]`                    |
-| `performMsm({ msm, mpm }, options?)`            | MSM + MPM text     | augmented MSM text                          |
-| `extractPerformanceData(augmentedMsm)`          | augmented MSM text | `PerformanceData`                           |
-| `performMsmToData({ msm, mpm }, options?)`      | MSM + MPM text     | `PerformanceData`                           |
-| `renderMidi({ msm }, options?)`                 | MSM text           | `Uint8Array` — the score as written         |
-| `renderExpressiveMidi({ msm, mpm? }, options?)` | MSM (+ MPM) text   | `Uint8Array` — as performed                 |
+| Function                                        | In                 | Out                                    |
+| ----------------------------------------------- | ------------------ | -------------------------------------- |
+| `convertMeiToMsm(mei, options?)`                | MEI text           | one `{ index, title, msm }` per `mdiv` |
+| `listPerformances(mpm)`                         | MPM text           | `{ index, name, ppq }[]`               |
+| `performMsm({ msm, mpm }, options?)`            | MSM + MPM text     | augmented MSM text                     |
+| `extractPerformanceData(augmentedMsm)`          | augmented MSM text | `PerformanceData`                      |
+| `performMsmToData({ msm, mpm }, options?)`      | MSM + MPM text     | `PerformanceData`                      |
+| `renderMidi({ msm }, options?)`                 | MSM text           | `Uint8Array` — the score as written    |
+| `renderExpressiveMidi({ msm, mpm? }, options?)` | MSM (+ MPM) text   | `Uint8Array` — as performed            |
 
 The additions, none of which has a meico counterpart:
 
@@ -189,9 +199,8 @@ Options for the conversion and rendering entry points, all optional:
 
 - **`ConvertOptions`** — `ppq` (tick grid floor, default 720, raised automatically if the source
   needs a finer grid), `dontUseChannel10`, `ignoreExpansions`, `cleanup`, `sourceName` (the name
-  written into the MPM metadata's related-resource entry; set it to reproduce byte for byte what
-  the file-based Java path produces), `expandOrnaments` (write MEI trills, mordents and turns into
-  the MPM as ornaments — default true).
+  the class API would derive from a file path — an MEI with no `<title>` titles its movement from
+  it, so it reaches `<msm title>`).
 - **`PerformOptions`** — `performance` (name or index), `seed`, `movementSampleMaxStep`,
   `expandOrnaments` (let the MPM's ornaments generate their notes — default true).
 - **`MidiOptions`** — `generateProgramChanges`; `renderMidi` also takes `bpm` (default 120).
@@ -213,14 +222,13 @@ just apply it. It mirrors meico's Java classes closely enough that the Java docu
 
 ```ts
 import { readFileSync } from 'node:fs';
-import { Mei, Mei2MsmMpmConverter } from 'espressivo';
+import { Mei, Mei2MsmMpmConverter, Mpm } from 'espressivo';
 
 const mei = Mei.fromXml(readFileSync('sonata.mei', 'utf-8'));
 mei.setFile('sonata.mei');
 
-const converted = new Mei2MsmMpmConverter(720, true, false, true).convert(mei);
-const msm = converted.key[0]; // KeyValue<Msm[], Mpm[]>
-const mpm = converted.value[0];
+const [msm] = new Mei2MsmMpmConverter(720, true, false, true).convert(mei); // Msm[]
+const mpm = new Mpm(readFileSync('sonata.mpm', 'utf-8'));
 
 const performance = mpm.getPerformance(0);
 if (performance === null) throw new Error('this MPM has no performance');
@@ -253,15 +261,18 @@ so each is verified on its own terms instead. The fourth is a backport of a meth
 the fork this port is measured against, and had its ground truth constructed rather than waived.
 Each has a guide.
 
-### MPM v3 ornamentation — signs become sounding notes
+### MPM v3 ornamentation — ornaments become sounding notes
 
-A `<trill>`, `<mordent>` or `<turn>` in the MEI is not a note, and meico leaves it that way.
-espressivo implements the **MPM v3 ornamentation model** (Lars Engeln and Axel Berndt): the
-converter writes each sign as an `<ornament>` carrying the notes it plays, and the renderer
-generates them — so the trill in `composite_advanced.mei` comes out of the pipeline as three
-sounding notes where the score had one. Every generated note carries provenance back to the
-ornament and to the score note it decorates, so a performance can be joined to its score without
-parsing the ornament. It is on by default and switchable off at either stage.
+An ornament is not a note, and meico leaves it that way. espressivo implements the **MPM v3
+ornamentation model** (Lars Engeln and Axel Berndt): an `<ornament>` carries the notes it plays,
+and the renderer generates them — so a trill comes out of the pipeline as three sounding notes
+where the score had one. Every generated note carries provenance back to the ornament and to the
+score note it decorates, so a performance can be joined to its score without parsing the ornament.
+It is on by default and switchable off with `PerformOptions.expandOrnaments`.
+
+The ornaments come from the MPM you supply. espressivo does not read `<trill>`, `<mordent>` or
+`<turn>` out of an MEI and write them for you — that was the conversion-side half, removed with
+the rest ([PARITY.md §9](PARITY.md)).
 
 Java meico does not implement v3, so this is verified against the specification and hand-computed
 vectors instead, with a proof that it moves no byte of anything that _is_ under the claim. MPM
@@ -333,25 +344,32 @@ if you never call it.
 
 This one is a backport rather than an invention: the method exists in upstream meico v0.11.10, but
 the fork this port is measured against is v0.11.2 and predates it, so ground truth had to be
-constructed instead of exempted.
+constructed instead of exempted. That ground truth compared the MPM a conversion produced, so it
+went with [PARITY.md §9](PARITY.md) — the pass works and is documented, but no longer has a byte
+gate under it.
 
 → [`docs/layers-to-staffs.md`](docs/layers-to-staffs.md), [PARITY.md §8](PARITY.md)
 
 ## Equivalence with Java meico
 
 The port's correctness criterion is not "passes its tests", it is **"produces what meico
-produces"**, and that is enforced mechanically: 16 MEI fixtures with the Java library's own output
-for each — MSM, MPM, augmented MSM, raw and expressive MIDI, plus 40 per-map fixtures — held
-**immutable**, and seven equivalence suites comparing against them, down to MIDI byte equivalence
-event by event. The suites auto-discover the fixtures, so a missing reference is a **failure, not a
-skip**. 5434 tests across 126 files run as a gate before every commit, every structural refactor was
-additionally proven with a whole-pipeline byte probe, and the load-bearing probes have negative
-controls — a deliberate mutation had to break them.
+produces"** — over the part of meico espressivo ports. It is enforced mechanically: 16 MEI
+fixtures with the Java library's own output for each — MSM, MPM, augmented MSM, raw and expressive
+MIDI, plus 40 per-map fixtures — held **immutable**, and six equivalence suites comparing against
+them, down to MIDI byte equivalence event by event. The suites auto-discover the fixtures, so a
+missing reference is a **failure, not a skip**. 6197 tests across 145 files run as a gate before
+every commit, every structural refactor was additionally proven with a whole-pipeline byte probe,
+and the load-bearing probes have negative controls — a deliberate mutation had to break them.
 
-What it does not claim: imprecision is nondeterministic by design and is never byte-compared; a
-short list of behaviours on malformed input still differs; and ornamentation, the expression
-transforms and the comparison module are outside the claim entirely, for want of anything to
-compare against. Java's bugs are reproduced rather than corrected, with eight exceptions — each
+It is really two claims, gated separately. **MEI ⇒ MSM** is compared against the reference MSMs by
+strict string equality. **MSM + MPM ⇒ augmented MSM ⇒ MIDI** reads its _inputs_ from the reference
+files too — Java's own MSM and MPM — so no output of this port stands between the fixture and the
+comparison, and a converter defect cannot cancel against a renderer defect.
+
+What it does not claim: MEI ⇒ MPM is not ported at all ([PARITY.md §9](PARITY.md)); imprecision is
+nondeterministic by design and is never byte-compared; a short list of behaviours on malformed
+input still differs; and ornamentation, the expression transforms and the comparison module are
+outside the claim entirely, for want of anything to compare against. Java's bugs are reproduced rather than corrected, with eight exceptions — each
 an obvious bug, each fixed only once the fix was proven not to move fixture bytes, or else shipped
 by patching the Java fork first and regenerating the affected ground truth from it.
 
