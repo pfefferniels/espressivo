@@ -11,11 +11,14 @@ differ.
 
 ```mermaid
 flowchart LR
-  MEI["MEI"] -->|convert| MSM["MSM<br/>score"]
-  MEI -.->|convert| MPM["MPM<br/>performance"]
-  MSM -->|perform| AUG["augmented MSM"]
-  MPM -->|perform| AUG
-  AUG -->|render| MIDI["MIDI"]
+  MEI["MEI"] --> CONVERT(["convert"])
+  CONVERT --> MSM["MSM<br/>score"]
+  CONVERT -.-> MPM["MPM<br/>performance"]
+  MSM --> PERFORM(["perform"])
+  MPM --> PERFORM
+  PERFORM --> AUG["augmented MSM"]
+  AUG --> RENDER(["render"])
+  RENDER --> MIDI["MIDI"]
 ```
 
 On top of the port it adds and changes some things compared to meico: parametric expression
