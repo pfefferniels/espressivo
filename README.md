@@ -13,9 +13,8 @@ differ.
 flowchart LR
   MEI["MEI"] --> CONVERT(["convert"])
   CONVERT --> MSM["MSM<br/>score"]
-  CONVERT -.-> MPM["MPM<br/>performance"]
   MSM --> PERFORM(["perform"])
-  MPM --> PERFORM
+  MPM["MPM<br/>performance"] --> PERFORM
   PERFORM --> AUG["augmented MSM"]
   AUG --> RENDER(["render"])
   RENDER --> MIDI["MIDI"]
