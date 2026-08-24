@@ -1,5 +1,5 @@
 /**
- * The event alignment DP — §5.6 as a dimension-neutral module (AD-37.6).
+ * The event alignment DP, as a dimension-neutral module.
  *
  * The oracle is the objective, not a particular alignment: the load-bearing test enumerates
  * every monotone alignment of a small pair by brute force and checks that the DP found the
@@ -52,7 +52,7 @@ function bruteForce(a: readonly Event[], b: readonly Event[], c: AlignmentCost<E
   return best(0, 0);
 }
 
-describe('the alignment minimizes §5.6’s functional', () => {
+describe('the alignment minimizes the functional', () => {
   const CASES: readonly (readonly [string, Event[], Event[]])[] = [
     ['equal lengths, equal dates', [event(0, 10), event(720, 20)], [event(0, 12), event(720, 18)]],
     [
@@ -115,7 +115,7 @@ describe('the alignment minimizes §5.6’s functional', () => {
   });
 });
 
-describe('the date term is INSIDE the minimand (M5’s correction)', () => {
+describe('the date term is INSIDE the minimand (the correction)', () => {
   it('charges a displaced match, so a half-bar displacement is not free', () => {
     // Identical values displaced by two quarters: at λ = 16 the match costs 32, and dropping
     // both costs |10| + |10| = 20.
@@ -138,7 +138,7 @@ describe('the date term is INSIDE the minimand (M5’s correction)', () => {
   });
 });
 
-describe('opportunistic id-pinning (AD-7)', () => {
+describe('opportunistic id-pinning', () => {
   it('forces a match between equal ids, even when the dates argue against it', () => {
     // Without the pin these would not match: two quarters apart at λ = 16 costs 32 against 20
     // for dropping both.
@@ -197,7 +197,7 @@ describe('opportunistic id-pinning (AD-7)', () => {
 });
 
 describe('λ_date', () => {
-  it('is one JND per 1/16 quarter, the displacement unit §7.1 already states', () => {
+  it('is one JND per 1/16 quarter, the displacement unit the registry states', () => {
     expect(DEFAULT_LAMBDA_DATE).toBe(16);
     const oneJnd = alignEvents(
       [event(0, 0)],
@@ -215,12 +215,12 @@ describe('λ_date', () => {
 });
 
 /**
- * AD-51.2's extension: the optimum comes apart per event, and the parts land on the timeline.
+ * the extension: the optimum comes apart per event, and the parts land on the timeline.
  *
  * The oracle is the scalar the DP minimized, not hand-computed charges: the property that
  * matters is that nothing is lost or invented between the optimum and the table.
  */
-describe('the optimum decomposes into charges (AD-51.2)', () => {
+describe('the optimum decomposes into charges', () => {
   const a = [event(0, 10), event(360, 5), event(1440, 20)];
   const b = [event(0, 12), event(1080, 18)];
 
@@ -250,7 +250,7 @@ describe('the optimum decomposes into charges (AD-51.2)', () => {
   });
 });
 
-describe('AD-7’s placement rule', () => {
+describe('the placement rule', () => {
   const WINDOW = { startTicks: 0, endTicks: 2880 };
 
   it('spreads a matched pair uniformly over the interval between its two dates', () => {
@@ -304,8 +304,8 @@ describe('AD-7’s placement rule', () => {
   });
 
   /**
-   * The id-anchored case (AD-7, AD-39.1). Pinning the mass to the written `@date` would assert
-   * a position §5.5 says is unknown; dropping it would forgive a difference the renderer
+   * The id-anchored case. Pinning the mass to the written `@date` would assert
+   * a position the design says is unknown; dropping it would forgive a difference the renderer
    * performs. Spreading it uniformly adds no information either way.
    */
   it('spreads an anchor of unknown position over the whole window, and says so', () => {

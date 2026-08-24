@@ -1,7 +1,7 @@
 /**
- * The thirteen non-level dimensions: §7.3, §7.5 through §7.14.
+ * The thirteen non-level dimensions.
  *
- * One describe per §7 subsection, and every expectation is the section's own arithmetic
+ * One describe per dimension, and every expectation is that dimension's own arithmetic
  * written out — `1 − (1−x)^s` for a curvature, the joint trim's ratio split for a rubato
  * window — so that a change to a scale space fails here with a number rather than with a
  * tolerance.
@@ -20,7 +20,7 @@ import {
   textAt,
 } from './applierFixtures.js';
 
-describe('tempoShape — @meanTempoAt (§7.3)', () => {
+describe('tempoShape — @meanTempoAt', () => {
   const SHAPED = globalDocument(
     '',
     '<tempoMap>' +
@@ -31,7 +31,7 @@ describe('tempoShape — @meanTempoAt (§7.3)', () => {
 
   it('moves the mean position on a logit over (0,1)', () => {
     const { root } = exaggerate(SHAPED, { tempoShape: 2 });
-    // DESIGN §7.3's own worked example: 0.25 at s = 2 gives 0.1.
+    // the worked example: 0.25 at s = 2 gives 0.1.
     expect(numberAt(root, 't1', 'meanTempoAt')).toBe(logit(0.25, 2, 0, 1));
     expect(numberAt(root, 't1', 'meanTempoAt')).toBeCloseTo(0.1, 12);
   });
@@ -55,7 +55,7 @@ describe('tempoShape — @meanTempoAt (§7.3)', () => {
     expect(performance.dimensions.tempoShape.state).toBe('skipped');
   });
 
-  it('skips an out-of-domain input rather than repairing it (§1.2)', () => {
+  it('skips an out-of-domain input rather than repairing it', () => {
     const BROKEN = globalDocument(
       '',
       '<tempoMap><tempo id="t1" date="0.0" bpm="120" beatLength="0.25" ' +
@@ -67,7 +67,7 @@ describe('tempoShape — @meanTempoAt (§7.3)', () => {
   });
 });
 
-describe('dynamicsShape — @curvature and @protraction (§7.5)', () => {
+describe('dynamicsShape — @curvature and @protraction', () => {
   const SWELL = globalDocument(
     '',
     '<dynamicsMap>' +
@@ -79,7 +79,7 @@ describe('dynamicsShape — @curvature and @protraction (§7.5)', () => {
 
   it('scales curvature by boundary-power and protraction by logit(−1,1)', () => {
     const { root } = exaggerate(SWELL, { dynamicsShape: 2 });
-    // §8's dynamicsShape row: an authored 0.3 becomes 0.51 at s = 2.
+    // the dynamicsShape row: an authored 0.3 becomes 0.51 at s = 2.
     expect(numberAt(root, 'd1', 'curvature')).toBe(boundaryPowerLow(0.3, 2));
     expect(numberAt(root, 'd1', 'curvature')).toBeCloseTo(0.51, 12);
     expect(numberAt(root, 'd1', 'protraction')).toBe(logit(0.5, 2, -1, 1));
@@ -115,9 +115,9 @@ describe('dynamicsShape — @curvature and @protraction (§7.5)', () => {
   });
 });
 
-describe('rubato — intensity and the joint trim (§7.6, RESOLVED-2, A6)', () => {
+describe('rubato — intensity and the joint trim', () => {
   // `r` is fully inherited by one element and PARTIALLY overridden by another; `q` carries no
-  // window at all. The partial override is what A6 excludes both sites for.
+  // window at all. The partial override is what the design excludes both sites for.
   const RUBATO = globalDocument(
     '<rubatoStyles><styleDef name="S">' +
       '<rubatoDef id="defR" name="r" frameLength="720" intensity="1.5" lateStart="0.1" earlyEnd="0.9"/>' +
@@ -155,7 +155,7 @@ describe('rubato — intensity and the joint trim (§7.6, RESOLVED-2, A6)', () =
     expect(firstNoteOfKind(performance, 'cross-site-rubato-window').attribute).toBe('lateStart');
   });
 
-  it('never touches @frameLength, which has no neutral (§7.16)', () => {
+  it('never touches @frameLength, which has no neutral', () => {
     const { root } = exaggerate(RUBATO, { rubato: 2 });
     expect(textAt(root, 'defR', 'frameLength')).toBe('720');
   });
@@ -177,14 +177,14 @@ describe('rubato — intensity and the joint trim (§7.6, RESOLVED-2, A6)', () =
     expect(numberAt(root, 'd', 'earlyEnd')).toBe(1 - trimmed * (tail / total));
   });
 
-  it('reports §8’s per-document guard bound', () => {
+  it('reports the per-document guard bound', () => {
     const { performance } = exaggerate(RUBATO, { rubato: 2 });
     // The only trimmed site is r2, whose total trim is 0.8.
     expect(performance.bounds.rubatoMaxS).toBe(Math.log(1e-6) / Math.log(1 - 0.8));
   });
 
   it('saturates smoothly rather than crossing, at an s that would cross without the guard', () => {
-    // Without A6's clamp, s = 16 on a (.45,.55) window makes lateStart >= earlyEnd, which both
+    // Without the clamp, s = 16 on a (.45,.55) window makes lateStart >= earlyEnd, which both
     // renderer paths answer by resetting the window to (0,1) — no rubato at all.
     const TIGHT = globalDocument(
       '',
@@ -211,7 +211,7 @@ describe('rubato — intensity and the joint trim (§7.6, RESOLVED-2, A6)', () =
   });
 });
 
-describe('articulation — the seven live modifiers (§7.7, D-B)', () => {
+describe('articulation — the seven live modifiers', () => {
   const ARTICULATION = globalDocument(
     '<articulationStyles><styleDef name="A">' +
       '<articulationDef id="stacc" name="stacc" absoluteDurationMs="160" absoluteVelocityChange="-5"/>' +
@@ -239,7 +239,7 @@ describe('articulation — the seven live modifiers (§7.7, D-B)', () => {
     expect(firstNoteOfKind(performance, 'articulation-component-excluded').attribute).toBe(
       'absoluteDurationMs',
     );
-    // F8: this document also holds fully-reachable sites, and §4-as-amended orders
+    // This document also holds fully-reachable sites, and the report orders
     // `transformed > partial`, so the dimension as a whole reads `transformed`.
     expect(performance.dimensions.articulation.state).toBe('transformed');
   });
@@ -259,7 +259,7 @@ describe('articulation — the seven live modifiers (§7.7, D-B)', () => {
   });
 
   it('scales @absoluteDelay and @absoluteDurationChangeMs on the INLINE element too', () => {
-    // §7.7 keys composition on the element, so def and inline are separate sites for every row.
+    // Composition is keyed on the element, so def and inline are separate sites for every row.
     // Neither of these two is in the inline duration-precedence chain, so both scale as gains.
     const INLINE = globalDocument(
       '',
@@ -274,7 +274,7 @@ describe('articulation — the seven live modifiers (§7.7, D-B)', () => {
     expect(noteKinds(performance)).not.toContain('inline-duration-precedence');
   });
 
-  it('reports R6(b) coefficients rather than clamping the velocity', () => {
+  it('reports velocity coefficients rather than clamping the velocity', () => {
     const { performance } = exaggerate(ARTICULATION, { articulation: 2 });
     expect(performance.dimensions.articulation.velocityCoefficients).toEqual({
       multiplicative: Math.abs(logAroundOne(1.1, 2) - 1),
@@ -283,7 +283,7 @@ describe('articulation — the seven live modifiers (§7.7, D-B)', () => {
   });
 });
 
-describe('accentuation — the single site (§7.8, D-C)', () => {
+describe('accentuation — the single site', () => {
   const PATTERN = globalDocument(
     '<metricalAccentuationStyles><styleDef name="M">' +
       '<accentuationPatternDef id="def" name="p4" length="4">' +
@@ -314,7 +314,7 @@ describe('accentuation — the single site (§7.8, D-C)', () => {
 
   it('estimates velocity from the def’s own anchors and flags the beats as unverifiable', () => {
     const { performance } = exaggerate(PATTERN, { accentuation: 2.5 });
-    // The largest declared amplitude is 20; the fallback is |scale'| × that (A10).
+    // The largest declared amplitude is 20; the fallback is |scale'| × that.
     expect(performance.dimensions.accentuation.velocityCoefficients).toEqual({
       multiplicative: 0,
       additive: 50,
@@ -324,7 +324,7 @@ describe('accentuation — the single site (§7.8, D-C)', () => {
   });
 });
 
-describe('ornamentation — spread, spacing and gradient (§7.9–§7.11)', () => {
+describe('ornamentation — spread, spacing and gradient', () => {
   const ORNAMENTS = globalDocument(
     '<ornamentationStyles><styleDef name="O">' +
       '<ornamentDef name="arp">' +
@@ -339,18 +339,18 @@ describe('ornamentation — spread, spacing and gradient (§7.9–§7.11)', () =
       '</ornamentationMap>',
   );
 
-  it('scales the frame as one geometric pair under one factor (§7.9)', () => {
+  it('scales the frame as one geometric pair under one factor', () => {
     const { root } = exaggerate(ORNAMENTS, { ornamentSpread: 2 });
     expect(numberAt(root, 'spread', 'frame.start')).toBe(-44);
     expect(numberAt(root, 'spread', 'frameLength')).toBe(88);
   });
 
-  it('scales the spacing exponent independently (§7.10)', () => {
+  it('scales the spacing exponent independently', () => {
     const { root } = exaggerate(ORNAMENTS, { ornamentSpacing: 2, ornamentSpread: 2 });
     expect(numberAt(root, 'spread', 'intensity')).toBe(logAroundOne(2, 2));
   });
 
-  it('scales gradient endpoints as gains and reports leaving the nominal range (§7.11)', () => {
+  it('scales gradient endpoints as gains and reports leaving the nominal range', () => {
     const { root, performance } = exaggerate(ORNAMENTS, { ornamentDynamics: 3 });
     expect(numberAt(root, 'grad', 'transition.from')).toBe(-3);
     expect(numberAt(root, 'grad', 'transition.to')).toBe(3);
@@ -370,7 +370,7 @@ describe('ornamentation — spread, spacing and gradient (§7.9–§7.11)', () =
     expect(noteKinds(performance)).toContain('transition-to-absent');
   });
 
-  it('reports the R6(b) additive contribution as the endpoint magnitude times @scale', () => {
+  it('reports the additive velocity contribution as the endpoint magnitude times @scale', () => {
     const { performance } = exaggerate(ORNAMENTS, { ornamentDynamics: 3 });
     expect(performance.dimensions.ornamentDynamics.velocityCoefficients).toEqual({
       multiplicative: 0,
@@ -379,7 +379,7 @@ describe('ornamentation — spread, spacing and gradient (§7.9–§7.11)', () =
   });
 });
 
-describe('ornamentation v3 — the TemporalValue frame (§7.15)', () => {
+describe('ornamentation v3 — the TemporalValue frame', () => {
   /** A `<temporalSpread>` with the given attributes, referenced by a live `<ornament>`. */
   function withSpread(attributes: string, ornamentAttributes = 'scale="1"'): string {
     return globalDocument(
@@ -551,7 +551,7 @@ describe('ornamentation v3 — the TemporalValue frame (§7.15)', () => {
   });
 
   describe('the two dimensions v3 did not change', () => {
-    it('scales @intensity on a v3 spread exactly as on a v2 one (§7.10 restated)', () => {
+    it('scales @intensity on a v3 spread exactly as on a v2 one', () => {
       // Verified in the code: TemporalSpread reads @intensity with the same parseFloat outside
       // its v2/v3 branch, so it never carries a unit suffix in either generation.
       const V3 = withSpread('frame.offset="-22.0ticks" frameLength="44ticks" intensity="2.0"');
@@ -575,7 +575,7 @@ describe('ornamentation v3 — the TemporalValue frame (§7.15)', () => {
       expect(firstNoteOfKind(performance, 'frame-noteoff-shift').detail).toContain('LENGTHENS');
     });
 
-    it('scales gradient endpoints on a v3 document with no v3 branch of its own (§7.11)', () => {
+    it('scales gradient endpoints on a v3 document with no v3 branch of its own', () => {
       // DynamicsGradient has no v3 reading at all — same attributes, same parseFloat, same
       // absent-@transition.to default — so the v2 rows govern both generations unchanged.
       const V3_GRADIENT = globalDocument(
@@ -638,7 +638,7 @@ describe('ornamentation v3 — the TemporalValue frame (§7.15)', () => {
   });
 });
 
-describe('asynchrony — @milliseconds.offset (§7.12)', () => {
+describe('asynchrony — @milliseconds.offset', () => {
   it('scales exactly linearly', () => {
     const OFFSETS = globalDocument(
       '',
@@ -651,7 +651,7 @@ describe('asynchrony — @milliseconds.offset (§7.12)', () => {
   });
 });
 
-describe('imprecision — atomic per-distribution groups (§7.13, D-F, RESOLVED-7)', () => {
+describe('imprecision — atomic per-distribution groups', () => {
   const IMPRECISION = globalDocument(
     '',
     '<imprecisionMap.timing>' +
@@ -729,7 +729,7 @@ describe('imprecision — atomic per-distribution groups (§7.13, D-F, RESOLVED-
     expect(performance.totalWrites).toBe(0);
   });
 
-  it('reports imprecisionDynamics as an R6(b) dimension', () => {
+  it('reports imprecisionDynamics as a velocity-coefficient dimension', () => {
     const { performance } = exaggerate(IMPRECISION, { imprecisionDynamics: 3 });
     expect(performance.dimensions.imprecisionDynamics.velocityCoefficients).toEqual({
       multiplicative: 0,
@@ -739,7 +739,7 @@ describe('imprecision — atomic per-distribution groups (§7.13, D-F, RESOLVED-
   });
 });
 
-describe('imprecision — the two correlated families (§7.13, D-F)', () => {
+describe('imprecision — the two correlated families', () => {
   // The other four distributions appear in the corpus or in the block above; these two appear
   // in neither, so this block is the only behavioural pin on their 21 registry rows (3 + 4
   // attributes × 3 domains). Both families are declared in all three maps, so every row is
@@ -811,7 +811,7 @@ describe('imprecision — the two correlated families (§7.13, D-F)', () => {
   });
 });
 
-describe('pedalShape — the movement curve (§7.14, D-G as amended by A9)', () => {
+describe('pedalShape — the movement curve', () => {
   const PEDAL = globalDocument(
     '',
     '<movementMap>' +
@@ -828,7 +828,7 @@ describe('pedalShape — the movement curve (§7.14, D-G as amended by A9)', () 
     expect(numberAt(root, 'v1', 'protraction')).toBe(logit(0.5, 2, -1, 1));
   });
 
-  it('leaves @position and @transition.to alone — they stay excluded under D-G', () => {
+  it('leaves @position and @transition.to alone — they stay excluded', () => {
     const { root } = exaggerate(PEDAL, { pedalShape: 2 });
     expect(textAt(root, 'v1', 'position')).toBe('0.0');
     expect(textAt(root, 'v1', 'transition.to')).toBe('1.0');
@@ -844,7 +844,7 @@ describe('pedalShape — the movement curve (§7.14, D-G as amended by A9)', () 
   });
 });
 
-describe('the remaining §7 edge shapes', () => {
+describe('the remaining edge shapes', () => {
   it('treats @meanTempoAt on a beatLength-less <tempo> as inert, since nothing on it is read', () => {
     const NO_BEAT_LENGTH = globalDocument(
       '',

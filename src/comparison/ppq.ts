@@ -1,17 +1,17 @@
 /**
  * Tick-grid normalization: two documents, two `@pulsesPerQuarter`, one common grid.
  *
- * DESIGN.md §5.0 ("Timeline"): dates from both documents are rescaled to `lcm(ppq_A, ppq_B)`
+ * The timeline: dates from both documents are rescaled to `lcm(ppq_A, ppq_B)`
  * with integer factors, which keeps the rescaling exact in IEEE754, and are then reported in
  * quarters. The campaign's own fixtures disagree — `telemann-grave` is 720 and
  * `vulpius-die-helle-sonn` is 480 — so a cross-document comparison runs on a 1440-tick grid with
  * factors 2 and 3.
  *
- * Nothing here reads a rescaled value back into a document. The factors exist so §5.0's
+ * Nothing here reads a rescaled value back into a document. The factors exist so the
  * refinement grid can deduplicate breakpoints "exactly in integer lcm-ticks"; a float-scaled
  * date would make two breakpoints that are the same beat fail to compare equal.
  *
- * `ppqSensitive` is not decided here. §5.0 rescales a registry row's *value* by the same factor
+ * `ppqSensitive` is not decided here. A registry row's *value* is rescaled by the same factor
  * only when the row is tick-valued; `*Ms` attributes never rescale. This module supplies the
  * factor and says nothing about which values earn it — that is the registry's question, and
  * the evaluators ask it.
@@ -31,7 +31,7 @@ export interface PpqReading {
   readonly value: number;
   /**
    * False when `@pulsesPerQuarter` was absent and {@link DEFAULT_PPQ} was assumed — which is
-   * the *only* thing §5.0's `fallbackUsed` stamp is allowed to mean.
+   * the *only* thing the `fallbackUsed` stamp is allowed to mean.
    */
   readonly declared: boolean;
   /**
@@ -76,7 +76,7 @@ function greatestCommonDivisor(a: number, b: number): number {
   return x;
 }
 
-/** §5.0's common grid and the two integer factors that reach it. */
+/** the common grid and the two integer factors that reach it. */
 export interface PpqNormalization {
   readonly a: number;
   readonly b: number;
@@ -85,7 +85,7 @@ export interface PpqNormalization {
   readonly factorA: number;
   /** `lcm / b` — likewise. */
   readonly factorB: number;
-  /** §5.0/A21: exactly "a document declared none and the default was assumed". */
+  /** exactly "a document declared none and the default was assumed". */
   readonly fallbackUsed: boolean;
   /** The assumed value when `fallbackUsed`, else null (RULE N4: absence is null). */
   readonly assumed: number | null;

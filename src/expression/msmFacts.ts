@@ -1,7 +1,7 @@
 /**
  * The MSM facts the report's MSM-dependent estimates need — and nothing else.
  *
- * R1 makes this engine a pure MPM→MPM transform, and A10 carves out exactly one exception:
+ * the design makes this engine a pure MPM→MPM transform, with exactly one carve-out:
  * an optional MSM may be read to *describe* what the transform did, never to decide it. This
  * module is that carve-out's whole surface. It reads a score, not a performance: note dates,
  * note durations, the part identities the renderer matches on, and — when the MSM has already
@@ -10,7 +10,7 @@
  * It re-reads the MSM rather than importing `src/msm/` for the reason `temporalValue.ts` and
  * `datedView.ts` replicate: the layer zone (eslint.config.js, `expression`) admits
  * `src/xml/**` and the MPM name constants and nothing else, because `new Mpm(text)` rewrites
- * the document in its own constructor (D-A/A1). `new Msm(text)` is not implicated in that
+ * the document in its own constructor. `new Msm(text)` is not implicated in that
  * finding, but the zone is drawn around the engine rather than around one class, and what is
  * read here is four attributes and one element path.
  *
@@ -19,7 +19,7 @@
  * A note's SYMBOLIC extent — `@date`, `@duration` — is in every MSM. Its RENDERED extent —
  * `@milliseconds.date`, `@milliseconds.date.end` — exists only after a performance has been
  * applied, and no arithmetic recovers it from the score: converting ticks to milliseconds
- * needs the tempo map, i.e. a render, which R1 puts out of reach. So {@link MsmNote} reports
+ * needs the tempo map, i.e. a render, which the design puts out of reach. So {@link MsmNote} reports
  * the millisecond pair as `null` for a raw score, and every estimate that would compare a
  * millisecond offset against it answers `null` rather than guessing (see `estimates.ts`).
  *
@@ -99,7 +99,7 @@ function readPart(part: Element, index: number): MsmPart {
   };
 }
 
-/** `<part><dated><score><note>`, navigated with the child walkers D-A permits. */
+/** `<part><dated><score><note>`, navigated with the child walkers the design permits. */
 function noteElements(part: Element): readonly Element[] {
   const dated = part.getFirstChildElement('dated');
   if (dated === null) return [];

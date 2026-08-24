@@ -26,12 +26,11 @@
  *   emit their children back to back with no added whitespace or indentation.
  * - `Document.toXML()` prefixes exactly `<?xml version="1.0" encoding="UTF-8"?>\n`.
  *
- * The tree is deliberately mutable — see docs/history/refactor/CHARTER.md, "Explicit mutation boundaries":
- * the immutable-friendly direction applies to the layers above this one, not to the
- * document tree itself.
+ * The tree is deliberately mutable: the immutable-friendly direction applies to the layers
+ * above this one, not to the document tree itself (RULE I1 draws the boundary).
  *
  * The public API mirrors XOM's Java names on purpose, because the call sites across
- * `mei/`, `msm/` and `mpm/` are transliterated Java. ARCHITECTURE.md §8.7 rules against
+ * `mei/`, `msm/` and `mpm/` are transliterated Java. ARCHITECTURE.md the design rules against
  * wrapping that surface behind a slim interface or renaming the module: the attribute
  * ordering and namespace handling above are load-bearing, and the XOM names are what makes a
  * side-by-side comparison with the Java original readable. This file stays internals-only.
@@ -49,7 +48,7 @@ export { DOMParser, XMLSerializer };
  * A placeholder is never read by serialization, but creating one still needs an owner
  * document. A per-node document costs one full XML parse per node; sharing one removes all
  * but the first, worth ~30 % of the end-to-end conversion pipeline and 9–33× cheaper node
- * construction (measured; docs/history/refactor/log.md).
+ * construction (measured).
  *
  * Sharing is unobservable. `createElement`, `createElementNS`, `createAttribute` and
  * `createTextNode` return unattached nodes and leave the document itself at `<dummy/>`,
@@ -59,9 +58,8 @@ export { DOMParser, XMLSerializer };
  * call, which is why the placeholder is created eagerly rather than on demand: the throw is
  * part of the constructors' observable behavior.
  *
- * The module-level mutable binding, which docs/history/refactor/CHARTER.md's
- * immutable-friendly direction otherwise rules out, is a memo of a constant: assigned once
- * and never reassigned. It is built on first use rather than at module load so that importing
+ * The module-level mutable binding, which the immutable-friendly direction otherwise rules
+ * out, is a memo of a constant: assigned once and never reassigned. It is built on first use rather than at module load so that importing
  * this module stays side-effect-free.
  */
 let placeholderDocument: DomDocument | null = null;

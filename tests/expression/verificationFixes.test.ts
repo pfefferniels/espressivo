@@ -1,9 +1,9 @@
 /**
- * One pin per W2-VERIFICATION finding, built from the finding's own reproduction.
+ * One pin per adversarial finding, built from the finding's own reproduction.
  *
  * Failing on the pre-fix engine is the entry criterion for being in this file. The documents
- * and the expected numbers are the verifiers', re-derived by hand rather than copied from a
- * run, so a regression fails with the same arithmetic the adversary used.
+ * and the expected numbers are re-derived by hand rather than copied from a run, so a
+ * regression fails with the same arithmetic the adversary used.
  *
  * They live apart from the per-dimension suites so that one finding maps to one describe:
  * "was F1 fixed, and how would we know" is answerable without reading forty assertions.
@@ -22,7 +22,7 @@ import {
 } from './applierFixtures.js';
 
 describe('F1 (BLOCKER) — the pair-collapse refusal reaches def-side writes', () => {
-  // §8's own reference fixture. μ = √(48·97) = 68.2348…; at s = 1.8 both the def `f` (97) and
+  // the reference fixture. μ = √(48·97) = 68.2348…; at s = 1.8 both the def `f` (97) and
   // the literal target (115) transform past the ceiling and clamp to 127, so the pair collapses
   // and the guard must refuse it. Flush the def write before the guard runs and the authored
   // 97 → 115 crescendo ships as a 127 → 115 diminuendo, with the report claiming a refusal.
@@ -108,7 +108,7 @@ describe('F1 (BLOCKER) — the pair-collapse refusal reaches def-side writes', (
   });
 });
 
-describe('F2 — the end-marker duplicate is written in its OWN beat unit', () => {
+describe('the end-marker duplicate is written in its OWN beat unit', () => {
   // Both sites denote 60 quarter-note bpm (60·1 and 30·2), which is why the duplicate is
   // detected at all. Writing the transition's denormalized value straight into a half-note
   // `@bpm` puts two sites that share one musical value a factor of 2 apart.
@@ -159,7 +159,7 @@ describe('F2 — the end-marker duplicate is written in its OWN beat unit', () =
   });
 });
 
-describe('F3 — dynamicsShape uses the renderer’s 100.0 fallback for constancy', () => {
+describe('dynamicsShape uses the renderer’s 100.0 fallback for constancy', () => {
   it('treats two unresolvable endpoints as the constant the renderer sees', () => {
     // Before the map's first `<style>` switch neither name resolves, so `resolveLevel` gives
     // NaN for both — and `NaN === NaN` is false, so a bare equality test would call this a
@@ -190,7 +190,7 @@ describe('F3 — dynamicsShape uses the renderer’s 100.0 fallback for constanc
     expect(noteKinds(performance)).toContain('constant-instruction');
   });
 
-  it('keeps the fallback OUT of the center population (§7.2)', () => {
+  it('keeps the fallback OUT of the center population', () => {
     // The same placeholder must not become a 100.0 level: inventing one would move every level
     // the author did write.
     const MIXED = globalDocument(
@@ -206,7 +206,7 @@ describe('F3 — dynamicsShape uses the renderer’s 100.0 fallback for constanc
   });
 });
 
-describe('F4 — tempoShape honours the renderer’s degenerate-pair rule', () => {
+describe('tempoShape honours the renderer’s degenerate-pair rule', () => {
   it('is inert when the endpoints resolve equal, though @transition.to is present', () => {
     const DEGENERATE = globalDocument(
       '',
@@ -242,7 +242,7 @@ describe('F4 — tempoShape honours the renderer’s degenerate-pair rule', () =
   });
 });
 
-describe('F5 — the §7.16 "read it" obligations are discharged as report channels', () => {
+describe('the "read it" obligations are discharged as report channels', () => {
   it('reports the ornament frame’s unit and noteoff regime on every transformed spread', () => {
     const SPREAD = globalDocument(
       '<ornamentationStyles><styleDef name="O"><ornamentDef name="arp">' +
@@ -347,7 +347,7 @@ describe('F6 — every number in the report is finite or null (RULE F1)', () => 
   });
 });
 
-describe('F8 — state precedence is transformed > partial (§4 as amended)', () => {
+describe('state precedence is transformed > partial', () => {
   const LOPSIDED_AND_WHOLE = globalDocument(
     '<articulationStyles><styleDef name="A">' +
       '<articulationDef id="whole" name="whole" relativeVelocity="1.2"/>' +
@@ -376,7 +376,7 @@ describe('F8 — state precedence is transformed > partial (§4 as amended)', ()
   });
 });
 
-describe('F9 — transition-to-absent fires only when @transition.to is the missing one', () => {
+describe('transition-to-absent fires only when @transition.to is the missing one', () => {
   it('stays silent for a gradient carrying only @transition.to', () => {
     const ONLY_TARGET = globalDocument(
       '<ornamentationStyles><styleDef name="O"><ornamentDef name="arp">' +
@@ -402,7 +402,7 @@ describe('F9 — transition-to-absent fires only when @transition.to is the miss
   });
 });
 
-describe('F10 — a pitch lever makes an articulation site partial too', () => {
+describe('a pitch lever makes an articulation site partial too', () => {
   it('reports a site carrying @detuneCents beside a transformed lever as partial', () => {
     const DETUNED = globalDocument(
       '<articulationStyles><styleDef name="A">' +
@@ -419,7 +419,7 @@ describe('F10 — a pitch lever makes an articulation site partial too', () => {
   });
 });
 
-describe('F11 — the population is built from gate-surviving values (A5)', () => {
+describe('the population is built from gate-surviving values', () => {
   // bpm and beatLength are each finite and positive; their product underflows to 0. Gating the
   // raw value lets the site into the population, where `geometricMean` refuses it and the whole
   // dimension goes inert behind a note that names no offender.

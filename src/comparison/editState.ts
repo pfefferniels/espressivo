@@ -1,31 +1,31 @@
 /**
- * §6's edit states as MAP VIEWS, so every reader prices them unchanged.
+ * the edit states as MAP VIEWS, so every reader prices them unchanged.
  *
  * `editScript.ts` searches over instruction lists and knows nothing about what an instruction
  * is; the eleven readers turn a map into what it performs and know nothing about edit states.
  * This module is the joint: {@link editView} presents a list of instructions drawn from two
  * documents as the `OrderedMapView` a reader already takes.
  *
- * ## Resolution travels with the instruction (AD-40.2)
+ * ## Resolution travels with the instruction
  *
  * Each instruction keeps the `scaleFactor` and the two environments of the DOCUMENT it came
- * from, carried on the view as `entryResolutions`. That is what makes §6.3's replay exact: the
+ * from, carried on the view as `entryResolutions`. That is what makes the replay exact: the
  * state after the last op is `b`'s instructions with `b`'s resolutions, i.e. `B` itself, rather
  * than "B's instructions read through A's styleDefs".
  *
  * The consequence: deleting a `<style>` switch does not re-resolve the instructions after it. A
  * mixed map has no well-defined style scope — A's style names need not exist in B's header at
- * all — and §6.1 scopes the script to one (part, map) while `styleDef`s live in the header,
+ * all — and the script is scoped to one (part, map) while `styleDef`s live in the header,
  * outside it. Where two documents differ ONLY in a styleDef the difference is still priced: the
  * two `<tempo>` elements may be identical while their resolved levels are not, so the
  * substitution costs real money, attributed to the instruction rather than to the header.
  *
  * ## Every dated entry is an instruction, `<style>` included
  *
- * §6.1 takes both instruction sequences date-ordered by the `datedView` rules, and that view
+ * the design takes both instruction sequences date-ordered by the `datedView` rules, and that view
  * carries `<style>` switches (those with a `@name.ref`; `GenericMap.parseData` drops the rest
  * before indexing). Under the ANY-ENTRY span rule that `asynchronyMap` and the three
- * `imprecisionMap`s follow (AD-29, AD-14ii), a `<style>` ENDS a span, so a state that dropped
+ * `imprecisionMap`s follow, a `<style>` ENDS a span, so a state that dropped
  * it would not perform what its document performs and `S(0,0)` would not be `A`.
  */
 import { optionAt } from '../prelude/seq.js';
@@ -90,7 +90,7 @@ export function editInstructionsOf(
  * An edit state as the `OrderedMapView` every reader takes.
  *
  * Null for an empty state, which is the same reading a reader gives an empty map: both produce
- * the dimension's neutral curve (R6), so the two spellings of "this map performs nothing" are
+ * the dimension's neutral curve, so the two spellings of "this map performs nothing" are
  * one number rather than two.
  */
 export function editView(
@@ -121,7 +121,7 @@ export function editView(
  *
  * - Left: everything strictly before the last unchanged instruction preceding the change is
  *   governed by instructions both states share, with unchanged neighbours. The span OPENING at
- *   that instruction is not safe — its end date moves with the change, and under AD-8 its
+ *   that instruction is not safe — its end date moves with the change, and its
  *   trailing-ness can flip — so the bound is that instruction's own date, not the change's.
  * - Right: the first unchanged instruction strictly AFTER the change opens a span whose value,
  *   end and trailing-ness are decided by instructions at or after it, none of which moved. That
@@ -129,9 +129,9 @@ export function editView(
  *   what follows.
  *
  * {@link editScriptForDimension} ships an unlocalized mode and the suite pins the two forms
- * EQUAL over the vendored corpus and the adversarial family (AD-30/AD-31). The one dimension it
+ * EQUAL over the vendored corpus and the adversarial family. The one dimension it
  * is NOT applied to is `pedal`, whose `getPreviousPosition` scans BACKWARDS over entry indices
- * for an inherited `@transition.to` (PARITY P2, AD-35.4's hazard class), so a movement really
+ * for an inherited `@transition.to` (PARITY P2, the hazard class), so a movement really
  * can depend on an instruction before it.
  */
 export function affectedTicks(

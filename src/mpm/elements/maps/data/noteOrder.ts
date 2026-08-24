@@ -17,23 +17,21 @@
  * GRAMMAR SOURCE. The authority is the schematron in the spec's `att.note.order.xml`, and
  * it is deliberately wider than the ODD prose: it admits every whitespace-separated token
  * that either starts with `#` or is exactly one of `[ ] | |: :| :|:`. So the bare barline
- * `|` and the compound `:|:` are legal although `mpm.odd:735` documents neither
- * (research/github-v3-design.md §3.3). `:|:` is normalised to `:| |:` before tokenizing,
- * following the reference implementation (research/lars-v3-implementation.md §4.2,
- * `OrnamentationMap.java:353`), so it reads as "close the open group, open the next one".
+ * `|` and the compound `:|:` are legal although `mpm.odd:735` documents neither. `:|:` is
+ * normalised to `:| |:` before tokenizing, following the reference implementation, so it reads
+ * as "close the open group, open the next one".
  *
- * The same §3.3 records the grammar's own inconsistency: the `<desc>` inside
+ * The grammar is inconsistent with itself: the `<desc>` inside
  * `att.note.order.xml` illustrates chords as `[#id1 #id2]`, which its own spaced-token
  * constraint rejects. Real documents will follow the spec's example, so unspaced brackets
  * are salvaged (split off as their own tokens) with a warning rather than skipped.
  *
  * TERMINATION AND COST. The reference tokenizer loops over a mutable index that it fails to
- * advance for a token without `#`, so a bare id hangs it forever (lars report §4.2, bug 2).
+ * advance for a token without `#`, so a bare id hangs it forever.
  * Here tokenization is one forward pass over a fixed array and bracket salvage is two
  * monotone index scans over a fixed string, so no branch can revisit a token. Cost is linear
  * in the input's length, the diagnostics are capped ({@link MAX_NOTE_ORDER_WARNINGS}), and
- * malformed input degrades to a warning plus a skip rather than an exception (DESIGN.md D9,
- * D16).
+ * malformed input degrades to a warning plus a skip rather than an exception.
  *
  * KNOWN LIMIT, measured. `tokens.push(...parts)` spreads the salvaged tokens of one glued
  * value as call arguments, so a single token holding enough brackets overflows the call stack
@@ -49,10 +47,10 @@
  * `value.replace(/#/g, '').split(/\s+/)`,
  * and everything downstream reads that flat array. Nothing in v2 knows what a bracket or a
  * repeat sign means. This module is v3-only and must never be reached from the v2 path — an
- * ornament that shows no v3 feature keeps the untouched v2 code path (DESIGN.md D6). Running
- * this parser on v2 input would not change the ID sequence for any v2-shaped value, but it
- * would change the *type* of the thing v2 rendering consumes, which is exactly the drift D6
- * exists to prevent.
+ * ornament that shows no v3 feature keeps the untouched v2 code path. Running this parser on
+ * v2 input would not change the ID sequence for any v2-shaped value, but it would change the
+ * *type* of the thing v2 rendering consumes, which is exactly the drift that gate exists to
+ * prevent.
  */
 
 /** One slot of the sequence: a single note, or a chord when more than one id is present. */
@@ -100,7 +98,7 @@ const KEYWORD_DESCENDING = 'descending pitch';
  *
  * A malformed value's warnings are proportional to its length — a 100 000-character token run
  * of `]` produced 100 000 strings, all of them the same sentence, and the caller logs every
- * one (LOG.md 2026-08-09). The cap bounds both the array and the console; the suppressed ones
+ * one. The cap bounds both the array and the console; the suppressed ones
  * are summarised in a final entry so the count is never silently lost.
  */
 export const MAX_NOTE_ORDER_WARNINGS = 100;
@@ -118,7 +116,7 @@ const CLOSE_BRACKET = 0x5d;
  * length and termination is structural: two monotone scans over a fixed string, no loop over
  * a value it also mutates. Collecting the peeled brackets with `unshift` instead makes it
  * quadratic — measured at 64 000 brackets, `unshift` alone costs ~975 ms of a ~1150 ms parse,
- * where the whole parse now takes 6–21 ms across runs (LOG.md 2026-08-09).
+ * where the whole parse now takes 6–21 ms across runs.
  */
 function splitUnspacedBrackets(token: string): readonly string[] {
   let start = 0;
@@ -329,7 +327,7 @@ export function formatNoteOrder(order: NoteOrder): string {
  * prefix.
  *
  * The missing `#` is what the reference writes (`String.join(" ", noteOrder)` over ids it has
- * already stripped, lars report §4.2), and downstream consumers read `note.order.perf` as
+ * already stripped), and downstream consumers read `note.order.perf` as
  * bare ids. A leading `#` on an incoming id is stripped so that callers may pass either
  * spelling; nothing else about the ids is touched. Chord structure and repeat marks are
  * deliberately absent: `note.order.perf` records what was played, and by that point every

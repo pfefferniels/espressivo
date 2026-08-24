@@ -2,8 +2,8 @@
  * The one spotlight claim only a render can settle: the background gesture shrinks and the
  * foreground one does not move.
  *
- * A14's method applied to `spotlightMpm` — the property suite validates no metric choice
- * (DESIGN §1.1), so what validates one is whether the effect moves the way the operation is
+ * the method applied to `spotlightMpm` — the property suite validates no metric choice,
+ * so what validates one is whether the effect moves the way the operation is
  * named for. `tests/api/spotlight.test.ts` covers everything about the facade that does not
  * need a performance; what it cannot show is that the written attributes add up to an audible
  * result, because an attenuated `@volume` pair is only evidence about a document.
@@ -30,7 +30,7 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MPM_NS = 'http://www.cemfi.de/mpm/ns/1.0';
 
-/** Fourteen notes over ten bars — the same score the A14 block renders its documents against. */
+/** Fourteen notes over ten bars — the same score the direction tests render against. */
 const SCORE = readFileSync(join(HERE, 'fixtures', 'reference', 'tempo.msm'), 'utf-8') as XmlText;
 
 /**
@@ -101,7 +101,7 @@ function assertShrinks(reading: (attenuation: number) => number): void {
     ).toBeLessThan(values[i - 1]);
 }
 
-describe('spotlight: the background gesture shrinks (A14, rendered)', () => {
+describe('spotlight: the background gesture shrinks (rendered)', () => {
   it('sanity: the untouched document performs both gestures', () => {
     // Without this every claim below could be satisfied by a document that performs nothing.
     expect(BASELINE.length).toBeGreaterThan(1);
@@ -114,7 +114,7 @@ describe('spotlight: the background gesture shrinks (A14, rendered)', () => {
   });
 
   it('…and leaves the tempo gesture exactly as the untouched performance played it', () => {
-    // The foreground half of "bring it out": the spotlit dimension is held at s = 1, which A2
+    // The foreground half of "bring it out": the spotlit dimension is held at s = 1, which the identity rule
     // short-circuits at the dimension level, so the tempo map is not walked at all and every
     // onset lands on the millisecond the baseline put it on.
     for (const attenuation of [0.75, 0.5, 0.25, 0.1])
@@ -139,7 +139,7 @@ describe('spotlight: the background gesture shrinks (A14, rendered)', () => {
   });
 
   it('an empty selection performs the untouched document, note for note', () => {
-    // D-I's identity at the level a listener would notice it: not merely "the same bytes" but
+    // the identity at the level a listener would notice it: not merely "the same bytes" but
     // "the same performance", which is what a caller who selected nothing asked for.
     expect(render([], 0.1)).toEqual(BASELINE);
   });

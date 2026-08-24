@@ -16,7 +16,7 @@ import type { AccentuationPatternDef } from '../../styles/defs/AccentuationPatte
  * So the parity-correct behaviour is a crash, not a skip, and the two are not
  * interchangeable: an `<accentuationPattern>` with no `<style>` in scope IS skipped silently,
  * and `src/comparison/accentuationCurve.ts` measures the difference — the unresolvable-def
- * case as `⊥` (ruling R21), the no-style case as an ordinary renderer skip, quoting the exact
+ * case as `⊥`, the no-style case as an ordinary renderer skip, quoting the exact
  * `TypeError: Cannot read properties of null (reading 'getLength')` that this port raises.
  * `MetricalAccentuationMap.renderMetricalAccentuationToMap` raises it with an explicit
  * `throw`: same class, same message, same line. Making the field non-nullable would mean

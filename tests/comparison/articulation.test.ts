@@ -1,5 +1,5 @@
 /**
- * Articulation atoms and their liveness — DESIGN.md §5.5, first half.
+ * Articulation atoms and their liveness.
  *
  * Every liveness claim is checked against the real renderer as well as against the reader:
  * `ArticulationMap.renderArticulationToMap_noMillisecondModifiers` is run over a note map, and
@@ -103,7 +103,7 @@ function performed(map: string): { duration: number; velocity: number } {
 
 const STYLE0 = '<style date="0.0" name.ref="A"/>';
 
-describe('the inline duration precedence (§5.5/AD-11i/R4)', () => {
+describe('the inline duration precedence', () => {
   it('is the expression registry’s own ordering, not a second copy of it', () => {
     expect([...DURATION_PRECEDENCE]).toEqual([
       'absoluteDurationChange',
@@ -212,7 +212,7 @@ describe('def resolution', () => {
   });
 
   it('does NOT drop an atom whose @name.ref cannot resolve — the inline modifiers still apply', () => {
-    // The disposition opposite to §5.4's: 100 × 1.2 = 120, the missing ×0.5 simply absent.
+    // The disposition opposite to accentuation's: 100 × 1.2 = 120, the missing ×0.5 simply absent.
     expect(
       performed('<articulation date="0.0" name.ref="stacc" relativeDuration="1.2"/>').duration,
     ).toBe(120);
@@ -229,7 +229,7 @@ describe('def resolution', () => {
   });
 });
 
-describe('noteid targeting (§5.5/AD-7)', () => {
+describe('noteid targeting', () => {
   it('strips the first character unconditionally and reports the date as unknown', () => {
     const read = atomsOf(`${STYLE0}<articulation date="0.0" noteid="#n7" relativeDuration="0.5"/>`);
     expect(atomAt(read).noteid).toBe('n7');
@@ -297,7 +297,7 @@ describe('the registry rows this reader resolves liveness for', () => {
     }
   });
 
-  it('files the two detune attributes as inert (R14), so they carry no distance', () => {
+  it('files the two detune attributes as inert, so they carry no distance', () => {
     expect(comparisonRowFor('articulation/articulation@detuneCents').role).toBe('inert');
     expect(comparisonRowFor('articulation/articulation@detuneHz').role).toBe('inert');
   });
@@ -312,7 +312,7 @@ describe('the registry rows this reader resolves liveness for', () => {
  * Every claim is checked twice: once against the reader, once against what the renderer actually
  * performs on a row of notes. The retroactive window is what the suite is for.
  */
-describe('the default articulation step function (AD-37.1/AD-37.2)', () => {
+describe('the default articulation step function', () => {
   const defaultsOf = (map: string): DefaultArticulationCurve => {
     const pair: ComparisonPair = readComparisonPair({ a: doc(map) });
     const document: ComparisonDocument = pair.a;
@@ -393,7 +393,7 @@ describe('the default articulation step function (AD-37.1/AD-37.2)', () => {
     expect(defaultArticulationStepAt(curve, 720)?.cancelCause).toBe('no-attribute');
   });
 
-  it('CANCELS on a switch naming an unknown def — the row §5.5 was missing', () => {
+  it('CANCELS on a switch naming an unknown def — the missing row', () => {
     const map =
       '<style date="0.0" name.ref="A" defaultArticulation="stacc"/>' +
       '<style date="720.0" name.ref="A" defaultArticulation="nosuch"/>';
@@ -424,7 +424,7 @@ describe('the default articulation step function (AD-37.1/AD-37.2)', () => {
     expect(defaultArticulationAt(curve, 0)).toBeNull();
   });
 
-  it('is shadowed by an atom, never added to it (AD-11ii/R5)', () => {
+  it('is shadowed by an atom, never added to it', () => {
     const map =
       '<style date="0.0" name.ref="A" defaultArticulation="stacc"/>' +
       '<articulation date="360.0" name.ref="ten"/>';
@@ -434,12 +434,12 @@ describe('the default articulation step function (AD-37.1/AD-37.2)', () => {
 });
 
 /**
- * The load-bearing test is AD-37.4's encoding-invariance obligation: two stacked
+ * The load-bearing test is the encoding-invariance obligation: two stacked
  * `relativeDuration` atoms against one atom carrying their product must be distance 0, checked
  * against the renderer first so the invariance is a fact about the performance and not the
  * algebra.
  */
-describe('the composed effective modifier (AD-37.3/AD-37.4)', () => {
+describe('the composed effective modifier', () => {
   const anchorsFor = (map: string) => anchorsOf(atomsOf(map));
   /** The anchor at `index`, checked — every map here composes to one or two anchors. */
   const anchorAt = (anchors: ReturnType<typeof anchorsFor>, index = 0) =>
@@ -588,12 +588,12 @@ describe('d_articulation', () => {
 
   const STACC = '<articulation date="0.0" relativeDuration="0.5"/>';
 
-  it('is exactly 0 against itself (P-C1)', () => {
+  it('is exactly 0 against itself', () => {
     expect(distanceOf(STACC, STACC).distance).toBe(0);
   });
 
   /**
-   * The anchor sort is code-unit order, never `localeCompare`. §9.5 bans it for the report, and
+   * The anchor sort is code-unit order, never `localeCompare`. The design bans it for the report, and
    * the ban binds harder here because this order is the aligner's input: with `localeCompare`,
    * two documents with two anchors each at one date and disjoint id sets scored
    * `d_articulation = 0` under `en_US` and `13.469` under `sv_SE`.
@@ -604,7 +604,7 @@ describe('d_articulation', () => {
    * unit, after it by collation) or in the Nordic ones ('z' before 'ä'); the assertions on
    * `localeCompare` itself keep the test from going vacuous on a host whose ICU ever agreed.
    */
-  it('sorts anchors by CODE UNIT, so no locale can move the distance (§9.5)', () => {
+  it('sorts anchors by CODE UNIT, so no locale can move the distance', () => {
     const anchored = (id: string, factor: string) =>
       `<articulation date="0.0" noteid="#${id}" relativeDuration="${factor}"/>`;
     const idsOf = (map: string) => anchorsOf(atomsOf(map)).map((anchor) => anchor.id);
@@ -617,7 +617,7 @@ describe('d_articulation', () => {
     expect('B' < 'a').toBe(true);
   });
 
-  it('is symmetric (P-C2)', () => {
+  it('is symmetric', () => {
     const other = '<articulation date="720.0" relativeVelocity="1.4"/>';
     expect(Object.is(distanceOf(STACC, other).distance, distanceOf(other, STACC).distance)).toBe(
       true,
@@ -631,12 +631,12 @@ describe('d_articulation', () => {
     expect(distanceOf(half, quarter).distance).toBeCloseTo(Math.LN2 / Math.log(1.1), 9);
   });
 
-  it('prices a REPLACEMENT present on one side only at δ_row, never at 0 (AD-2/M1c)', () => {
+  it('prices a REPLACEMENT present on one side only at δ_row, never at 0', () => {
     const present = '<articulation date="0.0" absoluteVelocity="90"/>';
     const absent = '<articulation date="0.0" relativeVelocity="1.0"/>';
     const row = comparisonRowFor('articulation/articulation@absoluteVelocity');
     expect(distanceOf(present, absent).distance).toBeCloseTo(row.delta, 9);
-    // M1c's zero set: two present values that differ are priced at a real amount.
+    // the zero set: two present values that differ are priced at a real amount.
     const other = '<articulation date="0.0" absoluteVelocity="2"/>';
     expect(distanceOf(present, other).distance).toBeGreaterThan(0);
   });
@@ -647,7 +647,7 @@ describe('d_articulation', () => {
     expect(distanceOf(one, none).distance).toBeCloseTo(Math.abs(Math.log(0.5)) / Math.log(1.1), 9);
   });
 
-  it('reports an inert difference without pricing it (R14/R9b)', () => {
+  it('reports an inert difference without pricing it', () => {
     const a = '<articulation date="0.0" detuneCents="14"/>';
     const b = '<articulation date="0.0" detuneCents="-9"/>';
     const result = distanceOf(a, b);
@@ -669,12 +669,12 @@ describe('d_articulation', () => {
 });
 
 /**
- * AD-51.2's atom placement. The aggregation's table cannot close on a scalar: an articulation's
+ * the atom placement. The aggregation's table cannot close on a scalar: an articulation's
  * mass belongs in the column of the segment its note falls in. These pin that the placement
  * decomposes the same optimum — nothing lost, nothing invented — and that the id-anchored case
- * is the admission AD-39.1 requires rather than a silent guess at a date.
+ * is the admission the design requires rather than a silent guess at a date.
  */
-describe('articulation atom placement (AD-51.2)', () => {
+describe('articulation atom placement', () => {
   const distanceOf = (a: string, b: string, endQuarters = 8) => {
     const pair = readComparisonPair({
       a: doc(a),
@@ -709,7 +709,7 @@ describe('articulation atom placement (AD-51.2)', () => {
     expect(result.atoms).toHaveLength(result.matched + result.unmatchedA + result.unmatchedB);
   });
 
-  it('places a matched pair over the span between the two dates (AD-7)', () => {
+  it('places a matched pair over the span between the two dates', () => {
     const half = '<articulation date="0.0" relativeDuration="0.5"/>';
     // 45 ticks is 1/16 quarter, i.e. exactly one λ_date JND — near enough that matching
     // beats dropping both, which at a whole quarter apart it does not.
@@ -758,7 +758,7 @@ describe('articulation atom placement (AD-51.2)', () => {
  * 50/50/100/100 for the canceller, 50/50/50/50 for the continuer, 100 throughout for a document
  * with no default.
  */
-describe('the default step function reaches d_articulation (AD-55.1)', () => {
+describe('the default step function reaches d_articulation', () => {
   const window = { start: 0, end: 4 } as const;
   const NEPERS_PER_JND = comparisonRowFor('articulation/articulation@relativeDuration').jnd;
 
@@ -770,7 +770,7 @@ describe('the default step function reaches d_articulation (AD-55.1)', () => {
   const withDefault = (secondStyle: string) =>
     styled(STYLES, `<style date="0.0" name.ref="A" defaultArticulation="stacc"/>${secondStyle}`);
 
-  // AD-37.2's three dispositions, as three documents that differ in nothing else.
+  // the three dispositions, as three documents that differ in nothing else.
   const CANCEL = withDefault('<style date="720.0" name.ref="A"/>');
   const CONTINUE = withDefault('<style date="720.0" name.ref="MISSING"/>');
   const NODEFAULT = styled(
@@ -809,7 +809,7 @@ describe('the default step function reaches d_articulation (AD-55.1)', () => {
     expect(continueNone.dimensions.articulation.distance).toBeCloseTo(perQuarter * 4, 9);
   });
 
-  it('places the step mass as CELLS, so AD-19’s table still closes', () => {
+  it('places the step mass as CELLS, so the table still closes', () => {
     const report = distance(CANCEL, NODEFAULT);
     const row = report.table.dimensions.indexOf('articulation');
     expect(report.table.rowSums[row]).toBeGreaterThan(0);
@@ -820,7 +820,7 @@ describe('the default step function reaches d_articulation (AD-55.1)', () => {
     expect(report.dimensions.articulation.events.mass).toBe(0);
   });
 
-  it('prices the two units the Albert pair’s defaults are written in, separately (§5.5)', () => {
+  it('prices the two units the Albert pair’s defaults are written in, separately', () => {
     // `nonlegato` is `absoluteDurationChangeMs="-96"` in one performance and
     // `absoluteDurationChange="-60"` (ticks) in the other: different rows with different units,
     // and their sum is the pair's step component.

@@ -1,5 +1,5 @@
 /**
- * §6's edit path on all eleven dimensions — the DP meeting real maps.
+ * the edit path on all eleven dimensions — the DP meeting real maps.
  *
  * `editScript.test.ts` checks the search; this file checks that what it searches over is the
  * documents. The load-bearing claim is that `S(0,0)` and `S(n,m)` really are `A` and `B`, so
@@ -111,7 +111,7 @@ const REFERENCE_PAIRS = [
  * exactly 0). Both figures are asserted, so the band cannot quietly absorb a regression.
  *
  * It is a test tolerance and not the published record: the assertions below are made against
- * AD-60.1's epsilon families, so a dimension whose integrator changes shape has to be re-filed
+ * the epsilon families, so a dimension whose integrator changes shape has to be re-filed
  * rather than absorbed.
  */
 const QUADRATURE_BAND = 1e-4;
@@ -120,7 +120,7 @@ const QUADRATURE_BAND = 1e-4;
  * The dimensions whose transitions are integrated over `affectedTicks`' interval.
  *
  * `pedal` is out because `getPreviousPosition` scans backwards over entry indices (PARITY P2);
- * `articulation` because AD-37.1's default step function is retroactive over `[0, firstSwitch)`
+ * `articulation` because the default step function is retroactive over `[0, firstSwitch)`
  * and its value after an interval is governed by the last switch at or before it, neither of
  * which the interval bounds; `ornamentation` because its map scope is a whole-map property that
  * a mixed state does not have.
@@ -145,7 +145,7 @@ describe('the edit path over the vendored corpus', () => {
     ['vulpius-die-helle-sonn', 1, 2, [0]],
   ];
 
-  it('has the documents as its endpoints and satisfies §6.2 and §6.3 throughout', () => {
+  it('has the documents as its endpoints and stays exact throughout', () => {
     let nonzero = 0;
     let reworked = 0;
     let divergent = 0;
@@ -170,14 +170,14 @@ describe('the edit path over the vendored corpus', () => {
             d: evaluated.distance,
           });
 
-          // Claim 2 — §6.2's theorems, in a relative band sized to the quadrature. Both sides
+          // Claim 2 — the theorems, in a relative band sized to the quadrature. Both sides
           // are integrals, and an absolute epsilon fails a correct implementation; the measured
           // worst case is asserted below rather than left inside the tolerance.
           const slack = 1 + QUADRATURE_BAND;
           expect(script.scriptCost).toBeGreaterThanOrEqual(script.directDistance / slack);
           expect(script.replayedDelta).toBeGreaterThanOrEqual(script.directDistance / slack);
 
-          // Claim 3 — §6.3's verification, and the closure of the delivered costs.
+          // Claim 3 — the verification, and the closure of the delivered costs.
           expect(script.replayResidual).toBe(0);
           expect(script.steps.reduce((total, step) => total + step.cost, 0)).toBeCloseTo(
             script.replayedDelta,
@@ -199,9 +199,9 @@ describe('the edit path over the vendored corpus', () => {
         }
       }
 
-    // `rubato` is the only dimension that comes near the band, and AD-60.1 put that fact in an
+    // `rubato` is the only dimension that comes near the band, and that fact sits in an
     // epsilon family of its own: `rubatoDistance` integrates a warp displacement through
-    // AD-33.3b's rule 2c, so the `step` family's exact 0 is false of it.
+    // the rule 2c, so the `step` family's exact 0 is false of it.
     //
     // Asserted against the published record rather than a hand-typed figure, so it pins the
     // record and not only the engine: a consumer doing `inputs.epsilon[EPSILON_FAMILY_OF[k]]`
@@ -243,16 +243,16 @@ describe('the edit path over the vendored corpus', () => {
   });
 
   /**
-   * AD-60.1's sixth epsilon family, on the case that motivated it: the walk above covers eleven
+   * the sixth epsilon family, on the case that motivated it: the walk above covers eleven
    * dimensions over two scopes, this covers one dimension over every part scope, which is where
    * the corpus's worst shortfall lives (Telemann part 2, 7.51e-5).
    *
    * `step`'s published figure is an exact `0` because a piecewise-constant reading needs no
-   * time-domain quadrature. `rubatoDistance` does quadrature, which AD-34.1 measured at
+   * time-domain quadrature. `rubatoDistance` does quadrature, measured at
    * 2.718e-4, so filed under `step` a consumer reads this correct 7.51e-5 as a theorem
    * violation, and the ulp-level noise on a clean pair as one too.
    */
-  it('answers to its OWN epsilon: rubato’s worst real shortfall is inside AD-34.1’s figure', () => {
+  it('answers to its OWN epsilon: rubato’s worst real shortfall is inside the figure', () => {
     const pair = readComparisonPair({
       a: fixture('telemann-grave'),
       performanceA: 0,
@@ -305,7 +305,7 @@ describe('the edit path over the vendored corpus', () => {
   });
 
   it('anchors the event and distribution dimensions, where re-working is 0 by construction', () => {
-    // Telemann part 1: `d_articulation` is the alignment optimum plus AD-55.1's default step
+    // Telemann part 1: `d_articulation` is the alignment optimum plus the default step
     // function, and one script over the map's entries prices both — the atoms from its
     // `<articulation>` elements, the steps from its `<style>` switches.
     const telemann = requireBench(fixture('telemann-grave'), 0, 1, { scopeIndex: 1 });
@@ -316,8 +316,8 @@ describe('the edit path over the vendored corpus', () => {
       telemann.settings,
     ).script;
     expect(articulation.directDistance).toBeCloseTo(926.666667, 6);
-    // scriptCost equals the lower bound, which is §6.2's "consistent by construction" as a
-    // measurement: the §5.6 functional is a sum over events, so applying one op changes exactly
+    // scriptCost equals the lower bound, which is the "consistent by construction" as a
+    // measurement: the ornamentation functional is a sum over events, so applying one op changes exactly
     // one event's contribution and no monotone script can do better or worse.
     expect(articulation.scriptCost).toBeCloseTo(926.666667, 6);
     expect(articulation.replayedDelta).toBeCloseTo(926.666667, 6);
@@ -357,7 +357,7 @@ describe('the edit path over the vendored corpus', () => {
  * after the first successful one. So a map with two switches performs differently depending
  * only on which slot holds it.
  */
-describe('AD-60.3: the ornamentation map’s scope, pinned on a synthetic pair', () => {
+describe('the ornamentation map’s scope, pinned on a synthetic pair', () => {
   /** Two ornament styles whose spreads differ, so which one is carried is visible in the atoms. */
   const STYLES =
     '<ornamentationStyles>' +
@@ -449,8 +449,8 @@ describe('AD-60.3: the ornamentation map’s scope, pinned on a synthetic pair',
     // `toBeCloseTo` — the two are the same arithmetic over the same atoms.
     expect(script.directDistance).toBe(evaluated.distance);
 
-    // §6.3: the replay landed on B. A state read under the wrong scope cannot reach B, which is
-    // what `replayResidual` is the field for (AD-60.3).
+    // the replay landed on B. A state read under the wrong scope cannot reach B, which is
+    // what `replayResidual` is the field for.
     expect(script.replayResidual).toBe(0);
 
     // …and the theorem holds on it.
@@ -476,7 +476,7 @@ describe('AD-60.3: the ornamentation map’s scope, pinned on a synthetic pair',
   });
 });
 
-describe('resolution travels with the instruction (AD-40.2)', () => {
+describe('resolution travels with the instruction', () => {
   // Two performances whose `<tempo>` elements are byte-identical and whose `tempoStyles` differ.
   // Nothing in the map says what the tempo is; the styleDef does.
   const NS = 'http://www.cemfi.de/mpm/ns/1.0';
@@ -498,7 +498,7 @@ describe('resolution travels with the instruction (AD-40.2)', () => {
     expect(script?.replayResidual).toBe(0);
     // 4 quarters at `|ln 2|` over the tempo JND — the whole window, both instructions being at 0.
     expect(script?.directDistance).toBeCloseTo((4 * Math.LN2) / Math.log(1.025), 6);
-    // The script reaches the lower bound: AD-5's tie again, since a path that removes A's tempo
+    // The script reaches the lower bound: the tie again, since a path that removes A's tempo
     // and inserts B's telescopes through the renderer's no-tempo default at exactly the same
     // total as one that substitutes it (`ln(100/60) + ln(120/100) = ln 2`). The step count is
     // therefore not the thing to assert — two scripts of different lengths cost the same.
@@ -516,7 +516,7 @@ describe('resolution travels with the instruction (AD-40.2)', () => {
 
 describe('a <style> is an instruction, because the any-entry maps perform it', () => {
   // `asynchronyMap` reads an offset off any next entry with no local-name test, so a `<style>`
-  // between two `<asynchrony>` elements ends the first span and NaN-poisons its own (AD-33.1) —
+  // between two `<asynchrony>` elements ends the first span and NaN-poisons its own —
   // the span reads `⊥`. An edit sequence that dropped `<style>` entries would therefore have
   // `S(0,0) ≠ A`, which nothing in the vendored corpus happens to exhibit: no vendored
   // asynchronyMap carries a style. Found by a negative control that failed to fail.
@@ -592,7 +592,7 @@ describe('the localized norm is exact, not an approximation', () => {
   });
 
   it('gives bit-identical totals over the adversarial family', () => {
-    // Every member against every other, under the family's own explicit window — AD-33.5's
+    // Every member against every other, under the family's own explicit window — the
     // standing policy, which puts `⊥`, the cap, renderer defaults, skips and unbounded spans in
     // front of a change to the integrator's domain. Unordered pairs, because the claim is that
     // two integration domains agree and that is symmetric in the pair.

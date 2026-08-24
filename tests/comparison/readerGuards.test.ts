@@ -13,7 +13,7 @@
  * contributes no measures — but it is still in `timeSignatures`, and two published things read
  * that array directly:
  *
- * - {@link beatGridOf} takes the FIRST entry as the accentuation phase anchor (AD-12). A `NaN`
+ * - {@link beatGridOf} takes the FIRST entry as the accentuation phase anchor. A `NaN`
  *   numerator there is a phase anchor that makes every accentuation position `NaN`, in a
  *   dimension that reports a distance.
  * - `compare`'s `estimate-degradation` note counts `timeSignatures.length`, so a malformed entry

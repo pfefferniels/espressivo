@@ -109,7 +109,7 @@ describe('Mpm', () => {
       expect(mpm.isInNamespace('')).toBe(false);
     });
 
-    // MPM v3 gives an `<ornament>` a pool of `<note>` children (DESIGN.md D1, spec
+    // MPM v3 gives an `<ornament>` a pool of `<note>` children (PARITY.md §6.2 D1, spec
     // `note.xml`), so `note` is MPM vocabulary. `score` above stays MSM-only.
     it('should recognize the MPM v3 ornament pool note', () => {
       const mpm = Mpm.createMpm();

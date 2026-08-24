@@ -1,10 +1,10 @@
 /**
- * `src/comparison/distributions.ts` — DESIGN.md §5.9's law mathematics.
+ * `src/comparison/distributions.ts` — the law mathematics.
  *
  * Every accuracy claim is measured against machinery that shares no arithmetic with the thing
  * measured. `Φ` is checked against a high-order quadrature of its own density (the definition,
  * not a second table); `W₁` and `W₂` against closed forms derived by hand in the comments; the
- * two ρ constants §5.9 names are re-derived from their integrals rather than quoted. A test
+ * two ρ constants the design names are re-derived from their integrals rather than quoted. A test
  * against numbers the implementation produced would pin the bug along with the behaviour.
  */
 import { describe, expect, it } from 'vitest';
@@ -74,7 +74,7 @@ function referenceW1(a: ImprecisionLaw, b: ImprecisionLaw, lo: number, hi: numbe
   return total * width;
 }
 
-describe('Φ and Φ⁻¹ (§5.0 epsilon record: the imprecision family)', () => {
+describe('Φ and Φ⁻¹ (the imprecision family’s epsilon record)', () => {
   it('agrees with an independent quadrature of its own density — the MEASURED ε', () => {
     let worstAbsolute = 0;
     let worstAt = 0;
@@ -102,7 +102,7 @@ describe('Φ and Φ⁻¹ (§5.0 epsilon record: the imprecision family)', () => 
         }
       }
     }
-    // These are the numbers §9.3's `imprecision` family carries; an A–S 7.1.26 rational measures
+    // These are the numbers the `imprecision` family carries; an A–S 7.1.26 rational measures
     // 7.5e-8 absolute here. The relative tolerance of 3e-13 sits just above the measured 2.3e-13
     // at −37σ. The absolute bound of 2e-15 is the reference's limit rather than the
     // implementation's: above x ≈ 6 the composite quadrature sums to within 1e-12 of 1 and
@@ -290,7 +290,7 @@ describe('the law vocabulary canonicalizes what the renderer performs identicall
 
   it('an inverted-limit triangular has no CDF at all, so the caller reads ⊥', () => {
     // The two branches run in opposite directions and the "quantile" jumps down by 132 at
-    // u = 0.5. Same disposition as §5.8's non-monotone pedal date component.
+    // u = 0.5. Same disposition as the non-monotone pedal date component.
     expect(triangularLaw(30, -30, 0)).toBeNull();
     expect(triangularLaw(-30, 30, 0)).not.toBeNull();
   });
@@ -358,7 +358,7 @@ describe('CDFs and quantiles are mutually inverse', () => {
    * hull taken as the mode itself keeps the true endpoint, where the integrand kinks, out of
    * `cdfBreakpoints`, and GL-10 straddles it. The reference is the renderer's own two-branch
    * formula (`RandomNumberProvider:335-353`) evaluated at the extreme `u`; a textbook triangular
-   * has no answer here, which is why §5.9 rewrote the CDF.
+   * has no answer here, which is why the CDF is rewritten.
    */
   it('the support is where the renderer’s sampler reaches, mode outside the limits included', () => {
     // `lo + √(u·s·a)` below the branch fraction, `hi − √((1−u)·s·b)` above it.
@@ -426,7 +426,7 @@ describe('CDFs and quantiles are mutually inverse', () => {
   });
 
   /**
-   * AD-55.3: what the `imprecision` epsilon figure is relative to.
+   * what the `imprecision` epsilon figure is relative to.
    *
    * `W₁ = ∫|F_A − F_B| dx` over the union support, so a small answer is a small difference of
    * large integrals: the absolute error is what the quadrature bounds, and the naive relative
@@ -477,7 +477,7 @@ describe('CDFs and quantiles are mutually inverse', () => {
 
   it('collapses a clip that is vacuous in TRUTH, which the overstated hull kept', () => {
     // T(0, 1, 1000) really reaches 31.62, so a clip at ±40 swallows nothing and the law is its
-    // own base — the AD-40.2 principle. A hull claiming 1000 keeps the wrapper, and
+    // own base — price the resolved performed effect. A hull claiming 1000 keeps the wrapper, and
     // `lawsEqual(base, clipped)` then says false for two laws that are equal.
     const base = triangularLaw(0, 1, 1000) as never;
     expect(clippedLaw(base, -40, 40)).toBe(base);
@@ -486,7 +486,7 @@ describe('CDFs and quantiles are mutually inverse', () => {
   });
 });
 
-describe('the Gaussian is the AD-14iv mixture, not a truncated normal', () => {
+describe('the Gaussian is a mixture, not a truncated normal', () => {
   it('limit.lower === limit.upper gives weight 1 — the untruncated law', () => {
     expect(gaussianEscapeWeight(gaussianLaw(10, 0, 0) as never)).toBe(1);
     expect(gaussianEscapeWeight(gaussianLaw(10, 5, 5) as never)).toBe(1);
@@ -525,7 +525,7 @@ describe('the Gaussian is the AD-14iv mixture, not a truncated normal', () => {
 });
 
 describe('W₁ against closed forms', () => {
-  it('is exactly 0 on identical laws (P-C1 needs exact, not small)', () => {
+  it('is exactly 0 on identical laws (identity needs exact, not small)', () => {
     for (const law of [
       DELTA_ZERO,
       uniformLaw(-30, 30),
@@ -605,7 +605,7 @@ describe('W₁ against closed forms', () => {
     expect(Math.abs(measured - reference) / reference).toBeLessThan(1e-6);
   });
 
-  it('is symmetric to the last bit (P-C2)', () => {
+  it('is symmetric to the last bit', () => {
     const pairs: readonly [ImprecisionLaw, ImprecisionLaw][] = [
       [uniformLaw(-30, 30), triangularLaw(-20, 40, 35) as ImprecisionLaw],
       [gaussianLaw(8, -10, 10), listLaw([-3, 0, 14]) as ImprecisionLaw],
@@ -614,7 +614,7 @@ describe('W₁ against closed forms', () => {
     for (const [a, b] of pairs) expect(wasserstein1(a, b)).toBe(wasserstein1(b, a));
   });
 
-  it('satisfies the triangle inequality (P-C3) across the family', () => {
+  it('satisfies the triangle inequality across the family', () => {
     const laws: ImprecisionLaw[] = [
       DELTA_ZERO,
       uniformLaw(-30, 30),
@@ -648,7 +648,7 @@ describe('W₁ against closed forms', () => {
   });
 });
 
-describe('W₂ and §1.2’s decomposition', () => {
+describe('W₂ and the decomposition', () => {
   it('closes the identity ‖Q_A − Q_B‖₂² = level² + gain² + shape² for every pair', () => {
     const laws: ImprecisionLaw[] = [
       DELTA_ZERO,
@@ -697,7 +697,7 @@ describe('W₂ and §1.2’s decomposition', () => {
     expect(gaussian.w2).toBeCloseTo(11, 6);
   });
 
-  it('ρ(uniform, symmetric triangular) = 7√2/10 — §5.9’s constant, re-derived', () => {
+  it('ρ(uniform, symmetric triangular) = 7√2/10 — the constant, re-derived', () => {
     // Derivation, independent of the implementation: with T on [-1,1] mode 0,
     // ∫₀¹(u−½)Q_T(u)du = 2∫₀^{1/2}(½−t)(1−√(2t))dt = 2(1/8 − 1/15) = 7/60,
     // σ_U = 1/√12, σ_T = 1/√6  ⇒  ρ = (7/60)·√72 = 7√2/10.
@@ -715,7 +715,7 @@ describe('W₂ and §1.2’s decomposition', () => {
     }
   });
 
-  it('ρ(uniform, Gaussian) = √(3/π) — §5.9’s other constant, re-derived', () => {
+  it('ρ(uniform, Gaussian) = √(3/π) — the other constant, re-derived', () => {
     // Cov(Q_U, Q_N) = ∫₀¹(u−½)Φ⁻¹(u)du = E[X·Φ(X)] = 1/(2√π); σ_U = 1/√12, σ_N = 1
     // ⇒ ρ = √12/(2√π) = √(3/π).
     expect(RHO_UNIFORM_GAUSSIAN).toBeCloseTo(0.9772050238058398, 15);
@@ -745,7 +745,7 @@ describe('W₂ and §1.2’s decomposition', () => {
     }
   });
 
-  it('a spreadless law is recognized structurally, never by float equality (AD-32)', () => {
+  it('a spreadless law is recognized structurally, never by float equality', () => {
     const d = wasserstein2Decomposition(DELTA_ZERO, uniformLaw(-30, 30));
     expect(d.sigmaA).toBe(0);
     expect(d.rho).toBeNull();

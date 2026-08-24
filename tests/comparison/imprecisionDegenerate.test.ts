@@ -1,5 +1,5 @@
 /**
- * Cut-4 degenerate-table pins (AD-46 inheritance #1, answered by execution — AD-47).
+ * Degenerate-table pins, answered by execution.
  *
  * The clip-less triangular draws null into a number-typed field (DistributionData initialises
  * every parameter to null); the write-back coerces it arithmetically (attValue + null =
@@ -42,7 +42,7 @@ const mpm = (dist: string): string => `<?xml version="1.0" encoding="UTF-8"?>
   </performance>
 </mpm>`;
 
-describe('AD-46 probe: clip-less triangular through the full pipeline', () => {
+describe('probe: clip-less triangular through the full pipeline', () => {
   it('performs as exactly no imprecision (δ₀), never NaN — chord included', () => {
     const clipless = mpm(
       '<distribution.triangular date="0.0" limit.lower="-30.0" limit.upper="30.0" mode="0.0" milliseconds.timingBasis="300.0"/>',

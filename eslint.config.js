@@ -9,8 +9,7 @@ import importPlugin from 'eslint-plugin-import';
  * Baseline: typescript-eslint `strict` + `stylistic` (non-type-checked presets), plus the
  * three type-aware rules ARCHITECTURE.md RULE N6 names, over `src/` only. The presets stay
  * non-type-checked because N6 rejects `recommendedTypeChecked`: hundreds of findings over
- * parity-frozen code would drown the gate. `docs/history/refactor/lint-debt.md` records the
- * measured preview.
+ * parity-frozen code would drown the gate.
  *
  * ARCHITECTURE.md §1.2 is enforced at the bottom of this file: `import/no-cycle` for the cycle
  * ban, and per-layer `no-restricted-imports` zones for RULE M1's dependency directions. Both
@@ -36,7 +35,7 @@ import importPlugin from 'eslint-plugin-import';
  * edge count is zero today, and these entries are what keeps it there.
  *
  * A `comparison` glob appears in every zone below it for the same reason, the `expression` zone
- * included: the comparison module (comparison/DESIGN.md §9.7, A24) sits above the expression
+ * included: the comparison module sits above the expression
  * transform, which it reads for the forward scale-space maps and nothing else.
  */
 const LAYER_ZONES = [
@@ -84,7 +83,7 @@ const LAYER_ZONES = [
     layer: 'mpm',
     files: ['src/mpm/**/*.ts'],
     forbidden: ['**/mei/**', '**/musicxml/**', '**/expression/**', '**/comparison/**'],
-    why: 'src/mpm/** is L4 and must not import the MEI layer or the two document layers above it — T14 removed the last 33 such MEI edges (RULE M1/M2).',
+    why: 'src/mpm/** is L4 and must not import the MEI layer or the two document layers above it (RULE M1/M2).',
   },
   {
     layer: 'mei',
@@ -112,14 +111,14 @@ const LAYER_ZONES = [
     why:
       'src/expression/** is a document transform over raw MPM XML: it may use src/xml/**, ' +
       'src/supplementary/** and the MPM name constants, and nothing else. Importing a renderer ' +
-      'class would reintroduce exactly what DESIGN.md D-A/A1 forbids — `new Mpm(text)` runs the ' +
+      'class would reintroduce exactly what this layering forbids — `new Mpm(text)` runs the ' +
       'mutating def parsers in its CONSTRUCTOR, so merely parsing a document rewrites it.',
   },
   {
     layer: 'comparison',
     files: ['src/comparison/**/*.ts'],
-    // comparison/DESIGN.md §9.7 (A24) specifies this zone, negations included. It PERMITS
-    // `**/expression/**`, which is the whole point of §4's placement decision: the forward
+    // The negations are part of the zone, not decoration. It PERMITS
+    // `**/expression/**`, which is the whole point of the placement decision: the forward
     // scale-space maps `T` live in `expression/transforms.ts` so they sit beside the closed
     // forms they are property-tested against, and comparison is their only consumer.
     //
@@ -163,14 +162,13 @@ const LAYER_ZONES = [
     ],
     why:
       'src/comparison/** reads two MPM documents and writes none: it may use src/xml/**, ' +
-      'src/supplementary/**, src/expression/** (the forward maps of comparison/DESIGN.md §4), ' +
+      'src/supplementary/**, src/expression/** (the forward scale-space maps), ' +
       'the MPM name constants and the dependency-free Bézier math, and nothing else. The ban ' +
       'on the renderer classes is the same one the expression zone carries and for the same ' +
       'reason — `new Mpm(text)` runs the mutating def parsers in its CONSTRUCTOR, so merely ' +
       'parsing a document rewrites it, and a comparison that mutates its input is not one. ' +
-      '`**/api/**` is banned for the same reason at one remove (MINOR-5): src/api/index.ts ' +
-      'transitively reaches Mpm.js, and it is an upward import besides — W3 builds the facade ' +
-      'and creates the temptation.',
+      '`**/api/**` is banned for the same reason at one remove: src/api/index.ts ' +
+      'transitively reaches Mpm.js, and it is an upward import besides.',
   },
 ];
 export default tseslint.config(
@@ -182,7 +180,7 @@ export default tseslint.config(
       // Agent worktrees are checkouts of this same repo nested inside it; linting them lints
       // another branch's work-in-progress and attributes it here.
       '.claude/worktrees/**',
-      // Java-generated ground truth + MEI inputs. Immutable (charter invariant 2).
+      // Java-generated ground truth + MEI inputs. Immutable.
       'tests/integration/fixtures/**',
     ],
   },
@@ -227,16 +225,14 @@ export default tseslint.config(
       // `for (let i = 0; i < xs.length; i++)` over an indexable => `for..of`.
       '@typescript-eslint/prefer-for-of': 'error',
 
-      // --- Immutable-friendly direction (CHARTER.md, 2026-08-08) ---
+      // --- Immutable-friendly direction ---
 
       // Reassigning a parameter hides the fact that the caller's value is being
-      // shadowed. Deliberately `warn`, not `error`: the charter grants the
-      // conversion/rendering core an explicit mutation boundary, so some of these
-      // are legitimate and T12 has to draw that line before this can be enforced.
+      // shadowed. Deliberately `warn`, not `error`: the conversion/rendering core
+      // has an explicit mutation boundary (RULE I1), so some of these are legitimate.
       // Left at the default `props: false` — it flags rebinding the parameter
       // itself, not mutation through it. Flipping `props: true` would flag
-      // `renderXToMap(map)`-style writes, which ARE the documented purpose here;
-      // docs/history/refactor/lint-debt.md records that count separately.
+      // `renderXToMap(map)`-style writes, which ARE the documented purpose here.
       'no-param-reassign': 'warn',
     },
   },
@@ -306,8 +302,7 @@ export default tseslint.config(
       '@typescript-eslint/require-array-sort-compare': 'error',
       '@typescript-eslint/switch-exhaustiveness-check': 'error',
 
-      // §8.10 audit 4. `src/` reached zero in T16 (the last three sites went with RULE C3's
-      // Bézier extraction and the `resolveEntryIndex` rewrite), so promoting this costs
+      // `src/` is at zero, so promoting this costs
       // nothing here and makes the regression loud. `tests/**` keeps `warn`: the two
       // remaining sites are in `tests/integration/**`, which no source item may touch.
       'no-param-reassign': 'error',
@@ -328,7 +323,7 @@ export default tseslint.config(
   // glob when they are done.
   //
   // `console.error` is deliberately NOT banned. ~55 sites remain in `src/mpm` and they are a
-  // different species from the ones this campaign converted: "this value is out of range,
+  // different species from the ones converted to `Result`: "this value is out of range,
   // here is the clamped one", not "this element cannot be read". Converting a warn-and-repair
   // site to a `Result` means changing what the function returns on the SUCCESS path too, and
   // that is a larger and separately-argued change.
@@ -346,7 +341,7 @@ export default tseslint.config(
     },
   },
 
-  // --- Architecture enforcement (T18; ARCHITECTURE.md §1.2, RULES M1/M3/M4) ---
+  // --- Architecture enforcement (ARCHITECTURE.md §1.2, RULES M1/M3/M4) ---
 
   {
     files: ['src/**/*.ts'],
@@ -368,8 +363,8 @@ export default tseslint.config(
     },
     rules: {
       /**
-       * The T18 rule. Zero cycles as of that item; before it there were 31 runtime cycles,
-       * all through `Mpm.ts`, and deep-importing any `mpm/elements/**` module threw.
+       * Zero cycles, and the rule is what keeps it that way: deep-importing any
+       * `mpm/elements/**` module used to throw, through cycles that all ran via `Mpm.ts`.
        *
        * `no-cycle` ignores `import type` edges by construction (they are erased by tsc and
        * cannot deadlock module evaluation), which is exactly the notion of "cycle" that

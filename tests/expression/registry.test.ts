@@ -1,8 +1,8 @@
 /**
- * The registry as data: DESIGN.md §7's rows, §7.16's exclusions, and the two derivations the
+ * The registry as data: the rows, the exclusions, and the two derivations the
  * applier depends on (a dimension's admissible s-domain, a distribution's atomic group).
  *
- * §7.16 is documentation and not data, so "excluded" cannot be asserted by looking something
+ * The exclusions are documentation and not data, so "excluded" cannot be asserted by looking something
  * up — only by looking something up and getting nothing. Every entry of the exclusion suite is
  * an attribute a plausible implementation would have written, with the reason it must not.
  */
@@ -25,7 +25,7 @@ import {
 import { SCALE_SPACE_FACTOR_DOMAINS } from '../../src/expression/transforms.js';
 import { elementAt } from '../../src/prelude/index.js';
 
-describe('the dimension vocabulary (§3, A9)', () => {
+describe('the dimension vocabulary', () => {
   it('is exactly the fifteen of dimension set v2, with no duplicates', () => {
     expect(EXPRESSION_DIMENSIONS).toHaveLength(15);
     expect(new Set(EXPRESSION_DIMENSIONS).size).toBe(15);
@@ -45,7 +45,7 @@ describe('the dimension vocabulary (§3, A9)', () => {
   });
 });
 
-describe('site discipline (§7, D-C)', () => {
+describe('site discipline', () => {
   it('puts the level pair on the instruction and the level itself on the def', () => {
     expect(siteKindsOf(rowFor('tempo', 'bpm')!)).toBe('instruction');
     expect(siteKindsOf(rowFor('tempoDef', 'value')!)).toBe('def');
@@ -65,7 +65,7 @@ describe('site discipline (§7, D-C)', () => {
   });
 });
 
-describe('§7.1 — the center population is a registry property', () => {
+describe('the center population is a registry property', () => {
   it('marks exactly the two prevailing levels and the two def values', () => {
     const inPopulation = REGISTRY_ROWS.filter((row) => row.inCenterPopulation).map(
       (row) =>
@@ -85,7 +85,7 @@ describe('§7.1 — the center population is a registry property', () => {
   });
 });
 
-describe('§1/A3 — a dimension’s s-domain is the intersection over its rows', () => {
+describe('a dimension’s s-domain is the intersection over its rows', () => {
   it('is non-negative wherever any row lives on a half-line or carries an ordering', () => {
     const nonNegative = EXPRESSION_DIMENSIONS.filter(
       (dimension) => factorDomainOf(dimension) === 'non-negative',
@@ -105,9 +105,9 @@ describe('§1/A3 — a dimension’s s-domain is the intersection over its rows'
   it('constrains ornamentSpread through @frameLength alone, in either generation', () => {
     // Both offset spellings are signed gains admitting every real s; `@frameLength` is an
     // ordered one. The dimension scales the pair by ONE factor, so its domain is the stricter
-    // of the two — which is also what §8's `0 … 4` sampling range assumes. v3 adds a spelling,
+    // of the two — which is also what the `0 … 4` sampling range assumes. v3 adds a spelling,
     // not a space: `@frame.offset` and its legacy alias `@frame.start` are the same row shape,
-    // and `@frameLength` is literally one shared row (§7.15).
+    // and `@frameLength` is literally one shared row.
     for (const attribute of ['frame.start', 'frame.offset']) {
       expect(
         SCALE_SPACE_FACTOR_DOMAINS[scaleSpaceTagOf(rowFor('temporalSpread', attribute)!.space)],
@@ -119,7 +119,7 @@ describe('§1/A3 — a dimension’s s-domain is the intersection over its rows'
     expect(factorDomainOf('ornamentSpread')).toBe('non-negative');
   });
 
-  it('gives the two offset spellings the same space, domain and verdict (§7.15)', () => {
+  it('gives the two offset spellings the same space, domain and verdict', () => {
     // What differs between them is the value ENCODING and which generation writes them, and
     // neither is a row property — so a divergence here would mean the same musical quantity had
     // acquired two different transforms by accident.
@@ -165,7 +165,7 @@ describe('scale spaces bind at the right moment', () => {
   });
 });
 
-describe('§7’s input predicates', () => {
+describe('the input predicates', () => {
   it('narrows meanTempoAt to the OPEN unit interval its space would admit closed', () => {
     const row = rowFor('tempo', 'meanTempoAt')!;
     expect(row.valueDomain(0.5)).toBe(true);
@@ -173,18 +173,18 @@ describe('§7’s input predicates', () => {
     expect(row.valueDomain(1)).toBe(false);
   });
 
-  it('admits the boundary fixed points §7.5 and §7.14 declare admissible', () => {
+  it('admits the boundary fixed points the design declares admissible', () => {
     expect(rowFor('dynamics', 'curvature')!.valueDomain(1)).toBe(true);
     expect(rowFor('movement', 'protraction')!.valueDomain(-1)).toBe(true);
     expect(rowFor('movement', 'protraction')!.valueDomain(1)).toBe(true);
   });
 
-  it('rejects the degeneracies §7.6 and §7.10 name', () => {
+  it('rejects the named degeneracies', () => {
     expect(rowFor('rubato', 'intensity')!.valueDomain(0)).toBe(false);
     expect(rowFor('temporalSpread', 'intensity')!.valueDomain(-1)).toBe(false);
   });
 
-  it('rejects a non-finite value in every row without exception (A4)', () => {
+  it('rejects a non-finite value in every row without exception', () => {
     for (const row of REGISTRY_ROWS) {
       expect(row.valueDomain(NaN)).toBe(false);
       expect(row.valueDomain(Infinity)).toBe(false);
@@ -199,7 +199,7 @@ describe('§7’s input predicates', () => {
   });
 });
 
-describe('§7.13 — the imprecision groups', () => {
+describe('the imprecision groups', () => {
   it('repeats the same six distributions across the three domains', () => {
     expect(DISTRIBUTION_ELEMENTS).toHaveLength(6);
     for (const dimension of [
@@ -259,7 +259,7 @@ describe('§7.13 — the imprecision groups', () => {
   });
 });
 
-describe('§7.16 — an excluded attribute has no row, because a row is a licence to write', () => {
+describe('an excluded attribute has no row, because a row is a licence to write', () => {
   it.each([
     ['tempo', 'beatLength', 'a unit declaration; scaling it by k is scaling bpm by 1/k'],
     ['tempo', 'date.end', 'a transient MEI-conversion working attribute'],
@@ -267,34 +267,34 @@ describe('§7.16 — an excluded attribute has no row, because a row is a licenc
     ['rubato', 'frameLength', 'no neutral: it cancels out of the identity case for every value'],
     ['rubato', 'loop', 'a boolean, and never inherited from the def'],
     ['rubatoDef', 'frameLength', 'the def side of the same non-neutral quantity'],
-    ['articulationDef', 'absoluteDuration', 'D-B: a replacement whose neutral lives in the MSM'],
-    ['articulation', 'absoluteDurationMs', 'D-B: the staccato-family lopsidedness lever'],
-    ['articulation', 'absoluteVelocity', 'D-B: a replacement, neutral = absent'],
-    ['articulation', 'detuneCents', 'a pitch attribute per R5, and inert besides'],
+    ['articulationDef', 'absoluteDuration', 'a replacement whose neutral lives in the MSM'],
+    ['articulation', 'absoluteDurationMs', 'the staccato-family lopsidedness lever'],
+    ['articulation', 'absoluteVelocity', 'a replacement, neutral = absent'],
+    ['articulation', 'detuneCents', 'a pitch attribute, and inert besides'],
     ['articulation', 'detuneHz', 'a pitch attribute, and Hz is not perceptually linear'],
-    ['accentuation', 'value', 'D-C: the degree-1 partner of accentuationPattern@scale'],
+    ['accentuation', 'value', 'the degree-1 partner of accentuationPattern@scale'],
     ['accentuation', 'transition.to', 'the same triple'],
     ['accentuation', 'beat', 'a position, with no neutral'],
     ['accentuationPatternDef', 'length', 'a loop period; scaling it moves WHEN accents land'],
     ['accentuationPattern', 'loop', 'a boolean, read for the span it decides'],
     ['accentuationPattern', 'stickToMeasures', 'a boolean whose absent-default is true'],
-    ['ornament', 'scale', 'RESOLVED-6: the degree-1 partner, and a dead lever'],
+    ['ornament', 'scale', 'the degree-1 partner, and a dead lever'],
     ['temporalSpread', 'time.unit', 'an enum, read to know the magnitude scale'],
     ['temporalSpread', 'noteoff.shift', 'an enum that flips the SIGN of the effect'],
     ['distribution.uniform', 'seed', 'it selects which realisation is drawn, not how large'],
     ['distribution.uniform', 'milliseconds.timingBasis', 'a sampling grain, not a magnitude'],
     ['distribution.correlated.compensatingTriangle', 'degreeOfCorrelation', 'neutral 1.0 shape'],
-    ['movement', 'position', 'D-G: controller state, not a deviation from a neutral'],
-    ['movement', 'transition.to', 'D-G: the same, and exact 0.0/1.0 is a pole for every candidate'],
-    ['tempo', 'date', 'R5: a timeline coordinate has no neutral'],
-    ['dynamics', 'date', 'R5'],
+    ['movement', 'position', 'controller state, not a deviation from a neutral'],
+    ['movement', 'transition.to', 'the same, and exact 0.0/1.0 is a pole for every candidate'],
+    ['tempo', 'date', 'a timeline coordinate has no neutral'],
+    ['dynamics', 'date', 'a notated date'],
     ['performance', 'pulsesPerQuarter', 'a resolution declaration'],
   ])('has no row for %s@%s (%s)', (element, attribute) => {
     expect(rowFor(element, attribute)).toBeNull();
   });
 
   it('still names the articulation levers it must READ to classify a site partial', () => {
-    // F10: all FIVE §7.16 exclusions of this element, not only D-B's three replacements. The
+    // all FIVE exclusions of this element, not only the three replacements. The
     // ratified rule is "an excluded component beside a transformed one", and the two pitch
     // levers are excluded components of the same element.
     expect(EXCLUDED_ARTICULATION_LEVERS).toEqual([

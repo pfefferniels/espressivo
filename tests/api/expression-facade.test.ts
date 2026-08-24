@@ -1,7 +1,7 @@
 /**
  * `exaggerateMpm` as a caller meets it: the identity contract, the typed-error surface, the
  * options, and the plain-data guarantee — everything about the facade that does not need a
- * render. The two claims that do (R5 symbolic invariance and A14's expected directions) are in
+ * render. The two claims that do (symbolic invariance and the expected directions) are in
  * `tests/integration/expression-transform.test.ts`.
  *
  * The engine underneath is covered by `tests/expression/**`; what is tested here is the
@@ -94,7 +94,7 @@ describe('P1: the identity transform returns the canonical baseline byte for byt
 
   it.each(documents)('%s: every dimension at 1 writes nothing', (_name, mpm) => {
     // A missing key never reaches a transform, while an explicit 1 has to be short-circuited at
-    // the dimension level (A2): at s = 1 the round trip through a scale space is not the
+    // the dimension level: at s = 1 the round trip through a scale space is not the
     // identity in doubles, and `"1.0"` would come back `"1"`.
     const { mpm: out, report } = exaggerateMpm(mpm, { factors: uniformFactors(1) });
     expect(out).toBe(canonicalMpm(mpm));
@@ -118,7 +118,7 @@ describe('P1: the identity transform returns the canonical baseline byte for byt
     expect(exaggerateMpm(once, { factors: {} }).mpm).toBe(once);
   });
 
-  it('is deterministic: the same input and factors give the same bytes (R2)', () => {
+  it('is deterministic: the same input and factors give the same bytes', () => {
     const factors = uniformFactors(1.7);
     expect(exaggerateMpm(ALL_MAPS, { factors }).mpm).toBe(exaggerateMpm(ALL_MAPS, { factors }).mpm);
   });
@@ -420,7 +420,7 @@ describe('RULE E2: every failure is a typed error naming the offender', () => {
 
   describe('EngineInvariantError', () => {
     /**
-     * A6's `lateStart < earlyEnd` assertion, reached the only way it can be.
+     * the `lateStart < earlyEnd` assertion, reached the only way it can be.
      *
      * The guard clamps the joint trim to `1 − minRubatoWindow`, so the split is ordered by
      * construction for a `minRubatoWindow` big enough to survive the subtraction. Below about
@@ -479,7 +479,7 @@ describe('options', () => {
     performance('First', TWO_TEMPI) + performance('Second', TWO_TEMPI),
   );
 
-  it('transforms ALL performances by default — the A11 divergence from performMsm', () => {
+  it('transforms ALL performances by default — the divergence from performMsm', () => {
     const { report } = exaggerateMpm(twoPerformances, { factors: { tempo: 2 } });
     expect(report.performances.map((p) => p.performance.name)).toEqual(['First', 'Second']);
     expect(report.performances.every((p) => p.totalWrites > 0)).toBe(true);
@@ -553,7 +553,7 @@ describe('options', () => {
 // ---------------------------------------------------------------------------
 
 describe('report states', () => {
-  it("pins 'inert' with sitesSkipped > 0, which is legal and reachable (§4 #9)", () => {
+  it("pins 'inert' with sitesSkipped > 0, which is legal and reachable", () => {
     // Every level here is a placeholder that resolves to no def and is not a number, so every
     // site fails the gate and the center population comes out empty. The site tally says
     // `skipped`; the dimension-level verdict says `inert`, and it wins.
@@ -579,7 +579,7 @@ describe('report states', () => {
     expect(soleReport(report).dimensions.tempo.state).toBe('transformed');
   });
 
-  it('reports a lopsided articulation def as partial, never transformed (D-B)', () => {
+  it('reports a lopsided articulation def as partial, never transformed', () => {
     // meico's own `stacc`: `absoluteDurationMs` is excluded because its neutral lives in the
     // MSM, so exaggerating it renders "more staccato" as "softer" and never as "shorter".
     const { report } = exaggerateMpm(reference('articulations', 'mpm'), {
@@ -596,10 +596,10 @@ describe('report states', () => {
 });
 
 // ---------------------------------------------------------------------------
-// A10 — the MSM carve-out
+// the MSM carve-out
 // ---------------------------------------------------------------------------
 
-describe('A10: options.msm reaches the report and nothing else (R1 carve-out)', () => {
+describe('options.msm reaches the report and nothing else (the carve-out)', () => {
   const factors = uniformFactors(2);
   const score = allMaps('all_maps', 'msm');
 
@@ -624,7 +624,7 @@ describe('A10: options.msm reaches the report and nothing else (R1 carve-out)', 
     expect(nulled.mpm).toBe(exaggerateMpm(ALL_MAPS, { factors }).mpm);
   });
 
-  it('counts the notes an unterminated final transition never reaches (§7.4)', () => {
+  it('counts the notes an unterminated final transition never reaches', () => {
     // `all_maps`'s last <dynamics> carries a `@transition.to`, and `getEndDate` answers
     // MAX_VALUE for the last instruction in a map — so the ramp runs to infinity and its
     // target is scaled but never rendered.
@@ -632,7 +632,7 @@ describe('A10: options.msm reaches the report and nothing else (R1 carve-out)', 
     expect(estimates.unreachableLevels).toBeGreaterThan(0);
   });
 
-  it('counts the notes before the FIRST instruction, and only those (§7.4)', () => {
+  it('counts the notes before the FIRST instruction, and only those', () => {
     // The other half of `unreachableLevels`, and the half the corpus does not pin: the render
     // loop writes a flat 100.0 onto every note earlier than the first `<dynamics>`, so the
     // window that counts opens at that instruction's date and not at the map's last one. No
@@ -766,7 +766,7 @@ describe('A10: options.msm reaches the report and nothing else (R1 carve-out)', 
   it('answers null — not zero — where the risk is a millisecond one and the MSM is a score', () => {
     // The distinction the field exists to keep: `0` means "sites of this family, none at risk",
     // `null` means "sites whose risk this MSM does not determine". A note's length in
-    // milliseconds exists only after a render, which R1 puts out of reach for a raw score.
+    // milliseconds exists only after a render, which the design puts out of reach for a raw score.
     const millisecondSites = document(
       performance(
         'P',

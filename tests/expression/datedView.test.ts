@@ -121,7 +121,7 @@ describe('datedView', () => {
     );
 
     it('gives an instruction BEFORE the switch no style, even at the same date', () => {
-      // REVIEW-FINDINGS, "findStyleSwitchAt": positional scope, not date-based. getStyleAt
+      // `findStyleSwitchAt` is positional scope, not date-based. getStyleAt
       // would hand this instruction the switch and resolve a different number.
       const entries = orderedEntries(parseMpmRoot(EQUAL_DATES));
       expect(entries.map((e) => e.element.getAttributeValue('id'))).toEqual([

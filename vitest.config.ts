@@ -21,7 +21,7 @@ export default defineConfig({
       // misreports. Out of scope, deliberately: format conversions (MusicXML, MIDI->MSM,
       // MEI->MusicXML), audio, playback, chroma/pitches and SVG.
       //
-      // The list is curated, not a glob (comparison/DESIGN.md §9.7). `src/supplementary/` in
+      // The list is curated, not a glob. `src/supplementary/` in
       // particular is named file by file, so a new module there is invisible to the coverage
       // invariant until someone adds it here.
       include: [

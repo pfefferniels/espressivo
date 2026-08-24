@@ -1,5 +1,5 @@
 /**
- * The MSM-dependent half of the report (A10's R1 carve-out), computed from the score and the
+ * The MSM-dependent half of the report (the carve-out), computed from the score and the
  * TRANSFORMED document.
  *
  * `report.ts` declares the four fields and ships them null; this fills them in when a caller
@@ -15,10 +15,10 @@
  * at least one site's risk this MSM does not determine.
  *
  * The third case is not hypothetical. Three of the four cliffs are millisecond quantities
- * (§7.7's pass-two commit guard, §7.13's toneduration offsets, and the milliseconds half of
- * §7.9's frame), and a note's millisecond length exists only in an MSM that has already been
- * performed — see `msmFacts.ts` for why a score cannot supply it under R1. Answering `0` there
- * would report "no risk found" for a question that was never asked, which is C2's failure mode
+ * (the pass-two commit guard, the toneduration offsets, and the milliseconds half of
+ * the frame), and a note's millisecond length exists only in an MSM that has already been
+ * performed — see `msmFacts.ts` for why a score cannot supply it. Answering `0` there
+ * would report "no risk found" for a question that was never asked, which is the failure mode
  * in numeric form. A caller who wants the millisecond cliffs passes `performMsm({msm, mpm})` on
  * the pre-exaggeration pair, the baseline the renderer's guards are measured against; a caller
  * who passes a raw score gets the symbolic estimates and an explicit null for the rest.
@@ -30,7 +30,7 @@
  * imprecision distribution covers a span, an articulation applies to whatever the map reaches.
  * So the comparison is against the SHORTEST note in the score: a site counts as at risk when
  * its transformed magnitude reaches that length, i.e. when there exists a note the guard could
- * fire on. A screening estimate, in §7.9's own words: "the report carries the frame magnitude
+ * fire on. A screening estimate, in the words: "the report carries the frame magnitude
  * and flags cliff risk rather than a bound".
  */
 import { filterMap, head, isNonEmpty, last } from '../prelude/index.js';
@@ -68,11 +68,11 @@ import {
 import { ARTICULATION_MAP, ARTICULATION_STYLE, DYNAMICS_MAP } from '../mpm/names.js';
 import type { Element } from '../xml/XomTypes.js';
 
-/** `<articulationDef>` and inline `<articulation>` carry the same twelve modifiers (§7.7). */
+/** `<articulationDef>` and inline `<articulation>` carry the same twelve modifiers. */
 const ARTICULATION_DEF_ELEMENT = 'articulationDef';
 const ARTICULATION_ELEMENT = 'articulation';
 
-/** §7.7's two millisecond levers — the pair the pass-two commit guard compares. */
+/** the two millisecond levers — the pair the pass-two commit guard compares. */
 const ARTICULATION_DELAY_MS = 'absoluteDelayMs';
 const ARTICULATION_DURATION_CHANGE_MS = 'absoluteDurationChangeMs';
 
@@ -120,7 +120,7 @@ class RiskTally {
 }
 
 /**
- * §4/A10's estimates for one performance, given the score.
+ * the estimates for one performance, given the score.
  *
  * @param performance the transformed performance, as the applier left it.
  * @param accentuationRan whether the `accentuation` dimension was walked, which is what
@@ -147,7 +147,7 @@ export function estimatesFromMsm(
 }
 
 // ---------------------------------------------------------------------------
-// §7.4 — the levels a dynamics map never delivers
+// the levels a dynamics map never delivers
 // ---------------------------------------------------------------------------
 
 /**
@@ -236,15 +236,15 @@ function correspondingEnvironment(
 }
 
 // ---------------------------------------------------------------------------
-// §7.7 — the articulation commit cliff
+// the articulation commit cliff
 // ---------------------------------------------------------------------------
 
 /**
  * Articulation sites whose millisecond modifiers can invert a note.
  *
  * Pass two commits its three millisecond modifiers only if `dateNew < endNew` and otherwise
- * discards ALL of them, reverting the note to its unexaggerated date *and* end (§7.7,
- * SURVEY.md:2003-2009). `@absoluteDelayMs` moves the onset alone and
+ * discards ALL of them, reverting the note to its unexaggerated date *and* end.
+ * `@absoluteDelayMs` moves the onset alone and
  * `@absoluteDurationChangeMs` moves the end alone, so the guard fires exactly when
  * `delay − change` reaches the note's rendered length.
  */
@@ -275,19 +275,19 @@ function articulationSites(performance: PerformanceView): readonly Element[] {
 }
 
 // ---------------------------------------------------------------------------
-// §7.9 — the ornament spread cliff
+// the ornament spread cliff
 // ---------------------------------------------------------------------------
 
 /**
  * `<temporalSpread>` sites whose frame can drive a note's `duration.perf` negative.
  *
  * The cliff is conditional on `@noteoff.shift`: absent, the whole offset is absorbed by the
- * duration with no floor (SURVEY.md:2588-2590); `"true"` moves the note end with the onset,
+ * duration with no floor; `"true"` moves the note end with the onset,
  * the safe mode; `"monophonic"` makes a wider frame *lengthen* notes, the opposite sign. Only
  * the absent case is a shortening cliff, so only it is counted.
  *
  * Each bound of the frame is compared in its OWN domain, which in MPM v3 may differ
- * between the two (`frame.offset="-22.0ms" frameLength="80%"` is legal, §7.15). A note's
+ * between the two (`frame.offset="-22.0ms" frameLength="80%"` is legal). A note's
  * offset is drawn from within `[offset, offset + length]`, so either bound's own magnitude
  * reaching a note's length is enough for the guard to have a note to fire on.
  */
@@ -335,9 +335,9 @@ interface FrameBound {
 /**
  * The frame's two bounds as magnitudes, in whichever generation the element is written in.
  *
- * A bound the element does not carry is not a bound: in v2 an absent one is the neutral 0
- * (§7.9), and in v3 an absent `@frameLength` is `100%` — which the applier refuses to scale
- * at all (§7.15 correction 4), so there is no transformed value here to judge either.
+ * A bound the element does not carry is not a bound: in v2 an absent one is the neutral 0,
+ * and in v3 an absent `@frameLength` is `100%` — which the applier refuses to scale
+ * at all, so there is no transformed value here to judge either.
  */
 function frameBounds(spread: Element): readonly FrameBound[] {
   if (detectFrameFormat(spread) === 'v2') {
@@ -387,7 +387,7 @@ function scaleOrNull(value: number | null, factor: number): number | null {
 }
 
 // ---------------------------------------------------------------------------
-// §7.13 — the toneduration cliff
+// the toneduration cliff
 // ---------------------------------------------------------------------------
 
 /**
@@ -398,7 +398,7 @@ function scaleOrNull(value: number | null, factor: number): number | null {
  * can draw reaches a note's rendered length — and the same code path skips any note carrying
  * no `@milliseconds.date.end`, which is the second reason a raw score cannot answer this.
  *
- * The magnitude is the largest of the distribution's atomic group (D-F), which is exactly the
+ * The magnitude is the largest of the distribution's atomic group, which is exactly the
  * set the transform scaled together.
  */
 function imprecisionDurationCliffs(

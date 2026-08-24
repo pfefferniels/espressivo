@@ -1,8 +1,8 @@
 /**
- * `compareMpmCorpus` — §8 over the vendored corpus.
+ * `compareMpmCorpus` over the vendored corpus.
  *
  * Every cell equals the `compareMpm` number for the same pair under the same window, so a corpus
- * cannot drift from the product it is assembled from. P-C6's corpus clause is asserted against a
+ * cannot drift from the product it is assembled from. The corpus clause is asserted against a
  * permuted re-run rather than against a stored expectation.
  */
 import { describe, it, expect } from 'vitest';
@@ -37,7 +37,7 @@ const corpus = (
 ): CorpusReport => compareMpmCorpus({ items, window: SHORT, ...overrides }).report;
 
 /**
- * Checked reads into §8's flat `n × n` matrices, its label list and its per-item products. Every
+ * Checked reads into the flat `n × n` matrices, its label list and its per-item products. Every
  * read here is a computed index, and an unchecked slip yields `NaN` several lines later.
  */
 const cellOf = (matrix: readonly number[], n: number, i: number, j: number, what: string) =>
@@ -55,7 +55,7 @@ const pick = <T extends NonNullable<unknown>>(
 
 // ---------------------------------------------------------------------------
 
-describe('the matrix is one function (R3)', () => {
+describe('the matrix is one function', () => {
   it('reproduces compareMpm’s own numbers cell by cell', () => {
     const report = corpus([
       { mpm: TELEMANN, label: 'tel' },
@@ -100,7 +100,7 @@ describe('the matrix is one function (R3)', () => {
       }
   });
 
-  it('is bit-symmetric with a zero diagonal (A4)', () => {
+  it('is bit-symmetric with a zero diagonal', () => {
     const report = corpus([
       { mpm: TELEMANN, label: 'tel' },
       { mpm: VULPIUS, label: 'vul' },
@@ -130,7 +130,7 @@ describe('the matrix is one function (R3)', () => {
     expect(report.settings.window).toEqual({ start: SHORT.start, end: SHORT.end });
 
     // Without an explicit window the corpus derives one end for the whole matrix, which is what
-    // makes AD-4's guarantee survive: it does not vary with the pair.
+    // makes the guarantee survive: it does not vary with the pair.
     const derived = compareMpmCorpus({
       items: [
         { mpm: TELEMANN, label: 'tel' },
@@ -142,7 +142,7 @@ describe('the matrix is one function (R3)', () => {
   });
 });
 
-describe('§8’s expansion and labels', () => {
+describe('the expansion and labels', () => {
   it('expands a multi-performance item and leaves a single-performance one alone', () => {
     const report = corpus([
       { mpm: TELEMANN, label: 'tel' },
@@ -157,7 +157,7 @@ describe('§8’s expansion and labels', () => {
       'alb:Like a robot',
     ]);
     expect(report.items.map((item) => item.itemIndex)).toEqual([0, 0, 0, 1, 1]);
-    // AD-63.1: the row carries only the two fields it can say something about.
+    // the row carries only the two fields it can say something about.
     expect(Object.keys(report.items[0]!)).toEqual(['itemIndex', 'performance']);
 
     // A named performance does not expand and keeps the caller's own label.
@@ -173,7 +173,7 @@ describe('§8’s expansion and labels', () => {
     expect(report.labels).toEqual(['items[0]', 'items[1]']);
   });
 
-  it('refuses colliding labels, naming every collision and its items (A8)', () => {
+  it('refuses colliding labels, naming every collision and its items', () => {
     expect(() =>
       corpus([
         { mpm: TELEMANN, performance: 0, label: 'Welte 1905' },
@@ -193,7 +193,7 @@ describe('§8’s expansion and labels', () => {
   });
 });
 
-describe('P-C6: permuting the items permutes the matrices and relabels the dendrogram', () => {
+describe('permuting the items permutes the matrices and relabels the dendrogram', () => {
   const items = [
     { mpm: TELEMANN, performance: 'Baroque' as const, label: 'a-baroque' },
     { mpm: TELEMANN, performance: 'Fast' as const, label: 'b-fast' },
@@ -256,11 +256,11 @@ describe('P-C6: permuting the items permutes the matrices and relabels the dendr
  * The permutation is the minimal witness — the first two items swapped. Without the sort in
  * `exhaustiveMedoids`' tie key that single swap changes which performance the corpus calls the
  * most typical, from `B-vul-1` to `E-vul-2`, with `exhaustive: true` on both: over all 720
- * orders, 600 say `{A-tel-1, B-vul-1}` and 120 say `{A-tel-1, E-vul-2}`. §8 makes the medoid the
+ * orders, 600 say `{A-tel-1, B-vul-1}` and 120 say `{A-tel-1, E-vul-2}`. The design makes the medoid the
  * one corpus product whose value is naming a real performer, so it is pinned here as well as at
  * `pam`'s own layer.
  */
-describe('P-C6 where the ties are: the medoid does not depend on the caller’s item order', () => {
+describe('where the ties are: the medoid does not depend on the caller’s item order', () => {
   const tied = [
     { mpm: TELEMANN, performance: 0, label: 'A-tel-1' },
     { mpm: VULPIUS, performance: 0, label: 'B-vul-1' },
@@ -297,7 +297,7 @@ describe('P-C6 where the ties are: the medoid does not depend on the caller’s 
   });
 
   /**
-   * The same swap, through the other two published fields (AD-67.1).
+   * The same swap, through the other two published fields.
    *
    * The seriation and the embedding fail permutation-invariance for a different reason than the
    * medoid does — not an index-keyed tie rule but an exact one, which a permuted Jacobi's
@@ -347,7 +347,7 @@ describe('P-C6 where the ties are: the medoid does not depend on the caller’s 
   });
 
   /**
-   * AD-72.2: every published per-item number is bit-identical under permutation.
+   * every published per-item number is bit-identical under permutation.
    *
    * `profiles[i].toMeanDistance` is the mean of the same set of distances under any permutation,
    * but accumulated in the caller's item order it is not the same double — bit-wise different in
@@ -355,7 +355,7 @@ describe('P-C6 where the ties are: the medoid does not depend on the caller’s 
    * corpus, its clusters being small enough that the additions reassociate exactly; it is pinned
    * anyway, because "no permutation has reordered these particular sums yet" is not a property.
    */
-  it('gives bit-identical per-item numbers under permutation (AD-72.2)', () => {
+  it('gives bit-identical per-item numbers under permutation', () => {
     // The window size is measured rather than chosen: at the 16 quarters this file uses
     // elsewhere the reassociated sums agree bit for bit on the same six items, so a single
     // fixed window is a poor detector for a float-association defect.
@@ -384,7 +384,7 @@ describe('P-C6 where the ties are: the medoid does not depend on the caller’s 
       const shuffled = readback(corpus(pick(tied, order, 'the corpus item list'), shorter));
       for (const [label, values] of base) {
         // `toBe`, not `toBeCloseTo`: the claim is bit-identity, and a tolerance here would be
-        // exactly the epsilon AD-72.1 rejected in favour of a canonical order.
+        // exactly the epsilon rejected in favour of a canonical order.
         expect({ label, ...(shuffled.get(label) ?? {}) }).toEqual({ label, ...values });
       }
     }
@@ -409,7 +409,7 @@ describe('P-C6 where the ties are: the medoid does not depend on the caller’s 
   });
 });
 
-describe('the products §8 reads off the matrix', () => {
+describe('the products the design reads off the matrix', () => {
   const items = [
     { mpm: TELEMANN, performance: 'Baroque' as const, label: 'tel-baroque' },
     { mpm: TELEMANN, performance: 'Fast' as const, label: 'tel-fast' },
@@ -425,7 +425,7 @@ describe('the products §8 reads off the matrix', () => {
     expect(report.medoids).toHaveLength(2);
     expect(report.clusters).toHaveLength(5);
     expect(report.silhouette).toHaveLength(5);
-    // Five items is well under twenty, so the caveat is a field rather than prose (A22).
+    // Five items is well under twenty, so the caveat is a field rather than prose.
     expect(report.silhouetteReliable).toBe(false);
     expect(report.notes.some((entry) => entry.message.includes('silhouette is noisy'))).toBe(true);
 
@@ -441,7 +441,7 @@ describe('the products §8 reads off the matrix', () => {
         expect(profile.toMedoid[dimension]).toBeGreaterThanOrEqual(0);
     }
 
-    // AD-26.3's context is context: the matrices are untouched by it.
+    // the context is context: the matrices are untouched by it.
     expect(report.context).not.toBeNull();
     expect(report.context?.percentile).toHaveLength(25);
 
@@ -525,7 +525,7 @@ describe('the products §8 reads off the matrix', () => {
     expect(zeroRows).toHaveLength(1);
   });
 
-  it('normalizes by AD-25.5’s median formula when asked', () => {
+  it('normalizes by the median formula when asked', () => {
     const fixed = corpus(items);
     const normalized = corpus(items, { normalization: 'corpus' });
     expect(fixed.normalizationConstants).toBeNull();
@@ -585,9 +585,9 @@ describe('the products §8 reads off the matrix', () => {
       }
   });
 
-  it('surfaces suspectPairs so a heterogeneous folder announces itself (C7)', () => {
+  it('surfaces suspectPairs so a heterogeneous folder announces itself', () => {
     // Telemann against Albert: different pieces, and Albert's deadpan reading has no instruction
-    // after date 0, so C7's length arm fires.
+    // after date 0, so the length arm fires.
     const report = corpus([
       { mpm: TELEMANN, performance: 'Baroque', label: 'tel' },
       { mpm: ALBERT, performance: 'Like a robot', label: 'alb' },
@@ -597,7 +597,7 @@ describe('the products §8 reads off the matrix', () => {
   });
 });
 
-describe('the degenerate corpora §8 makes legal (A3, M19)', () => {
+describe('the degenerate corpora the design makes legal', () => {
   it('handles N = 0 and N = 1 without an error', () => {
     const empty = compareMpmCorpus({ items: [] }).report;
     expect(empty.n).toBe(0);
@@ -783,7 +783,7 @@ describe('the degenerate corpora §8 makes legal (A3, M19)', () => {
   /**
    * `embeddingAxes`' declared domain is `[1, N−1]`, which at `N ≤ 1` is empty. A guard of the
    * form `n > 1 && axes > n - 1` accepts everything exactly where nothing is legal: a one-item
-   * corpus reports `axes === 7`, and an empty one five all-null variance shares. AD-25.1's first
+   * corpus reports `axes === 7`, and an empty one five all-null variance shares. The first
    * branch applies — `items.length` is in the same option bag.
    */
   it('rejects an explicit embeddingAxes where the domain is empty (N ≤ 1)', () => {
@@ -800,7 +800,7 @@ describe('the degenerate corpora §8 makes legal (A3, M19)', () => {
       }),
     ).toThrow(InvalidOptionError);
 
-    // …and the default still degrades rather than erroring, which is the other half of §9.4's
+    // …and the default still degrades rather than erroring, which is the other half of the
     // rule: a caller who never set the option has made no mistake to be told about.
     const single = corpus([{ mpm: TELEMANN, performance: 'Baroque', label: 'only' }]);
     expect(single.n).toBe(1);
@@ -839,7 +839,7 @@ describe('the degenerate corpora §8 makes legal (A3, M19)', () => {
   });
 });
 
-describe('the surface (§9.4)', () => {
+describe('the surface', () => {
   it('rejects options a caller could have known were wrong', () => {
     const items = [
       { mpm: TELEMANN, performance: 'Baroque' as const, label: 'a' },
@@ -865,7 +865,7 @@ describe('the surface (§9.4)', () => {
     }
   });
 
-  it('accepts every linkage §8 names', () => {
+  it('accepts every linkage the design names', () => {
     const items = [
       { mpm: TELEMANN, performance: 'Baroque' as const, label: 'a' },
       { mpm: TELEMANN, performance: 'Fast' as const, label: 'b' },

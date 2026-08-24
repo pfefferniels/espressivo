@@ -242,7 +242,7 @@ describe('facade: performMsm', () => {
   });
 });
 
-describe('facade: extractPerformanceData (§2.3 field mapping)', () => {
+describe('facade: extractPerformanceData (ARCHITECTURE.md §2.3 field mapping)', () => {
   /**
    * Reads the fixture's `<note>` attributes independently of the facade's own reader.
    *
@@ -335,7 +335,7 @@ describe('facade: extractPerformanceData (§2.3 field mapping)', () => {
 
   it('splits a mixed positionMap into one stream per controller, with the right CC numbers', () => {
     // No fixture mixes controllers — they are all `sustain` — so this is where the two readings
-    // §2 leaves open get pinned: one stream per distinct `controller` in first-appearance order,
+    // the design leaves open get pinned: one stream per distinct `controller` in first-appearance order,
     // and `sustain` → 64, `soft` → 67, anything else → 0, as `Msm.parsePositionMap` maps them.
     const mixed = msmWith(
       ONE_NOTE,
@@ -505,8 +505,7 @@ describe('facade: performMsmToData', () => {
 });
 
 /**
- * The ornamentation provenance sextet (DESIGN.md D15, widened by the D10 provenance extension
- * and the `ornament.anchor` addendum), as the two ML stakeholders consume it.
+ * The ornamentation provenance sextet (PARITY.md §6.4), as the two ML stakeholders consume it.
  *
  * `ornamentation-v3.test.ts` owns the renderer's arithmetic. What these cases pin is the
  * mapping: which MSM attribute becomes which field, what absence looks like (RULE N4: a present
@@ -584,7 +583,7 @@ describe('facade: ornamentation provenance (D15)', () => {
     // occupies [720, 1440] and the principal survives, shortened to the 720 ticks in front of
     // it and still carrying its own id `P`.
     //
-    // The ruling (D10/D15, LOG.md 2026-08-09): that note is altered, so it is `ornamented`, and
+    // The ruling: that note is altered, so it is `ornamented`, and
     // the renderer marks it `ornament.carved="true"` + `ornament.ref`. It gets no source, slot
     // or pass — it is not part of the expansion — and no anchor, because it is the anchor.
     const input = v3('turn-atend');

@@ -189,7 +189,7 @@ describe('MetricalAccentuationMap', () => {
      * Java returns a datum with a null `accentuationPatternDef` here and
      * `renderMetricalAccentuationToMap` dereferences it unguarded, so the whole render dies
      * with a NullPointerException; `src/comparison/accentuationCurve.ts` reports the case as
-     * `⊥` (R21) and distinguishes it from the silent skip an instruction with no `<style>` in
+     * `⊥` and distinguishes it from the silent skip an instruction with no `<style>` in
      * scope gets. Nothing else pins either half: a `return null` added to this reader — which
      * would turn the abort into a skip and render documents the reference refuses — leaves the
      * whole suite and `npm run gate` green.

@@ -1,25 +1,25 @@
 /**
- * DESIGN.md §4's report, as types and as the builder the applier accumulates into.
+ * The report, as types and as the builder the applier accumulates into.
  *
- * The report is the engine's second output and, for two of its obligations, the only one. R4
- * makes `totalWrites === 0` the exact contract for "this sample is a no-op"; R6(b) makes the
- * velocity coefficients the answer to a question the transform provably cannot answer on the
+ * The report is the engine's second output and, for two of its obligations, the only one.
+ * `totalWrites === 0` is the exact contract for "this sample is a no-op", and the
+ * velocity coefficients are the answer to a question the transform provably cannot answer on the
  * data path, because velocity is a shared bus whose final value depends on MSM note data that
- * R1 keeps out.
+ * the design keeps out.
  *
  * Two invariants, both from RULE F1/N4. Plain data: no XOM node reaches this file, and a
  * {@link SiteRef} is `structuredClone`-safe by construction. And every number is finite or null
  * — never `NaN`, never `Infinity`, never `undefined`. A center that could not be computed is
  * `null`, not `NaN`; a dimension that touches no velocity has `null` coefficients, not `{0,0}`,
- * and a caller summing R6(b) contributions must be able to tell the two apart.
+ * and a caller summing velocity contributions must be able to tell the two apart.
  *
- * There is no `sitesPartial` counter, and it is a field a reader will look for: §4 gives three
+ * There is no `sitesPartial` counter, and it is a field a reader will look for: the design gives three
  * site counters and a `partial` STATE. A partial site *was written*, so it is counted under
  * `sitesTransformed`; the dimension's state records that something beside it was excluded, and
  * which components were unreachable is in the notes.
  *
  * `options.msm` is a facade-level option feeding `estimates` only, so `applyExaggeration` does
- * not take it (A10's R1 carve-out).
+ * not take it (the carve-out).
  */
 import { fromEntriesExact } from '../prelude/index.js';
 import type { ExpressionDimension } from './registry.js';
@@ -27,7 +27,7 @@ import { EXPRESSION_DIMENSIONS } from './registry.js';
 import type { SiteRef } from './siteRef.js';
 
 /**
- * DESIGN.md §4's glossary (A10). The distinction that matters most is `absent` vs `inert`: a
+ * The glossary. The distinction that matters most is `absent` vs `inert`: a
  * consumer diffing two reports must be able to tell "the document does not use curvature" from
  * "the document uses curvature where the renderer gives it no effect".
  */
@@ -37,13 +37,13 @@ export type SiteState =
   /** Present, but the renderer gives it no effect — reported, never written. */
   | 'inert'
   | 'transformed'
-  /** Some components reachable, others excluded by D-B (articulation only). */
+  /** Some components reachable, others excluded (articulation only). */
   | 'partial'
-  /** Failed the §1.2 validation gate, a site-discipline rule, or the identity short-circuit. */
+  /** Failed the validation gate, a site-discipline rule, or the identity short-circuit. */
   | 'skipped';
 
 /**
- * R6(b): the velocity contribution of a dimension, as the coefficients of `v·m + a` rather
+ * The velocity contribution of a dimension, as the coefficients of `v·m + a` rather
  * than as a scalar maximum.
  *
  * A scalar is undefinable for `articulation`, whose contribution is affine in the note's
@@ -51,101 +51,101 @@ export type SiteState =
  * pair lets a caller evaluate the bound against its own velocities. Reported for exactly four
  * dimensions — `accentuation`, `articulation`, `ornamentDynamics`, `imprecisionDynamics` — and
  * `null` for the other eleven, `dynamics` included, that one being clamped into
- * `velocityRange` on the data path instead (R6(a)).
+ * `velocityRange` on the data path instead.
  */
 export interface VelocityCoefficients {
   readonly multiplicative: number;
   readonly additive: number;
 }
 
-/** One closed reason, one §7 obligation. Every note the engine can emit is in this union. */
+/** One closed reason, one obligation. Every note the engine can emit is in this union. */
 export type ReportNoteKind =
-  /** §1.1/A2 — `s === 1`: the dimension was not walked at all. */
+  /** `s === 1`: the dimension was not walked at all. */
   | 'identity-factor'
-  /** §7.2 — a level string that resolves to no def and is not a number (`'+'`, `'-'`, `'?'`). */
+  /** a level string that resolves to no def and is not a number (`'+'`, `'-'`, `'?'`). */
   | 'unresolvable-level'
-  /** §7.2 — a def reached from instructions with different `@beatLength`: no normalization. */
+  /** a def reached from instructions with different `@beatLength`: no normalization. */
   | 'heterogeneous-beat-length'
-  /** §7.2 — a `<tempo>` without `@beatLength` is skipped by the renderer entirely. */
+  /** a `<tempo>` without `@beatLength` is skipped by the renderer entirely. */
   | 'missing-beat-length'
-  /** §7.1 — the population was empty, so the dimension has no center. */
+  /** the population was empty, so the dimension has no center. */
   | 'no-center'
-  /** §1.2 — the input failed its row's domain predicate. */
+  /** the input failed its row's domain predicate. */
   | 'out-of-domain-input'
-  /** A3 — the result rounded onto an exact bound of its space; the write is refused. */
+  /** the result rounded onto an exact bound of its space; the write is refused. */
   | 'saturation-refused'
-  /** §1.2 — the closed form overflowed. The last line of the never-write-a-NaN invariant. */
+  /** the closed form overflowed. The last line of the never-write-a-NaN invariant. */
   | 'non-finite-result'
-  /** R6(a) — a dynamics level was clamped into `velocityRange`. */
+  /** A dynamics level was clamped into `velocityRange`. */
   | 'clamped'
-  /** §7.4 — two named levels in one styleDef became equal under the clamp. */
+  /** two named levels in one styleDef became equal under the clamp. */
   | 'merged-levels'
-  /** D-I — the write would have made `String(to') === String(level')`, deleting the gesture. */
+  /** the write would have made `String(to') === String(level')`, deleting the gesture. */
   | 'pair-collapse-refused'
-  /** §7.2/A7 — the MEI end-marker duplicate moved with its transition endpoint. */
+  /** the MEI end-marker duplicate moved with its transition endpoint. */
   | 'end-marker-moved'
-  /** §7.4/§7.5/§7.14 — a constant instruction, on which the shape parameters do nothing. */
+  /** a constant instruction, on which the shape parameters do nothing. */
   | 'constant-instruction'
-  /** §1.3 — gesture scope leaves constants and def values untouched. */
+  /** gesture scope leaves constants and def values untouched. */
   | 'untouched-in-gesture'
-  /** §7.6/A6 — an element overrides exactly one bound of its def's window. */
+  /** an element overrides exactly one bound of its def's window. */
   | 'cross-site-rubato-window'
-  /** D-B/§7.7 — the site carries a lever whose neutral lives in the MSM. */
+  /** The site carries a lever whose neutral lives in the MSM. */
   | 'articulation-component-excluded'
-  /** §7.7 — the site carries both halves of the non-monotone affine velocity pair. */
+  /** the site carries both halves of the non-monotone affine velocity pair. */
   | 'articulation-affine-velocity-pair'
-  /** §7.7 — inline duration precedence makes this attribute inert on this element. */
+  /** inline duration precedence makes this attribute inert on this element. */
   | 'inline-duration-precedence'
-  /** §7.8/A10 — the velocity estimate used the def's own `@beat` anchors, not the MSM's. */
+  /** the velocity estimate used the def's own `@beat` anchors, not the MSM's. */
   | 'accentuation-beats-unverifiable'
-  /** §7.11 — every referencing `<ornament>` has `@scale` absent or 0, so the gradient is dead. */
+  /** every referencing `<ornament>` has `@scale` absent or 0, so the gradient is dead. */
   | 'ornament-scale-zero'
-  /** §7.11 — `@transition.to` is absent and is never materialized. */
+  /** `@transition.to` is absent and is never materialized. */
   | 'transition-to-absent'
-  /** §7.11/RESOLVED-5 — a gradient endpoint left the nominal [−1,1]. Informational only. */
+  /** A gradient endpoint left the nominal [−1,1]. Informational only. */
   | 'gradient-outside-nominal-range'
   /**
-   * §7.9/§8 — which unit a transformed ornament frame is in; the caller's `s` depends on it.
+   * which unit a transformed ornament frame is in; the caller's `s` depends on it.
    * One kind, two readings: on a v2 spread the `@time.unit` enum, one unit for the whole frame;
-   * on a v3 spread each value's OWN domain (§7.15), which may differ between the two bounds and
+   * on a v3 spread each value's OWN domain, which may differ between the two bounds and
    * which a suffix-less value still takes from a legacy `@time.unit`.
    */
   | 'frame-time-unit'
   /**
-   * §7.15 — a v3 spread carrying both `@frame.offset` and its legacy alias `@frame.start`. The
+   * a v3 spread carrying both `@frame.offset` and its legacy alias `@frame.start`. The
    * reader takes `@frame.offset` and the v3 writer never emits the alias, so it is left exactly
    * as found; this note is what keeps that from being a silent skip.
    */
   | 'frame-alias-shadowed'
-  /** §7.9 — `@noteoff.shift`, which decides what absorbs the offset and can flip its sign. */
+  /** `@noteoff.shift`, which decides what absorbs the offset and can flip its sign. */
   | 'frame-noteoff-shift'
-  /** §7.4 — `@subNoteDynamics="true"`: a CC-based regime for which the clamp is the wrong model. */
+  /** `@subNoteDynamics="true"`: a CC-based regime for which the clamp is the wrong model. */
   | 'sub-note-dynamics'
-  /** §7.8/§7.16 — the booleans that decide the SPAN over which an instruction applies. */
+  /** the booleans that decide the SPAN over which an instruction applies. */
   | 'span-flags'
-  /** RESOLVED-7 — a timing distribution without `@milliseconds.timingBasis` re-indexes. */
+  /** a timing distribution without `@milliseconds.timingBasis` re-indexes. */
   | 'derived-timing-basis'
-  /** §7.16/A9 — the tuning domain is write-only in this codebase. */
+  /** the tuning domain is write-only in this codebase. */
   | 'tuning-domain-inert'
-  /** D-F — one attribute of an atomic group failed, so the whole distribution was skipped. */
+  /** One attribute of an atomic group failed, so the whole distribution was skipped. */
   | 'atomic-group-skipped'
-  /** §7.14 — a movement the renderer never reaches, or on which the curve is unobservable. */
+  /** a movement the renderer never reaches, or on which the curve is unobservable. */
   | 'movement-inert'
-  /** §7.2/D-C — a level that resolves through a def cannot be written at this site. */
+  /** A level that resolves through a def cannot be written at this site. */
   | 'unwritable-level-site';
 
 /** One reported event, tied to a site where there is one. */
 export interface ReportNote {
   readonly kind: ReportNoteKind;
   readonly dimension: ExpressionDimension | null;
-  /** Null for dimension-level notes (§4 amendment #8). */
+  /** Null for dimension-level notes. */
   readonly site: SiteRef | null;
   readonly detail: string;
 }
 
-/** DESIGN.md §4. What one dimension did in one performance. */
+/** What one dimension did in one performance. */
 export interface DimensionReport {
-  /** The factor as passed. Null when the key was absent, which R3 defines as identity. */
+  /** The factor as passed. Null when the key was absent, which the design defines as identity. */
   readonly requestedFactor: number | null;
   readonly state: SiteState;
   readonly sitesTransformed: number;
@@ -153,23 +153,23 @@ export interface DimensionReport {
   readonly sitesInert: number;
   readonly writes: number;
   readonly clamps: number;
-  /** R6(b). Null where the dimension does not touch velocity. */
+  /** Null where the dimension does not touch velocity. */
   readonly velocityCoefficients: VelocityCoefficients | null;
 }
 
 /**
- * §8's two per-document bounds, computed from the document rather than baked in as constants.
- * The tempo half is a deviation ratio, not §4's original maximum `s` (W2 amendment #7).
+ * the two per-document bounds, computed from the document rather than baked in as constants.
+ * The tempo half is a deviation ratio, not the original maximum `s` (W2 amendment #7).
  */
 export interface PerformanceBounds {
   /**
-   * §8's `r`: the largest factor by which any population member deviates from the center,
-   * `max(x/c, c/x)`. A caller with a musical window `[lo,hi]` completes §8's formula as
+   * the `r`: the largest factor by which any population member deviates from the center,
+   * `max(x/c, c/x)`. A caller with a musical window `[lo,hi]` completes the formula as
    * `s ≤ min(ln(hi/c), ln(c/lo)) / ln r`. Null when there is no center or no deviation.
    */
   readonly tempoDeviationRatio: number | null;
   /**
-   * §8/A6: the smallest `s` at which any rubato site's total trim would reach
+   * the smallest `s` at which any rubato site's total trim would reach
    * `1 − minRubatoWindow` — past which the guard, not the arithmetic, decides the window.
    * `ln(minRubatoWindow) / ln(1 − t)` minimised over the trimmed sites; null when no site
    * carries a trim.
@@ -178,62 +178,62 @@ export interface PerformanceBounds {
 }
 
 /**
- * The report fields whose values need the MSM (A10's R1 carve-out): structured, and valued
+ * The report fields whose values need the MSM (the carve-out): structured, and valued
  * `null` until `options.msm` — the facade's concern — supplies one. A field that exists and
  * says `null` is what lets a consumer write the code that will read it later.
  */
 export interface MsmDependentEstimates {
-  /** §7.4 — notes before the first instruction, and unterminated transitions. */
+  /** notes before the first instruction, and unterminated transitions. */
   readonly unreachableLevels: number | null;
-  /** §7.7 — sites at risk of the pass-two millisecond commit guard discarding the note. */
+  /** sites at risk of the pass-two millisecond commit guard discarding the note. */
   readonly articulationCommitCliffs: number | null;
-  /** §7.9 — spreads at risk of driving `duration.perf` negative. */
+  /** spreads at risk of driving `duration.perf` negative. */
   readonly ornamentSpreadCliffs: number | null;
-  /** §7.13 — toneduration offsets at risk of putting a note's end before its start. */
+  /** toneduration offsets at risk of putting a note's end before its start. */
   readonly imprecisionDurationCliffs: number | null;
   /**
-   * §7.8/A10 — true whenever `accentuation`'s velocity coefficient was computed from the
+   * true whenever `accentuation`'s velocity coefficient was computed from the
    * def's own declared `@beat` anchors instead of the rendered beat positions. Without an
    * MSM there are no rendered beats, so it is true whenever the dimension ran at all.
    */
   readonly beatsUnverifiable: boolean;
 }
 
-/** DESIGN.md §4. One performance's sub-report. */
+/** One performance's sub-report. */
 export interface PerformanceReport {
   readonly performance: { readonly index: number; readonly name: string };
   /** A full record, never a partial one (RULE N4): all fifteen keys are always present. */
   readonly dimensions: Record<ExpressionDimension, DimensionReport>;
-  /** §7.1's computed or overridden centers. Tempo is in quarter-note bpm. */
+  /** the computed or overridden centers. Tempo is in quarter-note bpm. */
   readonly centers: { readonly tempo: number | null; readonly dynamics: number | null };
   readonly bounds: PerformanceBounds;
-  /** §7.4 — pairs of def names in one styleDef whose transformed values became equal. */
+  /** pairs of def names in one styleDef whose transformed values became equal. */
   readonly mergedLevels: readonly (readonly [string, string])[];
   readonly estimates: MsmDependentEstimates;
   readonly notes: readonly ReportNote[];
   readonly totalWrites: number;
 }
 
-/** DESIGN.md §4. The whole run. */
+/** The whole run. */
 export interface ExaggerationReport {
-  /** Every dimension's effective factor, including the ones defaulted to 1 (R3). */
+  /** Every dimension's effective factor, including the ones defaulted to 1. */
   readonly appliedFactors: Record<ExpressionDimension, number>;
   readonly performances: readonly PerformanceReport[];
-  /** R4's contract: 0 means this sample is a no-op. */
+  /** the contract: 0 means this sample is a no-op. */
   readonly totalWrites: number;
 }
 
 /**
  * The mutable accumulator the applier writes into, one per (performance, dimension). The two
  * extra counters here — `partial` and `present` — are how {@link finishDimension} derives a
- * state §4's three counters cannot express on their own: a dimension with one inert site and no
+ * state the three counters cannot express on their own: a dimension with one inert site and no
  * others is `inert`, one with no sites at all is `absent`, and the counters alone cannot tell
  * either from `skipped`.
  */
 export class DimensionAccumulator {
-  /** Sites written with every component reachable — §4's `transformed`. */
+  /** Sites written with every component reachable — the `transformed`. */
   private full = 0;
-  /** Sites written with a D-B component out of reach — §4's `partial`. */
+  /** Sites written with a component out of reach — the `partial`. */
   private partialSites = 0;
   private skippedSites = 0;
   private inertSites = 0;
@@ -241,7 +241,7 @@ export class DimensionAccumulator {
   private clampEvents = 0;
   /** Whether the walk saw this dimension's attributes at all — the `absent` discriminator. */
   private present = false;
-  /** Set only where R6(b) applies; the accumulator maxes over sites. */
+  /** Set only where the design applies; the accumulator maxes over sites. */
   private velocity: { multiplicative: number; additive: number } | null = null;
   /**
    * A DIMENSION-level verdict, which overrides the per-site tally whenever one is set.
@@ -266,9 +266,9 @@ export class DimensionAccumulator {
   }
 
   /**
-   * One site written, but with a component D-B puts out of reach (§7.7).
+   * One site written, but with a component the design puts out of reach.
    *
-   * Not a delegation to {@link countTransformed}: §4 orders `transformed > partial`, so the two
+   * Not a delegation to {@link countTransformed}: `transformed` outranks `partial`, so the two
    * must be tallied apart or a document holding one full site and one partial site could never
    * read `transformed`. Both count as writes and both appear in `sitesTransformed`.
    */
@@ -292,12 +292,12 @@ export class DimensionAccumulator {
     this.clampEvents += 1;
   }
 
-  /** R4's running total, read by {@link ReportSink.totalWrites}. */
+  /** the running total, read by {@link ReportSink.totalWrites}. */
   get writeCount(): number {
     return this.written;
   }
 
-  /** A2 — the dimension was short-circuited at `s = 1` and never walked. */
+  /** the dimension was short-circuited at `s = 1` and never walked. */
   declareNotWalked(): void {
     this.dimensionVerdict = 'skipped';
   }
@@ -308,7 +308,7 @@ export class DimensionAccumulator {
   }
 
   /**
-   * R6(b): the coefficients are a per-dimension maximum over the sites that contribute.
+   * the coefficients are a per-dimension maximum over the sites that contribute.
    *
    * RULE F1 is enforced here rather than at the call sites, which is what makes the module
    * header's "every number is finite or null" true by construction: both producers compute a
@@ -329,12 +329,12 @@ export class DimensionAccumulator {
     return true;
   }
 
-  /** Declare that this dimension reports R6(b) coefficients even if no site contributed. */
+  /** Declare that this dimension reports velocity coefficients even if no site contributed. */
   enableVelocityReporting(): void {
     this.velocity ??= { multiplicative: 0, additive: 0 };
   }
 
-  /** §4's shape, with the state derived — see {@link finishDimension} for the precedence. */
+  /** the shape, with the state derived — see {@link finishDimension} for the precedence. */
   finish(requestedFactor: number | null): DimensionReport {
     return {
       requestedFactor,
@@ -363,19 +363,19 @@ export class DimensionAccumulator {
 }
 
 /**
- * Freeze one accumulator into §4's shape, deriving the state.
+ * Freeze one accumulator into the shape, deriving the state.
  *
- * A dimension-level verdict wins outright where one is set. Otherwise the order is §4's:
+ * A dimension-level verdict wins outright where one is set. Otherwise the order is:
  * `transformed > partial > skipped > inert > absent`. A dimension holding one fully-reachable
  * site beside a lopsided one reads `transformed`; `partial` is reserved for the case where EVERY
  * written site had a component out of reach — meico's `stacc`, whose only duration lever is
  * excluded, so "more staccato" renders as "softer" and never as "shorter". `skipped` outranks
  * `inert` because a skip is actionable while inertness is a property of the document.
  *
- * A "site" is one element for the dimensions whose §7 row group is per element — `dynamics`,
+ * A "site" is one element for the dimensions whose the row group is per element — `dynamics`,
  * `articulation`, the ornament pair — and one attribute where the row is the whole story.
  * `sitesTransformed` counts every site the run WROTE, partial ones included. `articulation` is
- * the one asymmetry: `transformed`/`partial` are counted per ELEMENT, since D-B's partiality is
+ * the one asymmetry: `transformed`/`partial` are counted per ELEMENT, since the partiality is
  * a property of the element, while `inert` is counted per COMPONENT, since inline duration
  * precedence disables one attribute of an element whose others are still written.
  */
@@ -386,7 +386,7 @@ export function finishDimension(
   return accumulator.finish(requestedFactor);
 }
 
-/** The MSM-dependent block as it stands without an MSM: every count null (A10). */
+/** The MSM-dependent block as it stands without an MSM: every count null. */
 export function estimatesWithoutMsm(accentuationRan: boolean): MsmDependentEstimates {
   return {
     unreachableLevels: null,
@@ -423,7 +423,7 @@ export class ReportSink {
     this.collected.push({ kind, dimension, site, detail });
   }
 
-  /** §7.4 — record a pair of named levels the clamp collapsed onto one value. */
+  /** record a pair of named levels the clamp collapsed onto one value. */
   mergeLevels(first: string, second: string): void {
     this.merged.push([first, second]);
   }

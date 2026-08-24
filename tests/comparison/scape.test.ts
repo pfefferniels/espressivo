@@ -1,5 +1,5 @@
 /**
- * AD-27.8's scape, at both levels.
+ * the scape, at both levels.
  *
  * The load-bearing property is INTERNAL CONSISTENCY, which the prefix-sum implementation exists
  * to guarantee: a cell is the sum of any partition of itself. A scape whose rows did not add up
@@ -100,7 +100,7 @@ describe('the pairwise scape', () => {
       expect(cell).toBeCloseTo(narrowed.aggregate.distance, 0);
     }
     // [MEASURED] The two routes agree to better than a tenth of a percent, which is far below
-    // the metric's own JND resolution and inside the residual AD-34.1 documents for rubato.
+    // the metric's own JND resolution and inside the residual the design documents for rubato.
     expect(worst).toBeLessThan(1e-3);
     expect(worst).toBeGreaterThan(0);
   });
@@ -131,7 +131,7 @@ describe('the pairwise scape', () => {
     }
   });
 
-  it('rejects a bin count outside §9.4’s range', () => {
+  it('rejects a bin count outside the range', () => {
     const base = { a: TELEMANN, performanceA: 0, performanceB: 1, window: WINDOW } as const;
     expect(() => compareMpm({ ...base, scape: { bins: 0 } })).toThrow(InvalidOptionError);
     expect(() => compareMpm({ ...base, scape: { bins: SCAPE_MAX_BINS + 1 } })).toThrow(
@@ -227,7 +227,7 @@ describe('the corpus scape (Sapp’s variant)', () => {
     expect(compareMpmCorpus({ items, window: WINDOW }).report.scape).toBeNull();
   });
 
-  it('rejects a bin count outside §9.4’s range', () => {
+  it('rejects a bin count outside the range', () => {
     expect(() => compareMpmCorpus({ items, window: WINDOW, scape: { bins: 0 } })).toThrow(
       InvalidOptionError,
     );

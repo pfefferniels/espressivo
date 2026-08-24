@@ -1,5 +1,5 @@
 /**
- * §6's edit path: the sequential-pricing DP, written once over a declared interface.
+ * the edit path: the sequential-pricing DP, written once over a declared interface.
  *
  * Nothing in this file knows what a tempo instruction is. A caller supplies two date-ordered
  * instruction sequences and two functions — `represent`, which maps a STATE (a whole instruction
@@ -7,7 +7,7 @@
  * integral `‖·‖₁` the semantic level already uses — and gets back the argmin over monotone
  * alignments together with the script's two totals.
  *
- * ## Pricing is SEQUENTIAL, and the DP cell is what makes that affordable (AD-5, §6.2)
+ * ## Pricing is SEQUENTIAL, and the DP cell is what makes that affordable
  *
  *     scriptCost = Σ_i ‖Φ(M_i) − Φ(M_{i−1})‖₁     M_0 = A, M_n = B
  *
@@ -23,26 +23,26 @@
  * Two theorems follow from the telescoping form and the `L¹` triangle inequality, both pinned
  * rather than asserted: `scriptCost ≥ ‖Φ(B) − Φ(A)‖₁ = d_curve`, and therefore
  * `reworking = scriptCost − d_curve ≥ 0`. Pricing each op against the ORIGINAL A has neither —
- * §6.2's counterexample, a legal no-op restatement whose deletion is free against A and real
+ * the counterexample, a legal no-op restatement whose deletion is free against A and real
  * once the substitution has landed, makes `reworking` NEGATIVE by a factor of two.
  *
- * ## Two orders, two totals (§6.1, §6.3)
+ * ## Two orders, two totals
  *
- * The DP walks its path in ALIGNMENT order; §6.1 delivers the script in APPLICATION (date) order,
+ * The DP walks its path in ALIGNMENT order; the script is delivered in APPLICATION (date) order,
  * because a reader following along in the score walks it that way. Those are not the same order —
  * a delete at bar 40 can precede an insert at bar 3 along the DP path — and a sequential price
  * depends on the order, so the two totals are two numbers:
  *
  * - `scriptCost` is the DP's own path total, the quantity the recurrence minimized;
- * - `replayedDelta` is what the SAME op set costs applied in the delivered date order (§6.3).
+ * - `replayedDelta` is what the SAME op set costs applied in the delivered date order.
  *
  * Both telescope from A to B, so both are `≥ d_curve`; neither dominates the other in general,
  * and each op's reported `cost` is its REPLAY cost, so `Σ ops.cost = replayedDelta` exactly.
- * The replay is also the verification §6.3 asks for: the state after the last op must BE `B`,
+ * The replay is also the verification the design asks for: the state after the last op must BE `B`,
  * which is checked as `norm(Φ(final), Φ(B)) === 0` — an exact zero, since the final state is
  * `b`'s own records in `b`'s own order.
  *
- * ## Determinism (§6.4)
+ * ## Determinism
  *
  * Ties at a DP cell resolve `substitute > delete > insert`, applied while the table is filled,
  * so the traceback merely follows a backpointer. That precedence is deterministic but NOT
@@ -50,7 +50,7 @@
  * a tied cell each direction takes its own delete branch and the two are not mirrors. The
  * remedy is not a cleverer precedence but computing the script ONCE in a canonical orientation
  * and inverting it ({@link invertSteps}); the precedence keeps its determinism role and
- * mirroring becomes true by construction (AD-21, AD-25.4).
+ * mirroring becomes true by construction.
  */
 
 import { filterMap, zipWith } from '../prelude/index.js';
@@ -71,7 +71,7 @@ export interface EditableInstruction {
  * order would make `scriptCost` and `replayedDelta` incomparable.
  *
  * `norm` must be a metric on representations — non-negative, symmetric, triangle inequality —
- * since that is what makes `scriptCost ≥ d` a theorem. Every shipped instance is one of §5's own
+ * since that is what makes `scriptCost ≥ d` a theorem. Every shipped instance is one of the own
  * `d_k` integrals, which the metric suites already pin.
  */
 export interface EditPricing<I extends EditableInstruction, S> {
@@ -94,13 +94,13 @@ export type EditMove = 'substitute' | 'delete' | 'insert' | 'fragment' | 'consol
  * How many instructions a `fragment` or `consolidate` may span [convention].
  *
  * The DP gains `O(nm·k)` transitions for a span bound of `k`, so this is a cost knob as well as a
- * semantic one. Four covers the case §6.2 names — "consolidating five steps into one transition"
+ * semantic one. Four covers the case the design names — "consolidating five steps into one transition"
  * is four steps plus the survivor — and a longer run is expressible as a move followed by plain
  * ops, at a price the DP compares against.
  */
 export const MAX_MOVE_SPAN = 4;
 
-/** One step of the script, before a dimension dresses it as a §9.3 `EditOp`. */
+/** One step of the script, before a dimension dresses it as a reported `EditOp`. */
 export interface EditStep<I extends EditableInstruction> {
   readonly move: EditMove;
   /** The FIRST A-side instruction the move consumes; null where it consumes none. */
@@ -117,30 +117,30 @@ export interface EditStep<I extends EditableInstruction> {
   /** Position of {@link a} in the A sequence, or null where the move consumes none. */
   readonly indexA: number | null;
   readonly indexB: number | null;
-  /** The SEQUENTIAL price in the delivered (date) order — §6.2, in JND·quarters. */
+  /** The SEQUENTIAL price in the delivered (date) order, in JND·quarters. */
   readonly cost: number;
-  /** `cost === 0` by pricing: the state performs the same function before and after (§6.2). */
+  /** `cost === 0` by pricing: the state performs the same function before and after. */
   readonly free: boolean;
-  /** Position in the delivered order (C5). */
+  /** Position in the delivered order. */
   readonly applicationIndex: number;
-  /** Position in cost-descending order (C5). */
+  /** Position in cost-descending order. */
   readonly costRank: number;
 }
 
 export interface EditScriptResult<I extends EditableInstruction> {
-  /** Delivered in application (date) order, each carrying both orders (§6.1, C5). */
+  /** Delivered in application (date) order, each carrying both orders. */
   readonly steps: readonly EditStep<I>[];
-  /** The DP's own path total — the quantity the recurrence minimized (§6.3). */
+  /** The DP's own path total — the quantity the recurrence minimized. */
   readonly scriptCost: number;
-  /** The same op set applied in the delivered order; `Σ steps.cost` exactly (§6.3). */
+  /** The same op set applied in the delivered order; `Σ steps.cost` exactly. */
   readonly replayedDelta: number;
   /** `‖Φ(B) − Φ(A)‖₁`: the lower bound both totals are theorems about. */
   readonly directDistance: number;
-  /** Indices into {@link steps}, cost-descending — U3's "what matters most" (C5). */
+  /** Indices into {@link steps}, cost-descending — U3's "what matters most". */
   readonly topByCost: readonly number[];
   readonly opCounts: EditOpCounts;
   /**
-   * `norm(Φ(state after the last op), Φ(B))`, which §6.3's verification requires to be 0. Exposed
+   * `norm(Φ(state after the last op), Φ(B))`, which the verification requires to be 0. Exposed
    * rather than asserted, so a future move kind that failed to reach B is visible.
    */
   readonly replayResidual: number;
@@ -157,7 +157,7 @@ export interface EditOpCounts {
 
 export interface EditScriptSearch {
   /**
-   * Whether `fragment` and `consolidate` are in the move set (A-Q5, §6.1's `moves`).
+   * Whether `fragment` and `consolidate` are in the move set (the `moves`).
    *
    * A move is emitted only where treating a group as ONE edit is strictly cheaper than any
    * sequence of plain ops, so the op kind is a statement about the PRICE — these instructions are
@@ -175,7 +175,7 @@ export interface EditScriptSearch {
 // ---------------------------------------------------------------------------
 
 /**
- * The date key an op is delivered and replayed at: `dateA ?? dateB` (§6.4).
+ * The date key an op is delivered and replayed at: `dateA ?? dateB`.
  *
  * A substitution between instructions at different dates is keyed on the A side, which is the
  * side the edit starts from — the script transforms A, so where the reader stands in the score
@@ -211,11 +211,11 @@ interface DeliverableStep<I extends EditableInstruction> {
 /**
  * A TOTAL order on the ops of one script, so the delivery order is a function of the inputs.
  *
- * Date first (§6.1's application order), then §6.4's tie-breaks reduced to what is available
+ * Date first (the application order), then the tie-breaks reduced to what is available
  * inside one (part, map) script: the move rank, then the source indices. Two ops of one script
  * cannot tie on all of these — a move consumes at least one indexed instruction and no two moves
  * consume the same one — so the order is total by construction rather than by an argument that
- * the earlier keys separate everything (W3 MAJOR-6).
+ * the earlier keys separate everything.
  */
 function compareDelivery<I extends EditableInstruction>(
   x: DeliverableStep<I>,
@@ -246,7 +246,7 @@ function compareDelivery<I extends EditableInstruction>(
  * governs a zero-width span, that decides which of the two performs.
  *
  * It matters wherever both sides coexist at one date, which the DP fill reaches and so does the
- * replay (W4 MAJOR-8): the delivered order puts `delete` before `insert` at a shared date, so A's
+ * replay: the delivered order puts `delete` before `insert` at a shared date, so A's
  * instruction is gone before B's arrives — but only for one instruction per side. With two at a
  * date the DP substitutes one and DELETES the other, and the survivor is still there when the
  * insertion lands. Measured over 4000 random pairs, 668 come out with a different `replayedDelta`
@@ -254,7 +254,7 @@ function compareDelivery<I extends EditableInstruction>(
  * below carries the same comparator for the same reason.
  *
  * At `(n, m)` no A instruction survives, so the final state is `b`'s own records in `b`'s own
- * order and `Φ(S(n,m))` is `Φ(B)` bit for bit — which makes §6.3's replay residual an exact 0.
+ * order and `Φ(S(n,m))` is `Φ(B)` bit for bit — which makes the replay residual an exact 0.
  *
  * Exported so the ordering rule can be pinned directly: through the DP it is observable only
  * statistically, since reversing the side preference moves some scripts on a random family and
@@ -395,7 +395,7 @@ export function editScript<I extends EditableInstruction, S>(
       let best = Number.POSITIVE_INFINITY;
       let bestFrom = FROM_NONE;
 
-      // §6.4's precedence, applied at the cell: strict `<` after the substitute branch means
+      // the precedence, applied at the cell: strict `<` after the substitute branch means
       // a tie keeps the earlier candidate, so the order of these three blocks IS the rule.
       if (i > 0 && j > 0) {
         best =
@@ -437,7 +437,7 @@ export function editScript<I extends EditableInstruction, S>(
         }
       }
 
-      // A-Q5's two, and they rank BELOW the plain ops so a tie keeps the primitive. They can
+      // the two, and they rank BELOW the plain ops so a tie keeps the primitive. They can
       // only win strictly, which is what makes the op kind a statement about the price.
       let bestSpan = 1;
       if (moves) {
@@ -633,7 +633,7 @@ function countOps<I extends EditableInstruction>(steps: readonly EditStep<I>[]):
 // ---------------------------------------------------------------------------
 
 /**
- * The script for the other direction, by inversion rather than by a second DP run (§6.4).
+ * The script for the other direction, by inversion rather than by a second DP run.
  *
  * `insert ↔ delete`, `a ↔ b`, `indexA ↔ indexB`; `substitute` is its own inverse. The costs are
  * unchanged, which is the point: `‖Φ(M_i) − Φ(M_{i−1})‖₁` is symmetric, so a caller who inverts

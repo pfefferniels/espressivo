@@ -9,7 +9,7 @@
  *
  * The fixtures on disk are never edited (charter invariant 2). Where one lacks an `xml:id` —
  * `all_maps.mpm` has none at all — the id is grafted into the text at read time, the same
- * technique `tests/integration/expression-transform.test.ts` uses to de-vacuize its R5 pins.
+ * technique `tests/integration/expression-transform.test.ts` uses to de-vacuize its the design pins.
  * The graft adds an attribute to an element that already exists; it never adds an element, so
  * what is spotlit is the fixture's own instruction.
  *
@@ -74,7 +74,7 @@ const ALL_MAPS = (
   ] as const
 ).reduce<XmlText>((mpm, [anchor, id]) => withId(mpm, anchor, id), allMaps('all_maps'));
 
-/** The corpus's only pedal curve that is not the last of its map, and so not inert (§7.14). */
+/** The corpus's only pedal curve that is not the last of its map, and so not inert. */
 const MOVEMENT = withId(
   allMaps('movement'),
   '<movement xmlns="http://www.cemfi.de/mpm/ns/1.0" date="0.0"',
@@ -137,11 +137,11 @@ function attributeAt(mpm: XmlText, id: string, name: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// What a selection spares (D-I's table, end to end)
+// What a selection spares (the table, end to end)
 // ---------------------------------------------------------------------------
 
 /**
- * One row per selectable element type, each naming a document, an id in it, and what D-I says
+ * One row per selectable element type, each naming a document, an id in it, and what the design says
  * that id spares. The union of the spared sets is closed against `EXPRESSION_DIMENSIONS` below.
  */
 const TABLE: readonly [XmlText, string, readonly ExpressionDimension[]][] = [
@@ -155,7 +155,7 @@ const TABLE: readonly [XmlText, string, readonly ExpressionDimension[]][] = [
   [ALL_MAPS, 'pickImprecisionDynamics', ['imprecisionDynamics']],
   [MOVEMENT, 'pickMovement', ['pedalShape']],
   [TONEDURATION, 'pickImprecisionDuration', ['imprecisionDuration']],
-  // The one row where D-I's selection vocabulary and the registry's write vocabulary disagree:
+  // The one row where the selection vocabulary and the registry's write vocabulary disagree:
   // an `<ornament>` carries none of these attributes itself — they live on the
   // `<temporalSpread>`/`<dynamicsGradient>` children of the def it names, an element away.
   [ORNAMENTATION, 'orn1', ['ornamentSpread', 'ornamentSpacing', 'ornamentDynamics']],
@@ -196,7 +196,7 @@ describe('spotlightMpm: a selection spares its dimensions and damps the rest', (
   it('damps everything the selection does not cover, and only that', () => {
     const { report } = spotlight(ALL_MAPS, ['pickTempo']);
     const dimensions = soleReport(report).dimensions;
-    expect(dimensions.tempo.state).toBe('skipped'); // A2's identity short-circuit: not walked
+    expect(dimensions.tempo.state).toBe('skipped'); // the identity short-circuit: not walked
     expect(dimensions.tempoShape.state).toBe('skipped');
     expect(report.totalWrites).toBeGreaterThan(0);
     for (const dimension of ['dynamics', 'rubato', 'articulation', 'asynchrony'] as const)
@@ -217,7 +217,7 @@ describe('spotlightMpm: the spotlit instruction does not move while the backgrou
    */
   it('a spotlit tempo keeps every one of its attributes byte for byte', () => {
     // The whole start tag, not a chosen few of its five attributes, and compared against the
-    // canonical baseline, which is what A2 makes the reference for any byte claim.
+    // canonical baseline, which is what the design makes the reference for any byte claim.
     const { mpm } = spotlight(ALL_MAPS, ['pickTempo']);
     expect(startTagAt(mpm, 'pickTempo')).toBe(startTagAt(canonicalMpm(ALL_MAPS), 'pickTempo'));
     expect(attributeAt(mpm, 'pickTempo', 'bpm')).toBe('120');
@@ -230,7 +230,7 @@ describe('spotlightMpm: the spotlit instruction does not move while the backgrou
     const volume = Number(attributeAt(mpm, 'pickDynamics', 'volume'));
     const to = Number(attributeAt(mpm, 'pickDynamics', 'transition.to'));
     // 80 → 110 attenuated by 0.5 around √(80·110) = 93.8: the endpoints move toward the mean
-    // from both sides, and the mean itself — the passage's level — stays put (§1.3/A7).
+    // from both sides, and the mean itself — the passage's level — stays put.
     expect(volume).toBeGreaterThan(80);
     expect(to).toBeLessThan(110);
     expect(Math.sqrt(volume * to)).toBeCloseTo(Math.sqrt(80 * 110), 10);
@@ -245,8 +245,8 @@ describe('spotlightMpm: the spotlit instruction does not move while the backgrou
     expect(Number(attributeAt(mpm, 'pickTempo', 'transition.to'))).toBeGreaterThan(90);
   });
 
-  it('a spotlit <movement> spares pedalShape, which is a live dimension since W2 (A9)', () => {
-    // D-G excludes the whole `<movement>` element bar the curve parameters, which A9's
+  it('a spotlit <movement> spares pedalShape, which is a live dimension since W2', () => {
+    // the design excludes the whole `<movement>` element bar the curve parameters, which the
     // twin-of-dynamics ruling carried back in. Without them this selection would derive an
     // empty spare set and be the prototype's flatten-everything.
     const spotlit = spotlight(MOVEMENT, ['pickMovement']);
@@ -297,13 +297,13 @@ describe('spotlightMpm: the spotlit instruction does not move while the backgrou
 });
 
 // ---------------------------------------------------------------------------
-// A7 — level dimensions on a piecewise-constant map
+// level dimensions on a piecewise-constant map
 // ---------------------------------------------------------------------------
 
-describe('spotlightMpm: gesture scope has nothing to shrink on a constant map (A7)', () => {
+describe('spotlightMpm: gesture scope has nothing to shrink on a constant map', () => {
   it('reports the level dimensions inert rather than claiming them transformed', () => {
     // `comprehensive.mpm` is the dominant corpus shape: every level is a named def, so under
-    // `gesture` there is no writable numeric pair and D-C forbids rewriting a name as a number.
+    // `gesture` there is no writable numeric pair and the design forbids rewriting a name as a number.
     // The level dimensions are attenuated on paper and idle in fact, which the report has to
     // say or a caller sampling spotlights counts this as a transform that changed nothing.
     const { report } = spotlight(COMPREHENSIVE, ['n4']);
@@ -318,7 +318,7 @@ describe('spotlightMpm: gesture scope has nothing to shrink on a constant map (A
 
   it('leaves the whole document untouched when every dimension it damps is inert', () => {
     // `tempo.mpm` is nothing but three constant named tempi, so a spotlight on one of them has
-    // no background to damp at all. R4's contract answers it exactly.
+    // no background to damp at all. The contract answers it exactly.
     const { mpm, report, spared } = spotlight(reference('tempo'), ['t2']);
     expect(spared).toEqual(['tempo', 'tempoShape']);
     expect(report.totalWrites).toBe(0);
@@ -331,7 +331,7 @@ describe('spotlightMpm: gesture scope has nothing to shrink on a constant map (A
 // ---------------------------------------------------------------------------
 
 describe('spotlightMpm: the identity cases', () => {
-  it('an empty selection is the identity, never total suppression (D-I)', () => {
+  it('an empty selection is the identity, never total suppression', () => {
     // The prototype's worst defect: `bringOut` with nothing selected damped every field and
     // returned a flattened performance as a successful spotlight.
     const { mpm, report, spared, resolvedIds } = spotlight(ALL_MAPS, [], 0.1);
@@ -485,7 +485,7 @@ describe('spotlightMpm: the option surface', () => {
     expect(structuredClone(result)).toEqual(result);
   });
 
-  it("copies resolvedIds out of the resolver, so a caller cannot edit D-I's own table", () => {
+  it('copies resolvedIds out of the resolver, so a caller cannot edit the table', () => {
     // CHARTER's public-API rule: replacing the facade's copy with `resolvedIds:
     // selection.resolved` leaves the rest of the suite green. It matters more than the usual
     // defensive copy, because `dimensions` comes straight out of the module-level

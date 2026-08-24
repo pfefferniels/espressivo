@@ -1,5 +1,5 @@
 /**
- * The metrical-accentuation curve — DESIGN.md §5.4.
+ * The metrical-accentuation curve.
  *
  * The compared object is the per-beat velocity contribution
  * `scale · patternDef.getAccentuationAt(beat)`, in velocity units. Neutral is 0: an absent
@@ -7,7 +7,7 @@
  * add nothing to a note's velocity, so the dimension is total over the window without special
  * cases at its edges.
  *
- * ## Phase anchors at the time signature, never at the instruction (AD-12, R8)
+ * ## Phase anchors at the time signature, never at the instruction
  *
  * ```
  * stickToMeasures (default TRUE):  beat = 1 + ((t − tsDate) mod measureTicks)   / ticksPerBeat
@@ -20,7 +20,7 @@
  * documents whose patterns agree but whose instructions sit at different dates perform
  * identically, and a per-instruction cycle model would invent a phase difference between them.
  *
- * ## Without an MSM the renderer still answers exactly (AD-12)
+ * ## Without an MSM the renderer still answers exactly
  *
  * With no time-signature information the initialisers give `tsDate = 0`, 4/4,
  * `ticksPerBeat = ppq`, `measureTicks = 4·ppq` and
@@ -29,14 +29,14 @@
  * `timeSignatureSource: 'renderer-default'`. With an MSM the real map is walked with the same
  * forward-only rule and reported as `'msm'`.
  *
- * ## Unresolvable patterns are `⊥` (R21)
+ * ## Unresolvable patterns are `⊥`
  *
  * `getMetricalAccentuationDataOf` returns a non-null datum with
  * `accentuationPatternDef = null` when the style resolves but the def name does not, and the
  * render then dereferences it unguarded: `TypeError: Cannot read properties of null (reading
  * 'getLength')` — the whole performance render throws. There is no performed function to
  * compare, so the span reads `⊥`. Contrast tempo and dynamics, whose unresolvable levels do
- * have a performed value (R8's fabricated 100.0).
+ * have a performed value (the fabricated 100.0).
  *
  * An `<accentuationPattern>` before the map's first `<style>` switch is silently skipped even
  * with a valid `@name.ref` (`:88-90` returns null when no style is in scope) — a renderer
@@ -46,7 +46,7 @@
  *
  * The `accentuationPatternDef` is read raw. Constructing `AccentuationPatternDef` would add
  * `length="4"` to the document and reorder its `<accentuation>` children by beat
- * (`AccentuationPatternDef.ts:36-40`, `:67` → `:192-199`), which R1 forbids.
+ * (`AccentuationPatternDef.ts:36-40`, `:67` → `:192-199`), which the design forbids.
  */
 import { filterMap, head, isNonEmpty, last, withNext } from '../prelude/index.js';
 import { elementAt, optionAt } from '../prelude/seq.js';
@@ -64,7 +64,7 @@ import { resolutionAt, type OrderedMapView } from './document.js';
 /** `AccentuationPatternDef`'s own default, which it also writes onto the element at parse. */
 export const DEFAULT_PATTERN_LENGTH = 4;
 
-/** Where the beat grid came from — §9.1's `TimeSignatureSource`. */
+/** Where the beat grid came from — the `TimeSignatureSource`. */
 export type TimeSignatureSource = 'msm' | 'renderer-default';
 
 /**
@@ -95,7 +95,7 @@ export interface AccentuationSegment {
   readonly scale: number;
   readonly stickToMeasures: boolean;
   readonly loop: boolean;
-  /** `⊥` where the style resolved but the def name did not — the render throws (R21). */
+  /** `⊥` where the style resolved but the def name did not — the render throws. */
   readonly pattern: Valued<AccentuationPattern>;
 }
 
@@ -125,7 +125,7 @@ export interface AccentuationCurve {
   readonly timeSignatureSource: TimeSignatureSource;
 }
 
-/** The neutral curve: no contribution anywhere, which an absent map performs (R6). */
+/** The neutral curve: no contribution anywhere, which an absent map performs. */
 export function neutralAccentuationCurve(): AccentuationCurve {
   return {
     segments: [],
@@ -141,7 +141,7 @@ export function neutralAccentuationCurve(): AccentuationCurve {
  * `@length` defaults to {@link DEFAULT_PATTERN_LENGTH}; an `<accentuation>` with no `@beat`
  * is skipped exactly as the parser skips it. Points sort ascending by beat, ties keeping
  * document order — what the parser's backwards insertion scan produces, and the order the
- * renderer applies tied accentuations in (W3 MINOR-7).
+ * renderer applies tied accentuations in.
  */
 export function readAccentuationPattern(def: Element): AccentuationPattern {
   const rawLength = readNumericAttributeValue(def, 'length');
@@ -329,7 +329,7 @@ export function readAccentuationSegments(
       raw.globalEnvironment,
     );
 
-    // A renderer skip, not a ⊥: nothing throws (§5.4).
+    // A renderer skip, not a ⊥: nothing throws.
     if (style === null) {
       notes.push({
         kind: 'renderer-skip',
@@ -360,7 +360,7 @@ export function readAccentuationSegments(
         detail:
           `no <accentuationPatternDef name="${nameRef}"> in the style in scope: the datum is ` +
           'non-null with a null def and the render dereferences it — TypeError, the whole ' +
-          'performance render throws, so the span is ⊥ (R21/AD-1)',
+          'performance render throws, so the span is ⊥',
       });
       continue;
     }
@@ -385,7 +385,7 @@ export function readAccentuationSegments(
 }
 
 /**
- * The segment governing `ticks`, right-continuous (A-B1), or null where none does.
+ * The segment governing `ticks`, right-continuous, or null where none does.
  *
  * Called once per Gauss-Legendre node, where a linear scan would make one dimension's integral
  * quadratic in the size of the map it integrates. {@link coveringSegmentAt} carries the proof

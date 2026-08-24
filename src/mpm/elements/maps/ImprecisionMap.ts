@@ -286,9 +286,9 @@ export function resolveTimingBasis(distribution: Distribution, isTimingDomain: b
  * draw, the deferred `pendingDurations` pass must stay after the main loop rather than being
  * folded into it, and the handover between successive correlated distributions
  * ({@link handoverValue} / {@link applyHandover}, which draw exactly once) must keep its
- * position. Output is nondeterministic by design where no `seed` is given —
- * docs/history/refactor/CHARTER.md exempts this map from byte comparison for that reason, so
- * the test suite will *not* catch a desync here. Reason it through instead.
+ * position. Output is nondeterministic by design where no `seed` is given, which is why this
+ * map is exempt from byte comparison — so the test suite will *not* catch a desync here.
+ * Reason it through instead.
  *
  * Port of meico.mpm.elements.maps.ImprecisionMap
  */

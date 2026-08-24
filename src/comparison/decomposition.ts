@@ -1,6 +1,5 @@
 /**
- * The level / gain / shape decomposition — DESIGN.md §1.2, and the invariance modes of §7.4
- * that share its machinery.
+ * The level / gain / shape decomposition, and the invariance modes that share its machinery.
  *
  * One lemma, for curves in T-space over `(time, dμ)`:
  *
@@ -18,9 +17,9 @@
  * mixed and the report labels them separately. `level + gain + shape` is not `d_k`, which is
  * why the closing identity reported here is in squares while the three fields are square roots.
  *
- * ## The measure is the normalized one (AD-18, M8)
+ * ## The measure is the normalized one
  *
- * The lemma needs a probability measure, and §5.0's default weight `w ≡ 1` is not one. So
+ * The lemma needs a probability measure, and the default weight `w ≡ 1` is not one. So
  * everything here integrates against `dμ = w dt / ∫_W w dt`, recomputed per window and per
  * invariance mode, while the headline density integrates against the *unnormalized* `w dt` —
  * which is what makes `d_k` a mass in JND·quarters and what makes the attribution table close.
@@ -39,7 +38,7 @@ function gridSpan(grid: readonly number[]): number {
   return isNonEmpty(grid) ? last(grid) - head(grid) : 0;
 }
 
-/** §7.4's per-dimension canonicalization. Event dimensions reject the last two (AD-20). */
+/** the per-dimension canonicalization. Event dimensions reject the last two. */
 export type InvarianceMode = 'none' | 'level' | 'level-gain';
 
 /** A curve in T-space, sampled at a position in common ticks. */
@@ -48,11 +47,11 @@ export type SampledCurve = (ticks: number) => number;
 /**
  * The relative noise floor below which a curve's spread is treated as exactly zero.
  *
- * §1.2 writes the degenerate case as `σ_A σ_B = 0`, which is not implementable as written: a
+ * the design writes the degenerate case as `σ_A σ_B = 0`, which is not implementable as written: a
  * genuinely constant curve integrated by quadrature gives a variance of order `1e-31`, not `0`,
  * because `(h − ℓ)²` cancels two nearly equal numbers. `σ` is then `~9e-16` and the shapeless
  * branch never fires, so `shape` and `r` are reported for a curve that has no shape and
- * `'level-gain'` divides by a noise term. M18's lesson in a second place: an
+ * `'level-gain'` divides by a noise term. The lesson in a second place: an
  * algebraically-neutral quantity has to be recognized structurally, not by floating-point
  * equality.
  *
@@ -87,7 +86,7 @@ function integrateOverGrid(g: SampledCurve, grid: readonly number[]): number {
 /**
  * The moments of one curve against `dμ = dt / L`.
  *
- * `w ≡ 1` is assumed, which is §5.0's default. The MSM note-density weight is not implemented;
+ * `w ≡ 1` is assumed, which is the default. The MSM note-density weight is not implemented;
  * it would enter here and only here, as a factor inside both integrals and in the normalizer —
  * the rest of the file is weight-agnostic by construction.
  *
@@ -106,7 +105,7 @@ export function curveMoments(curve: SampledCurve, grid: readonly number[]): Curv
   };
   const raw = Math.max(0, integrateOverGrid(centred, grid) / length);
   // Snap quadrature noise to exactly zero, so every downstream `sigma === 0` test — the
-  // shapeless flag, the 'level-gain' guard — fires on a constant curve. Without it §1.2's
+  // shapeless flag, the 'level-gain' guard — fires on a constant curve. Without it the
   // degenerate convention is unreachable; see SPREAD_NOISE_FLOOR.
   const scale = Math.max(1, Math.abs(mean));
   const floor = SPREAD_NOISE_FLOOR * scale;
@@ -114,7 +113,7 @@ export function curveMoments(curve: SampledCurve, grid: readonly number[]): Curv
   return { mean, variance, sigma: Math.sqrt(variance) };
 }
 
-/** §1.2's four reported fields plus the closing check. */
+/** the four reported fields plus the closing check. */
 export interface CurveDecomposition {
   /** `|ℓ_A − ℓ_B|`. */
   readonly level: number;
@@ -127,7 +126,7 @@ export interface CurveDecomposition {
   /**
    * True when `σ_A σ_B = 0`, i.e. at least one curve is constant over the window.
    *
-   * A boolean companion rather than making consumers branch on a null (C14). A constant curve
+   * A boolean companion rather than making consumers branch on a null. A constant curve
    * is ordinary in this data — most documents hold a tempo for bars at a time — so this is a
    * routine state, not an error.
    */
@@ -141,7 +140,7 @@ export interface CurveDecomposition {
 /**
  * Decompose the difference of two curves over one window.
  *
- * §1.2's degenerate convention: the shape term is 0 when `σ_A σ_B = 0`, so the identity stays
+ * the degenerate convention: the shape term is 0 when `σ_A σ_B = 0`, so the identity stays
  * exact while `shape` and `r` are null and the window is flagged `shapeless`. `r` on a constant
  * window is undefined, never 0 — reporting 0 would claim the two curves are uncorrelated when
  * one of them has nothing to correlate.
@@ -195,20 +194,20 @@ export function decomposeCurves(
 }
 
 /**
- * §7.4's canonicalization, applied per document and per curve-valued row.
+ * the canonicalization, applied per document and per curve-valued row.
  *
  * - `'none'` — the raw T-space curve.
  * - `'level'` — centred by its own window mean. In a log space this removes a *multiplicative*
  *   factor (roll speed, volume calibration); in a linear space it removes an additive offset
- *   only, because `c·x − mean(c·x) = c(x − mean x)` leaves the factor standing (§7.4's table).
+ *   only, because `c·x − mean(c·x) = c(x − mean x)` leaves the factor standing (the table).
  * - `'level-gain'` — centred and σ-normalized: pure shape.
  *
  * `σ = 0` under `'level-gain'` yields the identically-zero curve and the dimension is marked
- * `shapeless` (AD-20). A constant curve is the most common input in this corpus, and dividing
+ * `shapeless`. A constant curve is the most common input in this corpus, and dividing
  * by σ without the guard would be a division by zero on exactly that input.
  *
  * Metric safety rests on the canonicalization being per-document and the window being
- * piece-derived or corpus-shared; under a pair-derived window these modes inherit M2's defect
+ * piece-derived or corpus-shared; under a pair-derived window these modes inherit the defect
  * and are not metric. The facade stamps that, not this function.
  */
 export function applyInvariance(
@@ -222,7 +221,7 @@ export function applyInvariance(
 }
 
 /**
- * §7.4's canonicalization as data — `v ↦ scale·(v − shift)` in T-space.
+ * the canonicalization as data — `v ↦ scale·(v − shift)` in T-space.
  *
  * The same construction {@link applyInvariance} applies to a sampled curve, in the one form that
  * can also reach a distance module's integrand. The curve `*Distance` functions integrate
@@ -230,8 +229,8 @@ export function applyInvariance(
  * wrapped curve would canonicalize the decomposition while leaving `d_k` on the raw curves,
  * reporting an invariance mode the headline number never saw.
  *
- * Two conditions make it a metric: the transform is per document and never pair-dependent
- * (§7.4, AD-20), and the window it is derived over is piece-derived or corpus-shared (AD-4).
+ * Two conditions make it a metric: the transform is per document and never pair-dependent,
+ * and the window it is derived over is piece-derived or corpus-shared.
  * Neither is this type's to enforce; the facade stamps them.
  */
 export interface CurveCanonicalization {
@@ -257,9 +256,9 @@ export const IDENTITY_CANONICAL_PAIR: CanonicalPair = {
 };
 
 /**
- * §7.4's mode, resolved against one document's own moments.
+ * the mode, resolved against one document's own moments.
  *
- * `σ = 0` under `'level-gain'` gives `scale = 0`, the identically zero curve — AD-20's rule as
+ * `σ = 0` under `'level-gain'` gives `scale = 0`, the identically zero curve — the rule as
  * data, and stronger than "do not divide by zero": the canonical curve is zero, not merely
  * un-normalized. The caller marks the dimension `shapeless` ({@link isShapelessUnder}).
  */
@@ -277,8 +276,8 @@ export function canonicalizationFor(
  *
  * `scale = 0` returns a literal `+0` rather than computing the product, and both halves of that
  * matter: `0 · (v − shift)` is `−0` wherever the centred value is negative, which
- * `Object.is`-based identity assertions and §9.5's `−0` normalization would then have to undo,
- * and it is `NaN` at the infinite T-values §4 admits. The zero curve AD-20 asks for is a
+ * `Object.is`-based identity assertions and the `−0` normalization would then have to undo,
+ * and it is `NaN` at the infinite T-values the design admits. The zero curve the design asks for is a
  * constant, not an arithmetic accident.
  */
 export function canonicalValue(canonical: CurveCanonicalization, value: number): number {
@@ -291,7 +290,7 @@ export function sameCanonicalization(a: CurveCanonicalization, b: CurveCanonical
   return a.shift === b.shift && a.scale === b.scale;
 }
 
-/** Whether a `'level-gain'` run collapses to the zero curve — AD-20's `shapeless` flag. */
+/** Whether a `'level-gain'` run collapses to the zero curve — the `shapeless` flag. */
 export function isShapelessUnder(mode: InvarianceMode, moments: CurveMoments): boolean {
   return mode === 'level-gain' && moments.sigma === 0;
 }

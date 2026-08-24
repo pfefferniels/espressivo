@@ -1,18 +1,18 @@
 /**
- * comparison/DESIGN.md §4's registry, as data — the L0 layer of the comparison module.
+ * The registry, as data — the L0 layer of the comparison module.
  *
  * It reuses the `ScaleSpace` vocabulary of `src/expression/transforms.ts` and the *shape* of
- * that module's `RegistryRow`, and deliberately does not extend `REGISTRY_ROWS` (§4/A-Q9: a
+ * that module's `RegistryRow`, and deliberately does not extend `REGISTRY_ROWS` (a
  * read requirement must not widen the write licence). Expression's table asks "may this
  * attribute be rewritten, and through which closed form"; this one asks "what quantity does this
  * attribute contribute to a performance, in what unit, and how large is a difference in it".
  * Three of expression's columns — `inCenterPopulation`, `p5r`, the `s`-domain — are exaggeration
- * concepts with no comparison meaning (survey-code §2.2), and four here have no expression
+ * concepts with no comparison meaning, and four here have no expression
  * counterpart: `unit`, `jnd`, `delta` and `plausibleRange`.
  *
- * A row is not a distance. The curve dimensions (§5.1–§5.3, §5.7) price the *resolved curve* —
+ * A row is not a distance. The curve dimensions price the *resolved curve* —
  * `|ln qbpm_A − ln qbpm_B|`, `|δ_A − δ_B|` — and most rows here are inputs to that curve. A
- * row's own {@link localDistance} is what the §6 edit path prices an attribute-level
+ * row's own {@link localDistance} is what the edit path prices an attribute-level
  * substitution with, and what the step dimensions integrate; which rows carry the curve is
  * stated per row.
  */
@@ -46,16 +46,16 @@ import {
 } from './decomposition.js';
 
 /**
- * DESIGN §3/§9.1: the eleven contributing comparison dimensions.
+ * the eleven contributing comparison dimensions.
  *
  * The semantic unit is the map domain, not the exaggeration knob — a curve already integrates
- * what expression splits into level and shape (§3), which is why this list is eleven where
+ * what expression splits into level and shape, which is why this list is eleven where
  * `EXPRESSION_DIMENSIONS` is fifteen.
  *
- * Frozen for the reason `EXPRESSION_DIMENSIONS` is (§9.1, A25): the ESM re-export hands a
+ * Frozen for the reason `EXPRESSION_DIMENSIONS` is: the ESM re-export hands a
  * consumer the same object the option validator reads, so unfrozen, a `push` from outside would
  * widen this package's notion of a legal dimension process-wide; `as const` stops that at
- * compile time only. Widening the list is breaking for consumers (§3, AD-22) — `D = Σ ω_k d_k`
+ * compile time only. Widening the list is breaking for consumers — `D = Σ ω_k d_k`
  * gains a term, so every previously reported distance changes — but mechanically enumerable, so
  * no consumer hard-codes eleven.
  */
@@ -76,12 +76,12 @@ export const COMPARISON_DIMENSIONS = Object.freeze([
 export type ComparisonDimension = (typeof COMPARISON_DIMENSIONS)[number];
 
 /**
- * DESIGN §3's correspondence to the fifteen expression dimensions, as a frozen data table so the
- * §1.3 cross-module test enumerates it rather than hard-coding it (A25). Every expression
+ * the correspondence to the fifteen expression dimensions, as a frozen data table so the
+ * cross-module test enumerates it rather than hard-coding it. Every expression
  * dimension appears exactly once, and the containments are the design's: `tempo ⊇ {tempo,
  * tempoShape}` because one curve carries level and transition shape; `ornamentation ⊇
  * {ornamentSpread, ornamentSpacing, ornamentDynamics}` because the alignment DP prices all three
- * at once (§5.6); `pedal ⊇ pedalShape`.
+ * at once; `pedal ⊇ pedalShape`.
  */
 export const EXPRESSION_DIMENSION_CORRESPONDENCE: Readonly<
   Record<ComparisonDimension, readonly ExpressionDimension[]>
@@ -107,7 +107,7 @@ export const EXPRESSION_DIMENSION_CORRESPONDENCE: Readonly<
  *
  * Every log-family space (`log-around-1`, `logit`, both boundary powers) reports `'nepers'`: `T`
  * is a natural logarithm in all of them — of a value, of an odds ratio, of a distance to a
- * bound — and AD-26.1 fixes natural log as the internal convention. A gain space's `T` is the
+ * bound — and the design fixes natural log as the internal convention. A gain space's `T` is the
  * identity, so its unit is the attribute's own.
  */
 export type ComparisonUnit =
@@ -122,13 +122,13 @@ export type ComparisonUnit =
   | 'dimensionless';
 
 /**
- * How the row participates in the comparison (§4).
+ * How the row participates in the comparison.
  *
  * `curve-level` and `curve-shape` are inputs to a continuous curve — the level in the curve's
  * own unit, the shape dimensionless — priced by integrating the curve, not by summing the rows.
  * `step` is a piecewise-constant curve integrated exactly. `inert` is an attribute the renderer
- * provably ignores (R9b: zero density, reported when the documents differ). `structural` is
- * read, consequential, and never folded into a distance (§3) — a mechanism switch or an encoding
+ * provably ignores (zero density, reported when the documents differ). `structural` is
+ * read, consequential, and never folded into a distance — a mechanism switch or an encoding
  * mismatch, reported as a finding.
  */
 export type ComparisonRole =
@@ -142,9 +142,9 @@ export type ComparisonRole =
   | 'structural';
 
 /**
- * Whether the row is always read, or only under a condition on its own element (§4, AD-11, R9).
+ * Whether the row is always read, or only under a condition on its own element.
  * The conditional form names the element and states the rule in prose, because a predicate here
- * could not see the map position an AD-8 rule needs.
+ * could not see the map position an the rule needs.
  */
 export type ComparisonLiveness = 'always' | { readonly element: string; readonly rule: string };
 
@@ -159,7 +159,7 @@ export interface ComparisonSite {
 }
 
 /**
- * DESIGN §4's row.
+ * the row.
  *
  * `element` is the instruction element the row is named for and what enters
  * {@link ComparisonRegistryRow.key}; `sites` is every physical place the value may be written,
@@ -169,7 +169,7 @@ export interface ComparisonSite {
  */
 export interface ComparisonRegistryRow {
   /**
-   * `${dimension}/${element}@${attribute}` — the public row key (§4, A1).
+   * `${dimension}/${element}@${attribute}` — the public row key.
    *
    * Written out per row rather than derived, and first, because writing it is what type-checks
    * it: the field is the closed {@link ComparisonJndKey} union, so a row naming a key outside
@@ -184,37 +184,37 @@ export interface ComparisonRegistryRow {
   readonly sites: readonly ComparisonSite[];
   readonly space: ScaleSpace;
   /**
-   * Whether a *resolved* value is comparable at all (§4, survey-code §2.2).
+   * Whether a *resolved* value is comparable at all.
    *
-   * Resolved is the load-bearing word: def inheritance (§5.0's `styleScope` route) and any
-   * renderer clamp the dimension section names — §5.2's `lateStart`/`earlyEnd` floor and cap,
+   * Resolved is the load-bearing word: def inheritance (the `styleScope` route) and any
+   * renderer clamp the dimension section names — the `lateStart`/`earlyEnd` floor and cap,
    * for one — are applied before this predicate runs, so a document the renderer repairs
    * compares as what the renderer performs. A value that still fails has no comparable
    * quantity: the row reads `⊥` and is priced by {@link localDistance}, never repaired.
    */
   readonly valueDomain: (value: number) => boolean;
   readonly unit: ComparisonUnit;
-  /** §7.1's just-noticeable difference, in {@link ComparisonUnit}. Overridable per §9.2. */
+  /** the just-noticeable difference, in {@link ComparisonUnit}. Overridable. */
   readonly jnd: number;
-  /** `δ_row`, the metric cap, in JND units (§4, AD-2). Not caller-overridable (AD-25.7). */
+  /** `δ_row`, the metric cap, in JND units. Not caller-overridable. */
   readonly delta: number;
-  /** §5.0's plausibility band on the **resolved raw value**, or null where §5.0 names none. */
+  /** the plausibility band on the **resolved raw value**, or null where the design names none. */
   readonly plausibleRange: readonly [number, number] | null;
   readonly role: ComparisonRole;
   readonly liveness: ComparisonLiveness;
-  /** Tick-valued: rescaled by the §5.0 lcm factor. `*Ms` and whole-note fractions never are. */
+  /** Tick-valued: rescaled by the lcm factor. `*Ms` and whole-note fractions never are. */
   readonly ppqSensitive: boolean;
-  /** The §5 subsection the row is compiled from, its JND tag, and the obligation it carries. */
+  /** The dimension the row is compiled from, its JND tag, and the obligation it carries. */
   readonly notes: string;
 }
 
-// --- §7.1 constants ----------------------------------------------------------------------
+// --- constants ----------------------------------------------------------------------
 //
-// Defaults the caller may override through `options.jnd` (§9.2), each carrying its tag. Two are
-// [literature] after AD-27.6 (tempo, asynchrony); the rest ship [convention].
+// Defaults the caller may override through `options.jnd`, each carrying its tag. Two are
+// [literature] for tempo and asynchrony; the rest ship [convention].
 
 /**
- * Tempo, in nepers: `ln(1.025)` ≈ 0.0247 — a 2.5 % tempo change, [literature] (AD-27.6).
+ * Tempo, in nepers: `ln(1.025)` ≈ 0.0247 — a 2.5 % tempo change, [literature].
  *
  * Friberg, A. & Sundberg, J. (1995), "Time discrimination in a monotonic, isochronous
  * sequence", *JASA* 98(5), 2524–2531, DOI 10.1121/1.413218: "The absolute jnd was found to be
@@ -226,13 +226,12 @@ export interface ComparisonRegistryRow {
  * IOIs, and a relative threshold is a statement about a ratio, which is what makes the logarithm
  * the space rather than merely a convenient one. The finding's other regime — the 6 ms absolute
  * floor below ~240 ms IOI — is a note obligation on the ms-domain rows rather than machinery:
- * see the asynchrony row, and §7.1.
+ * see the asynchrony row,.
  */
 export const TEMPO_JND_NEPERS = Math.log(1.025);
 
 /**
- * Dynamics, in nepers: `ln(1.10)` — a 10 % velocity change [convention], and staying that way
- * (AD-27.6).
+ * Dynamics, in nepers: `ln(1.10)` — a 10 % velocity change [convention], and staying that way.
  *
  * No musically-validated dynamics JND was found, and none is invented here. The classic
  * psychoacoustic reference is Jesteadt, Wier & Green (1977), *JASA* 61(1), 169–177 — verified
@@ -242,7 +241,7 @@ export const TEMPO_JND_NEPERS = Math.log(1.025);
  * coexisting with no shared scale.
  *
  * The alternative, shared by every [convention] JND here, is to derive the unit from the
- * corpus's own per-attribute spread and stamp the derived constant into the report — §8's opt-in
+ * corpus's own per-attribute spread and stamp the derived constant into the report — the opt-in
  * normalization path. Until a caller asks for it, 10 % is a declared choice. The log space has
  * independent support: partitura's performance codec defines its loudness field as
  * `log(velocity / mean velocity)` (Cancino-Chacón et al. 2022).
@@ -250,7 +249,7 @@ export const TEMPO_JND_NEPERS = Math.log(1.025);
 export const DYNAMICS_JND_NEPERS = Math.log(1.1);
 
 /**
- * Asynchrony, in milliseconds: 30 ms, [literature] (AD-26.2, confirmed by AD-27.6).
+ * Asynchrony, in milliseconds: 30 ms, [literature].
  *
  * Three verified anchors bracket the band, and the row takes the middle one:
  *
@@ -269,7 +268,7 @@ export const DYNAMICS_JND_NEPERS = Math.log(1.1);
 export const ASYNCHRONY_JND_MS = 30;
 
 /**
- * Rubato displacement, in quarters: a sixty-fourth note [convention], §7.1's `~1/16 quarter`.
+ * Rubato displacement, in quarters: a sixty-fourth note [convention], the `~1/16 quarter`.
  *
  * The JND of the rubato curve, `|δ_A − δ_B|` in quarters. `@frameLength` reuses it because it is
  * the one other row whose value is a duration in that unit, and for no stronger reason.
@@ -283,20 +282,20 @@ export const RUBATO_DISPLACEMENT_JND_QUARTERS = 1 / 16;
  * No study in survey-lit measures the discriminability of a Bézier `@curvature` or a
  * `@meanTempoAt`, so there is no perceptual constant for transition shape to use. A JND of 1
  * makes `d_row = |T(x) − T(y)|` exactly, a magnitude a reader can interpret (one neper of
- * log-odds) rather than a false precision. Every row using it says so in its notes, and §7.1's
+ * log-odds) rather than a false precision. Every row using it says so in its notes, and the
  * [PENDING-LIT] slot covers all of them.
  *
  * These rows are shape knobs and gates: none carries its dimension's curve, so this constant
- * never enters a §5 density. It is read by the §6 edit path's per-attribute `deltaJnd`.
+ * never enters a density. It is read by the edit path's per-attribute `deltaJnd`.
  */
 export const UNNORMALIZED_JND = 1;
 
 /**
- * MIDI velocity: 3 units [convention] — §7.1's `velocity` row, and there is only one.
+ * MIDI velocity: 3 units [convention] — the `velocity` row, and there is only one.
  *
- * Named for the quantity rather than a dimension because §7.1 states one velocity JND and three
- * dimensions draw on it: §5.4's per-beat accentuation contribution
- * `scale · getAccentuationAt(beat)` (added straight onto a note's velocity), and §5.5's
+ * Named for the quantity rather than a dimension because the design states one velocity JND and three
+ * dimensions draw on it: the per-beat accentuation contribution
+ * `scale · getAccentuationAt(beat)` (added straight onto a note's velocity), and articulation's
  * `@absoluteVelocityChange` and `@absoluteVelocity`. Accentuation's curve is already in the unit
  * its JND is stated in — `T` is the identity. Three velocity units out of 127 is ~2.4 % of the
  * full range. [convention] for {@link DYNAMICS_JND_NEPERS}'s reason; no study measures the
@@ -320,17 +319,17 @@ export const ARTICULATION_DURATION_JND_NEPERS = Math.log(1.1);
 /**
  * Pedal position, in fractions of full travel: 0.1 [convention].
  *
- * The space is a gain on [0,1] (§5.8), so the JND is a plain fraction of pedal travel and the
+ * The space is a gain on [0,1], so the JND is a plain fraction of pedal travel and the
  * choice is a calibration rather than a measurement. A tenth makes the extreme authored
  * difference price at exactly `δ_row`: canonical pedal maps are exact `0.0`/`1.0` (expression's
- * §7.14 records the same from the write side), so full-down against full-up is `1.0 / 0.1 = 10`
- * JND — the price §4 puts on an incomparable value. Pedal can therefore never dominate
+ * the design records the same from the write side), so full-down against full-up is `1.0 / 0.1 = 10`
+ * JND — the price the design puts on an incomparable value. Pedal can therefore never dominate
  * `D = Σ ω_k d_k` on the strength of its own scale.
  *
  * Performability floor, stated because this is the row it bears on: the rendered value is
  * `Math.round(position · 127)` (`Msm.ts:1441`), so a position difference below `1/127` of
  * travel — 0.079 JND here — is not performed at all. No clamp or snap is applied, because the
- * *defined* object is the ideal curve (§5.0 rule 3) and quantization belongs to the §6.3 replay;
+ * *defined* object is the ideal curve (the rule 3) and quantization belongs to the replay;
  * it is an obligation on the docs, as the ms-domain floor is on the asynchrony row.
  *
  * No literature was found for pedal-depth discrimination; see {@link DYNAMICS_JND_NEPERS}.
@@ -338,29 +337,29 @@ export const ARTICULATION_DURATION_JND_NEPERS = Math.log(1.1);
 export const PEDAL_POSITION_JND_RATIO = 0.1;
 
 /**
- * `δ_row`, the metric cap, in JND units: 10 [convention] (§4, §7.1, AD-2).
+ * `δ_row`, the metric cap, in JND units: 10 [convention].
  *
  * "An incomparable value counts as ten JNDs, and no single instant counts as more than twenty."
- * Not caller-overridable in v1 (AD-25.7). No row departs from the default; the column exists
- * because §4 gives it per row.
+ * Not caller-overridable in v1. No row departs from the default; the column exists
+ * because the design gives it per row.
  */
 export const DEFAULT_DELTA_JND = 10;
 
-/** §5.0's [convention] plausibility band on quarter-normalized tempo: `qbpm ∈ [10, 400]`. */
+/** the [convention] plausibility band on quarter-normalized tempo: `qbpm ∈ [10, 400]`. */
 const PLAUSIBLE_QBPM: readonly [number, number] = [10, 400];
-/** §5.0's [convention] band on a MIDI velocity, which is what `@volume` resolves to. */
+/** the [convention] band on a MIDI velocity, which is what `@volume` resolves to. */
 const PLAUSIBLE_VELOCITY: readonly [number, number] = [0, 127];
-/** §5.0's [convention] band on an asynchrony offset: `|offset| ≤ 1000 ms`. */
+/** the [convention] band on an asynchrony offset: `|offset| ≤ 1000 ms`. */
 const PLAUSIBLE_OFFSET_MS: readonly [number, number] = [-1000, 1000];
 /**
- * §5.0's [convention] band on a SIGNED velocity delta — an accentuation adds to a velocity
+ * the [convention] band on a SIGNED velocity delta — an accentuation adds to a velocity
  * rather than being one, so its plausible band is the symmetric one and not `[0,127]`.
  */
 const PLAUSIBLE_VELOCITY_DELTA: readonly [number, number] = [-127, 127];
-/** §5.8's band on a controller position: the full travel it is a fraction of. */
+/** the band on a controller position: the full travel it is a fraction of. */
 const PLAUSIBLE_POSITION: readonly [number, number] = [0, 1];
 
-// --- Value domains (§4's `valueDomain` column) -------------------------------------------
+// --- Value domains (the `valueDomain` column) -------------------------------------------
 //
 // Named rather than inlined, so two rows claiming the same domain use the same predicate.
 
@@ -368,21 +367,21 @@ const PLAUSIBLE_POSITION: readonly [number, number] = [0, 1];
 const anyFinite = (x: number): boolean => Number.isFinite(x);
 /** `ℝ>0` — the domain of the logarithm: every level, and every ratio-valued exponent. */
 const positive = (x: number): boolean => Number.isFinite(x) && x > 0;
-/** `[0,1]` — `@curvature`, clamped there by the renderer on the way in (§5.3). */
+/** `[0,1]` — `@curvature`, clamped there by the renderer on the way in. */
 const unitClosed = (x: number): boolean => Number.isFinite(x) && x >= 0 && x <= 1;
-/** `[-1,1]` — `@protraction`, likewise clamped (§5.3). */
+/** `[-1,1]` — `@protraction`, likewise clamped. */
 const signedUnitClosed = (x: number): boolean => Number.isFinite(x) && x >= -1 && x <= 1;
-/** `(0,1)` — `@meanTempoAt`; the closed bounds are §5.1's degenerate cases, not curves. */
+/** `(0,1)` — `@meanTempoAt`; the closed bounds are the degenerate cases, not curves. */
 const unitOpen = (x: number): boolean => Number.isFinite(x) && x > 0 && x < 1;
-/** `[0,1)` — `@lateStart` after §5.2's clamp. */
+/** `[0,1)` — `@lateStart` after the clamp. */
 const trimHead = (x: number): boolean => Number.isFinite(x) && x >= 0 && x < 1;
-/** `(0,1]` — `@earlyEnd` after §5.2's clamp. */
+/** `(0,1]` — `@earlyEnd` after the clamp. */
 const trimTail = (x: number): boolean => Number.isFinite(x) && x > 0 && x <= 1;
 /**
  * `{0,1}` — a boolean read by an evaluator, carried as its numeric encoding.
  *
- * `@loop` and `@subNoteDynamics` are booleans, and §4's row shape has no column for that: a
- * boolean has no scale space, no unit and no JND. They have rows anyway because AD-10 and §5.3
+ * `@loop` and `@subNoteDynamics` are booleans, and the row shape has no column for that: a
+ * boolean has no scale space, no unit and no JND. They have rows anyway because the ruling
  * require it — see their notes — and this is the encoding a gain space can carry.
  */
 const boolean01 = (x: number): boolean => x === 0 || x === 1;
@@ -402,13 +401,13 @@ const defSite = (container: string, element: string): ComparisonSite => ({
 });
 
 /**
- * §9.1's closed row-key vocabulary: `` `${dimension}/${element}@${attribute}` ``.
+ * the closed row-key vocabulary: `` `${dimension}/${element}@${attribute}` ``.
  *
- * The dimension is in the key (§4, AD-22, A1) because `element@attribute` alone is *not* unique:
+ * The dimension is in the key because `element@attribute` alone is *not* unique:
  * `<distribution.uniform>` appears identically in three maps, and across the live registry
  * `transition.to` occurs three times, `curvature`, `protraction`, `intensity` and `value` twice
  * each. Qualifying by dimension is what makes `options.jnd` and `options.plausibleRange`
- * (AD-25.8) addressable, and typing them against this union makes a misspelling a compile error
+ * addressable, and typing them against this union makes a misspelling a compile error
  * rather than a silent no-op. The registry test pins the tuple in exact correspondence with
  * {@link COMPARISON_REGISTRY_ROWS} in both directions.
  */
@@ -542,22 +541,22 @@ export const COMPARISON_JND_KEYS = Object.freeze([
 
 export type ComparisonJndKey = (typeof COMPARISON_JND_KEYS)[number];
 
-// --- §5.1 tempo --------------------------------------------------------------------------
+// --- tempo --------------------------------------------------------------------------
 //
 // The curve is `g(t) = ln(qbpm(t))`, `qbpm = bpm · beatLength · 4`, and the dimension's density
 // is `|g_A − g_B| / jnd_tempo` — ONE integral over four rows' worth of inputs. The level space is
 // `log-around-1`, the bare logarithm, and not expression's `log-around-center`: the center is a
-// property of one performance (§7.1's geometric mean over that document's population), so two
+// property of one performance (the geometric mean over that document's population), so two
 // documents bring two centers and a centered `T` would not be symmetric under swapping them. It
-// cancels in every difference anyway (§4).
+// cancels in every difference anyway.
 
 const TEMPO_LOG: ScaleSpace = { kind: 'log-around-1' };
 
-/** AD-8/R1's rule, worded once and shared by the two dimensions that have it. */
+/** the rule, worded once and shared by the two dimensions that have it. */
 const trailingTransitionRule = (element: string, map: string): ComparisonLiveness => ({
   element,
   rule:
-    `inert on the last <${element}> of a ${map} (AD-8/R1): getEndDate returns ` +
+    `inert on the last <${element}> of a ${map}: getEndDate returns ` +
     'Number.MAX_VALUE with no successor, so u ≈ 0 for every date in any real window and the ' +
     'span performs as a constant at the instruction’s own level. A difference here is an ' +
     'inert-difference note, never curve shape.',
@@ -580,13 +579,13 @@ const TEMPO_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.1 — THE tempo curve: this row’s jnd is jnd_tempo, and the dimension’s density ' +
+      'THE tempo curve: this row’s jnd is jnd_tempo, and the dimension’s density ' +
       'integrates |ln qbpm_A − ln qbpm_B| against it. The compared quantity is the resolved, ' +
       'quarter-normalized qbpm = bpm·beatLength·4, which is also what plausibleRange bands ' +
       '(the jnd is in nepers, the band in quarter-bpm). A <tempo> missing @bpm or ' +
       '@beatLength is a renderer SKIP, not a default: [skipDate, nextValidDate) performs at ' +
-      '100 qbpm, as does [0, firstValidTempoDate) (AD-9). ln(1.025) [literature] — Friberg & ' +
-      'Sundberg 1995’s 2.5 % relative jnd above 240 ms IOI, training-independent (AD-27.6).',
+      '100 qbpm, as does [0, firstValidTempoDate). ln(1.025) [literature] — Friberg & ' +
+      'Sundberg 1995’s 2.5 % relative jnd above 240 ms IOI, training-independent.',
   },
   {
     key: 'tempo/tempo@beatLength',
@@ -604,14 +603,14 @@ const TEMPO_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.1 — normalization data, not an independent quantity: ln qbpm = ln bpm + ln ' +
+      'normalization data, not an independent quantity: ln qbpm = ln bpm + ln ' +
       'beatLength + ln 4, so this row shares the level’s space and jnd exactly and its ' +
       'difference is priced through @bpm’s resolved qbpm. Two documents whose bpm and ' +
       'beatLength differ compensatingly are distance 0, which is correct — they perform ' +
       'identically. A whole-note fraction, so NOT ppqSensitive even when written in ticks: ' +
       'that case (three of the 121 Daten .mpm files; Hofmann (1927) writes bpm=21 ' +
       'beatLength=2160 at ppq=720) is a unit mismatch caught by @bpm’s plausibility band, ' +
-      'which is the channel §5.0 built for it. ln(1.025) [literature] (AD-27.6).',
+      'which is the channel built for it. ln(1.025) [literature].',
   },
   {
     key: 'tempo/tempo@transition.to',
@@ -629,12 +628,12 @@ const TEMPO_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: trailingTransitionRule('tempo', 'tempoMap'),
     ppqSensitive: false,
     notes:
-      '§5.1 — the transition target, in the level’s own space and unit; the curve reaches it ' +
+      'the transition target, in the level’s own space and unit; the curve reaches it ' +
       'through the renderer’s power law bpm₀ + (bpm₁ − bpm₀)·u^e. Also inert when it equals ' +
-      '@bpm, and the degenerate table of §5.1 decides the rest: meanTempoAt ≤ 0 performs a ' +
+      '@bpm, and the degenerate table decides the rest: meanTempoAt ≤ 0 performs a ' +
       'CONSTANT AT transition.to (TempoMap reassigns bpm := transitionTo), meanTempoAt ≥ 1 a ' +
       'constant at @bpm. all_maps.mpm’s trailing <tempo bpm=120 transition.to=90> is the ' +
-      'repo’s own witness for the liveness rule. ln(1.025) [literature] (AD-27.6).',
+      'repo’s own witness for the liveness rule. ln(1.025) [literature].',
   },
   {
     key: 'tempo/tempo@meanTempoAt',
@@ -653,15 +652,15 @@ const TEMPO_ROWS: readonly ComparisonRegistryRow[] = [
       element: 'tempo',
       rule:
         'live only where @transition.to is present, differs from @bpm, and the instruction ' +
-        'has a successor (AD-8); absent with a differing @transition.to it is not a default ' +
-        'but a LINEAR RAMP, meanTempoAt = 0.5, e = 1.0 (§5.1’s degenerate table); at ≤ 0 or ' +
+        'has a successor; absent with a differing @transition.to it is not a default ' +
+        'but a LINEAR RAMP, meanTempoAt = 0.5, e = 1.0 (the degenerate table); at ≤ 0 or ' +
         '≥ 1 the span is constant and the value shapes nothing.',
     },
     ppqSensitive: false,
     notes:
-      '§5.1 — the transition exponent’s position parameter, e = ln 0.5 / ln(meanTempoAt), on ' +
-      'the logit of (0,1) as expression §7.3 places it. Carries no independent density: its ' +
-      'effect is inside the tempo curve, and §5.0’s quadrature substitutes u = z^(1/e) ' +
+      'the transition exponent’s position parameter, e = ln 0.5 / ln(meanTempoAt), on ' +
+      'the logit of (0,1), where the expression engine places it. Carries no independent density: its ' +
+      'effect is inside the tempo curve, and the quadrature substitutes u = z^(1/e) ' +
       'precisely because this parameter makes the integrand singular at both ends. jnd 1 ' +
       '[convention] — unnormalized, no literature on transition-shape discrimination.',
   },
@@ -681,16 +680,16 @@ const TEMPO_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.1/§5.0 — the def spelling of a level, which is the MEI norm for named tempi. It is ' +
+      'the def spelling of a level, which is the MEI norm for named tempi. It is ' +
       'the same quantity as @bpm once resolved, and resolution MUST route through ' +
       'styleScope.findStyleDef: a part header declaring styleDef name="A" hides the global ' +
-      '"A" entirely, defs and all, while leaving "B" visible (§5.0, AD-16). An unresolvable ' +
+      '"A" entirely, defs and all, while leaving "B" visible. An unresolvable ' +
       'name has no tempo default — unlike dynamics’ velocity 100 — so the instruction is a ' +
-      'skip. ln(1.025) [literature] (AD-27.6).',
+      'skip. ln(1.025) [literature].',
   },
 ];
 
-// --- §5.2 rubato -------------------------------------------------------------------------
+// --- rubato -------------------------------------------------------------------------
 //
 // The curve is the displacement `δ(t) = warp(t) − t` in quarters, from the transliterated
 // cyclic warp; the density is `|δ_A − δ_B| / jnd_rubato`. All five rows are evaluator inputs
@@ -718,13 +717,13 @@ const RUBATO_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: true,
     notes:
-      '§5.2 — the frame period, and the one attribute without which there is nothing to ' +
+      'the frame period, and the one attribute without which there is nothing to ' +
       'warp: absent on both element and def, getRubatoDataOf returns null and the ' +
       'instruction is skipped, though getEndDate still ends the PRECEDING span, so the gap ' +
-      'is unwarped and carries a grid breakpoint (AD-16/R23). ppqSensitive: rescaled by the ' +
-      'lcm factor and reported in quarters (§5.0). The domain is positive, narrower than ' +
+      'is unwarped and carries a grid breakpoint. ppqSensitive: rescaled by the ' +
+      'lcm factor and reported in quarters. The domain is positive, narrower than ' +
       'expression’s [0,∞): a write-side setter clamps at 0, but a resolved 0 divides in ' +
-      'τ/frameLength and has no comparable warp. jnd = §7.1’s displacement candidate, the ' +
+      'τ/frameLength and has no comparable warp. jnd = the displacement candidate, the ' +
       'only quarters-valued rubato constant there is [convention].',
   },
   {
@@ -743,7 +742,7 @@ const RUBATO_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.2 — the exponent of (τ/frameLength)^intensity; 1.0 is resolveRubato’s fallback and ' +
+      'the exponent of (τ/frameLength)^intensity; 1.0 is resolveRubato’s fallback and ' +
       'the identity warp. A ratio gain, hence the logarithm. jnd 1 [convention], ' +
       'unnormalized; the dimension’s density is the displacement curve, not this row.',
   },
@@ -763,7 +762,7 @@ const RUBATO_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.2/A-Q10 — priced as an ENDPOINT, not through expression’s joint-trim ' +
+      'priced as an ENDPOINT, not through expression’s joint-trim ' +
       'parametrization: two windows with equal total trim but different placement are ' +
       'different performances, so the comparison space is the identity and the edit path ' +
       'prices the pair as L1 on the endpoints. Defaults to 0.0; RubatoMap floors it at 0 and ' +
@@ -786,9 +785,9 @@ const RUBATO_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.2/A-Q10 — the other endpoint, same reasoning; defaults to 1.0 and is capped at 1 ' +
+      'the other endpoint, same reasoning; defaults to 1.0 and is capped at 1 ' +
       'on the way in. With @lateStart at 0 and @intensity at 1 this is the neutral warp, ' +
-      'which §5.2 special-cases to δ ≡ 0 without arithmetic (AD-21/M18) so P-C8’s "exactly ' +
+      'which is special-cased to δ ≡ 0 without arithmetic so the "exactly ' +
       '0" survives frame/τ pairs that do not round-trip. jnd 1 [convention], unnormalized.',
   },
   {
@@ -807,34 +806,34 @@ const RUBATO_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.2/AD-10/R3 — a BOOLEAN with a row, which is the correction revision 1 needed: ' +
+      'a BOOLEAN with a row, which is the correction revision 1 needed: ' +
       'filing @loop as a structural finding made two documents differing only in it score ' +
       'd_rubato = 0. It defaults to FALSE (resolveRubato, data/rubato.ts) and renderRubatoToMap breaks ' +
       'out of the span at the first frame boundary when it is off, so the warp applies on ' +
-      '[t₀, t₀ + frameLength) and δ ≡ 0 on the rest of the span; the mod in §5.2’s formula ' +
+      '[t₀, t₀ + frameLength) and δ ≡ 0 on the rest of the span; the mod in the formula ' +
       'IS this flag. It is never inherited from the def, hence the single site. Its ' +
       'difference is priced through the displacement curve it opens, so the space, unit and ' +
       'jnd here are carriers for the {0,1} encoding and the edit path, not an independent ' +
-      'metric — see this module’s note on booleans in §4’s row shape. jnd 1 [convention].',
+      'metric — see this module’s note on booleans in the row shape. jnd 1 [convention].',
   },
 ];
 
-// --- §5.3 dynamics -----------------------------------------------------------------------
+// --- dynamics -----------------------------------------------------------------------
 //
 // The curve is `g(t) = ln(volume(t))` per part, from constant instructions and cubic-Bézier
-// transitions, with the IDEAL Bézier as the defined object (§5.0/AD-17) — `tForDate`'s
-// 1-tick bisection is the renderer's approximation of it and belongs to the §6.3 replay only.
+// transitions, with the IDEAL Bézier as the defined object — `tForDate`'s
+// 1-tick bisection is the renderer's approximation of it and belongs to the replay only.
 
 const DYNAMICS_LOG: ScaleSpace = { kind: 'log-around-1' };
 
-/** §5.3: both shape knobs are read only in the transition branch, and default to 0.0. */
+/** both shape knobs are read only in the transition branch, and default to 0.0. */
 const dynamicsShapeLiveness: ComparisonLiveness = {
   element: 'dynamics',
   rule:
     'read only in the transition branch (DynamicsMap.ts:170-181), i.e. where ' +
-    '@transition.to is present and the instruction has a successor (AD-8); on a constant ' +
+    '@transition.to is present and the instruction has a successor; on a constant ' +
     'span it is inert. Defaults to 0.0 for <dynamics> — <movement> defaults to 0.4, so the ' +
-    'shared Bézier machinery must not share a default (§5.8, AD-13).',
+    'shared Bézier machinery must not share a default.',
 };
 
 const DYNAMICS_ROWS: readonly ComparisonRegistryRow[] = [
@@ -854,14 +853,14 @@ const DYNAMICS_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.3 — THE dynamics curve: this row’s jnd is jnd_dynamics. Neutral is velocity 100 ' +
-      'before the first instruction and for a wholly absent map (AD-9ii), and an ' +
+      'THE dynamics curve: this row’s jnd is jnd_dynamics. Neutral is velocity 100 ' +
+      'before the first instruction and for a wholly absent map, and an ' +
       'unresolvable level name is PERFORMED at 100.0 by the renderer, which is a ' +
-      'renderer-default-level note rather than a skip (R8). Domain and band disagree on ' +
-      'purpose and that is intended: 0 is inside §5.0’s plausible [0,127] and outside the ' +
+      'renderer-default-level note rather than a skip. Domain and band disagree on ' +
+      'purpose and that is intended: 0 is inside the plausible [0,127] and outside the ' +
       'logarithm’s domain, so it is plausible and incomparable at once — the band describes ' +
       'the document, the domain decides ⊥. ln(1.10) [convention] — no musically-validated ' +
-      'dynamics JND exists; corpus derivation is the named honest alternative (AD-27.6).',
+      'dynamics JND exists; corpus derivation is the named honest alternative.',
   },
   {
     key: 'dynamics/dynamics@transition.to',
@@ -879,11 +878,11 @@ const DYNAMICS_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: trailingTransitionRule('dynamics', 'dynamicsMap'),
     ppqSensitive: false,
     notes:
-      '§5.3 — the Bézier’s target level. DynamicsMap.getEndDate:187-193 has the same ' +
+      'the Bézier’s target level. DynamicsMap.getEndDate:187-193 has the same ' +
       'MAX_VALUE shape as tempo’s, and executed, a trailing volume=40 transition.to=100 ' +
       'performs a flat 40; all_maps.mpm ends its dynamics map with volume=80 ' +
       'transition.to=110 against a reference rendering scattered around 80. ln(1.10) ' +
-      '[convention], as the level row (AD-27.6).',
+      '[convention], as the level row.',
   },
   {
     key: 'dynamics/dynamics@curvature',
@@ -901,8 +900,8 @@ const DYNAMICS_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: dynamicsShapeLiveness,
     ppqSensitive: false,
     notes:
-      '§5.3 — the Bézier control-point curvature on [0,1], clamped there by clampCurvature. ' +
-      'T = ln(1 − x) is −∞ at the authored value 1, which §4’s cap prices at δ_row rather ' +
+      'the Bézier control-point curvature on [0,1], clamped there by clampCurvature. ' +
+      'T = ln(1 − x) is −∞ at the authored value 1, which the cap prices at δ_row rather ' +
       'than clamping — this is one of the enumerated infinite-boundary cases. jnd 1 ' +
       '[convention], unnormalized.',
   },
@@ -922,8 +921,8 @@ const DYNAMICS_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: dynamicsShapeLiveness,
     ppqSensitive: false,
     notes:
-      '§5.3 — signed control-point protraction on [−1,1], clamped by clampProtraction; ±1 ' +
-      'are authored values where T is ∓∞ and §4’s cap applies. jnd 1 [convention], ' +
+      'signed control-point protraction on [−1,1], clamped by clampProtraction; ±1 ' +
+      'are authored values where T is ∓∞ and the cap applies. jnd 1 [convention], ' +
       'unnormalized.',
   },
   {
@@ -942,13 +941,13 @@ const DYNAMICS_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: trailingTransitionRule('dynamics', 'dynamicsMap'),
     ppqSensitive: false,
     notes:
-      '§5.3/AD-16/R17 — a MECHANISM SWITCH reported as a structural finding with a stated ' +
-      'rationale, never folded into a distance (§3). On a sub-note span every note is pinned ' +
+      'a MECHANISM SWITCH reported as a structural finding with a stated ' +
+      'rationale, never folded into a distance. On a sub-note span every note is pinned ' +
       'to velocity 100.0 and the shape is emitted as a CC 7 curve; on an ordinary span the ' +
       'shape rides per-note velocity and CC 7 is pinned to 100. Two documents identical but ' +
       'for the flag are distance 0 under the date-axis curve while driving two different ' +
       'MIDI mechanisms with different time resolution and timbre. Inert on a map’s last ' +
-      'instruction (the same size()-1 guard as R1); a LEADING sub-note span leaves notes ' +
+      'instruction (the same size()-1 guard); a LEADING sub-note span leaves notes ' +
       'before startDate with no @velocity at all, which is noted rather than modelled. ' +
       'jnd 1 [convention] and unused — a structural row carries no distance.',
   },
@@ -968,18 +967,18 @@ const DYNAMICS_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.3/§5.0 — the def spelling of a level, and the one that matters: name-valued ' +
+      'the def spelling of a level, and the one that matters: name-valued ' +
       'volumes are the MEI norm. Resolution routes through styleScope (levels.ts:38-46 ' +
       'documents the trap verbatim); unresolvable names are performed at velocity 100.0 and ' +
-      'reported (R8), never skipped. ln(1.10) [convention], as the level row (AD-27.6).',
+      'reported, never skipped. ln(1.10) [convention], as the level row.',
   },
 ];
 
-// --- §5.4 accentuation -------------------------------------------------------------------
+// --- accentuation -------------------------------------------------------------------
 //
 // The curve is `c(t) = scale · patternDef.getAccentuationAt(beat(t))` in velocity units, with
-// the beat phase anchored at the TIME SIGNATURE and never at the instruction (AD-12/R8). Two
-// of the rows below are booleans, for AD-10's reason: each changes the performed curve, and a
+// the beat phase anchored at the TIME SIGNATURE and never at the instruction. Two
+// of the rows below are booleans, for the reason: each changes the performed curve, and a
 // flag filed as a structural finding scores 0 for two documents that differ only in it.
 
 const ACCENTUATION_ROWS: readonly ComparisonRegistryRow[] = [
@@ -999,7 +998,7 @@ const ACCENTUATION_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.4 — THE accentuation curve: this row’s jnd is jnd_accentuation, and it is the one ' +
+      'THE accentuation curve: this row’s jnd is jnd_accentuation, and it is the one ' +
       'dimension whose curve is already in the unit its JND is stated in (T is the identity). ' +
       'What lands on a velocity is the PRODUCT scale · getAccentuationAt(beat), so which of ' +
       'the two factors carries the velocity unit is a convention about the same number; the ' +
@@ -1007,7 +1006,7 @@ const ACCENTUATION_ROWS: readonly ComparisonRegistryRow[] = [
       'document varies per section while the def stays fixed. MANDATORY — absent, ' +
       'getMetricalAccentuationDataOf returns null and the whole instruction is skipped, which ' +
       'is why expression writes neutrality as "0" rather than by deleting it. 3 velocity ' +
-      'units [convention]; corpus derivation is the named alternative (§7.1).',
+      'units [convention]; corpus derivation is the named alternative.',
   },
   {
     key: 'accentuation/accentuationPattern@loop',
@@ -1025,10 +1024,10 @@ const ACCENTUATION_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.4/AD-10 — a BOOLEAN with a row, on the same argument as rubato’s. It defaults to ' +
+      'a BOOLEAN with a row, on the same argument as rubato’s. It defaults to ' +
       'FALSE, and with it off the renderer breaks out of the span one pattern length in ' +
       '(MetricalAccentuationMap.ts:157-161), so the contribution is the pattern once and then ' +
-      '0 for the rest of the span — the identical one-frame-then-identity shape as §5.2. Its ' +
+      '0 for the rest of the span — the identical one-frame-then-identity shape as rubato’s. Its ' +
       'difference is priced through the curve it opens, so the space, unit and jnd here are ' +
       'carriers for the {0,1} encoding and the edit path. jnd 1 [convention].',
   },
@@ -1048,7 +1047,7 @@ const ACCENTUATION_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.4 — the second boolean, and the one whose default is TRUE rather than false: the ' +
+      'the second boolean, and the one whose default is TRUE rather than false: the ' +
       'modulus is taken against the MEASURE unless the attribute reads "false", in which case ' +
       'it is taken against the pattern length (MetricalAccentuationMap.ts:162-165). In a ' +
       'measure whose length differs from the pattern’s the two cycles drift apart, so this ' +
@@ -1071,12 +1070,12 @@ const ACCENTUATION_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.4 — in beats, defaulting to 4.0, and live twice over: getAccentuationAt runs the ' +
+      'in beats, defaulting to 4.0, and live twice over: getAccentuationAt runs the ' +
       'LAST accentuation’s segment to length + 1 and returns its @transition.to at and after ' +
       'that point, and with @stickToMeasures="false" the same number sets the whole cycle. ' +
-      'AD-15: the parser WRITES the default onto the element, so an absent @length and an ' +
+      'the parser WRITES the default onto the element, so an absent @length and an ' +
       'authored 4.0 are indistinguishable downstream — which is also why the comparison ' +
-      'reader reads the def raw rather than constructing one (R1). Not an expression row: it ' +
+      'reader reads the def raw rather than constructing one. Not an expression row: it ' +
       'is not exaggerable, it is read. jnd 1 [convention], in beats.',
   },
   {
@@ -1095,7 +1094,7 @@ const ACCENTUATION_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.4 — where in the pattern the accentuation sits, in BEATS and therefore not ' +
+      'where in the pattern the accentuation sits, in BEATS and therefore not ' +
       'convertible to quarters without the beat grid (a beat is 4·ppq/denominator ticks), ' +
       'which is why the unit is dimensionless and the jnd is one beat. An <accentuation> with ' +
       'no @beat is skipped by the parser. Its difference moves a breakpoint of the curve and ' +
@@ -1117,7 +1116,7 @@ const ACCENTUATION_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.4 — the accentuation’s own amplitude, and the value the curve takes EXACTLY on its ' +
+      'the accentuation’s own amplitude, and the value the curve takes EXACTLY on its ' +
       'beat: getAccentuationAt returns @value there rather than @transition.from, so the two ' +
       'differ at a single point whenever both were authored. A single point has measure zero ' +
       'and cannot move the integral; it is the edit path this row serves. Signed — an ' +
@@ -1140,7 +1139,7 @@ const ACCENTUATION_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.4 — the left end of the ramp towards the next accentuation. DEFAULTING CHAIN: ' +
+      'the left end of the ramp towards the next accentuation. DEFAULTING CHAIN: ' +
       '@transition.from falls back to @value and @transition.to falls back to ' +
       '@transition.from, so a bare <accentuation beat value> is a FLAT segment at @value and ' +
       'not a ramp to zero. 3 velocity units [convention].',
@@ -1161,7 +1160,7 @@ const ACCENTUATION_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.4 — the right end of the ramp, and the value that governs at and after beat ' +
+      'the right end of the ramp, and the value that governs at and after beat ' +
       'length + 1 for the LAST accentuation. The segment it ramps over is the ASYMMETRY the ' +
       'curve module transliterates: the next accentuation’s beat for every accentuation that ' +
       'has a successor, length + 1 for the last one. Upstream cemfi/meico spells that guard ' +
@@ -1171,11 +1170,11 @@ const ACCENTUATION_ROWS: readonly ComparisonRegistryRow[] = [
   },
 ];
 
-// --- §5.5 articulation -------------------------------------------------------------------
+// --- articulation -------------------------------------------------------------------
 //
 // EVENT rows, not curve rows: an articulation is an atom charged to the note or the date it
-// names (§5.0's atom rule), so each row's own `localDistance` is what prices a matched pair —
-// unlike §5.1–§5.4 and §5.8, where the rows are inputs to one integral.
+// names (the atom rule), so each row's own `localDistance` is what prices a matched pair —
+// unlike the curve dimensions, where the rows are inputs to one integral.
 //
 // Every row carries BOTH sites, as expression's do, because the same attribute is legal on the
 // instruction and on the def — and the two are not interchangeable. `articulateNote` applies
@@ -1186,7 +1185,7 @@ const ACCENTUATION_ROWS: readonly ComparisonRegistryRow[] = [
 // and 60 on a def (0.5 then +10).
 
 /**
- * §5.5/AD-11i/R4: the inline duration precedence, as a liveness rule keyed on the ELEMENT.
+ * the inline duration precedence, as a liveness rule keyed on the ELEMENT.
  *
  * `articulateNote` (`maps/data/articulation.ts`) reads `duration` once up front and every branch computes
  * from that original value, overwriting the previous branch's write — so the three tick-domain
@@ -1202,7 +1201,7 @@ const inlineDurationRule = (attribute: string): ComparisonLiveness => ({
     'absoluteDuration, and NONE of them fires when @absoluteDurationMs is present ' +
     '(articulateNote reads duration once and each branch overwrites from that ' +
     'original value). On an <articulationDef> the same attributes COMPOSE, so the rule is keyed ' +
-    'on the element and never on the attribute name (§5.5, AD-11i, R4).',
+    'on the element and never on the attribute name.',
 });
 
 /** The two sites every articulation attribute is legal at, in expression's own order. */
@@ -1228,7 +1227,7 @@ const ARTICULATION_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: inlineDurationRule('relativeDuration'),
     ppqSensitive: false,
     notes:
-      '§5.5 — the staccato/tenuto lever, neutral at 1.0 (the renderer’s guard is ' +
+      'the staccato/tenuto lever, neutral at 1.0 (the renderer’s guard is ' +
       '`!== 1.0`, so an authored 1.0 is a no-op rather than a write). Executed: with a ' +
       'sibling @absoluteDurationChange it is entirely INERT inline, which revision 1 charged ' +
       '0.59 nepers for. ln(1.10) [convention] — NOT the tempo constant, see the JND’s own ' +
@@ -1251,12 +1250,12 @@ const ARTICULATION_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.5 — a velocity RATIO, so it takes the velocity-ratio JND (§5.3’s ln(1.10), "a 10 % ' +
+      'a velocity RATIO, so it takes the velocity-ratio JND (the ln(1.10), "a 10 % ' +
       'velocity change") rather than a velocity-unit one. THE VELOCITY LEVERS COMPOSE, unlike ' +
       'the duration levers: articulateNote re-reads @velocity after each write, so ' +
       '@absoluteVelocity then @relativeVelocity then @absoluteVelocityChange chain. Executed: ' +
       '64 with absoluteVelocity=80, relativeVelocity=0.5, absoluteVelocityChange=7 performs ' +
-      '47. AD-11i’s one-lever rule is a DURATION rule and does not generalise here. ' +
+      '47. The one-lever rule is a DURATION rule and does not generalise here. ' +
       '[convention].',
   },
   {
@@ -1275,13 +1274,13 @@ const ARTICULATION_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: inlineDurationRule('absoluteDurationChange'),
     ppqSensitive: true,
     notes:
-      '§5.5/AD-11iii/R15 — signed TICKS at the performance ppq, hence ppqSensitive, and priced ' +
+      'signed TICKS at the performance ppq, hence ppqSensitive, and priced ' +
       'on its RAW value as a document-level quantity: the renderer’s map is nonlinear and ' +
       'note-dependent, applying only when duration > 0 and then halving the change until the ' +
       'result is positive (durNew = duration + change / 2^k). Executed, −200 on a 100-tick ' +
-      'note performs 50 — not −100 and not 0. An MSM refinement hook is noted (§9’s ' +
+      'note performs 50 — not −100 and not 0. An MSM refinement hook is noted (the ' +
       'three-state estimate); the negative branch cannot be refined without one at all. ' +
-      '1/16 quarter [convention], the displacement unit §7.1 gives.',
+      '1/16 quarter [convention], the displacement unit the design gives.',
   },
   {
     key: 'articulation/articulation@absoluteDurationChangeMs',
@@ -1299,7 +1298,7 @@ const ARTICULATION_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.5 — a millisecond duration change, parked on the note by pass one and consumed by ' +
+      'a millisecond duration change, parked on the note by pass one and consumed by ' +
       'pass two, so it survives the tick-domain precedence entirely (it is NOT one of the ' +
       'three levers @absoluteDurationMs short-circuits). 30 ms [convention]: the constant is ' +
       'asynchrony’s [literature] onset threshold, and borrowing it for a DURATION change is the ' +
@@ -1321,10 +1320,10 @@ const ARTICULATION_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: true,
     notes:
-      '§5.5 — signed ticks added to @date.perf, neutral at 0.0. It moves BOTH note edges (the ' +
+      'signed ticks added to @date.perf, neutral at 0.0. It moves BOTH note edges (the ' +
       'ms sibling moves only the onset and therefore shortens the note), and a large value ' +
       'triggers the map sort, which can reorder simultaneous instructions — executed. ' +
-      '1/16 quarter [convention]: the same displacement quantity §5.2 prices, in the same unit.',
+      '1/16 quarter [convention]: the same displacement quantity the design prices, in the same unit.',
   },
   {
     key: 'articulation/articulation@absoluteDelayMs',
@@ -1342,8 +1341,8 @@ const ARTICULATION_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.5 — a millisecond onset shift, which IS the asynchrony quantity, so the 30 ms ' +
-      '[literature] threshold applies directly rather than by analogy (AD-26.2/AD-27.6). It ' +
+      'a millisecond onset shift, which IS the asynchrony quantity, so the 30 ms ' +
+      '[literature] threshold applies directly rather than by analogy. It ' +
       'moves the onset but not the end, so it shortens the note; past the remaining length the ' +
       'shared pass-two commit guard discards it.',
   },
@@ -1363,10 +1362,10 @@ const ARTICULATION_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.5 — the idiomatic accent lever: signed, neutral at 0.0, added to whatever the two ' +
+      'the idiomatic accent lever: signed, neutral at 0.0, added to whatever the two ' +
       'velocity levers before it left. Never clamped by the renderer, because velocity is a ' +
-      'shared bus and the final value depends on MSM note data (R1). 3 velocity units ' +
-      '[convention], §7.1’s velocity row.',
+      'shared bus and the final value depends on MSM note data. 3 velocity units ' +
+      '[convention], the velocity row.',
   },
   {
     key: 'articulation/articulation@absoluteDuration',
@@ -1384,12 +1383,12 @@ const ARTICULATION_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: inlineDurationRule('absoluteDuration'),
     ppqSensitive: true,
     notes:
-      '§5.5/AD-2 — a REPLACEMENT attribute: it has no neutral, so present-vs-present compares ' +
+      'a REPLACEMENT attribute: it has no neutral, so present-vs-present compares ' +
       'in native units and present-vs-absent reads ⊥ rather than being a structural finding. ' +
       'A structural finding contributes 0, which gives A=2, B=absent, C=100 the zero-set ' +
       'violation d(A,B) = d(B,C) = 0 < d(A,C) — M1c, and the reason ⊥ exists. With an MSM the ' +
       'present-vs-absent case refines to a real magnitude against the note’s own duration ' +
-      '(R7). Lowest inline precedence of the three tick levers. 1/16 quarter [convention].',
+      '. Lowest inline precedence of the three tick levers. 1/16 quarter [convention].',
   },
   {
     key: 'articulation/articulation@absoluteDurationMs',
@@ -1407,7 +1406,7 @@ const ARTICULATION_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.5/AD-2 — a REPLACEMENT attribute (⊥ against absent, as @absoluteDuration) and the ' +
+      'a REPLACEMENT attribute (⊥ against absent, as @absoluteDuration) and the ' +
       'inline SHORT-CIRCUIT: its mere presence takes the whole tick-domain duration branch out ' +
       'of play, so all three tick levers on the same element are inert beside it. Always live ' +
       'itself, which is why its own liveness is unconditional while theirs is not. 30 ms ' +
@@ -1429,7 +1428,7 @@ const ARTICULATION_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.5/AD-2 — the third REPLACEMENT attribute (⊥ against absent). Unlike the duration ' +
+      'the third REPLACEMENT attribute (⊥ against absent). Unlike the duration ' +
       'replacement it does NOT short-circuit its siblings: it is the first link of the ' +
       'velocity chain, and @relativeVelocity and @absoluteVelocityChange then apply on top of ' +
       'it — executed. 3 velocity units [convention].',
@@ -1450,9 +1449,9 @@ const ARTICULATION_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.5/AD-15/R14 — INERT, and a row precisely so that the inertness is stated rather ' +
+      'INERT, and a row precisely so that the inertness is stated rather ' +
       'than inferred from an absence. articulateNote writes @detuneCents onto the note, and ' +
-      'nothing downstream reads it: the MIDI export has no pitch-bend path for it. R9b’s rule ' +
+      'nothing downstream reads it: the MIDI export has no pitch-bend path for it. The rule ' +
       'applies — zero density, reported when the two documents differ. The jnd is unused; a ' +
       'row that carries no distance has nothing to normalize. [convention], and moot.',
   },
@@ -1472,16 +1471,16 @@ const ARTICULATION_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.5/AD-15/R14 — INERT, as @detuneCents, and written onto the note by the same branch. ' +
+      'INERT, as @detuneCents, and written onto the note by the same branch. ' +
       'Its unit is the one place this table needs hertz, and it is a frequency OFFSET rather ' +
       'than a frequency, which is why it is a gain and not a log space. [convention], and moot.',
   },
 ];
 
-// --- §5.6 ornamentation ------------------------------------------------------------------
+// --- ornamentation ------------------------------------------------------------------
 //
-// EVENT rows, priced through §5.6's alignment DP. The compared object is the RESOLVED
-// PERFORMED EFFECT and never the attribute tuple (AD-40.2, generalizing AD-37.3): `@scale`
+// EVENT rows, priced through the alignment DP. The compared object is the RESOLVED
+// PERFORMED EFFECT and never the attribute tuple: `@scale`
 // multiplies the gradient's two endpoints, so `(from·scale, to·scale)` is what is compared and
 // `@scale` is not independently priced. See `ornamentAtoms.ts` for the resolution.
 
@@ -1503,22 +1502,22 @@ const ORNAMENT_ROWS: readonly ComparisonRegistryRow[] = [
       element: 'ornament',
       rule:
         'gates <dynamicsGradient> ENTIRELY and does NOT gate <temporalSpread>. It defaults to ' +
-        '0.0 (R19), so an <ornament> with no @scale performs its temporal spread in full and ' +
+        '0.0, so an <ornament> with no @scale performs its temporal spread in full and ' +
         'its dynamics not at all — executed. Not independently priced: the gradient’s compared ' +
-        'object is (from·scale, to·scale) (AD-40.2).',
+        'object is (from·scale, to·scale).',
     },
     ppqSensitive: false,
     notes:
-      '§5.6/AD-40.1 — the attribute revision 2 lost. Panel R19 flagged the 0.0 default and ' +
-      'AD-15 ratified the row, but the compilation absorbed it into §5.6 without the GATING ' +
-      'behaviour, so a comparison written from §5.6 alone would price a dynamicsGradient ' +
+      'the gating attribute an earlier revision lost: the row was ratified, but the ' +
+      'compilation absorbed it without the GATING behaviour, so a comparison written from the ' +
+      'compiled text alone would price a dynamicsGradient ' +
       'difference between two documents that both perform no dynamics whatsoever — revision ' +
-      '1’s §5.4 error in a new place. Measured: a def with transition.from=-20 ' +
+      'the same error in a new place. Measured: a def with transition.from=-20 ' +
       'transition.to=20 writes ornament.dynamics 0/0/0 with no @scale and -20/0/+20 with ' +
       'scale="1.0", while the same ornament’s temporalSpread moves the notes either way. ' +
-      'CONTRAST §5.4’s accentuationPattern@scale, which is MANDATORY there: absent, the whole ' +
+      'CONTRAST the accentuationPattern@scale, which is MANDATORY there: absent, the whole ' +
       'instruction is skipped. Same attribute name, two sections, two dispositions — hence the ' +
-      'cross-reference in both. 3 velocity units [convention], §7.1’s velocity row.',
+      'cross-reference in both. 3 velocity units [convention], the velocity row.',
   },
   {
     key: 'ornamentation/ornament@note.order',
@@ -1539,11 +1538,11 @@ const ORNAMENT_ROWS: readonly ComparisonRegistryRow[] = [
         'live as a ROW only for the two enumerated orderings, encoded 0 = "ascending pitch" ' +
         '(also the absent default) and 1 = "descending pitch". An explicit ID LIST is not a ' +
         'value of this row: it names notes, which is an identity claim and not a magnitude, ' +
-        'and it goes to the finding channel (AD-41.1, on §5.8’s @controller precedent).',
+        'and it goes to the finding channel, on the @controller precedent.',
     },
     ppqSensitive: false,
     notes:
-      '§5.6/AD-41.1 — a boolean row on §4’s @loop argument, and justified by measurement rather ' +
+      'a boolean row on the @loop argument, and justified by measurement rather ' +
       'than only by ruling: the two orderings sort the pool by pitch in opposite directions ' +
       '(`Math.sign(pitch1 - pitch2) * finalNoteOrderAscending`), so they decide WHICH note ' +
       'receives which step of the gradient. Executed on three notes at one date with a ' +
@@ -1580,7 +1579,7 @@ const ORNAMENT_ROWS: readonly ComparisonRegistryRow[] = [
     },
     ppqSensitive: false,
     notes:
-      '§5.6/AD-15/AD-41.1 — a count, so the identity space and a jnd of one repetition ' +
+      'a count, so the identity space and a jnd of one repetition ' +
       '[convention]: "one more turn of the figure" is the smallest difference there is, and no ' +
       'perceptual constant exists for it. `-1` is admitted by the domain predicate as the ' +
       'documented extension rather than rejected as a negative count; any other unusable value ' +
@@ -1610,7 +1609,7 @@ const ORNAMENT_ROWS: readonly ComparisonRegistryRow[] = [
     },
     ppqSensitive: false,
     notes:
-      '§5.6 — a signed velocity OFFSET added to the note’s velocity, not a velocity, hence the ' +
+      'a signed velocity OFFSET added to the note’s velocity, not a velocity, hence the ' +
       'gain space and the symmetric band. The ramp distributes over the ornamented POOL — the ' +
       'notes at the ornament’s date, or the ids @note.order names — one step per chord, and ' +
       'NOT over score time: with the pool’s notes at 0, 360 and 720 only the note sharing the ' +
@@ -1632,7 +1631,7 @@ const ORNAMENT_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.6/AD-40.3 — the ramp’s END, and the value a SINGLE-NOTE pool performs on its own: ' +
+      'the ramp’s END, and the value a SINGLE-NOTE pool performs on its own: ' +
       'the `chordSequence.length > 1` branch ramps, and the `else if` hands the lone chord ' +
       'transitionTo·scale. A reader implementing "interpolate across the pool" writes the ' +
       'start value or an average there and is wrong in both cases; measured 20 from a −20 → ' +
@@ -1655,11 +1654,11 @@ const ORNAMENT_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: true,
     notes:
-      '§5.6/§7.15 — the frame’s left edge, signed and idiomatically negative (an arpeggio ' +
+      'the frame’s left edge, signed and idiomatically negative (an arpeggio ' +
       'starts before its notated date). Ticks unless @time.unit says milliseconds, which is ' +
       'why that attribute is a row of its own. v3 spells it @frame.offset and this name ' +
       'survives as the accepted legacy alias, so the two are ONE quantity in two spellings. ' +
-      '1/16 quarter [convention], §7.1’s displacement unit.',
+      '1/16 quarter [convention], the displacement unit.',
   },
   {
     key: 'ornamentation/temporalSpread@frame.offset',
@@ -1677,7 +1676,7 @@ const ORNAMENT_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: true,
     notes:
-      '§5.6/AD-15/R18 — the v3 spelling of @frame.start, and a v3 STRUCTURAL MARKER: its mere ' +
+      'the v3 spelling of @frame.start, and a v3 STRUCTURAL MARKER: its mere ' +
       'presence makes the whole <temporalSpread> v3 (TemporalSpread.ts:113), which changes how ' +
       'the frame is parsed. Its own row because a document may carry either spelling and the ' +
       'report must name which. 1/16 quarter [convention].',
@@ -1698,7 +1697,7 @@ const ORNAMENT_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: true,
     notes:
-      '§5.6 — the frame’s width, and the GEOMETRIC PAIR of @frame.start: the frame is ' +
+      'the frame’s width, and the GEOMETRIC PAIR of @frame.start: the frame is ' +
       '[start, start + length], so the two move together and scaling the length alone drags ' +
       'the centroid late. Expression scales them by one factor for exactly that reason; here ' +
       'they are two rows because a comparison reports where the difference IS, and "the frame ' +
@@ -1721,14 +1720,14 @@ const ORNAMENT_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.6 — how the notes are distributed WITHIN the frame: 1.0 spreads them evenly, and ' +
+      'how the notes are distributed WITHIN the frame: 1.0 spreads them evenly, and ' +
       'other values bunch them towards one end. A ratio, so a log space and a ratio JND; it ' +
       'takes the duration-ratio constant rather than a fourth invented one, since what it ' +
       'reshapes is the spacing of onsets within a fixed window. ln(1.10) [convention].',
   },
 ];
 
-// --- §5.7 asynchrony ---------------------------------------------------------------------
+// --- asynchrony ---------------------------------------------------------------------
 
 const ASYNCHRONY_ROWS: readonly ComparisonRegistryRow[] = [
   {
@@ -1747,9 +1746,9 @@ const ASYNCHRONY_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: 'always',
     ppqSensitive: false,
     notes:
-      '§5.7 — a per-part STEP curve integrated exactly; the identity T makes the jnd a plain ' +
+      'a per-part STEP curve integrated exactly; the identity T makes the jnd a plain ' +
       'millisecond quantity. A MISSING @milliseconds.offset poisons the span rather than ' +
-      'defaulting to 0 (AD-1/R24): getAttributeValue returns "" and parseFloat gives NaN, so ' +
+      'defaulting to 0: getAttributeValue returns "" and parseFloat gives NaN, so ' +
       'every note in the span gets milliseconds.date="NaN" and vanishes from the MIDI ' +
       'export — the span reads ⊥ and is reported renderer-error. The map also takes the next ' +
       'dated child with NO local-name test, so any entry ends the span. Two render mechanics ' +
@@ -1757,30 +1756,29 @@ const ASYNCHRONY_ROWS: readonly ComparisonRegistryRow[] = [
       'startDateMs + 1, so the offset is not a pure translation near the start of the piece ' +
       'or on very short notes. 30 ms [literature] — the Goebl et al. 2010 working threshold, ' +
       'bracketed by Hirsh 1959’s 15–20 ms temporal-order floor and Nakamura et al. 2017’s ' +
-      '35 ms chord window (AD-26.2/AD-27.6). MS-DOMAIN FLOOR, stated because this is the ' +
+      '35 ms chord window. MS-DOMAIN FLOOR, stated because this is the ' +
       'row it bears on: Friberg & Sundberg 1995’s timing jnd is ABSOLUTE at ~6 ms below ' +
       '~240 ms IOI and relative only above it, so a ratio reading of very short intervals ' +
       'over-reports. This row is already absolute (T is the identity, the jnd is in ms), so ' +
       'the floor costs no machinery here; it is an obligation on the docs and on any future ' +
-      'row that reads a timing difference as a ratio (AD-27.6).',
+      'row that reads a timing difference as a ratio.',
   },
 ];
 
-// --- §5.8 pedal (movement) ---------------------------------------------------------------
+// --- pedal (movement) ---------------------------------------------------------------
 //
 // The curve is `position(t)` on [0,1] — a GAIN and deliberately not a logit, because 0 and 1
 // are the most common authored values and a logit sends them to ±∞ for a quantity whose
-// musical meaning is already linear (§5.8). The family shares `bezier.ts` with §5.3 and shares
+// musical meaning is already linear. The family shares `bezier.ts` with dynamics and shares
 // nothing else: the defaults differ, the neutral differs, and this family has NO clamps.
 
 /**
- * §5.8/AD-35: the render guard is `movementIndex < size() - 1` over ENTRIES, so what makes an
- * instruction inert is being the map's last ENTRY — not being its last movement.
+ * The render guard is `movementIndex < size() - 1` over ENTRIES, so what makes an instruction
+ * inert is being the map's last ENTRY — not being its last movement.
  *
  * Its own rule rather than a reuse of {@link trailingTransitionRule}: a trailing `<tempo>` or
  * `<dynamics>` still has a span and performs flat at its own value, while a trailing
- * `<movement>` has no span at all. And under AD-35 the guard is conditional in a way neither of
- * those is: put any entry after the last `<movement>` — a trailing `<style>` — and the movement
+ * `<movement>` has no span at all. And the guard is conditional in a way neither of those is: put any entry after the last `<movement>` — a trailing `<style>` — and the movement
  * renders after all, with `getEndDate = Number.MAX_VALUE`.
  */
 const movementEntryIndexRule: ComparisonLiveness = {
@@ -1788,17 +1786,17 @@ const movementEntryIndexRule: ComparisonLiveness = {
   rule:
     'rendered unless the movement is the map’s LAST ENTRY (renderMovementToMap:173-183 guards ' +
     'on `movementIndex < this.size() - 1`, and size() counts <style> switches too), or its ' +
-    'date is negative. AD-35: an entry after the last <movement> resurrects it with an ' +
+    'date is negative. An entry after the last <movement> resurrects it with an ' +
     'unbounded span, which over any real window performs flat at @position.',
 };
 
-/** §5.8: the shape knobs are read only where the movement is a transition, and are NOT clamped. */
+/** the shape knobs are read only where the movement is a transition, and are NOT clamped. */
 const movementShapeLiveness: ComparisonLiveness = {
   element: 'movement',
   rule:
     'read only where @transition.to is present — a constant movement returns [startDate, ' +
     'position] for every t and never touches the control points (data/movement.ts). ' +
-    'Defaults to 0.4 / 0.0, NOT dynamics’ 0.0 / 0.0 (AD-13), and unlike §5.3 the values are ' +
+    'Defaults to 0.4 / 0.0, NOT dynamics’ 0.0 / 0.0, and unlike dynamics the values are ' +
     'never clamped: out of range the date component stops being monotone and the span reads ⊥.',
 };
 
@@ -1819,9 +1817,9 @@ const PEDAL_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: movementEntryIndexRule,
     ppqSensitive: false,
     notes:
-      '§5.8 — THE pedal curve: this row’s jnd is jnd_pedal. A gain on [0,1] rather than a ' +
+      'THE pedal curve: this row’s jnd is jnd_pedal. A gain on [0,1] rather than a ' +
       'logit, because 0.0 and 1.0 are the canonical authored values and a logit sends them to ' +
-      '±∞ (§5.8). Out-of-range values are CLAMPED by the MIDI export rather than refused ' +
+      '±∞. Out-of-range values are CLAMPED by the MIDI export rather than refused ' +
       '(EventMaker.ts:536), so the span performs at the bound and compares as performed. A ' +
       '<movement> with no @position inherits the previous one’s @transition.to, that scan ' +
       'stepping over any entry that is not a <movement> and yielding 0 where none precedes it. ' +
@@ -1844,7 +1842,7 @@ const PEDAL_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: movementEntryIndexRule,
     ppqSensitive: false,
     notes:
-      '§5.8 — the Bézier’s target position, and the value that HOLDS after the span: the MIDI ' +
+      'the Bézier’s target position, and the value that HOLDS after the span: the MIDI ' +
       'export emits one control change per sampled point and a control change persists until ' +
       'the next one (Msm.ts:1422-1454), so the last event of a span governs until the next ' +
       'span emits. Absent, the movement is CONSTANT — isConstantMovement tests for null, so an ' +
@@ -1867,13 +1865,13 @@ const PEDAL_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: movementShapeLiveness,
     ppqSensitive: false,
     notes:
-      '§5.8/AD-13 — the same Bézier control-point curvature as §5.3 with a DIFFERENT default: ' +
+      'the same Bézier control-point curvature as dynamics with a DIFFERENT default: ' +
       '0.4 (data/movement.ts), not 0.0. The shared machinery must not share a default, and ' +
       'reading a <movement> with dynamics’ default silently reshapes every unshaped pedal ' +
       'gesture in the corpus. NOT clamped here: outside [0,1] the inner control points leave ' +
       'the unit square, x(t) stops being monotone and the sampler emits events whose dates go ' +
-      'backwards, so §4’s domain gate takes the whole span to ⊥. T = ln(1 − x) is −∞ at the ' +
-      'authored value 1, which §4’s cap prices at δ_row. jnd 1 [convention], unnormalized.',
+      'backwards, so the domain gate takes the whole span to ⊥. T = ln(1 − x) is −∞ at the ' +
+      'authored value 1, which the cap prices at δ_row. jnd 1 [convention], unnormalized.',
   },
   {
     key: 'pedal/movement@protraction',
@@ -1891,32 +1889,32 @@ const PEDAL_ROWS: readonly ComparisonRegistryRow[] = [
     liveness: movementShapeLiveness,
     ppqSensitive: false,
     notes:
-      '§5.8 — signed control-point protraction on [−1,1], defaulting to 0.0 and, like ' +
+      'signed control-point protraction on [−1,1], defaulting to 0.0 and, like ' +
       '@curvature, never clamped: out of range it reads ⊥ with the span. ±1 are authored ' +
-      'values where T is ∓∞ and §4’s cap applies. jnd 1 [convention], unnormalized.',
+      'values where T is ∓∞ and the cap applies. jnd 1 [convention], unnormalized.',
   },
 ];
 
-// --- §5.9 imprecision (timing / dynamics / duration) --------------------------------------
+// --- imprecision (timing / dynamics / duration) --------------------------------------
 //
 // Three dimensions, one table — the rows differ only in which `imprecisionMap` they live in
 // and therefore in their unit and their JND. The generated shape mirrors
-// `expression/registry.ts`'s own `IMPRECISION_ROWS` one for one, which is what makes §4's
+// `expression/registry.ts`'s own `IMPRECISION_ROWS` one for one, which is what makes the
 // superset property hold here literally rather than through a documented substitution: the
 // scale space is `gain-ordered` on both sides, because every one of these attributes is a
 // WIDTH in the domain's own unit and none of them is a ratio or a bounded shape parameter.
 //
 // These rows do not sum to the distance. Like tempo's four, they are inputs to one object —
 // here the LAW a span declares — and the dimension's density is `W₁(law_A, law_B)` divided by
-// the row JND (§5.9, AD-14v). What the rows carry is the unit, the JND, the liveness the
-// evaluator must honour, and §7.2's per-attribute breakdown for the report.
+// the row JND. What the rows carry is the unit, the JND, the liveness the
+// evaluator must honour, and the per-attribute breakdown for the report.
 //
-// The two `process` rows are the exception and are priced on their own, per §5.9's
-// `processParameters` component and A-B3: `stepWidth.max` and `degreeOfCorrelation` do not
+// The two `process` rows are the exception and are priced on their own, through the
+// `processParameters` component: `stepWidth.max` and `degreeOfCorrelation` do not
 // enter the marginal at all, and the measurement in `imprecisionLaws.ts` is why — the
 // correlated marginal is index-dependent, so the process is exactly what the marginal fails
-// to characterize. `milliseconds.timingBasis` joins them on the two correlated elements only
-// (AD-14iii); on the four i.i.d. ones it changes which draw a note receives and not the law
+// to characterize. `milliseconds.timingBasis` joins them on the two correlated elements only;
+// on the four i.i.d. ones it changes which draw a note receives and not the law
 // it is drawn from, so it is reported inert and carries no row.
 
 /** Per domain: the map it reads, its unit, its JND, and the provenance of that JND. */
@@ -1930,8 +1928,8 @@ const IMPRECISION_DOMAIN_TABLE = [
       'ASYNCHRONY_JND_MS = 30 ms [literature] — Vernon 1936 → Goebl 2001. Reused rather ' +
       'than invented because the QUANTITY KIND matches exactly: a timing-imprecision offset ' +
       'IS an onset displacement in milliseconds, which is what the threshold measures. Same ' +
-      'reasoning as @absoluteDelayMs (AD-38.2). The 6 ms absolute floor below ~240 ms IOI ' +
-      '(AD-27.6) is a docs obligation on this row as on every ms-domain timing row.',
+      'reasoning as @absoluteDelayMs. The 6 ms absolute floor below ~240 ms IOI ' +
+      ' is a docs obligation on this row as on every ms-domain timing row.',
   },
   {
     dimension: 'imprecisionDynamics',
@@ -1939,8 +1937,8 @@ const IMPRECISION_DOMAIN_TABLE = [
     unit: 'velocity',
     jnd: VELOCITY_JND,
     jndNote:
-      'VELOCITY_JND = 3 velocity units [convention]. The one velocity JND §7.1 states, ' +
-      'shared with §5.4 and §5.5 (AD-38.2): T is the identity here, so the law lives in ' +
+      'VELOCITY_JND = 3 velocity units [convention]. The one velocity JND the design states, ' +
+      'shared with accentuation: T is the identity here, so the law lives in ' +
       'velocity units directly. Unclamped in the map — the offset bites after the dynamics ' +
       'pass — so a wide law can push a velocity outside 0..127 and the MIDI export clamps it.',
   },
@@ -1951,7 +1949,7 @@ const IMPRECISION_DOMAIN_TABLE = [
     jnd: ASYNCHRONY_JND_MS,
     jndNote:
       'ASYNCHRONY_JND_MS borrowed at 30 ms, and [convention] rather than [literature] — the ' +
-      'tag travels with the borrowing (AD-38.2). The evidence is an ONSET threshold and this ' +
+      'tag travels with the borrowing. The evidence is an ONSET threshold and this ' +
       'is a change in a note‘s SOUNDING LENGTH, which has no tracked reference to be judged ' +
       'against; the same argument that gave @relativeDuration its own constant rather than ' +
       'tempo‘s. Calibration alternative, named honestly: derive it from a corpus of ' +
@@ -1991,23 +1989,23 @@ const imprecisionRowsFor = <Element extends string, Attribute extends string>(
       sites: [instructionSite(domain.map, element)],
       space: { kind: 'gain-ordered' } as const,
       // Finite, and for `degreeOfCorrelation` also non-zero: a zero divisor makes the
-      // compensating step ±∞ and NaNs every draw after the first (measured), §4's "no comparable
+      // compensating step ±∞ and NaNs every draw after the first (measured), the "no comparable
       // quantity". `stepWidth.max = 0` is NOT the same case and stays legal — it freezes the
       // walk at its start value, a correlation of 1.
       valueDomain: attribute === 'degreeOfCorrelation' ? nonZeroFinite : Number.isFinite,
       unit: domain.unit,
       jnd: domain.jnd,
       delta: DEFAULT_DELTA_JND,
-      // §5.0 names exactly four [convention] plausibility bands and imprecision is not among
+      // the design names exactly four [convention] plausibility bands and imprecision is not among
       // them. A fifth is not invented here: the band would have to come from a corpus of
       // authored imprecision widths.
       plausibleRange: null,
       role,
       liveness: { element, rule: note },
-      // Milliseconds or velocity units throughout. Nothing here is tick-valued, so §5.0's
+      // Milliseconds or velocity units throughout. Nothing here is tick-valued, so the
       // lcm rescale never touches these rows.
       ppqSensitive: false,
-      notes: `§5.9 — ${note} ${domain.jndNote}`,
+      notes: `${note} ${domain.jndNote}`,
     })),
   );
 
@@ -2030,7 +2028,7 @@ const IMPRECISION_ROWS: readonly ComparisonRegistryRow[] = [
       ['limit.lower', 'distribution'],
       ['limit.upper', 'distribution'],
     ],
-    'AD-14iv’s mixture (1 − qᴺ)·TruncNormal + qᴺ·N(0, σ), N = 10000 — the rejection ' +
+    'the mixture (1 − qᴺ)·TruncNormal + qᴺ·N(0, σ), N = 10000 — the rejection ' +
       'sampler’s escape hatch as a law. σ absent (or 0) is δ₀; the limits absent make q = 1 ' +
       'and the law the UNTRUNCATED normal, which is also what limit.lower === limit.upper ' +
       'gives. σ’s sign is immaterial. One absent limit truncates to [limit, 0].',
@@ -2046,11 +2044,11 @@ const IMPRECISION_ROWS: readonly ComparisonRegistryRow[] = [
     ],
     'clip(triangular(limits, mode)) — clipping is a separate operation in the renderer and is ' +
       'modelled as one, so its atoms at the two bounds are the tails it swallowed. BOTH clips ' +
-      'absent is δ₀ via a literal null draw (AD-47); ONE absent clamps to [clip, 0]. An absent ' +
+      'absent is δ₀ via a literal null draw; ONE absent clamps to [clip, 0]. An absent ' +
       'mode is mode 0. A mode OUTSIDE the limits is a different law rather than an error — one ' +
       'branch never runs and the support overshoots. limit.lower > limit.upper has NO law at ' +
       'all: the two branches run in opposite directions, so there is no monotone quantile and ' +
-      'the span reads ⊥ (§5.8’s non-monotone-pedal disposition).',
+      'the span reads ⊥ (the non-monotone-pedal disposition).',
   ),
   ...imprecisionRowsFor(
     'distribution.correlated.brownianNoise',
@@ -2064,7 +2062,7 @@ const IMPRECISION_ROWS: readonly ComparisonRegistryRow[] = [
       'index-0 one doHandover constructs — uniform over the MIDDLE HALF of the limits ' +
       '(measured: KS 0.0058 against U(−15, 15) for limits ±30, from 20 000 independent ' +
       'chains). stepWidth.max and milliseconds.timingBasis are the PROCESS and are priced ' +
-      'separately (A-B3): absent stepWidth.max freezes the walk at its start value, which is a ' +
+      'separately: absent stepWidth.max freezes the walk at its start value, which is a ' +
       'correlation of 1 rather than a smaller spread. @seed makes the span ⊥ — setSeed clears ' +
       'the series doHandover had just seeded.',
   ),
@@ -2085,9 +2083,9 @@ const IMPRECISION_ROWS: readonly ComparisonRegistryRow[] = [
       'degreeOfCorrelation absent or 0 divides by zero and NaNs every note after the first, so ' +
       'the span reads ⊥. @seed makes it ⊥ as it does for brownianNoise.',
   ),
-  // `@milliseconds.timingBasis` on the four I.I.D. elements — role `inert`, per AD-14iii.
+  // `@milliseconds.timingBasis` on the four I.I.D. elements — role `inert`.
   //
-  // Filed as rows rather than left absent for R14's reason: the inertness is a FINDING, to be
+  // Filed as rows rather than left absent for the reason: the inertness is a FINDING, to be
   // stated rather than inferred from a gap in the table. And it is inert in a precise sense the
   // detune pair's is not — the renderer really does read this attribute, but it selects an INDEX
   // into the pseudorandom sequence, and for these four families the marginal at every index is
@@ -2097,7 +2095,7 @@ const IMPRECISION_ROWS: readonly ComparisonRegistryRow[] = [
   ...imprecisionRowsFor(
     'distribution.uniform',
     [['milliseconds.timingBasis', 'inert']],
-    'AD-14iii: the basis sets the index handed to the provider, and for an i.i.d. family the ' +
+    'the basis sets the index handed to the provider, and for an i.i.d. family the ' +
       'marginal is the same at every index — so a difference here changes WHICH draw a note ' +
       'receives (a per-render artifact this module refuses to model) and not the law it is ' +
       'drawn from. Reported as an inert difference, priced at nothing, never excluded. An ' +
@@ -2108,17 +2106,17 @@ const IMPRECISION_ROWS: readonly ComparisonRegistryRow[] = [
   ...imprecisionRowsFor(
     'distribution.gaussian',
     [['milliseconds.timingBasis', 'inert']],
-    'AD-14iii, as for <distribution.uniform>: index selection, not law selection.',
+    'As for <distribution.uniform>: index selection, not law selection.',
   ),
   ...imprecisionRowsFor(
     'distribution.triangular',
     [['milliseconds.timingBasis', 'inert']],
-    'AD-14iii, as for <distribution.uniform>: index selection, not law selection.',
+    'As for <distribution.uniform>: index selection, not law selection.',
   ),
   ...imprecisionRowsFor(
     'distribution.list',
     [['milliseconds.timingBasis', 'inert']],
-    'AD-14iii, and for the list it is the starkest case: the sequence is DETERMINISTIC ' +
+    'For the list this is the starkest case: the sequence is DETERMINISTIC ' +
       '(series[i % n], interpolated at fractional indices), so the basis chooses which list ' +
       'entry a note lands on and the empirical law over the list is unchanged either way.',
   ),
@@ -2128,18 +2126,18 @@ const IMPRECISION_ROWS: readonly ComparisonRegistryRow[] = [
     'The whole <measurement> list is one law — the empirical distribution of its values as a ' +
       'MULTISET, which is why duplicates matter. An EMPTY list reads ⊥: getValue computes ' +
       'series[i % 0] = series[NaN] = undefined and every note in the span vanishes from the ' +
-      'MIDI export (R24). What the renderer actually draws is not sampling at all — ' +
-      'series[i % n] with interpolation at fractional indices — so this row, like §5.9’s ' +
+      'MIDI export. What the renderer actually draws is not sampling at all — ' +
+      'series[i % n] with interpolation at fractional indices — so this row, like the ' +
       'chord-shake sentence, declares the law rather than the sequence.',
   ),
 ];
 
 /**
- * DESIGN §5's live attributes for the dimensions evaluated so far, in §5's own order.
+ * the live attributes for the dimensions evaluated so far, in registry order.
  *
- * There is no `@controller` row: §4's metric is on numbers and the value is a NAME, so a
+ * There is no `@controller` row: the metric is on numbers and the value is a NAME, so a
  * mismatch is reported through the structural channel (`pedalDistance.controllerFindings`) as
- * §5.8 asks. The name matters — `Msm.ts:1445` maps only `sustain` and `soft`, and every other
+ * the design asks. The name matters — `Msm.ts:1445` maps only `sustain` and `soft`, and every other
  * name falls through to controller number 0, which is BANK SELECT rather than a pedal — but
  * none of that is a distance.
  */
@@ -2186,18 +2184,18 @@ export function comparisonRowFor(key: ComparisonJndKey): ComparisonRegistryRow {
 }
 
 /**
- * §9.2's `options.jnd` — a partial override of the registry's defaults, keyed by row.
+ * the `options.jnd` — a partial override of the registry's defaults, keyed by row.
  *
  * Partial because a caller who has a better constant for one attribute has not thereby stated
- * one for the rest; the defaults stay the documented reference (§7.1).
+ * one for the rest; the defaults stay the documented reference.
  */
 export type JndOverrides = Partial<Record<ComparisonJndKey, number>>;
 
 /**
  * The row as one run sees it: the registry's, with `options.jnd` applied.
  *
- * Only `jnd` is overridable. `δ_row` and `κ` are non-overridable documented constants in v1
- * (AD-25.7), and `plausibleRange` is overridden where it is consumed rather than here, because
+ * Only `jnd` is overridable. `δ_row` and `κ` are non-overridable documented constants in v1,
+ * and `plausibleRange` is overridden where it is consumed rather than here, because
  * a band is a claim about a corpus and belongs beside the finding it produces.
  */
 export function comparisonRowWith(
@@ -2214,7 +2212,7 @@ export function comparisonRowWith(
  * is not a live one there.
  *
  * Dimension-qualified because the pair alone is not unique across the full table — the reason
- * §4 puts the dimension in the key at all.
+ * the design puts the dimension in the key at all.
  */
 export function comparisonRowAt(
   dimension: ComparisonDimension,
@@ -2224,9 +2222,9 @@ export function comparisonRowAt(
   return ROWS_BY_KEY.get(`${dimension}/${element}@${attribute}`) ?? null;
 }
 
-// --- §4's capped local metric ------------------------------------------------------------
+// --- the capped local metric ------------------------------------------------------------
 
-/** {@link localDistance}'s result: the distance, and whether the cap bound it (§4). */
+/** {@link localDistance}'s result: the distance, and whether the cap bound it. */
 export interface LocalDistance {
   /** In JND units of the row. Always finite, always ≤ `2·δ_row`. */
   readonly distance: number;
@@ -2235,17 +2233,17 @@ export interface LocalDistance {
 }
 
 /**
- * §4's capped local metric, on the row's JND-normalized scale:
+ * the capped local metric, on the row's JND-normalized scale:
  *
  *     d_row(x, y) = min( |T(x) − T(y)| / jnd_row , 2·δ_row )
  *     d_row(x, ⊥) = δ_row        d_row(⊥, ⊥) = 0
  *
  * Four things fall out of the one cap: truncation of a metric is a metric; `T`'s infinite
  * boundary values become finite without a separate clamp constant; "no comparable value" gets a
- * metric-safe price instead of a hole in the domain; and the density stays total, so R4's
+ * metric-safe price instead of a hole in the domain; and the density stays total, so the
  * decomposition is untouched.
  *
- * This is the attribute-level metric, the §6 edit path's and the step rows'. The curve
+ * This is the attribute-level metric, the edit path's and the step rows'. The curve
  * dimensions integrate their curve instead and use only the row's `jnd` — pricing a tempo
  * difference by summing this function over `@bpm` and `@transition.to` would double the count
  * and lose the span it holds for.
@@ -2254,7 +2252,7 @@ export interface LocalDistance {
  * the identity is checked before the subtraction, so `∞ − ∞ = NaN` never arises. Callers pass
  * values that have already met {@link ComparisonRegistryRow.valueDomain}; one that has not is
  * `⊥`, not an argument — and it arrives as `values.ts`'s `Bottom` rather than `null`, because
- * §5.0's totality rule makes it a *value* that survives to the density layer with its cause.
+ * the totality rule makes it a *value* that survives to the density layer with its cause.
  */
 export function localDistance(
   row: ComparisonRegistryRow,
@@ -2265,16 +2263,16 @@ export function localDistance(
 }
 
 /**
- * §4's capped local metric with §7.4's per-document canonicalization applied in T-space.
+ * the capped local metric with the per-document canonicalization applied in T-space.
  *
  * `'level'` and `'level-gain'` are transforms of `T(x)`, not of `x` — a log space's level is a
  * multiplicative factor and its canonicalization is a subtraction only after the logarithm — so
  * the shift and the scale land here, between `forwardInSpace` and the cap, and nowhere else. A
  * caller canonicalizing the raw VALUE instead would be right for `gain` (where `T` is the
  * identity, and where every row that reaches this function today lives) and silently wrong for
- * every log row, which is the class of error §7.4's own table warns about.
+ * every log row, which is the class of error the table warns about.
  *
- * `⊥` is untouched by any mode: it has no value to shift, and §4 prices it at `δ_row` from
+ * `⊥` is untouched by any mode: it has no value to shift, and the design prices it at `δ_row` from
  * everything regardless of what the other side became.
  */
 export function canonicalLocalDistance(
@@ -2298,7 +2296,7 @@ function localDistanceOf(
   canonical: CanonicalPair,
 ): LocalDistance {
   const cap = 2 * row.delta;
-  // Identity first: `T` is infinite at the boundary fixed points §4 enumerates, and two
+  // Identity first: `T` is infinite at the enumerated boundary fixed points, and two
   // documents that agree on `curvature = 1` differ by 0, not by `∞ − ∞`. It needs the two
   // canonicalizations to agree as well — under `'level'` two documents holding one value are
   // genuinely at different distances from their own means, which is the mode's whole content.

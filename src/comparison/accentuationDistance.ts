@@ -1,9 +1,9 @@
 /**
- * The accentuation deviation density and its integral — DESIGN.md §5.4.
+ * The accentuation deviation density and its integral.
  *
  * `p_accentuation(t) = min( |c_A(t) − c_B(t)| / jnd_velocity , 2·δ_row )` where
  * `c(t) = scale · getAccentuationAt(beat(t))` is the per-beat velocity contribution, integrated
- * over the window in quarters. The unit is JND·quarters, and the JND is §7.1's velocity
+ * over the window in quarters. The unit is JND·quarters, and the JND is the velocity
  * constant — this is the one dimension whose curve is already in MIDI velocity units, so `T` is
  * the identity and no logarithm is involved.
  *
@@ -13,7 +13,7 @@
  * `getAccentuationAt` is affine in `beat` between two consecutive accentuations. So on a cell
  * carrying no breakpoint of either curve, the difference is affine, GL-10 integrates it
  * exactly, and the only error left is the one `integrateCappedAbsolute` removes by splitting at
- * the root and at the cap crossing. This dimension's entry in §9.3's per-family epsilon record
+ * the root and at the cap crossing. This dimension's entry in the per-family epsilon record
  * is therefore 0 in both units, as asynchrony's is.
  *
  * That rests on {@link accentuationBreakpointsTicks} being complete. The curve breaks at four
@@ -27,9 +27,9 @@
  * the curve has a removable jump at a single point. A single point has measure zero and cannot
  * change an integral; GL-10's nodes are strictly interior and never land on it.
  *
- * ## Capped, for the same reason §5.8's is
+ * ## Capped, for the same reason the is
  *
- * An unresolvable `accentuationPatternDef` makes the whole performance render throw (R21), so
+ * An unresolvable `accentuationPatternDef` makes the whole performance render throw, so
  * this dimension reaches `⊥` — and once `⊥` is reachable at `δ_row`, the value-value case must
  * be capped at `2·δ_row` or a `⊥` document as middle term breaks the triangle inequality. See
  * `integrateCappedAbsolute`'s note.
@@ -49,7 +49,7 @@ import type { ComparisonWindow } from './window.js';
 import { IDENTITY_CANONICAL_PAIR, canonicalValue, type CanonicalPair } from './decomposition.js';
 
 /**
- * The accentuation curve as a `SampledCurve` for §1.2's decomposition, or null where the
+ * The accentuation curve as a `SampledCurve` for the decomposition, or null where the
  * window carries a `⊥` span — see `pedalSampler`, whose note applies verbatim.
  *
  * `T` is the identity here too (the space is gain-ordered), so the decomposition's `level` and
@@ -85,9 +85,9 @@ export interface AccentuationCell {
   readonly mass: number;
   readonly capped: boolean;
   /**
-   * `p_accentuation(t)` in JND per quarter, at a position in quarters (AD-51.1).
+   * `p_accentuation(t)` in JND per quarter, at a position in quarters.
    *
-   * The integrand this cell's mass was computed from, exposed so AD-19 can refine segment
+   * The integrand this cell's mass was computed from, exposed so the caller can refine segment
    * boundaries to the roots of `p_D − τ_D` rather than to a cell-quantized edge that can sit
    * many bars from the crossing. `mass` stays the authority — see `DensityCell`.
    */
@@ -224,7 +224,7 @@ export function accentuationDistance(
     const lengthQuarters = (cellEnd - cellStart) / ticksPerQuarter;
 
     // The cell's ⊥-ness is decided at its left edge, as every dimension decides a
-    // piecewise-constant property: right continuity (A-B1) plus a grid that carries every
+    // piecewise-constant property: right continuity plus a grid that carries every
     // segment boundary.
     const bottomA = accentuationSegmentAt(a, cellStart)?.pattern.kind === 'bottom';
     const bottomB = accentuationSegmentAt(b, cellStart)?.pattern.kind === 'bottom';
@@ -255,7 +255,7 @@ export function accentuationDistance(
       );
       mass = integral.mass / ticksPerQuarter;
       capped = integral.capped;
-      // The capped integrand itself (AD-36.2's `min(|·|, 2·δ_row)`), so the sampler and the
+      // The capped integrand itself (the `min(|·|, 2·δ_row)`), so the sampler and the
       // quadrature see one function rather than two that agree by inspection.
       densityAt = (quarters) =>
         Math.min(Math.abs(difference(quarters * ticksPerQuarter)) / jnd, cap);

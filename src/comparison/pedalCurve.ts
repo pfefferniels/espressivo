@@ -1,9 +1,9 @@
 /**
- * The pedal (movement) curve — DESIGN.md §5.8, as amended by AD-35.
+ * The pedal (movement) curve.
  *
  * The compared object is the controller position on [0,1] as a function of score time:
- * `position(t)`, in `ratio` units, evaluated on the ideal Bézier (§5.0 rule 3) exactly as
- * §5.3's dynamics curve is. `<movement>` and `<dynamics>` share `bezier.ts` and share nothing
+ * `position(t)`, in `ratio` units, evaluated on the ideal Bézier (the rule 3) exactly as
+ * the dynamics curve is. `<movement>` and `<dynamics>` share `bezier.ts` and share nothing
  * else — different defaults, different span rules, different neutral, different failure modes.
  *
  * ## The timeline is emitted events, and an emitted event HOLDS
@@ -15,7 +15,7 @@
  * consequences:
  *
  * - Before the first event the pedal is up (`0`), because no controller value has been sent and
- *   the MIDI default for CC 64/67 is 0. That is also why R6's neutral for an absent
+ *   the MIDI default for CC 64/67 is 0. That is also why the neutral for an absent
  *   `movementMap` is 0 rather than a left extension of the first movement.
  * - After the last rendered span the last emitted value HOLDS to the end of the window — its
  *   `@transition.to`, or its `@position` on a constant movement. Modelling the tail as 0 would
@@ -25,11 +25,11 @@
  *   while nothing new is emitted. Executed: a constant `position="1.0"` at 0, an unreadable
  *   movement at 360 and a transition at 720 emit events at 0 and then not again until 720.
  *
- * §5.8 states none of the above; it is this module's reading. What §5.8 does state — the flat
+ * the design states none of the above; it is this module's reading. What it does state — the flat
  * span structure, the last movement's exclusion, curvature's 0.4 default, the inheritance of a
  * missing `@position` — is implemented verbatim below with its citations.
  *
- * ## The exclusion is by ENTRY INDEX, and a trailing `<style>` resurrects a movement (AD-35)
+ * ## The exclusion is by ENTRY INDEX, and a trailing `<style>` resurrects a movement
  *
  * ```ts
  * // MovementMap.renderMovementToMap:173-183
@@ -47,26 +47,26 @@
  * 26 events over [0, 1.798·10³⁰⁸] with it. A LEADING `<style>`, or one between the two
  * movements, changes nothing.
  *
- * AD-35 rules all three readings: (a) the exclusion is by entry index, renderer-exact; (b) the
+ * the design rules all three readings: (a) the exclusion is by entry index, renderer-exact; (b) the
  * resurrected span is a real performed transition, bounded by the comparison window since every
- * integral runs over `[start, end]`; (c) §5.8's contrast paragraph gains a third state — the
+ * integral runs over `[start, end]`; (c) the contrast paragraph gains a third state — the
  * span exists AND is unbounded. Over any real window the resurrected transition sits at
- * `u ≈ 10⁻³⁰⁵`, i.e. flat at `@position`, which is AD-25.9's trailing-tempo behaviour by a
+ * `u ≈ 10⁻³⁰⁵`, i.e. flat at `@position`, which is the trailing-tempo behaviour by a
  * different route.
  *
- * ## `⊥` here is the non-monotone date component (§4)
+ * ## `⊥` here is the non-monotone date component
  *
  * `<movement>` has no clamps — `resolveMovement` takes `@curvature`/`@protraction` and uses
  * them, where `DynamicsMap.ts:170-181` clamps to `[0,1]` and `[−1,1]`. Out of those ranges the
  * inner control points leave the unit square, `x(t)` stops being monotone, and the sampler emits
- * events whose dates go backwards: there is no `date ↦ position` function to compare, so §4's
+ * events whose dates go backwards: there is no `date ↦ position` function to compare, so the
  * rule takes the span with it. A floor on the damage rather than an exact account — a
  * non-monotone `x` can also place events outside the span entirely, which the ⊥ span does not
  * model.
  *
  * Position values are a different case: `EventMaker.createControlChange:530-544` clamps the
  * controller value into 0..127, so a `@position` outside [0,1] is performed at the bound and
- * compares as what is performed (§4's "resolved" — the renderer's repair happens before the
+ * compares as what is performed (the "resolved" — the renderer's repair happens before the
  * domain test). The smoothstep's value fraction stays in [0,1], so clamping the two endpoints
  * clamps the whole curve.
  */
@@ -93,7 +93,7 @@ import { entryTicksAt, type OrderedMapView } from './document.js';
 /** No controller event has been sent yet: the pedal is up (MIDI's CC default). */
 export const PEDAL_NEUTRAL_POSITION = 0;
 
-/** `data/movement.ts` — 0.4, and deliberately not `<dynamics>`'s 0.0 (§5.8/AD-13). */
+/** `data/movement.ts` — 0.4, and deliberately not `<dynamics>`'s 0.0. */
 export const DEFAULT_MOVEMENT_CURVATURE = 0.4;
 /** `data/movement.ts`. */
 export const DEFAULT_MOVEMENT_PROTRACTION = 0;
@@ -154,11 +154,11 @@ export interface PedalCurve {
   readonly segments: readonly PedalSegment[];
   readonly breakpointsTicks: readonly number[];
   readonly notes: readonly PedalCurveNote[];
-  /** Every controller name the map drives, in first-appearance order (§5.8's structural channel). */
+  /** Every controller name the map drives, in first-appearance order (the structural channel). */
   readonly controllers: readonly string[];
 }
 
-/** The neutral pedal curve: up everywhere, which an absent `movementMap` performs (R6). */
+/** The neutral pedal curve: up everywhere, which an absent `movementMap` performs. */
 export function neutralPedalCurve(): PedalCurve {
   return {
     segments: [
@@ -251,9 +251,9 @@ function endTicksOf(
  *
  * Span ends follow the same-local-name rule (`getEndDate:153-159` tests for `movement`), so a
  * `<style>` between two movements is transparent to the span — while a `<style>` after the last
- * movement is not transparent to the render guard, which is AD-35's whole subject.
+ * movement is not transparent to the render guard, which is the whole subject.
  *
- * Spans are flat, not per-controller (AD-13/R9): the scan has no `@controller` test, so a `soft`
+ * Spans are flat, not per-controller: the scan has no `@controller` test, so a `soft`
  * movement ends a `sustain` span. Executed — a sustain transition at 0 and a soft movement at
  * 360 stop the sustain events at 360. Per-controller curves, the natural encoding, would compute
  * a sustain gesture the renderer never performs whenever two pedals interleave.
@@ -275,7 +275,7 @@ export function readMovementSegments(view: OrderedMapView | null, scaleFactor: n
     const controller = readAttributeValue(element, 'controller') ?? DEFAULT_CONTROLLER;
     const dateTicks = entryTicksAt(view, index, scaleFactor);
 
-    // AD-35(a): the guard is `movementIndex < size() - 1` over ENTRIES, so what excludes a
+    // The guard is `movementIndex < size() - 1` over ENTRIES, so what excludes a
     // movement is being the last entry — not being the last movement.
     if (index === entries.length - 1) {
       notes.push({
@@ -283,8 +283,8 @@ export function readMovementSegments(view: OrderedMapView | null, scaleFactor: n
         dateTicks,
         detail:
           'last ENTRY of the map: renderMovementToMap:173-183 never enters the render for it, ' +
-          'so it contributes no span at all and its own position is never performed (§5.8, ' +
-          'AD-25.9). A movementMap with a single <movement> renders zero controller events.',
+          'so it contributes no span at all and its own position is never performed. ' +
+          'A movementMap with a single <movement> renders zero controller events.',
       });
       continue;
     }
@@ -355,7 +355,7 @@ export function readMovementSegments(view: OrderedMapView | null, scaleFactor: n
         detail:
           `@controller="${controller}": Msm.parsePositionMap:1445-1449 maps only "sustain" and ` +
           '"soft", and every other name falls through to controller number 0 — BANK SELECT, ' +
-          'not a pedal. A structural finding, never a curve difference (§5.8).',
+          'not a pedal. A structural finding, never a curve difference.',
       });
 
     raws.push({
@@ -383,8 +383,8 @@ function readNumericOr(element: Element, name: string, fallback: number): number
 /**
  * Turn the rendered movements into a total timeline: lead-in, spans, holds.
  *
- * The hold makes the dimension total over the window without a special case at either edge
- * (§5.0). Its value is the *end* value of the span before it — `@transition.to` on a transition,
+ * The hold makes the dimension total over the window without a special case at either edge.
+ * Its value is the *end* value of the span before it — `@transition.to` on a transition,
  * `@position` on a constant movement, and `⊥` after a `⊥` span, whose emitted events are the
  * ones whose dates cannot be trusted.
  */
@@ -431,9 +431,9 @@ function assembleTimeline(
         detail:
           'an entry after the last <movement> — a trailing <style>, typically — moves the ' +
           '`movementIndex < size() - 1` guard past this movement, so it renders with ' +
-          'getEndDate = Number.MAX_VALUE. AD-35(b): a real performed transition, bounded by ' +
+          'getEndDate = Number.MAX_VALUE: a real performed transition, bounded by ' +
           'the comparison window; over any real window it sits at u ~ 1e-305, i.e. flat at ' +
-          '@position, which is AD-25.9 by a different route.',
+          '@position, which is the same outcome by a different route.',
       });
       continue;
     }
@@ -470,7 +470,7 @@ function shapeOf(raw: RawMovement, notes: PedalCurveNote[]): Valued<PedalShape> 
       dateTicks: raw.dateTicks,
       detail:
         'an unparseable @position: parseFloat gives NaN, every sampled value is NaN and the ' +
-        'clamp in the MIDI export cannot repair it — the span reads ⊥ (§4/AD-1)',
+        'clamp in the MIDI export cannot repair it — the span reads ⊥',
     });
     return bottom('renderer-error');
   }
@@ -489,7 +489,7 @@ function shapeOf(raw: RawMovement, notes: PedalCurveNote[]): Valued<PedalShape> 
     return bottom('renderer-error');
   }
 
-  // §4's domain gate, lifted to the span. <movement> has no clamps of its own, so an
+  // the domain gate, lifted to the span. <movement> has no clamps of its own, so an
   // out-of-range control point makes x(t) non-monotone and the sampler emits date-decreasing
   // events: there is no date ↦ position function to integrate.
   const shapeInDomain =
@@ -507,7 +507,7 @@ function shapeOf(raw: RawMovement, notes: PedalCurveNote[]): Valued<PedalShape> 
         `@curvature=${String(raw.curvature)} / @protraction=${String(raw.protraction)} outside ` +
         '[0,1] × [−1,1], which <movement> does not clamp (contrast DynamicsMap.ts:170-181): ' +
         'the inner control points leave the unit square, x(t) is no longer monotone and the ' +
-        'sampler emits events whose dates go backwards, so the span reads ⊥ (§4, §5.8)',
+        'sampler emits events whose dates go backwards, so the span reads ⊥',
     });
     return bottom('renderer-error');
   }
@@ -527,7 +527,7 @@ function endValueOf(shape: Valued<PedalShape>): Valued<PedalShape> {
 }
 
 /**
- * The segment governing `ticks`, right-continuous (A-B1), or null where none does.
+ * The segment governing `ticks`, right-continuous, or null where none does.
  *
  * A scan here would take the LAST covering segment where accentuation and rubato take the first;
  * on a timeline whose spans and holds abut those are the same segment, and
@@ -541,10 +541,10 @@ export function pedalSegmentAt(curve: PedalCurve, ticks: number): PedalSegment |
  * `position(t)` on [0,1] — the ideal curve, or `⊥`.
  *
  * The Bézier is inverted by {@link idealCurveParameter} rather than by `bezier.ts`'s `tForDate`,
- * per §5.0 rule 3: `tForDate` stops within one tick of the target, making the renderer's
+ * per the rule 3: `tForDate` stops within one tick of the target, making the renderer's
  * `date ↦ position` a staircase no smooth quadrature converges against. On a resurrected span the
  * width is `Number.MAX_VALUE` and `x` is ~1e-305 for every real date, so the inversion returns
- * ~0 and the value is `@position` to within 1e-30 — AD-35(b)'s flat reading, arrived at by
+ * ~0 and the value is `@position` to within 1e-30 — the flat reading, arrived at by
  * evaluating the transition rather than special-casing it.
  */
 export function positionAt(curve: PedalCurve, ticks: number): Valued<number> {

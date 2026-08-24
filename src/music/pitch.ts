@@ -504,7 +504,7 @@ export function midi2PnameAccidOct(
 }
 
 /**
- * The octave number of a MIDI pitch, counting from 0 at pitch 21 (A0). Anything below 21
+ * The octave number of a MIDI pitch, counting from 0 at pitch 21. Anything below 21
  * returns -1.
  */
 function getMidiOctave(midiPitch: number): number {

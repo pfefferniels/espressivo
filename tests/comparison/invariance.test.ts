@@ -1,12 +1,12 @@
 /**
- * §7.4's invariance modes reaching the DISTANCE, not only the decomposition (AD-20, C9).
+ * the invariance modes reaching the DISTANCE, not only the decomposition.
  *
  * A mode must reach `d_k` and not only `decomposition`. The canonicalization is expressed as
  * DATA (`CurveCanonicalization`, `shift` and `scale` in T-space) and handed to the integrand,
  * and `applyInvariance` is defined through the same data so the curve form and the integrand
  * form cannot drift apart.
  *
- * The tests are the two halves of §7.4's own table, which is exactly right for log spaces and
+ * The tests are the two halves of the table, which is exactly right for log spaces and
  * silently wrong elsewhere:
  *
  * - in a LOG space `'level'` removes a multiplicative factor — a roll read 10 % fast compares
@@ -81,7 +81,7 @@ function canonicalFor(
   };
 }
 
-describe('tempo, a LOG space: “level” removes a multiplicative factor (§7.4)', () => {
+describe('tempo, a LOG space: “level” removes a multiplicative factor', () => {
   const RAMP = (bpm: number, to: number) =>
     `<tempo date="0.0" bpm="${String(bpm)}" beatLength="0.25" transition.to="${String(to)}" meanTempoAt="0.5"/>` +
     `<tempo date="5760.0" bpm="${String(to)}" beatLength="0.25"/>`;
@@ -129,7 +129,7 @@ describe('tempo, a LOG space: “level” removes a multiplicative factor (§7.4
     expect(distance('level')).toBeGreaterThan(1);
   });
 
-  it('is exactly 0 against itself under every mode (P-C1)', () => {
+  it('is exactly 0 against itself under every mode', () => {
     for (const mode of ['none', 'level', 'level-gain'] as const) {
       const { distance } = setUp(RAMP(60, 90), RAMP(60, 90));
       expect(distance(mode)).toBe(0);
@@ -152,12 +152,12 @@ describe('tempo, a LOG space: “level” removes a multiplicative factor (§7.4
     expect(distance('level-gain')).toBeLessThan(1e-6);
   });
 
-  it('collapses a constant curve to the ZERO curve under “level-gain” (AD-20)', () => {
+  it('collapses a constant curve to the ZERO curve under “level-gain”', () => {
     const constant = '<tempo date="0.0" bpm="60" beatLength="0.25"/>';
     const other = '<tempo date="0.0" bpm="90" beatLength="0.25"/>';
     const { distance } = setUp(constant, other);
     // Both sides are constant, so both canonicalize to the identically zero curve and the
-    // distance is EXACTLY zero — AD-20's rule is stronger than "do not divide by zero": a
+    // distance is EXACTLY zero — the rule is stronger than "do not divide by zero": a
     // scale of 1 on a constant curve would leave floating-point residue behind.
     expect(distance('level-gain')).toBe(0);
   });
@@ -173,7 +173,7 @@ describe('tempo, a LOG space: “level” removes a multiplicative factor (§7.4
   });
 });
 
-describe('asynchrony, a LINEAR space: “level” removes an offset only (§7.4’s trap, C9)', () => {
+describe('asynchrony, a LINEAR space: “level” removes an offset only (the trap)', () => {
   const setUp = (a: string, b: string) => {
     const pair = pairOf('asynchronyMap', a, b);
     const read = (side: 'a' | 'b'): AsynchronyCurve =>
@@ -212,7 +212,7 @@ describe('asynchrony, a LINEAR space: “level” removes an offset only (§7.4�
   /**
    * A roll read 10 % slower has all its inter-onset offsets stretched 10 %, and `'level'` does
    * NOT remove that — the same physical uncertainty it removes from tempo stays here. This is
-   * the measurement behind the plain-words warning §7.4 requires of the report.
+   * the measurement behind the plain-words warning the design requires of the report.
    */
   it('does NOT remove a 10 % stretch, which the same mode removes from tempo', () => {
     const { distance } = setUp(STEPS(1, 0), STEPS(1.1, 0));
@@ -220,7 +220,7 @@ describe('asynchrony, a LINEAR space: “level” removes an offset only (§7.4�
     expect(distance('level-gain')).toBeLessThan(1e-12);
   });
 
-  it('is symmetric under the swap in every mode (P-C2)', () => {
+  it('is symmetric under the swap in every mode', () => {
     const forward = setUp(STEPS(1, 0), STEPS(1.1, 25));
     const reverse = setUp(STEPS(1.1, 25), STEPS(1, 0));
     for (const mode of ['none', 'level', 'level-gain'] as const)

@@ -1,5 +1,5 @@
 /**
- * C13's cumulative drift: what the two tempo curves do to the clock.
+ * the cumulative drift: what the two tempo curves do to the clock.
  *
  * A-Q3 compares the curve rather than the millisecond map because cumulative time integrates
  * every earlier difference — two performances agreeing everywhere but one held note diverge in
@@ -7,12 +7,12 @@
  * ships as a labelled SECONDARY and is not a distance: it enters no `d_k`, no `D`, no table cell.
  *
  * Seconds are `∫ 60 / qbpm(t) dt` over the window in quarters, on the tempo dimension's own
- * refinement grid with the graded mesh the distance uses (AD-28.1), so one curve has one
+ * refinement grid with the graded mesh the distance uses, so one curve has one
  * accuracy to reason about.
  *
  * This integrates the DEFINED curve exactly rather than reproducing the renderer's Simpson
- * accumulation: §5.1's non-monotone millisecond map at a skipped instruction would need the
- * renderer's own accumulator, which §9.7 keeps out of the comparison layer. The divergence is
+ * accumulation: the non-monotone millisecond map at a skipped instruction would need the
+ * renderer's own accumulator, which the design keeps out of the comparison layer. The divergence is
  * confined to documents that trip that quirk.
  */
 import { pairwise } from '../prelude/index.js';
@@ -20,11 +20,11 @@ import { CompensatedSum, bisectSignChange, gaussLegendre10 } from './quadrature.
 import { quarterBpmAt, segmentAt, type TempoCurve } from './tempoCurve.js';
 import { gradedBoundariesIn } from './tempoDistance.js';
 
-/** §9.3's `cumulativeDrift` block (C13). */
+/** the `cumulativeDrift` block. */
 export interface CumulativeDrift {
   readonly secondsA: number;
   readonly secondsB: number;
-  /** `secondsA − secondsB`; a DESCRIPTOR, so it negates under the a/b swap (§9.5). */
+  /** `secondsA − secondsB`; a DESCRIPTOR, so it negates under the a/b swap. */
   readonly difference: number;
   /** `secondsA / secondsB`; inverts under the swap. */
   readonly ratio: number;

@@ -1,16 +1,16 @@
 /**
- * Articulation atoms and their liveness — DESIGN.md §5.5, first half.
+ * Articulation atoms and their liveness.
  *
  * One question per `<articulation>`: which of its attributes does the renderer actually apply?
- * §5.5's "the atom's effective modifier is resolved before pricing, not summed over rows" is
+ * the "the atom's effective modifier is resolved before pricing, not summed over rows" is
  * exactly that, and it is a prerequisite for pricing rather than part of it — pricing a
  * `@relativeDuration` the renderer never applies charges 0.59 nepers for nothing.
  *
  * Not here: the default-articulation step function, which is `articulationDefault.ts`, and the
- * matching of atoms between two documents, which §5.5 delegates to §5.6's alignment DP in
+ * matching of atoms between two documents, which is delegated to the alignment DP in
  * `eventAlignment.ts`.
  *
- * ## Exactly one duration lever fires inline; on a def they compose (AD-11i, R4)
+ * ## Exactly one duration lever fires inline; on a def they compose
  *
  * `articulateNote` (`maps/data/articulation.ts`) reads `duration` once, up front, and every
  * branch computes
@@ -28,7 +28,7 @@
  * `articulateNote` re-reads `@velocity` after each write, so `@absoluteVelocity`,
  * `@relativeVelocity` and `@absoluteVelocityChange` chain. Executed: velocity 64 with
  * `absoluteVelocity="80"`, `relativeVelocity="0.5"`, `absoluteVelocityChange="7"` performs 47.
- * AD-11i's one-lever rule is a duration rule and does not generalise.
+ * the one-lever rule is a duration rule and does not generalise.
  *
  * ## Atoms compose across atoms, in map order
  *
@@ -39,12 +39,12 @@
  * modifier composes per-atom modifiers, each internally last-write-wins on duration and chained
  * on velocity.
  *
- * ## An unresolvable `@name.ref` does not drop the atom (contrast §5.4)
+ * ## An unresolvable `@name.ref` does not drop the atom (contrast accentuation)
  *
  * If no `<style>` is in scope, or the style in scope has no def of that name, the def is
  * silently ignored and the atom's own inline modifiers still apply. Executed both ways:
  * `name.ref="stacc" relativeDuration="1.2"` performs 120 on a 100-tick note with the def
- * missing, and 60 with it present (0.5 then 1.2). §5.4's accentuation skips the whole
+ * missing, and 60 with it present (0.5 then 1.2). The accentuation skips the whole
  * instruction in the same situation.
  */
 import { head, isNonEmpty } from '../prelude/index.js';
@@ -71,8 +71,8 @@ export type ArticulationSite = 'instruction' | 'def';
 /**
  * The tick-domain duration levers in the order the renderer lets them win, highest first.
  *
- * Imported from the expression registry rather than restated — §5.5 names that constant as the
- * precedence, and two copies of an ordering that must agree is the drift AD-33.6 forbids.
+ * Imported from the expression registry rather than restated — the design names that constant as the
+ * precedence, and two copies of an ordering that must agree is the drift the design forbids.
  */
 export const DURATION_PRECEDENCE: readonly string[] = INLINE_DURATION_PRECEDENCE;
 
@@ -99,7 +99,7 @@ export const ARTICULATION_ATTRIBUTES: readonly string[] = [
  * `relativeVelocity` guard on `!== 1.0`, the change and delay levers on `!== 0.0`, and the
  * three replacement attributes on `!== null` — which is why an authored `relativeVelocity="0"`
  * is a silenced note rather than a neutral one, and why a replacement attribute has no neutral
- * at all (§5.5/AD-2: present-vs-absent reads `⊥`).
+ * at all (present-vs-absent reads `⊥`).
  */
 export const ARTICULATION_NEUTRALS: Readonly<Record<string, number | null>> = {
   absoluteDelay: 0,
@@ -123,7 +123,7 @@ export interface AtomAttribute {
   readonly value: number;
   /** Where it was written — an inline `<articulation>` or the `<articulationDef>` it names. */
   readonly site: ArticulationSite;
-  /** False where a higher-precedence lever on the same element shadows it (AD-11i). */
+  /** False where a higher-precedence lever on the same element shadows it. */
   readonly live: boolean;
   /** True where the value equals the renderer's own no-op guard for that attribute. */
   readonly neutral: boolean;
@@ -146,7 +146,7 @@ export interface ArticulationAtom {
   readonly noteid: string | null;
   /**
    * False for a `noteid`-targeted atom read without an MSM: the note it lands on decides its
-   * date, and the renderer applies it there even when the dates disagree (§5.5/AD-7).
+   * date, and the renderer applies it there even when the dates disagree.
    */
   readonly datePositionKnown: boolean;
   /** Every attribute the renderer reads, from the def and the instruction, liveness resolved. */
@@ -193,8 +193,8 @@ function numberOf(element: Element, name: string): number | null {
 /**
  * Whether a value is the renderer's own no-op for its attribute.
  *
- * A `null` neutral is not "no neutral found": it is §5.5's replacement case, where the
- * attribute has no neutral at all and present-vs-absent reads `⊥` (AD-2). The lookup is total
+ * A `null` neutral is not "no neutral found": it is the replacement case, where the
+ * attribute has no neutral at all and present-vs-absent reads `⊥`. The lookup is total
  * over {@link ARTICULATION_ATTRIBUTES}, which the test pins, so a missing key is a programmer
  * error rather than data.
  */
@@ -233,7 +233,7 @@ function readAttributes(
           present(DURATION_SHORT_CIRCUIT)
             ? `@${DURATION_SHORT_CIRCUIT} short-circuits the whole tick-domain duration branch`
             : `@${liveLevers[0]} has higher precedence and overwrites it`
-        } (§5.5/AD-11i, executed). On an <articulationDef> the same pair would compose.`,
+        } (executed). On an <articulationDef> the same pair would compose.`,
       });
 
     attributes.push({ attribute: name, value, site, live, neutral: isNeutral(name, value) });
@@ -295,7 +295,7 @@ export function readArticulationAtoms(
           dateTicks,
           detail:
             `no <articulationDef name="${nameRef}"> in scope: the def is silently ignored and ` +
-            'the atom’s own inline modifiers STILL APPLY — executed. Contrast §5.4, where an ' +
+            'the atom’s own inline modifiers STILL APPLY — executed. Contrast accentuation, where an ' +
             'instruction with no style in scope is skipped entirely.',
         });
     }
@@ -310,7 +310,7 @@ export function readArticulationAtoms(
           'stripped UNCONDITIONALLY, on the assumption that it reads "#id". The atom lands on ' +
           'that note wherever it is (a date mismatch is a warning and it is applied anyway) ' +
           'and is dropped entirely if the id resolves to nothing. Without an MSM neither is ' +
-          'decidable here, so the atom is carried with datePositionKnown: false (§5.5/AD-7).',
+          'decidable here, so the atom is carried with datePositionKnown: false.',
       });
 
     atoms.push({
@@ -335,10 +335,10 @@ export function readArticulationAtoms(
  * One `<articulationDef>` on its own, as the atom a `@defaultArticulation` step performs.
  *
  * The default names a def and the renderer applies it to every note in the step's span that
- * carries no atom of its own, with no inline instruction on top (AD-37.2b: an atom shadows the
+ * carries no atom of its own, with no inline instruction on top (an atom shadows the
  * default rather than composing with it). So the atom is the def's attributes and nothing else,
  * read at site `'def'`, where every duration lever composes rather than shadowing — the affine
- * form §5.5's pricing wants.
+ * form the pricing wants.
  *
  * `readAttributes`' note channel is discarded: at site `'def'` `resolveDurationLever` returns
  * every present lever, so the only note it can raise — `shadowed-lever` — cannot fire.

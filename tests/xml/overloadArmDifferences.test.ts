@@ -1,6 +1,6 @@
 /**
- * The per-method behavioural probe RULE M2a demands before any navigation implementation is
- * merged into another (ARCHITECTURE.md §9, and the "forbidden in T14" row of §11).
+ * The per-method behavioural probe the design demands before any navigation implementation is
+ * merged into another (ARCHITECTURE.md RULE M2a).
  *
  * Four pairs of functions in `src/xml/tree.ts` read as one lookup with the arguments either
  * way round. That is the mistake this file exists to prevent: three of the four pairs are two
@@ -69,7 +69,7 @@ describe('the two first-child implementations', () => {
   });
 
   /**
-   * The case RULE M2a names explicitly: same local name, different namespaces. Both forms
+   * The case RULE the design names explicitly: same local name, different namespaces. Both forms
    * match on LOCAL name and so both return the first in document order, ignoring the
    * namespace split. Recorded because a merge onto a namespace-aware primitive would change
    * this, and the byte-compared MEI path relies on it.

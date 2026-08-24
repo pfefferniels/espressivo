@@ -1,23 +1,23 @@
 /**
- * The pedal deviation density and its integral — DESIGN.md §5.8.
+ * The pedal deviation density and its integral.
  *
  * `p_pedal(t) = min( |position_A(t) − position_B(t)| / jnd_pedal , 2·δ_row )`, integrated over
  * the window in quarters, so the unit is JND·quarters as everywhere else. The space is a gain
- * on [0,1], not a logit (§5.8): 0 and 1 are the most common authored values and a logit sends
+ * on [0,1], not a logit: 0 and 1 are the most common authored values and a logit sends
  * them to ±∞ for a quantity whose musical meaning — pedal depth as a fraction of full travel —
  * is already linear.
  *
  * The density is capped where tempo's and dynamics' are not, because this dimension can produce
- * `⊥`: a non-monotone date component has no `date ↦ position` function at all (§5.8/§4). See
+ * `⊥`: a non-monotone date component has no `date ↦ position` function at all. See
  * {@link integrateCappedAbsolute} for why a reachable `⊥` forces the value-value case through
- * §4's cap as well.
+ * the cap as well.
  *
- * ## What is integrated is the ideal Bézier (§5.0 rule 3)
+ * ## What is integrated is the ideal Bézier (the rule 3)
  *
  * `positionAt` inverts the x-component to machine precision rather than to `tForDate`'s
- * one-tick tolerance, for the reason §5.3's module note gives. Cells where BOTH sides are live
- * transitions are subdivided into {@link BEZIER_PAIR_SUBDIVISIONS} pieces, the constant AD-31
- * fixed after measuring AD-30's 4 insufficient. That measurement was made on the dynamics
+ * one-tick tolerance, for the reason the module note gives. Cells where BOTH sides are live
+ * transitions are subdivided into {@link BEZIER_PAIR_SUBDIVISIONS} pieces, the constant
+ * fixed after measuring the 4 insufficient. That measurement was made on the dynamics
  * family and transfers because the two families are the same machinery —
  * `innerControlPointsXPositions` and the same smoothstep value fraction, differing only in
  * their defaults and their output range.
@@ -37,18 +37,18 @@ export interface PedalCell {
   readonly startQuarters: number;
   readonly endQuarters: number;
   readonly mass: number;
-  /** True where §4's cap bound this cell — a `⊥` span, or a difference past `2·δ_row`. */
+  /** True where the cap bound this cell — a `⊥` span, or a difference past `2·δ_row`. */
   readonly capped: boolean;
   /**
-   * `p_pedal(t)` in JND per quarter, at a position in QUARTERS (AD-51.1). Exposed rather than
-   * recomputed because AD-19 refines segment boundaries to the ROOTS of `p_D − τ_D` and a
+   * `p_pedal(t)` in JND per quarter, at a position in QUARTERS. Exposed rather than
+   * recomputed because the design refines segment boundaries to the ROOTS of `p_D − τ_D` and a
    * cell-quantized edge can sit many bars from the crossing. `mass` stays the authority: the
    * aggregation rescales the sampler's shape onto it.
    */
   readonly densityAt: (quarters: number) => number;
 }
 
-/** A controller one document drives and the other does not — §5.8's structural channel. */
+/** A controller one document drives and the other does not — the structural channel. */
 export interface ControllerFinding {
   readonly onlyIn: 'a' | 'b';
   readonly controller: string;
@@ -61,11 +61,11 @@ export interface PedalDistance {
   readonly jnd: number;
   readonly capped: boolean;
   /**
-   * Controller mismatches, reported and never folded into the distance (§3, §5.8).
+   * Controller mismatches, reported and never folded into the distance.
    *
    * Two documents that pedal identically but address `sustain` against `soft` have distance 0
    * on the position curve and drive two different physical mechanisms — the same shape of
-   * finding as §5.3's `@subNoteDynamics`.
+   * finding as the `@subNoteDynamics`.
    */
   readonly controllerFindings: readonly ControllerFinding[];
 }
@@ -164,7 +164,7 @@ export function pedalDistance(
       );
       mass = integral.mass / ticksPerQuarter;
       capped = integral.capped;
-      // The capped integrand itself (AD-36.2's `min(|·|, 2·δ_row)`), so the sampler and the
+      // The capped integrand itself (the `min(|·|, 2·δ_row)`), so the sampler and the
       // quadrature see one function rather than two that agree by inspection.
       densityAt = (quarters) =>
         Math.min(Math.abs(difference(quarters * ticksPerQuarter)) / jnd, cap);
@@ -195,13 +195,13 @@ export function pedalDistance(
 }
 
 /**
- * The pedal curve as a `SampledCurve` for §1.2's decomposition, or null where the window
+ * The pedal curve as a `SampledCurve` for the decomposition, or null where the window
  * carries a `⊥` span.
  *
  * Null rather than a substituted number, because the decomposition takes MOMENTS: a mean and a
  * variance over the window. `⊥` has no value to contribute to either, and any stand-in — 0, the
  * neighbouring value, `δ_row` — would be a number the reader would interpret as a pedal
- * position. §1.2's product is defined on curves, and a window with a hole in it has none.
+ * position. The product is defined on curves, and a window with a hole in it has none.
  *
  * `T` for this dimension is the identity (the space is a gain), so the decomposition's `level`
  * and `gain` come out in fractions of full travel and need no unit conversion. That is not true

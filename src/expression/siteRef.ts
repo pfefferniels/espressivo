@@ -1,5 +1,5 @@
 /**
- * {@link SiteRef} — DESIGN.md §4's plain-data locator for one (element, attribute) pair, and
+ * {@link SiteRef} — the plain-data locator for one (element, attribute) pair, and
  * the derivations for the two kinds of site the engine reaches: a map instruction and a
  * `styleDef`'s def.
  *
@@ -20,7 +20,7 @@ import { attribute } from '../xml/tree.js';
 import type { DatedEntry } from './datedView.js';
 import type { MpmEnvironment } from './mpmTree.js';
 
-/** DESIGN.md §4. One transform site, as data. */
+/** One transform site, as data. */
 export interface SiteRef {
   readonly scope: 'global' | 'part';
   /** Position among the performance's `<part>` children; null in the global environment. */

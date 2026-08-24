@@ -1,10 +1,10 @@
 /**
- * The eleven-dimension driver — DESIGN.md §7 and §9.3 assembled over real documents.
+ * The eleven-dimension driver, assembled over real documents.
  *
  * Inline documents pin the structural rules that no fixture happens to exercise — the part-scope
  * resolution, `both-neutral`, the window precedence, the closing table over an arbitrary
  * partition. The vendored Telemann and Vulpius documents pin actual numbers, because eleven
- * dimensions that are each right can still be summed wrongly, and P-C9's shape (Baroque and
+ * dimensions that are each right can still be summed wrongly, and the shape (Baroque and
  * Romantic close, Fast far from both) is a claim about the world that no synthetic fixture can
  * make.
  */
@@ -53,7 +53,7 @@ const compare = (overrides: Partial<InteriorCompareOptions> & { a: string }) =>
 // Real documents
 // ---------------------------------------------------------------------------
 
-describe('P-C9: the Telemann Grave, all eleven dimensions', () => {
+describe('the Telemann Grave, all eleven dimensions', () => {
   const anchor = (a: string, b: string) =>
     compare({
       a: TELEMANN,
@@ -86,10 +86,10 @@ describe('P-C9: the Telemann Grave, all eleven dimensions', () => {
    * The tempo figure is not the 556.5371 the tempo suite pins for the same pair, and both
    * differences are accounted for: this window is the MSM's 204 quarters rather than the
    * pair-derived 198, and this score has three parts, each inheriting the global `tempoMap` and
-   * each performed — so §5.0's sum over the score's parts counts the same deviation once per
-   * part, which is what `renderParts` does (AD-55.2).
+   * each performed — so the sum over the score's parts counts the same deviation once per
+   * part, which is what `renderParts` does.
    *
-   * Articulation carries AD-55.1's second component, the `<style>@defaultArticulation` step
+   * Articulation carries the second component, the `<style>@defaultArticulation` step
    * function, which is `2004 − 1904 = 100` of its figure on this pair.
    */
   it('pins the aggregate and the tempo row', () => {
@@ -99,11 +99,11 @@ describe('P-C9: the Telemann Grave, all eleven dimensions', () => {
     expect(baroqueRomantic.dimensions.articulation.distance).toBeCloseTo(2004, 9);
     expect(baroqueFast.aggregate.distance).toBeCloseTo(24941.0626073, 4);
     expect(fastRomantic.aggregate.distance).toBeCloseTo(26174.7195808, 4);
-    // The multiplier the numbers above carry, stated rather than left to be inferred (AD-55.2).
+    // The multiplier the numbers above carry, stated rather than left to be inferred.
     expect(baroqueRomantic.scopes).toEqual({ rule: 'msm', count: 3 });
   });
 
-  it('satisfies the triangle inequality on real data, to quadrature precision (P-C3)', () => {
+  it('satisfies the triangle inequality on real data, to quadrature precision', () => {
     expect(baroqueFast.aggregate.distance).toBeLessThanOrEqual(
       (baroqueRomantic.aggregate.distance + fastRomantic.aggregate.distance) * (1 + 1e-9),
     );
@@ -116,7 +116,7 @@ describe('P-C9: the Telemann Grave, all eleven dimensions', () => {
       );
   });
 
-  it('is exactly 0 against itself, in every dimension (P-C1)', () => {
+  it('is exactly 0 against itself, in every dimension', () => {
     const identity = anchor('Baroque', 'Baroque');
     expect(identity.aggregate.distance).toBe(0);
     for (const dimension of COMPARISON_DIMENSIONS)
@@ -125,7 +125,7 @@ describe('P-C9: the Telemann Grave, all eleven dimensions', () => {
     expect(identity.segments).toHaveLength(0);
   });
 
-  it('is symmetric bit for bit on real data (P-C2)', () => {
+  it('is symmetric bit for bit on real data', () => {
     const reverse = anchor('Romantic', 'Baroque');
     expect(Object.is(reverse.aggregate.distance, baroqueRomantic.aggregate.distance)).toBe(true);
     for (const dimension of COMPARISON_DIMENSIONS)
@@ -135,7 +135,7 @@ describe('P-C9: the Telemann Grave, all eleven dimensions', () => {
           baroqueRomantic.dimensions[dimension].distance,
         ),
       ).toBe(true);
-    // The signed descriptors negate rather than agree — §9.5's swap map, and the reason they
+    // The signed descriptors negate rather than agree — the swap map, and the reason they
     // are a separate field from the distance.
     expect(reverse.cumulativeDrift?.difference).toBeCloseTo(
       -(baroqueRomantic.cumulativeDrift?.difference ?? 0),
@@ -143,7 +143,7 @@ describe('P-C9: the Telemann Grave, all eleven dimensions', () => {
     );
   });
 
-  it('closes the table on every pair (P-C7)', () => {
+  it('closes the table on every pair', () => {
     for (const report of [baroqueFast, baroqueRomantic, fastRomantic]) {
       expect(report.table.residual).toBeLessThanOrEqual(1e-12 * report.aggregate.distance);
       const columns = report.table.columnSums.reduce((sum, value) => sum + value, 0);
@@ -151,7 +151,7 @@ describe('P-C9: the Telemann Grave, all eleven dimensions', () => {
     }
   });
 
-  it('reports the cumulative drift as a descriptor beside the distance (C13)', () => {
+  it('reports the cumulative drift as a descriptor beside the distance', () => {
     const drift = baroqueRomantic.cumulativeDrift;
     expect(drift).not.toBeNull();
     // Baroque is the slower reading of the two, so it takes longer.
@@ -161,7 +161,7 @@ describe('P-C9: the Telemann Grave, all eleven dimensions', () => {
     expect(drift?.secondsA).toBeCloseTo(110.1167557, 5);
   });
 
-  it('is plain data: every number finite or null (§9.6)', () => {
+  it('is plain data: every number finite or null', () => {
     for (const [path, value] of walk(baroqueRomantic))
       if (typeof value === 'number') expect(Number.isFinite(value), `${path} is finite`).toBe(true);
   });
@@ -170,7 +170,7 @@ describe('P-C9: the Telemann Grave, all eleven dimensions', () => {
 /**
  * Vulpius, and a measurement that corrects the design's expectation of it.
  *
- * §10's P-C9 says "Vulpius similar", i.e. that its two historical readings should be the near
+ * the design says "Vulpius similar", i.e. that its two historical readings should be the near
  * pair as Telemann's are. They are not, and the reason is in the document rather than in the
  * metric: the Amateur reading is the Romantic one with imprecision and asynchrony added. Its
  * tempo, rubato and articulation rows against Romantic are exactly zero — three whole
@@ -182,7 +182,7 @@ describe('P-C9: the Telemann Grave, all eleven dimensions', () => {
  * exact zero across three dimensions on real data, with a large nonzero on three others, can
  * only come out of readers that agree with the document.
  */
-describe('P-C9: Vulpius — the amateur reading is the romantic one, made imprecise', () => {
+describe('Vulpius — the amateur reading is the romantic one, made imprecise', () => {
   const anchor = (a: string, b: string) =>
     compare({
       a: VULPIUS,
@@ -195,7 +195,7 @@ describe('P-C9: Vulpius — the amateur reading is the romantic one, made imprec
   const baroqueAmateur = anchor('Baroque', 'Amateur');
   const romanticAmateur = anchor('Romantic', 'Amateur');
 
-  it('finds Romantic and Amateur to be the near pair, against §10’s expectation', () => {
+  it('finds Romantic and Amateur to be the near pair, against the expectation', () => {
     expect(romanticAmateur.aggregate.distance).toBeLessThan(baroqueRomantic.aggregate.distance);
     expect(romanticAmateur.aggregate.distance).toBeLessThan(baroqueAmateur.aggregate.distance);
   });
@@ -253,7 +253,7 @@ describe('P-C9: Vulpius — the amateur reading is the romantic one, made imprec
     expect(romanticAmateur.aggregate.distance).toBeCloseTo(2939.6596362, 4);
   });
 
-  it('stamps a pair-derived window as window-restricted when no MSM decides it (AD-4)', () => {
+  it('stamps a pair-derived window as window-restricted when no MSM decides it', () => {
     const withoutMsm = compare({
       a: VULPIUS,
       performanceA: 'Baroque',
@@ -283,12 +283,12 @@ const tempoMap = (bpm: number): string =>
 
 describe('scopes: what a part with no counterpart is compared against', () => {
   /**
-   * AD-43.1's standard: the renderer claim is measured through the pipeline, because it is the
+   * the standard: the renderer claim is measured through the pipeline, because it is the
    * pipeline that decides. `resolvePartMaps(null, globalMaps)` returns the global maps and
    * `renderParts` iterates over the MSM's parts, so an MSM part with no MPM counterpart is
-   * performed with the global maps and not with the neutral curve AD-3's wording names.
+   * performed with the global maps and not with the neutral curve the wording names.
    */
-  it('the RENDERER performs an unmatched part with the global maps, not the neutral (AD-3)', () => {
+  it('the RENDERER performs an unmatched part with the global maps, not the neutral', () => {
     const msm =
       '<?xml version="1.0" encoding="UTF-8"?>' +
       '<msm xmlns="http://www.cemfi.de/msm/ns/1.0" title="t" pulsesPerQuarter="720">' +
@@ -329,12 +329,12 @@ describe('scopes: what a part with no counterpart is compared against', () => {
   });
 
   /**
-   * AD-55.2: the per-part sum counts what performs, and only a score can say what that is.
+   * the per-part sum counts what performs, and only a score can say what that is.
    * Counting MPM `<part>` elements is not the same thing — `renderParts` iterates the MSM's
    * parts, so an MPM `<part>` the score never names performs nothing at all, and adding three
    * empty ones to both documents triples `D` while the performed MSMs stay byte-identical.
    */
-  describe('the per-part sum counts rendered MSM parts (AD-55.2)', () => {
+  describe('the per-part sum counts rendered MSM parts', () => {
     const window = { start: 0, end: 4 };
     const globalOnly = (bpm: number) => doc(tempoMap(bpm));
     const withEmptyParts = (bpm: number, k: number) =>
@@ -414,7 +414,7 @@ describe('scopes: what a part with no counterpart is compared against', () => {
         (note) => note.kind === 'estimate-degradation' && note.message.includes('per-part sum'),
       );
       expect(degradations).toHaveLength(1);
-      // Global-only on both sides is §5.0's single evaluation, and it says so too.
+      // Global-only on both sides is the single evaluation, and it says so too.
       expect(compare({ a: globalOnly(60), b: globalOnly(90), window }).scopes).toEqual({
         rule: 'global',
         count: 1,
@@ -451,7 +451,7 @@ describe('the report’s own rules', () => {
     expect(report.dimensions.pedal.distance).toBe(0);
   });
 
-  it('degrades an invariance mode on a dimension neither document carries (AD-25.1)', () => {
+  it('degrades an invariance mode on a dimension neither document carries', () => {
     const report = compare({
       a: doc(tempoMap(60)),
       b: doc(tempoMap(90)),
@@ -464,7 +464,7 @@ describe('the report’s own rules', () => {
     expect(unusable).toHaveLength(1);
   });
 
-  it('says in plain words that “level” on a LINEAR space removed an offset (C9)', () => {
+  it('says in plain words that “level” on a LINEAR space removed an offset', () => {
     const asynchrony = (offset: number) =>
       doc(
         `<asynchronyMap><asynchrony date="0.0" milliseconds.offset="${String(offset)}"/>` +
@@ -485,7 +485,7 @@ describe('the report’s own rules', () => {
     expect(report.dimensions.asynchrony.distance).toBeLessThan(1e-12);
   });
 
-  it('closes the table over an ARBITRARY partition, not only Ruzzo–Tompa’s (AD-19)', () => {
+  it('closes the table over an ARBITRARY partition, not only Ruzzo–Tompa’s', () => {
     const report = compare({
       a: doc(tempoMap(60), part(1, tempoMap(60))),
       b: doc(tempoMap(90), part(1, tempoMap(140))),
@@ -500,7 +500,7 @@ describe('the report’s own rules', () => {
 
   it('reports the ⊥ length as a fraction of the WINDOW, not summed over the parts', () => {
     // Both parts read ⊥ over the same interval — an `<asynchrony>` with no usable offset
-    // NaN-poisons its span (AD-33.1) — so one bar of the window is unreadable, not two.
+    // NaN-poisons its span — so one bar of the window is unreadable, not two.
     const poisoned = '<asynchronyMap><asynchrony date="0.0"/></asynchronyMap>';
     const usable =
       '<asynchronyMap><asynchrony date="0.0" milliseconds.offset="30.0"/></asynchronyMap>';
@@ -512,7 +512,7 @@ describe('the report’s own rules', () => {
     expect(report.dimensions.asynchrony.bottomLengthQuarters).toBeCloseTo(4, 9);
   });
 
-  it('flags a suspect pair when the two documents differ in length by more than C7’s band', () => {
+  it('flags a suspect pair when the two documents differ in length by more than the band', () => {
     const short = doc('<tempoMap><tempo date="0.0" bpm="60" beatLength="0.25"/></tempoMap>');
     const long = doc(
       '<tempoMap><tempo date="0.0" bpm="60" beatLength="0.25"/>' +
@@ -524,11 +524,11 @@ describe('the report’s own rules', () => {
   });
 
   /**
-   * The constant is §5.0's documented band: `[0.8, 1.25]` on `long/short` is
+   * The constant is the documented band: `[0.8, 1.25]` on `long/short` is
    * `short/long < 0.8`. At `0.5` a 1.67× mismatch, a different piece by any reading, passes
    * silently. The two probes below straddle the band and both pass unflagged at `0.5`.
    */
-  it('puts C7’s band at §5.0’s [0.8, 1.25], not at a factor of two (MAJOR-7)', () => {
+  it('puts the band at the [0.8, 1.25], not at a factor of two', () => {
     expect(SUSPECT_LENGTH_RATIO).toBe(0.8);
     const until = (ticks: number) =>
       doc(
@@ -544,12 +544,12 @@ describe('the report’s own rules', () => {
   });
 
   /**
-   * C7's second arm: the same check against the score end when an MSM is supplied. It matters
+   * the second arm: the same check against the score end when an MSM is supplied. It matters
    * most, because the MSM is also where the window comes from — unchecked, the Telemann MPM
    * (last date 198 quarters) against the Vulpius MSM (score end 54) is compared over 54
    * quarters, discarding 73 % of the piece, with nothing said about it.
    */
-  it('flags a score whose end does not match the documents, the hazard C7 was adopted for', () => {
+  it('flags a score whose end does not match the documents, the hazard the check exists for', () => {
     const mismatched = compare({
       a: TELEMANN,
       performanceA: 'Baroque',
@@ -578,13 +578,13 @@ describe('the report’s own rules', () => {
   });
 
   /**
-   * A mass is non-negative, and this one can fail to be. §7.3's remainder is computed by
+   * A mass is non-negative, and this one can fail to be. The remainder is computed by
    * subtraction from the row total — the choice that makes the table close exactly — so it
    * inherits the root refinement's quadrature error with the opposite sign. Unclamped it
-   * measures `−1.825996` on telemann Baroque|Fast against a `D` of 22357, which P-C11's walker
+   * measures `−1.825996` on telemann Baroque|Fast against a `D` of 22357, which the walker
    * cannot see because a negative mass is finite.
    */
-  it('clamps the remainder mass at 0 and reports what it clamped (MINOR-1)', () => {
+  it('clamps the remainder mass at 0 and reports what it clamped', () => {
     const pairs = [
       ['Baroque', 'Fast'],
       ['Fast', 'Romantic'],
@@ -610,13 +610,13 @@ describe('the report’s own rules', () => {
   });
 
   /**
-   * §9.1's `inert-difference` kind, which §10 names as a fixture obligation: two documents
+   * the `inert-difference` kind, which the design names as a fixture obligation: two documents
    * differing only in a trailing `@transition.to` give `d_tempo = 0` plus the note. The
    * alternative channel, `structural`, is for a difference that is performed but is not a
    * magnitude — the distinction between "nothing to see" and "something written that nothing
    * reads".
    */
-  it('files an attribute the renderer never applies as inert-difference (§9.1, AD-8)', () => {
+  it('files an attribute the renderer never applies as inert-difference', () => {
     const trailing = (transition: string) =>
       doc(
         `<tempoMap><tempo date="0.0" bpm="60" beatLength="0.25"/>` +
@@ -646,20 +646,20 @@ describe('the report’s own rules', () => {
   });
 
   /**
-   * §10's P-C8 and §5.0's global-vs-part-local rule — one fact, two spellings.
+   * the exact-zero claim and the global-vs-part-local rule — one fact, two spellings.
    *
    * Both say: the distance is exactly 0 and a structural note fires, because the two documents
    * encode the same performance differently. Without the note a caller cannot tell "encoded the
    * same" from "encoded differently and performed the same", which is the difference a diff
    * product exists to report.
    */
-  describe('the encoding differs and the performance does not (P-C8, §5.0)', () => {
+  describe('the encoding differs and the performance does not', () => {
     const encodingNotesOf = (a: string, b: string) =>
       compare({ a, b, window }).notes.filter((note) =>
         note.message.includes('encode this dimension'),
       );
 
-    it('reports an explicit neutral instruction against an absent map (P-C8)', () => {
+    it('reports an explicit neutral instruction against an absent map', () => {
       const neutralRubato =
         '<rubatoMap><rubato date="0.0" frameLength="720.0" intensity="1.0" lateStart="0.0" ' +
         'earlyEnd="1.0"/><rubato date="2880.0" frameLength="720.0"/></rubatoMap>';
@@ -670,16 +670,16 @@ describe('the report’s own rules', () => {
         ['asynchrony', neutralAsync],
       ] as const) {
         const report = compare({ a: doc(tempoMap(60) + map), b: doc(tempoMap(60)), window });
-        // Exactly 0 — §5.2's special case (M18), not merely close.
+        // Exactly 0 — the special case, not merely close.
         expect(Object.is(report.dimensions[dimension].distance, 0)).toBe(true);
         const fired = report.notes.filter(
           (note) => note.dimension === dimension && note.message.includes('encode this dimension'),
         );
-        expect(fired, `${dimension}: P-C8's note half`).toHaveLength(1);
+        expect(fired, `${dimension}: the note half`).toHaveLength(1);
       }
     });
 
-    it('reports a global map against an identical part-local one (§5.0)', () => {
+    it('reports a global map against an identical part-local one', () => {
       // The renderer resolves both to the same curve — `resolvePartMaps` returns the part's own
       // map where it has one and the global map where it does not — so nothing is performed
       // differently and the difference is an encoding one.
@@ -698,9 +698,9 @@ describe('the report’s own rules', () => {
   });
 
   /**
-   * AD-51.1's ruled report field, on the report rather than only on the internal `SegmentPass`.
+   * the ruled report field, on the report rather than only on the internal `SegmentPass`.
    *
-   * Empty is the right answer for every document this engine can produce, since AD-51.1 wired a
+   * Empty is the right answer for every document this engine can produce, since every dimension has a
    * pointwise density into all seven cell-bearing dimensions — which is why the field has to be
    * present at all: a reader can then tell "no boundary is approximate" from "nobody checked".
    * The mechanism behind it is exercised at `segmentPass` (`aggregate.test.ts`).
@@ -716,8 +716,8 @@ describe('the report’s own rules', () => {
     expect(Object.keys(report)).toContain('cellQuantizedDimensions');
   });
 
-  it('reports a plausibility band violation without moving the distance (C6)', () => {
-    // §5.0's own motivating case: `@beatLength` written in TICKS makes the resolved qbpm absurd.
+  it('reports a plausibility band violation without moving the distance', () => {
+    // the motivating case: `@beatLength` written in TICKS makes the resolved qbpm absurd.
     const hofmann = doc('<tempoMap><tempo date="0.0" bpm="9000" beatLength="0.25"/></tempoMap>');
     const ordinary = doc(tempoMap(60));
     const report = compare({ a: hofmann, b: ordinary, window });
@@ -731,7 +731,7 @@ describe('the report’s own rules', () => {
     expect(report.dimensions.tempo.distance).toBeGreaterThan(0);
   });
 
-  it('exports a profile only when asked, and caps its step (C1)', () => {
+  it('exports a profile only when asked, and caps its step', () => {
     const options = { a: doc(tempoMap(60)), b: doc(tempoMap(90)), window };
     expect(compare(options).profiles).toBeNull();
     const profiled = compare({
@@ -779,13 +779,13 @@ describe('the report’s own rules', () => {
     expect(profiled.profiles?.tempo.density[0]).toBeGreaterThan(0);
   });
 
-  it('carries the epsilon record in both units (AD-28.2)', () => {
+  it('carries the epsilon record in both units', () => {
     const report = compare({ a: doc(tempoMap(60)), b: doc(tempoMap(90)), window });
     expect(report.inputs.epsilon.tempo.jnd).toBeGreaterThan(report.inputs.epsilon.tempo.relative);
     expect(report.inputs.epsilon.step).toEqual({ relative: 0, jnd: 0 });
   });
 
-  it('echoes the resolved settings and never the documents (A12)', () => {
+  it('echoes the resolved settings and never the documents', () => {
     const report = compare({ a: doc(tempoMap(60)), b: doc(tempoMap(90)), window });
     expect(Object.keys(report.inputs.settings).sort()).toEqual([
       'invariance',
@@ -812,7 +812,7 @@ describe('the report’s own rules', () => {
     ).toBeCloseTo(Math.log(1.025) / 2, 12);
   });
 
-  it('excludes a zero-weight dimension from D while still reporting it (§7.3)', () => {
+  it('excludes a zero-weight dimension from D while still reporting it', () => {
     const both =
       '<tempoMap><tempo date="0.0" bpm="60" beatLength="0.25"/></tempoMap>' +
       '<asynchronyMap><asynchrony date="0.0" milliseconds.offset="0.0"/></asynchronyMap>';
@@ -846,7 +846,7 @@ describe('the report’s own rules', () => {
   });
 });
 
-/** Every node of a plain-data value, with a path — §9.6's walker in miniature. */
+/** Every node of a plain-data value, with a path — the walker in miniature. */
 function* walk(value: unknown, path = '$'): Generator<[string, unknown]> {
   yield [path, value];
   if (value === null || typeof value !== 'object') return;

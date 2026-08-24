@@ -1,7 +1,7 @@
 /**
- * AD-51.1's evaluator extension, stated once for every dimension that has cells.
+ * the evaluator extension, stated once for every dimension that has cells.
  *
- * The aggregation refines segment boundaries to the roots of `p_D − τ_D` (AD-19/M9b) and takes
+ * The aggregation refines segment boundaries to the roots of `p_D − τ_D` and takes
  * the shape of a partly covered cell from the sampler while keeping `mass` as the scale, so the
  * property that matters is that the sampler's integral over the cell reproduces the cell's mass.
  *
@@ -14,10 +14,10 @@
  *
  * The 1e-3 relative tolerance comes from two measurements — a composite rule smears the `|·|`
  * corner the modules split at exactly (accentuation, 5.9e-4), and rubato's quadrature carries
- * AD-34.1's residual at an `intensity = 0.5` boundary layer (5.2e-4, inside the ruling's band).
+ * the residual at an `intensity = 0.5` boundary layer (5.2e-4, inside the ruling's band).
  *
  * Six dimensions vary inside a cell; asynchrony and imprecision are piecewise constant by
- * construction (§5.7, §5.9), so constancy is what is asserted there.
+ * construction, so constancy is what is asserted there.
  */
 import { describe, it, expect } from 'vitest';
 import { readComparisonPair, readScopeMapViews } from '../../src/comparison/document.js';
@@ -126,7 +126,7 @@ function varies(cells: readonly Cell[]): boolean {
   });
 }
 
-describe('every cell-bearing dimension exposes the integrand it integrated (AD-51.1)', () => {
+describe('every cell-bearing dimension exposes the integrand it integrated', () => {
   it('tempo: a power transition against a constant', () => {
     const pair = pairOf(
       'tempoMap',
@@ -289,7 +289,7 @@ describe('every cell-bearing dimension exposes the integrand it integrated (AD-5
       return readImprecisionSpans(parts.view, 'imprecisionTiming', parts.scaleFactor);
     };
     const result = imprecisionDistance(read('a'), read('b'), pair.window, pair.ppq.lcm);
-    // The two components §5.9 sums, read off the cell they were computed for: this dimension's
+    // The two components the imprecision density sums, read off the cell they were computed for: this dimension's
     // reading is piecewise constant, so its definition at a point is the covering cell's.
     const cellAt = (quarters: number) => {
       const covering = result.cells.find(

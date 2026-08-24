@@ -1,6 +1,6 @@
 /**
- * The level / gain / shape decomposition (§1.2, AD-18), the invariance modes (§7.4, AD-20), and
- * P-C3b zero-set transitivity.
+ * The level / gain / shape decomposition, the invariance modes, and
+ * Zero-set transitivity.
  *
  * The oracle is the closing identity: if `level² + gain² + 2σ_Aσ_B(1−r)` does not equal
  * `‖h_A − h_B‖₂²` then one of the four fields is wrong, and a plausible-looking number would
@@ -57,7 +57,7 @@ describe('curveMoments', () => {
     expect(moments.variance).toBeCloseTo(1 / 12, 10);
   });
 
-  it('is computed against the NORMALIZED measure, so it is span-independent (AD-18)', () => {
+  it('is computed against the NORMALIZED measure, so it is span-independent', () => {
     const short = curveMoments((t) => t / 720, uniformGrid(720, 8));
     const long = curveMoments((t) => t / 7200, uniformGrid(7200, 8));
     expect(short.mean).toBeCloseTo(long.mean, 10);
@@ -65,7 +65,7 @@ describe('curveMoments', () => {
   });
 });
 
-describe('the decomposition identity closes (§1.2)', () => {
+describe('the decomposition identity closes', () => {
   const closes = (a: SampledCurve, b: SampledCurve, grid = GRID) => {
     const result = decomposeCurves(a, b, grid);
     expect(result.identity).toBeCloseTo(result.l2Squared, 8);
@@ -133,7 +133,7 @@ describe('the decomposition identity closes (§1.2)', () => {
   });
 });
 
-describe('the shapeless convention (§1.2 / C14)', () => {
+describe('the shapeless convention', () => {
   it('nulls shape and r, flags shapeless, and keeps the identity exact', () => {
     const result = decomposeCurves(
       () => Math.log(60),
@@ -169,7 +169,7 @@ describe('the shapeless convention (§1.2 / C14)', () => {
   });
 });
 
-describe('invariance modes (§7.4 / AD-20)', () => {
+describe('invariance modes', () => {
   const ramp: SampledCurve = (t) => Math.log(60) + (2 * t) / SPAN;
   const moments = curveMoments(ramp, GRID);
 
@@ -192,7 +192,7 @@ describe('invariance modes (§7.4 / AD-20)', () => {
     expect(decomposeCurves(a, b, GRID).l2Squared).toBeCloseTo(0, 12);
   });
 
-  it("'level' removes only an OFFSET in a linear space, leaving the factor (§7.4's table)", () => {
+  it("'level' removes only an OFFSET in a linear space, leaving the factor (the table)", () => {
     // c*x - mean(c*x) = c(x - mean x): the factor survives. The trap the table exists to
     // prevent.
     const linear: SampledCurve = (t) => t / SPAN;
@@ -226,7 +226,7 @@ describe('invariance modes (§7.4 / AD-20)', () => {
   });
 });
 
-describe('P-C3b zero-set transitivity (AD-21)', () => {
+describe('zero-set transitivity', () => {
   /**
    * `d(A,B) = 0 ∧ d(B,C) = 0 ⟹ d(A,C) = 0` — the cheapest detector for an M1-class defect. Run
    * on the tempo dimension, where the zero set is populated by genuinely different encodings of
@@ -304,7 +304,7 @@ describe('P-C3b zero-set transitivity (AD-21)', () => {
     expect(distance(A, different)).toBeGreaterThan(0);
   });
 
-  it('keeps the zero set closed under an inert trailing transition (AD-8)', () => {
+  it('keeps the zero set closed under an inert trailing transition', () => {
     // A trailing @transition.to is inert, so this performs the same curve as A.
     const inert =
       '<tempo date="0.0" bpm="60" beatLength="0.25"/>' +
@@ -357,7 +357,7 @@ describe('decomposition on the W3a cut 1 dimensions', () => {
   });
 
   it('refuses to decompose a window carrying a ⊥ span, rather than substituting a number', () => {
-    // §1.2 takes moments: a mean and a variance. ⊥ has nothing to contribute to either, and a
+    // the design takes moments: a mean and a variance. ⊥ has nothing to contribute to either, and a
     // stand-in would be read back as a pedal position.
     const pair = readComparisonPair({
       a: pedalDoc(
@@ -406,7 +406,7 @@ describe('decomposition on the W3a cut 1 dimensions', () => {
     const result = decomposeCurves(a, b, grid);
     expect(result.identity).toBeCloseTo(result.l2Squared, 8);
     // One is exactly twice the other, so they are perfectly correlated: pure level and gain,
-    // no shape difference — the case §1.2 exists to separate.
+    // no shape difference — the case the design exists to separate.
     expect(result.shapeless).toBe(false);
     expect(result.r).toBeCloseTo(1, 8);
     expect(result.shape).toBeCloseTo(0, 6);

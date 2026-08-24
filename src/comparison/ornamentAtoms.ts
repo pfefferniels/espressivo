@@ -1,21 +1,20 @@
 /**
- * Ornament atoms and their RESOLVED PERFORMED EFFECT — DESIGN.md §5.6, as ruled by AD-40,
- * AD-42 and AD-43.
+ * Ornament atoms and their RESOLVED PERFORMED EFFECT.
  *
- * AD-40.2, generalizing AD-37.3: price the resolved performed effect, never the attribute tuple.
+ * Price the resolved performed effect, never the attribute tuple.
  * `<ornament>@scale` multiplies both endpoints of the `<dynamicsGradient>` before anything is
  * performed, so the compared object is the pair `(from·scale, to·scale)` — two encodings of one
  * performed ramp (`from="-20" scale="1"` against `from="-10" scale="2"`) must compare equal.
  *
  * Every fact below was measured through `Performance.perform` rather than read off the map
  * classes, and is pinned by a differential test that performs two documents and compares the
- * notes (AD-43.1, after a map-level probe produced a false no-op claim).
+ * notes (after a map-level probe produced a false no-op claim).
  *
- * ## `@scale` defaults to 0 and gates HALF the ornament (AD-40.1)
+ * ## `@scale` defaults to 0 and gates HALF the ornament
  *
  * `getOrnamentDataOf` reads an absent `@scale` as `0.0`, and `DynamicsGradient.apply` multiplies both
  * endpoints by it — so an `<ornament>` with no `@scale` performs no dynamics at all while its
- * `<temporalSpread>` applies in full. Contrast §5.4, where `accentuationPattern@scale` is
+ * `<temporalSpread>` applies in full. Contrast accentuation, where `accentuationPattern@scale` is
  * MANDATORY: absent, the whole instruction is skipped. Same attribute name, two dispositions.
  *
  * ## `@transition.to` defaults to `@transition.from`, NOT to 0
@@ -25,7 +24,7 @@
  * at velocity 100, where a `-20 → 0` reading predicts 80/90/100. The common encoding rather than
  * a corner: `generateXML:86` omits `transition.to` whenever it equals `transition.from`.
  *
- * ## The ramp distributes over the POOL, not over score time (AD-40.3)
+ * ## The ramp distributes over the POOL, not over score time
  *
  * The pool is the notes at the ornament's own date, or the notes an explicit `@note.order` id
  * list names — measured, an id list reaches notes at OTHER dates and orders the ramp by the
@@ -65,19 +64,19 @@
  *
  * The dead cell is modelled as the NEUTRAL frame rather than as a special value, because that is
  * what it performs: a spread of `frame.start=0 frameLength=0` and an absent `<temporalSpread>`
- * were measured to perform identically (AD-43.2ii). §5.6's three-unit-case paragraph therefore
+ * were measured to perform identically. The three-unit-case paragraph therefore
  * describes v3-SHAPED ornaments; on a v2-shaped one a `%` frame is no unit question at all,
  * because nothing is performed.
  *
  * ## An unresolvable value is `⊥`, not a skip, where the renderer POISONS
  *
- * AD-42.4 requires a finite guard on every numeric read and routes unusable values to
+ * the design requires a finite guard on every numeric read and routes unusable values to
  * skip-and-report. Measured, the renderer does not skip for two of them: `scale="abc"` makes
  * `ornament.dynamics` NaN and the fold writes velocity NaN onto every note in the pool, and a v2
- * `frameLength="abc"` writes date.perf NaN — R24's condition, which AD-1 and AD-33.1 price at
+ * `frameLength="abc"` writes date.perf NaN — the condition, priced at
  * `⊥` because the note vanishes from the MIDI export. Those two take `⊥` (`renderer-error`) and
  * the rest take the renderer's own fallback: `parseOrnamentRepetitions` logs and returns 0,
- * `readV3FrameValue` logs and applies the v3 default. A departure from AD-42.4's wording on the
+ * `readV3FrameValue` logs and applies the v3 default. A departure from the wording on the
  * two cases where its route would price a note-destroying document at zero.
  *
  * ## The style is carried, and a failed switch behaves differently per SCOPE
@@ -87,7 +86,7 @@
  * header that assignment never runs and the guarded global lookup fires only while `style` is
  * still null. `Part.parseData:113-118` creates a header for every part and `Dated.addMap:94-97`
  * binds the local slot to it, so part-local maps always take the first branch and maps in
- * `<global>` always take the second — AD-35.4's hazard class in a fifth shape. Two measured
+ * `<global>` always take the second — the hazard class in a fifth shape. Two measured
  * consequences, both reproduced here:
  *
  * - a `<style>` naming a style that does not exist SKIPS every later ornament in a part-local
@@ -98,7 +97,7 @@
  * ## An ornament before the map's first `<style>` is skipped entirely
  *
  * The style is tracked *while walking*, so an ornament with no style in scope cannot resolve
- * its def and performs nothing — §5.4's disposition, and the opposite of §5.5's, where an
+ * its def and performs nothing — the disposition, and the opposite of articulation's, where an
  * atom's inline modifiers survive an unresolvable name. An ornament naming an unknown def
  * likewise performs nothing.
  */
@@ -122,7 +121,7 @@ export type OrnamentShape = 'v2' | 'v3';
 /** The three v3 time domains, and the two a v2 frame can be in. */
 export type FrameDomain = 'ticks' | 'milliseconds' | 'relative';
 
-/** The performed dynamics ramp: both endpoints already multiplied by `@scale` (AD-40.2). */
+/** The performed dynamics ramp: both endpoints already multiplied by `@scale`. */
 export interface PerformedGradient {
   readonly from: number;
   readonly to: number;
@@ -157,7 +156,7 @@ export interface OrnamentAtom {
   readonly id: string | null;
   readonly nameRef: string | null;
   readonly shape: OrnamentShape;
-  /** `@scale`, defaulting to 0 — carried for the report, never priced on its own (AD-40.2). */
+  /** `@scale`, defaulting to 0 — carried for the report, never priced on its own. */
   readonly scale: number;
   /** `@note.order` exactly as written, or null. */
   readonly noteOrder: string | null;
@@ -168,7 +167,7 @@ export interface OrnamentAtom {
   readonly repetitions: number;
   /** Whether the attribute is PRESENT, which is what gates the v3 engine — not its value. */
   readonly repetitionsPresent: boolean;
-  /** Null where the def carries no `<dynamicsGradient>` — a genuine neutral (AD-43.2ii). */
+  /** Null where the def carries no `<dynamicsGradient>` — a genuine neutral. */
   readonly gradient: Valued<PerformedGradient> | null;
   /** Null where the def carries no `<temporalSpread>` — likewise a genuine neutral. */
   readonly spread: Valued<PerformedSpread> | null;
@@ -199,7 +198,7 @@ export interface OrnamentAtoms {
 
 /**
  * The v3 value grammar, transliterated from `TemporalValue.ts` because the comparison zone may
- * not import it (§9.7). `tests/comparison/ornamentation.test.ts` differential-tests it against
+ * not import it. `tests/comparison/ornamentation.test.ts` differential-tests it against
  * the real `parseTemporalValueLenient` over a shared corpus, which is what licenses the copy.
  */
 const SUFFIXED = /^(-?[0-9]+(?:\.[0-9]+)?)(ms|%|ticks)$/;
@@ -256,7 +255,7 @@ function legacyFallbackDomain(spread: Element): FrameDomain {
   }
 }
 
-/** A finite number, or null — AD-42.4's guard, at every numeric read. */
+/** A finite number, or null — the guard, at every numeric read. */
 function finiteOr(element: Element, name: string, fallback: number): number | null {
   const text = readAttributeValue(element, name);
   if (text === null) return fallback;
@@ -324,7 +323,7 @@ function spreadOf(def: Element, shape: OrnamentShape): Valued<PerformedSpread> |
   if (source === 'v2') {
     const frameStart = finiteOr(element, 'frame.start', 0);
     const rawLength = finiteOr(element, 'frameLength', 0);
-    // Non-finite either way is a NaN date offset, which erases the note (R24's condition).
+    // Non-finite either way is a NaN date offset, which erases the note (the condition).
     if (frameStart === null || rawLength === null) return bottom('renderer-error');
     return valued({
       frameStart,
@@ -463,7 +462,7 @@ export function readOrnamentAtoms(
         detail:
           'no ornamentationStyle in scope — an ornament before the map’s first <style> switch: ' +
           'the style is tracked while walking, so the def cannot resolve and NOTHING is ' +
-          'performed. Contrast §5.5, where an atom’s inline modifiers survive.',
+          'performed. Contrast articulation, where an atom’s inline modifiers survive.',
       });
       continue;
     }
@@ -510,8 +509,8 @@ export function readOrnamentAtoms(
         dateTicks,
         detail:
           'v3-shaped: the ornament GENERATES notes through ornamentInstantiation rather than ' +
-          'modifying the pool in place. Its rows are compared (§5.6); the generated notes are ' +
-          'not — they carry per-render random ids (R5b). A % frame is resolved against the ' +
+          'modifying the pool in place. Its rows are compared; the generated notes are ' +
+          'not — they carry per-render random ids. A % frame is resolved against the ' +
           'principal note here, which needs the MSM.',
       });
 
@@ -523,11 +522,11 @@ export function readOrnamentAtoms(
         detail:
           'an unusable @scale makes ornament.dynamics NaN and the fold writes velocity NaN onto ' +
           'every note in the pool — measured. The notes vanish from the MIDI export, which is ' +
-          'R24’s condition, so the gradient reads ⊥ (AD-1/AD-33.1) rather than being skipped.',
+          'the condition, so the gradient reads ⊥ rather than being skipped.',
       });
 
     // A pool of exactly one collapses BOTH families, which is what makes the comparison
-    // encoding-invariant (AD-40.2). `DynamicsGradient.apply` hands a lone chord
+    // encoding-invariant. `DynamicsGradient.apply` hands a lone chord
     // `transitionTo·scale` and never looks at `transitionFrom`, so the performed ramp is flat at
     // `to`; `TemporalSpread.apply` places a lone chord at `frameStart + frameLength` outside its
     // loop, so the performed frame is a rigid shift by the far edge and `@intensity` is inert.
@@ -543,7 +542,7 @@ export function readOrnamentAtoms(
         detail:
           'the def carries a <dynamicsGradient> and the ornament has no @scale (it defaults to ' +
           '0.0), so the gradient performs NOTHING while the temporal spread applies in full — ' +
-          'AD-40.1, executed.',
+          'measured by execution.',
       });
     if (spread !== null && spread.kind === 'bottom')
       notes.push({
@@ -551,7 +550,7 @@ export function readOrnamentAtoms(
         dateTicks,
         detail:
           'an unusable v2 frame value makes ornament.date.offset NaN and the fold writes ' +
-          'date.perf NaN — measured. R24’s condition again, so the frame reads ⊥. A v3 frame ' +
+          'date.perf NaN — measured. The condition again, so the frame reads ⊥. A v3 frame ' +
           'value cannot reach this: its reader logs and applies the v3 default.',
       });
     if (
@@ -591,7 +590,7 @@ export function readOrnamentAtoms(
         detail:
           'the pool is "every note at this date", which needs an MSM to size: @transition.from ' +
           'is live only for a pool of MORE THAN ONE chord, and a single-note pool performs ' +
-          '@transition.to alone (AD-40.3). Both endpoints are priced here, which is the ' +
+          '@transition.to alone. Both endpoints are priced here, which is the ' +
           'conservative direction.',
       });
 

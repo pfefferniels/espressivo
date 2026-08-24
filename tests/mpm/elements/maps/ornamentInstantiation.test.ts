@@ -32,14 +32,13 @@ import type { TemporalValue } from '../../../../src/mpm/elements/styles/defs/Tem
  * these tests exercise the real seam (`Ornament.apply`) and the real insertion path
  * rather than a helper.
  *
- * Every expected number below is computed by hand in the comment above it, from DESIGN.md
- * §5's worked vectors and the v2 spacing formula
+ * Every expected number below is computed by hand in the comment above it, from the worked
+ * vectors and the v2 spacing formula
  * `dateOffset(i) = pow(i / (n − 1), intensity) * frameLength + frameStart`, last slot pinned
  * at `frameStart + frameLength`. None of them was read off the implementation.
  *
- * Per-test timeouts are explicit on every case that expands a repeat group: DESIGN.md D16 and
- * ARCHITECTURE.md §1216-1221 want a regression in an expansion loop to fail the suite rather
- * than hang it.
+ * Per-test timeouts are explicit on every case that expands a repeat group: a regression in
+ * an expansion loop should fail the suite rather than hang it.
  */
 
 const XML_NS = 'http://www.w3.org/XML/1998/namespace';
@@ -161,7 +160,7 @@ function orn(fields: Partial<Ornament> = {}): Ornament {
 }
 
 describe('MPM v3 ornament instantiation', () => {
-  describe('worked vector 1: figure-1 turn at start (DESIGN.md §5.1)', () => {
+  describe('worked vector 1: figure-1 turn at start', () => {
     /**
      * Principal P: midi.pitch 64, date 0, duration 1440 ticks.
      * Pool: n2 = +1 chromatic (65), n3 = −1 chromatic (63). note.order = "#n2 #P #n3 #P".
@@ -261,7 +260,7 @@ describe('MPM v3 ornament instantiation', () => {
     });
   });
 
-  describe('worked vector 2: figure-2 turn at end (DESIGN.md §5.2)', () => {
+  describe('worked vector 2: figure-2 turn at end', () => {
     /**
      * Same ornament as vector 1 with alignment="at end".
      *
@@ -337,7 +336,7 @@ describe('MPM v3 ornament instantiation', () => {
     });
 
     /**
-     * The D10 id-uniqueness ruling (docs/history/ornamentation/LOG.md, 2026-08-09), pinned at
+     * The D10 id-uniqueness ruling (), pinned at
      * the level that decides it: the id goes to the leftover when one survives, else to the
      * heir, never to both, because two elements sharing an `xml:id` is not a valid document.
      * Every generated note carries `ornament.anchor` instead, which is what makes that safe.
@@ -372,7 +371,7 @@ describe('MPM v3 ornament instantiation', () => {
     });
   });
 
-  describe('worked vector 3: figure-3 trill (DESIGN.md §5.3)', () => {
+  describe('worked vector 3: figure-3 trill', () => {
     /**
      * Principal P: pitch 64, date 0, duration 1440. Pool n1 = +1 chromatic (65).
      * note.order = "|: #n1 #P :|", repetitions = 3, frameLength = "50%",
@@ -497,11 +496,11 @@ describe('MPM v3 ornament instantiation', () => {
     );
   });
 
-  describe('worked vector 5: millisecond frame writes v2 markers (DESIGN.md §5.5)', () => {
+  describe('worked vector 5: millisecond frame writes v2 markers', () => {
     /**
      * The Java reference fixture's `spreadMs` def, applied to a generated sequence instead of
      * to an existing chord: frame.start −30 ms, frameLength 60 ms, intensity 2,
-     * noteoff.shift="true". Over three slots the v2 engine produces (research §6.3):
+     * noteoff.shift="true". Over three slots the v2 engine produces:
      *   i=0: pow(0/2, 2) * 60 − 30 = −30
      *   i=1: pow(1/2, 2) * 60 − 30 = 0.25 * 60 − 30 = −15
      *   last (pinned):        −30 + 60 = +30
@@ -1160,7 +1159,7 @@ describe('MPM v3 ornament instantiation', () => {
      * too (`true` adds a constant, `false` is constant, `monophonic` takes the next onset), so
      * `end <= 0` holds only for an initial run. A negative intensity reverses that ordering
      * (pow(i/(n−1), intensity) decreases in i while the last slot stays pinned), so it can
-     * drop an interior run — by construction (docs/history/ornamentation/LOG.md): intensity
+     * drop an interior run — by construction (): intensity
      * −1, offset −1000, length 100, monophonic, 4 slots drops slots 1 and 2. This prefix
      * vector is the strongest form against survivor-renumbering: the survivors' first index is
      * non-zero, which is what renumbering would destroy. The describe below takes the negative

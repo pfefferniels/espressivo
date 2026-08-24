@@ -1,33 +1,33 @@
 /**
- * The tempo curve, as the renderer performs it — DESIGN.md §5.1.
+ * The tempo curve, as the renderer performs it.
  *
- * `g(t) = ln(qbpm(t))`, `qbpm = bpm · beatLength · 4`. Natural log, pinned by AD-26.1 as a
+ * `g(t) = ln(qbpm(t))`, `qbpm = bpm · beatLength · 4`. Natural log, pinned as a
  * coherence invariant with `expression/transforms.ts`; every reported log quantity is tagged
  * `nepers`. Direction is pinned too, because the field mixes conventions: MPM stores BPM, a
  * *rate*, so a positive log difference means A is FASTER. In the seconds-per-beat convention
- * (partitura, Cancino-Chacón 2018 §4.3) positive means slower; the two are reciprocal.
+ * (partitura, Cancino-Chacón 2018) positive means slower; the two are reciprocal.
  *
  * This module is the *curve*, not the distance: pricing, JND normalization and integration
  * belong to the density layer.
  *
  * ## Four renderer behaviours, each of which changes the curve
  *
- * 1. Trailing transitions are inert (AD-8). `TempoMap.getEndDate:166-175` returns
+ * 1. Trailing transitions are inert. `TempoMap.getEndDate:166-175` returns
  *    `Number.MAX_VALUE` when no later `<tempo>` exists, so `u ≈ 0` for every real date and the
  *    tempo stays pinned at `bpm₀`: an instruction with no successor performs as a constant at
  *    its own bpm. The repo's own `all_maps.mpm` ends with `transition.to="90"` from 120, and
  *    reading it as a ritardando would invent the most audible gesture in the file.
- * 2. A skipped instruction still ends the previous span, and opens a 100-qbpm gap (AD-9i).
+ * 2. A skipped instruction still ends the previous span, and opens a 100-qbpm gap.
  *    `getTempoDataOf` returns null iff `@bpm` or `@beatLength` is absent, but `getEndDate`
  *    scans for the next element *named* `tempo` regardless of whether it parses. The render
  *    then `continue`s past it and times the intervening notes at the no-tempo default —
  *    `computeDiffTiming(date, ppq, null)`, i.e. 100 quarter-bpm.
- * 3. The pre-first-instruction region is also 100 qbpm (AD-9ii/R11), not a left extension of
+ * 3. The pre-first-instruction region is also 100 qbpm, not a left extension of
  *    the first instruction.
- * 4. The degenerate table (AD-9iii) — four cases, and "collapses to a constant" is wrong on
+ * 4. The degenerate table — four cases, and "collapses to a constant" is wrong on
  *    half of them by a factor of two. See {@link readTempoSegments}.
  *
- * Reading is right-continuous (A-B1): the value at an instruction's date is that instruction's
+ * Reading is right-continuous: the value at an instruction's date is that instruction's
  * value. `TempoMap.getTempoAt` is strictly-before and would read date 0 as the 100 default even
  * where a document places an instruction there — a divergence of measure zero for an integral,
  * documented rather than reproduced.
@@ -93,7 +93,7 @@ export interface TempoCurve {
   readonly notes: readonly TempoCurveNote[];
 }
 
-/** The neutral tempo curve: 100 qbpm everywhere, which is what an absent map performs (R6). */
+/** The neutral tempo curve: 100 qbpm everywhere, which is what an absent map performs. */
 export function neutralTempoCurve(): TempoCurve {
   return {
     segments: [
@@ -131,7 +131,7 @@ interface RawTempo {
  * end-date scan.
  *
  * The skip test is exactly the renderer's: `@bpm` or `@beatLength` absent ⇒ null
- * (`TempoMap.ts:118-121`). An unresolvable *level* is not a skip — R8/AD-1 makes it the
+ * (`TempoMap.ts:118-121`). An unresolvable *level* is not a skip — the design makes it the
  * renderer's fabricated 100.0 — while a missing attribute is.
  */
 function readRawTempo(
@@ -178,7 +178,7 @@ function readRawTempo(
 }
 
 /**
- * Resolve one instruction's span into a segment, applying §5.1's degenerate table.
+ * Resolve one instruction's span into a segment, applying the degenerate table.
  *
  * | case | performed |
  * |---|---|
@@ -188,7 +188,7 @@ function readRawTempo(
  * | `@meanTempoAt` absent, `@transition.to` present and differing | linear ramp, `e = 1` |
  *
  * The second row is the one "collapses to a constant" gets wrong by a factor of two.
- * `isTrailing` folds in AD-8: no successor means the transition never develops, so the span
+ * `isTrailing` folds in the trailing rule: no successor means the transition never develops, so the span
  * is a constant at `bpm` whatever the transition attributes say.
  */
 function segmentFor(
@@ -242,7 +242,7 @@ function segmentFor(
 /**
  * Build the performed tempo curve of one scope.
  *
- * The span-end rule is `same-local-name` (AD-14ii): the next element named `tempo` ends the
+ * The span-end rule is `same-local-name`: the next element named `tempo` ends the
  * span whether or not it parses, and a `<style>` between two tempi is transparent. That
  * asymmetry — the end-date scan ignores validity while the data read does not — is what
  * produces the 100-qbpm gap of behaviour 2.
@@ -347,20 +347,20 @@ export function readTempoSegments(
         dateTicks: raw.dateTicks,
         detail:
           'last <tempo> of the map: getEndDate is MAX_VALUE, so @transition.to and ' +
-          '@meanTempoAt are inert and the span performs as a constant (AD-8)',
+          '@meanTempoAt are inert and the span performs as a constant',
       });
     if (raw.parsed.rendererDefault)
       notes.push({
         kind: 'renderer-default-level',
         dateTicks: raw.dateTicks,
-        detail: 'unresolvable level performed at the renderer default of 100.0 (R8/AD-1)',
+        detail: 'unresolvable level performed at the renderer default of 100.0',
       });
   }
 
   // Sorted on the date alone, so two segments opening at one tick keep their MAP order — sort
-  // stability, relied on deliberately (W3 MINOR-7). It is the right order and not merely a
+  // stability, relied on deliberately. It is the right order and not merely a
   // stable one: the renderer also applies co-dated instructions in document order, and the array
-  // reaching here came from ONE document, so no a/b orientation can leak through it (§9.5's
+  // reaching here came from ONE document, so no a/b orientation can leak through it (the
   // concern is arrays built from both).
   segments.sort((a, b) => a.startTicks - b.startTicks);
 
@@ -374,7 +374,7 @@ export function readTempoSegments(
 }
 
 /**
- * `g(t) = ln(qbpm(t))` at a position in common ticks, right-continuous (A-B1).
+ * `g(t) = ln(qbpm(t))` at a position in common ticks, right-continuous.
  *
  * Past the last segment the curve holds its final value, which is what the renderer does:
  * the trailing instruction's span runs to `MAX_VALUE`.

@@ -1,8 +1,8 @@
 /**
- * The dynamics curve and its distance — DESIGN.md §5.3.
+ * The dynamics curve and its distance.
  *
  * The load-bearing test pins the ideal Bézier against the renderer's `tForDate` approximation
- * of it (§5.0 rule 3 / R20). A bit-agreement assertion between the two would pass by accident
+ * of it (rule 3). A bit-agreement assertion between the two would pass by accident
  * of a coarse fixture, so the agreement test asserts the documented bound and, separately,
  * asserts that the two really do differ.
  */
@@ -44,12 +44,12 @@ const curveFor = (map: string, header = ''): DynamicsCurve =>
   curveOf(readComparisonPair({ a: dynamicsDoc(map, header) }), 'a');
 
 describe('dynamics curve: constants, neutrals and levels', () => {
-  it('is velocity 100 everywhere for an absent map (R6)', () => {
+  it('is velocity 100 everywhere for an absent map', () => {
     expect(volumeAt(neutralDynamicsCurve(), 0)).toBe(NEUTRAL_VELOCITY);
     expect(volumeAt(neutralDynamicsCurve(), 99999)).toBe(NEUTRAL_VELOCITY);
   });
 
-  it('is velocity 100 before the first instruction, not a left extension of it (AD-9ii)', () => {
+  it('is velocity 100 before the first instruction, not a left extension of it', () => {
     const curve = curveFor('<dynamics date="1440.0" volume="40"/>');
     expect(volumeAt(curve, 0)).toBe(NEUTRAL_VELOCITY);
     expect(volumeAt(curve, 1439)).toBe(NEUTRAL_VELOCITY);
@@ -64,13 +64,13 @@ describe('dynamics curve: constants, neutrals and levels', () => {
     expect(volumeAt(curve, 0)).toBe(97);
   });
 
-  it('performs an unresolvable level at 100 and reports it (R8/AD-1)', () => {
+  it('performs an unresolvable level at 100 and reports it', () => {
     const curve = curveFor('<dynamics date="0.0" volume="?"/>');
     expect(volumeAt(curve, 0)).toBe(100);
     expect(curve.notes.some((note) => note.kind === 'renderer-default-level')).toBe(true);
   });
 
-  it('reads right-continuously (A-B1)', () => {
+  it('reads right-continuously', () => {
     const curve = curveFor(
       '<dynamics date="0.0" volume="40"/><dynamics date="720.0" volume="90"/>',
     );
@@ -78,7 +78,7 @@ describe('dynamics curve: constants, neutrals and levels', () => {
     expect(volumeAt(curve, 719.999)).toBeCloseTo(40, 6);
   });
 
-  it('treats a <dynamics> with no @volume as a SKIP performing velocity 100 (AD-33.4)', () => {
+  it('treats a <dynamics> with no @volume as a SKIP performing velocity 100', () => {
     // getEndDate scans for the next element named dynamics regardless of whether it parses, so
     // the volume-less element ends the previous span; the render then pins every note in the
     // gap to velocity 100 (DynamicsMap.ts:251-253). Reading it instead as "the previous span
@@ -167,7 +167,7 @@ describe('dynamics curve: transitions', () => {
     expect(volumeAt(clamped, 1440)).toBe(volumeAt(atBound, 1440));
   });
 
-  it('defaults curvature and protraction to 0.0, NOT to movement’s 0.4 (AD-13)', () => {
+  it('defaults curvature and protraction to 0.0, NOT to movement’s 0.4', () => {
     const defaulted = curveFor(
       '<dynamics date="0.0" volume="40" transition.to="80"/><dynamics date="2880.0" volume="80"/>',
     );
@@ -178,7 +178,7 @@ describe('dynamics curve: transitions', () => {
     expect(volumeAt(defaulted, 1000)).toBe(volumeAt(explicitZero, 1000));
   });
 
-  it('treats a trailing transition as inert and reports it (AD-8)', () => {
+  it('treats a trailing transition as inert and reports it', () => {
     const curve = curveFor(
       '<dynamics date="0.0" volume="40"/><dynamics date="2880.0" volume="80" transition.to="110"/>',
     );
@@ -195,7 +195,7 @@ describe('dynamics curve: transitions', () => {
   });
 });
 
-describe('dynamics curve: subNoteDynamics is structural, not a curve difference (§5.3)', () => {
+describe('dynamics curve: subNoteDynamics is structural, not a curve difference', () => {
   const withFlag =
     '<dynamics date="0.0" volume="40" transition.to="80" subNoteDynamics="true"/>' +
     '<dynamics date="2880.0" volume="80"/>';
@@ -228,7 +228,7 @@ describe('dynamics curve: subNoteDynamics is structural, not a curve difference 
   });
 });
 
-describe('the ideal Bézier versus the renderer’s tForDate (§5.0 rule 3 / R20)', () => {
+describe('the ideal Bézier versus the renderer’s tForDate (rule 3)', () => {
   const CURVATURE = 0.3;
   const PROTRACTION = 0.4;
   const [x1, x2] = innerControlPointsXPositions(CURVATURE, PROTRACTION);
@@ -284,11 +284,11 @@ describe('dynamics distance', () => {
   const FLAT_80 = '<dynamics date="0.0" volume="80"/><dynamics date="2880.0" volume="80"/>';
   const FLAT_60 = '<dynamics date="0.0" volume="60"/><dynamics date="2880.0" volume="60"/>';
 
-  it('P-C1 identity: exactly 0 against itself', () => {
+  it('identity: exactly 0 against itself', () => {
     expect(distanceBetween(FLAT_40, FLAT_40)).toBe(0);
   });
 
-  it('P-C2 symmetry: bit-exact under swapping', () => {
+  it('symmetry: bit-exact under swapping', () => {
     expect(distanceBetween(FLAT_40, FLAT_80)).toBe(distanceBetween(FLAT_80, FLAT_40));
   });
 
@@ -297,14 +297,14 @@ describe('dynamics distance', () => {
     expect(distanceBetween(FLAT_40, FLAT_80)).toBeCloseTo(expected, 9);
   });
 
-  it('P-C3 triangle, with the relative tolerance the equality case requires', () => {
+  it('triangle, with the relative tolerance the equality case requires', () => {
     const ab = distanceBetween(FLAT_40, FLAT_80);
     const ac = distanceBetween(FLAT_40, FLAT_60);
     const cb = distanceBetween(FLAT_60, FLAT_80);
     expect(ab).toBeLessThanOrEqual((ac + cb) * (1 + 1e-9));
   });
 
-  it('P-C4 encoding invariance, against the IDEAL curve', () => {
+  it('encoding invariance, against the IDEAL curve', () => {
     // A transition re-encoded as dense constant steps sampling the same ideal curve. The steps
     // are placed by evaluating the ideal Bézier, not tForDate, so this measures encoding
     // invariance and not the renderer's staircase.
@@ -322,7 +322,7 @@ describe('dynamics distance', () => {
     expect(distance).toBeLessThan(againstFlat * 0.05);
   });
 
-  it('prices an absent map against a present one rather than dropping it (R6)', () => {
+  it('prices an absent map against a present one rather than dropping it', () => {
     const pair = readComparisonPair({
       a: dynamicsDoc(FLAT_80),
       b:
@@ -364,7 +364,7 @@ describe('dynamics distance', () => {
   });
 });
 
-describe('AD-30 Bezier-pair subdivision, and its measured insufficiency', () => {
+describe('Bezier-pair subdivision, and its measured insufficiency', () => {
   /**
    * A pair whose log difference crosses three times: x = 0.598, 0.914, 0.984. Control points
    * are inside [0,1] and x(t) is monotone for both, so nothing here is degenerate — an ordinary
@@ -397,13 +397,13 @@ describe('AD-30 Bezier-pair subdivision, and its measured insufficiency', () => 
     return ((h / 3) * sum) / pair.ppq.lcm / DYNAMICS_JND_NEPERS;
   };
 
-  it('integrates the triple-crossing pair accurately at K=16 (AD-31)', () => {
+  it('integrates the triple-crossing pair accurately at K=16', () => {
     const relativeError = Math.abs(measured() - reference()) / reference();
     expect(relativeError).toBeLessThan(1e-6);
   });
 
   it('pins the sweep that set the constant: K=4 would still be ~6% low', () => {
-    // AD-31 supersedes AD-30's K=4 because 4 was measured insufficient. The evidence sits at
+    // K=4 was measured insufficient. The evidence sits at
     // the quadrature layer rather than the distance layer, so it survives the constant being
     // correct: the same difference function integrated with 3 interior splits (K=4) against
     // 15 (K=16).

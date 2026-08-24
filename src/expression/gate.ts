@@ -1,5 +1,5 @@
 /**
- * DESIGN.md §1.2's validation gate and the write discipline, as the two primitives every
+ * The validation gate and the write discipline, as the two primitives every
  * dimension handler shares.
  *
  *     read → validate(input domain) → transform → validate(output domain) → write
@@ -12,18 +12,18 @@
  *
  * Three rules the write primitive enforces:
  *
- * - Never write a non-finite value — A4's global invariant, pinned by an adversarial-XML
+ * - Never write a non-finite value — the global invariant, pinned by an adversarial-XML
  *   property test. `transforms.ts` already refuses to produce one; this is the second lock,
  *   because the applier also computes values the transforms never see (a denormalized tempo,
  *   a clamped velocity, a moved end-marker duplicate).
  * - Never create an attribute. {@link writeAttributeValue} refuses an absent site and says so.
- *   Materializing an absent `@transition.to` would invent a gesture the author never wrote
- *   (§7.4); an absent `@scale` would seed a dead lever (§7.11).
- * - Do not write a value whose spelling is unchanged, which would break R4's contract that a
+ *   Materializing an absent `@transition.to` would invent a gesture the author never wrote;
+ * an absent `@scale` would seed a dead lever.
+ * - Do not write a value whose spelling is unchanged, which would break the contract that a
  *   no-op sample has `totalWrites === 0`. A *spelling* test, not a numeric one: an attribute
  *   reading `"1.0"` whose transformed value is 1 has a changed spelling and IS written, which
  *   is why P1's identity guarantee rests on the dimension-level `s === 1` short-circuit and
- *   not on this rule (A2).
+ *   not on this rule.
  */
 import { andThen, err, mapErr, ok, type Result } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
@@ -44,7 +44,7 @@ export interface GateRefusal {
 
 export type GateResult = Result<number, GateRefusal>;
 
-/** A3's refusal reasons, mapped onto the report's closed note vocabulary. */
+/** the refusal reasons, mapped onto the report's closed note vocabulary. */
 export function refusalNoteKind(reason: TransformRefusalReason): ReportNoteKind {
   switch (reason) {
     case 'out-of-domain-input':
@@ -69,7 +69,7 @@ function admit(value: number, admissible: boolean, refusal: () => GateRefusal): 
  * The whole gate for one scalar site: the row's input predicate, the transform, and the
  * output finiteness check, chained as this module's `validate → transform → validate`. The
  * middle step is a plain `mapErr` — `transformInSpace` already answers with a `Result`, and
- * all this layer adds is registry context (§7's per-row narrowing) on the way past.
+ * all this layer adds is registry context (the per-row narrowing) on the way past.
  *
  * A value failing the input predicate is refused rather than repaired. The renderer does not
  * enforce these domains, so real documents carry values that render benignly today and become
@@ -84,7 +84,7 @@ export function gateAndTransform(
 ): GateResult {
   const input = admit(value, row.valueDomain(value), () => ({
     kind: 'out-of-domain-input',
-    detail: `@${row.attribute} = ${value} is outside the domain §7 gives it`,
+    detail: `@${row.attribute} = ${value} is outside the domain the design gives it`,
   }));
 
   const transformed = andThen(input, (admissible) =>
@@ -102,7 +102,7 @@ export function gateAndTransform(
   );
 }
 
-/** What {@link writeNumber} did. Only `written` counts toward R4's `totalWrites`. */
+/** What {@link writeNumber} did. Only `written` counts toward the `totalWrites`. */
 export type WriteOutcome =
   /** The attribute existed, its spelling changed, and the document now holds the new value. */
   | 'written'
@@ -110,7 +110,7 @@ export type WriteOutcome =
   | 'unchanged'
   /** The attribute does not exist. Nothing is ever created. */
   | 'absent'
-  /** The value was not finite. The last line of A4's global invariant. */
+  /** The value was not finite. The last line of the global invariant. */
   | 'non-finite';
 
 /** Set an existing attribute to `value`, under all three rules in this module's doc. */
@@ -120,7 +120,7 @@ export function writeNumber(element: Element, attribute: string, value: number):
 
 /**
  * {@link writeNumber} for a value whose text is a number followed by a unit — MPM v3's
- * `frameLength="80%"` (§7.15).
+ * `frameLength="80%"`.
  *
  * The suffix is passed through verbatim rather than derived: a v3 document that spells its
  * frame suffix-less (which the format's own sample encodings do) must come back suffix-less,
@@ -146,7 +146,7 @@ export function writeSuffixedNumber(
   return 'written';
 }
 
-/** R6(a): a dynamics level clamped into the caller's musical range, and whether it bit. */
+/** A dynamics level clamped into the caller's musical range, and whether it bit. */
 export function clampIntoRange(
   value: number,
   range: { readonly min: number; readonly max: number },

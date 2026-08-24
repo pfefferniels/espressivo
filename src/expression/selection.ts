@@ -1,12 +1,12 @@
 /**
- * DESIGN.md D-I's selection layer: MPM `xml:id`s in, the dimensions those elements govern out.
+ * The selection layer: MPM `xml:id`s in, the dimensions those elements govern out.
  *
  * This is the half of `spotlight` that reads the document; once the spared set is known,
  * spotlight is `exaggerate` with a factor vector and `gesture` scope, and nothing in
  * `applier.ts` needs to know a selection happened. This module never writes, and the applier
  * never resolves.
  *
- * The table is transcribed rather than derived because D-I's type → dimension table is a
+ * The table is transcribed rather than derived because the type → dimension table is a
  * selection vocabulary and the registry is a write vocabulary. They agree on eight of the nine
  * entries and cannot agree on the ninth: `<ornament>` carries no exaggerable attribute of its
  * own — the three ornament dimensions write into the `<temporalSpread>` and
@@ -16,10 +16,10 @@
  *
  * A `<distribution.*>` element's dimension is not decided by its own name — all five
  * distribution shapes appear under all four imprecision maps — but by which map encloses it
- * (§7.13's three per-domain dimensions), so the walk carries the nearest enclosing
+ * (the three per-domain dimensions), so the walk carries the nearest enclosing
  * `imprecisionMap.*` down with it. Two consequences:
  *
- * - a distribution under `imprecisionMap.tuning` maps to no dimension, because A9 excludes the
+ * - a distribution under `imprecisionMap.tuning` maps to no dimension, because the design excludes the
  *   tuning domain as inert (nothing in this codebase reads `tuning.offset`), so selecting one
  *   is an `unmappable` offender and not a silent identity;
  * - `<measurement>`, the child of a `<distribution.list>` that the registry actually writes, is
@@ -37,7 +37,7 @@ import {
 } from './registry.js';
 
 /**
- * DESIGN.md D-I's mapping table, minus the distribution family. Element LOCAL names, because
+ * The mapping table, minus the distribution family. Element LOCAL names, because
  * that is what the document carries once `Element.wrap` has dropped the namespace prefix — the
  * same reading `mpmTree.ts` indexes maps by.
  */
@@ -66,7 +66,7 @@ const IMPRECISION_MAP_DIMENSIONS: ReadonlyMap<string, ExpressionDimension> = new
 const DISTRIBUTION_TYPES = new Set<string>(DISTRIBUTION_ELEMENTS);
 
 /**
- * The element local names D-I's table names, apart from the distribution family.
+ * The element local names the table names, apart from the distribution family.
  *
  * Exported so the suite can guard the table in both directions. Checking that a row spares what
  * the registry writes at that element needs no export; checking that no extra row exists does,
@@ -81,7 +81,7 @@ export const SELECTABLE_IMPRECISION_MAPS: readonly string[] = [
   ...IMPRECISION_MAP_DIMENSIONS.keys(),
 ];
 
-/** One id that named an element D-I's table maps to at least one dimension. */
+/** One id that named an element the table maps to at least one dimension. */
 export interface ResolvedSelection {
   readonly id: string;
   /** The local name of the element the id was found on. */
@@ -91,7 +91,7 @@ export interface ResolvedSelection {
 }
 
 /**
- * Why one id could not be turned into a spared set (A8).
+ * Why one id could not be turned into a spared set.
  *
  * `unresolved` — nothing in the document carries it. That covers a stale id, and also a score
  * id copied out of the MSM: an MPM has no `<note>` elements, so such an id resolves to nothing
@@ -138,7 +138,7 @@ interface Located {
  * element in document order, the same choice the prototype's `node.get(0)` made.
  *
  * Failure is never partial: offenders are collected, never thrown, so the caller can report
- * every one of them at once (A8). A run that has any offender must not happen at all.
+ * every one of them at once. A run that has any offender must not happen at all.
  */
 export function resolveSelection(root: Element, ids: readonly string[]): Selection {
   const wanted = [...new Set(ids)];
@@ -169,7 +169,7 @@ export function resolveSelection(root: Element, ids: readonly string[]): Selecti
   return { resolved, offenders, spared: unionOfDimensions(resolved) };
 }
 
-/** D-I's table applied to one located element; empty when the type governs nothing. */
+/** the table applied to one located element; empty when the type governs nothing. */
 function dimensionsOf(located: Located): readonly ExpressionDimension[] {
   const localName = located.element.getLocalName();
   if (DISTRIBUTION_TYPES.has(localName)) {
@@ -202,7 +202,7 @@ function unionOfDimensions(resolved: readonly ResolvedSelection[]): readonly Exp
 /**
  * One pre-order walk for all the ids at once, carrying the enclosing imprecision map down.
  *
- * `getChildElements` rather than `Element.query`, for the reason D-A bans the latter outright:
+ * `getChildElements` rather than `Element.query`, for the reason the design bans the latter outright:
  * `query` serializes the subtree with `toXML()`, re-parses it with DOMParser and maps hits back
  * by child-index path, so the prototype's per-id `//*[@xml:id='…']` is O(document) *per
  * selected instruction*.

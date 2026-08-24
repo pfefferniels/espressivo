@@ -3,7 +3,7 @@
  *
  * A cookbook entry that does not run is a defect of the same kind as a wrong number, and review
  * does not catch it: the recipes reach for fields by name (`table.columnSums`,
- * `segment.measure.start.number`, `opCounts.substitute`), and a rename anywhere in §9.3 leaves
+ * `segment.measure.start.number`, `opCounts.substitute`), and a rename anywhere in the design leaves
  * them plausible and broken. So every one is here in the form the documentation prints, over the
  * vendored fixtures rather than the prose's `roll1905`/`roll1927` placeholders.
  *
@@ -146,7 +146,7 @@ describe('the cookbook, run as printed', () => {
     });
     expect(report.dimensions.tempo.invariance).toBe('level');
     expect(report.dimensions.dynamics.weight).toBe(0);
-    // A zero weight excludes a dimension from `D` and still reports its `d_k` (AD-19).
+    // A zero weight excludes a dimension from `D` and still reports its `d_k`.
     expect(report.aggregate.weights.dynamics).toBe(0);
     expect(Number.isFinite(report.dimensions.dynamics.distance)).toBe(true);
     // …and it fires NO linear-space warning, because tempo is a log space: the note fires where

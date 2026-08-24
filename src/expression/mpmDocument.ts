@@ -2,7 +2,7 @@
  * Raw MPM text in, raw MPM text out — the two ends of the expression engine's document
  * layer.
  *
- * DESIGN.md D-A (as rewritten by adjudication A1) forbids `new Mpm(text)` here: the `Mpm`
+ * The raw-tree discipline forbids `new Mpm(text)` here: the `Mpm`
  * constructor runs the def parsers eagerly through `Header.parseData`'s `addStyleType`
  * loop, so merely *parsing* a document rewrites it — `rubatoDef` gains `intensity="1"
  * lateStart="0" earlyEnd="1"` and has present values respelled (`"1.0"` → `"1"`),
@@ -11,8 +11,8 @@
  * front of the whitespace, `Performance` adds `pulsesPerQuarter` and an empty `<global>`,
  * and `Dated.addMap`/`Header.addStyleType` DELETE duplicate maps and style collections. A
  * transform that inherits those edits cannot tell the caller which bytes it changed.
- * `Builder` is the verified non-mutating alternative (REVIEW-FINDINGS.md, "Mpm
- * CONSTRUCTOR"): it parses with `@xmldom/xmldom` and hands the root to `Element.wrap`,
+ * `Builder` is the verified non-mutating alternative: it parses with `@xmldom/xmldom` and
+ * hands the root to `Element.wrap`,
  * which copies attributes and children across verbatim.
  *
  * `parse → serialize` is NOT the identity on bytes, for any MPM document, whatever this
@@ -67,7 +67,7 @@ export function serializeMpmRoot(root: Element): string {
  * been through this module.
  *
  * Every identity claim in the engine — `exaggerate(mpm, {})`, `exaggerate(mpm, {every
- * dimension: 1})` — is byte-compared against this, per §1.1.
+ * dimension: 1})` — is byte-compared against this.
  */
 export function canonicalBaseline(text: string): string {
   return serializeMpmRoot(parseMpmRoot(text));

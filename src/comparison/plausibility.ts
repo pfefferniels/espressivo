@@ -1,7 +1,7 @@
 /**
- * C6's plausibility channel — the Hofmann-roll defence, as data.
+ * the plausibility channel — the Hofmann-roll defence, as data.
  *
- * §5.0 names four `plausibleRange` bands and §4 carries them on the rows. A value outside its
+ * the design names four `plausibleRange` bands and the design carries them on the rows. A value outside its
  * band is REPORTED and the distance is left exactly as it was. The design is built around a 1927
  * Hofmann roll whose `<tempo>` writes `@beatLength` in TICKS rather than as a fraction of a
  * whole note, which makes the resolved quarter-BPM absurd while every number in the report stays
@@ -9,10 +9,10 @@
  *
  * A document walk, not an evaluator hook: the pass reads the registry (`sites`,
  * `plausibleRange`) and walks the ordered map views the document layer already produced. Nothing
- * about it is dimension-specific, and it produces the site reference §9.3 wants (container,
+ * about it is dimension-specific, and it produces the site reference the design wants (container,
  * date, index among the map's entries, `xml:id`) as a by-product.
  *
- * Only instruction sites are walked, for C6's own word "resolved": a `<*Def>`'s value is
+ * Only instruction sites are walked, for the word "resolved": a `<*Def>`'s value is
  * performed only where an instruction references it, so reporting every def in a style
  * collection would flag values no performance ever reaches. A def-carried value that IS
  * performed goes unreported here — a stated limitation, and the band it would have tripped is
@@ -68,7 +68,7 @@ export function plausibilityFindings(
           const raw = readAttributeValue(element, row.attribute);
           if (raw === null) continue;
           const value = readNumericAttributeValue(element, row.attribute);
-          // An unusable value is not implausible — it is `⊥`, and §5's readers already price
+          // An unusable value is not implausible — it is `⊥`, and the readers already price
           // and report it. Reporting it here as well would put the same fact in two channels
           // with two different meanings.
           if (!Number.isFinite(value)) continue;

@@ -1,9 +1,9 @@
 /**
- * The imprecision deviation density and its integral — DESIGN.md §5.9, AD-14v.
+ * The imprecision deviation density and its integral.
  *
- * `p(t) = W₁(law_A(t), law_B(t)) / jnd_row`, capped by §4, and `d_k` is its integral over the
+ * `p(t) = W₁(law_A(t), law_B(t)) / jnd_row`, capped, and `d_k` is its integral over the
  * window. The headline is duration-proportional by construction: a difference contributes in
- * proportion to how long it is performed, pinned by §10's fixture in this module's tests on a
+ * proportion to how long it is performed, pinned by the fixture in this module's tests on a
  * one-bar span against a whole-piece one.
  *
  * ## Why the integral is exact and the cap is a `Math.min`
@@ -14,8 +14,8 @@
  * dimension's numerical error lives inside `W₁`, where it is measured per family
  * (`distributions.ts`).
  *
- * That is also why §4's cap appears here as a `Math.min` rather than as
- * `integrateCappedAbsolute`. AD-36.2's rule is structural — ANY `⊥` route into a dimension forces
+ * That is also why the cap appears here as a `Math.min` rather than as
+ * `integrateCappedAbsolute`. The rule is structural — ANY `⊥` route into a dimension forces
  * the capped integrator — and the `⊥` routes are real here (seven of them, measured; see
  * `imprecisionLaws.ts`). But `integrateCappedAbsolute` resolves the CORNER a cap puts into a
  * continuously varying density, and a constant density has no corner; capping the constant is
@@ -24,13 +24,13 @@
  * ## Three components, and only the first two are distances
  *
  * 1. The marginal, above — `W₁` between the declared laws.
- * 2. `processParameters` (§5.9, A-B3) — `stepWidth.max`, `degreeOfCorrelation` and, for the
- *    correlated families only, `milliseconds.timingBasis`. Priced through §4's capped local
+ * 2. `processParameters` — `stepWidth.max`, `degreeOfCorrelation` and, for the
+ *    correlated families only, `milliseconds.timingBasis`. Priced through the capped local
  *    metric per row, sustained over the cell exactly as the marginal is; present on one side
  *    only reads `⊥`. A separate component because the marginal does not characterize the
  *    process — for these two families a measured finding, since their marginal is
  *    index-dependent (`imprecisionLaws.ts`'s `CORRELATED_MARGINAL_NOTE`).
- * 3. The `W₂` decomposition (§1.2), which is interpretive and never enters `d_k`.
+ * 3. The `W₂` decomposition, which is interpretive and never enters `d_k`.
  */
 import { pairwise } from '../prelude/index.js';
 import { CompensatedSum, gaussLegendre10 } from './quadrature.js';
@@ -103,7 +103,7 @@ function withOverride(row: ComparisonRegistryRow, jnd: JndOverrides): Comparison
   return override === undefined ? row : { ...row, jnd: override };
 }
 
-/** The row that carries this dimension's law — its unit, JND and δ (§5.9). */
+/** The row that carries this dimension's law — its unit, JND and δ. */
 function marginalRow(domain: ImprecisionDomain, jnd: JndOverrides = {}): ComparisonRegistryRow {
   const row = comparisonRowAt(domain, 'distribution.uniform', 'limit.upper');
   if (row === null) throw new Error(`no marginal row for ${domain}`);
@@ -122,9 +122,9 @@ function processRow(
 }
 
 /**
- * §4's capped local metric, on two LAWS instead of two numbers.
+ * the capped local metric, on two LAWS instead of two numbers.
  *
- * `d(x, ⊥) = δ_row` and `d(⊥, ⊥) = 0` are §4's, unchanged; the value-value case is
+ * `d(x, ⊥) = δ_row` and `d(⊥, ⊥) = 0` are the capped metric's, unchanged; the value-value case is
  * `min(W₁/jnd, 2·δ_row)`. Truncating a metric leaves a metric and `W₁` is one, so the axioms
  * survive exactly as they do for `localDistance` — which is what keeps the triangle inequality
  * intact when a `⊥` document is the middle term.
@@ -150,7 +150,7 @@ export function lawDistance(
  *
  * Ordered rather than canonicalized: `W₁` is symmetric to the last bit and tested to be, but
  * caching the reversed pair under one key would make that symmetry a property of the cache, where
- * P-C2 claims it as a property of the function.
+ * The symmetry property claims it of the function.
  */
 function memoized(
   memo: Map<string, number> | undefined,
@@ -179,8 +179,8 @@ export interface ImprecisionCell {
   readonly mass: number;
   readonly capped: boolean;
   /**
-   * `p_imprecision(t)` in JND per quarter, at a position in QUARTERS (AD-51.1) — the integrand
-   * this cell's mass was computed from, exposed so AD-19 can root-refine segment boundaries
+   * `p_imprecision(t)` in JND per quarter, at a position in QUARTERS — the integrand
+   * this cell's mass was computed from, exposed so the caller can root-refine segment boundaries
    * rather than quantize them to cells. `mass` remains the authority.
    */
   readonly densityAt: (quarters: number) => number;
@@ -192,7 +192,7 @@ export interface ImprecisionDecomposition {
   /**
    * `∫(ℓ_A − ℓ_B) dμ` — the SIGNED location difference, in the row's unit.
    *
-   * A descriptor and never a distance (C2, §7.5): `location` cannot say which side runs late,
+   * A descriptor and never a distance: `location` cannot say which side runs late,
    * and a document late in one half and early in the other is exactly the case where the
    * unsigned term and the signed one disagree. It negates under the a/b swap.
    */
@@ -203,11 +203,11 @@ export interface ImprecisionDecomposition {
   readonly shape: number;
   /** The μ-weighted mean of ρ over the cells that have one, or null when none does. */
   readonly rho: number | null;
-  /** True where no cell had two spreads to correlate — §1.2's `shapeless` companion. */
+  /** True where no cell had two spreads to correlate — the `shapeless` companion. */
   readonly shapeless: boolean;
   /** `√∫W₂² dμ`, the quantity the three terms must reconstruct. */
   readonly w2: number;
-  /** `|∫W₂² dμ − (location² + spread² + shape²)|` — §1.2's closing check. */
+  /** `|∫W₂² dμ − (location² + spread² + shape²)|` — the closing check. */
   readonly closingResidual: number;
 }
 
@@ -245,11 +245,11 @@ export function imprecisionGridTicks(
 }
 
 /**
- * `d_imprecision` over the window, plus §1.2's interpretive decomposition.
+ * `d_imprecision` over the window, plus the interpretive decomposition.
  *
  * The law is read at each cell's LEFT EDGE, which is sound because the grid carries every span
  * edge of both readings: no span boundary falls strictly inside a cell, so the left edge's law
- * is the cell's law throughout. Right-continuity (A-B1) makes the left edge the correct probe —
+ * is the cell's law throughout. Right-continuity makes the left edge the correct probe —
  * an imprecision span governs from its own date.
  */
 export function imprecisionDistance(
@@ -275,7 +275,7 @@ export function imprecisionDistance(
   const processTotal = new CompensatedSum();
   let anyCapped = false;
 
-  // §1.2's decomposition runs on the NORMALIZED measure dμ = w dt / ∫w, so its accumulators are
+  // the decomposition runs on the NORMALIZED measure dμ = w dt / ∫w, so its accumulators are
   // kept apart from the headline's and divided at the end; the unnormalized measure would
   // silently change ℓ's unit.
   const locationSquared = new CompensatedSum();
@@ -321,7 +321,7 @@ export function imprecisionDistance(
       densityAt: () => density + process.distance,
     });
 
-    // A `⊥` span has no moments to take — §1.2's terms are integrals of means and spreads — so
+    // A `⊥` span has no moments to take — the terms are integrals of means and spreads — so
     // the cell drops out of the decomposition while still carrying its δ_row in the headline, the
     // same split `accentuationSampler` and `pedalSampler` make.
     if (isBottom(lawA) || isBottom(lawB)) continue;
@@ -375,13 +375,13 @@ export function imprecisionDistance(
 }
 
 /**
- * §5.9's `processParameters` component for one cell.
+ * the `processParameters` component for one cell.
  *
- * The union of both sides' parameter names, each priced by §4's capped metric on its own row. A
+ * The union of both sides' parameter names, each priced by the capped metric on its own row. A
  * parameter one side declares and the other does not is `⊥` rather than a difference from some
  * neutral: there is no "stepWidth.max = 0 means no process" reading — 0 freezes the walk, a
  * correlation of 1 and a perfectly definite behaviour — so absence is genuinely incomparable,
- * AD-2's own test for `⊥`. The opposite disposition from AD-42.3's ornament sub-elements, where
+ * the test for `⊥`. The opposite disposition from the ornament sub-elements, where
  * a neutral parameterization reproduces absence exactly.
  */
 function processDistanceOf(
@@ -415,20 +415,20 @@ function processDistanceOf(
 }
 
 /**
- * §7.4's invariance, per document — the canonicalization each side's laws pass through.
+ * the invariance, per document — the canonicalization each side's laws pass through.
  *
- * `'level'` is a location shift of the law (AD-20): each document's laws are shifted by minus the
+ * `'level'` is a location shift of the law: each document's laws are shifted by minus the
  * span-weighted mean of their own means, so a systematic offset — a roll read late throughout, a
  * machine with a constant lag — stops being a difference. Metric-safe for the same reason the
  * curve modes are: the canonicalization is per document and never pair-dependent.
  *
- * `'level-gain'` additionally normalizes the spread, which §7.4 states generally ("centered and
+ * `'level-gain'` additionally normalizes the spread, which the design states generally ("centered and
  * σ-normalized per document") without qualifying it by dimension, and which for a law is exactly
- * `X ↦ (X − ℓ)/σ`. Neither a ruling nor the renderer settles this reading — AD-20 names the
- * distribution case only for `'level'` — so §7.4's own words are read literally here.
+ * `X ↦ (X − ℓ)/σ`. Neither a ruling nor the renderer settles this reading — the design names the
+ * distribution case only for `'level'` — so the words are read literally here.
  *
  * A document whose span-weighted spread is 0 — every span `δ₀`, the ordinary case for a document
- * with no imprecision at all — is left unscaled and marked shapeless (AD-20's `σ = 0` rule).
+ * with no imprecision at all — is left unscaled and marked shapeless (the `σ = 0` rule).
  */
 function canonicalizers(
   a: ImprecisionReading,

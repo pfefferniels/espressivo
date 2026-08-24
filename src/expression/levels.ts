@@ -1,14 +1,14 @@
 /**
- * The two level dimensions, `tempo` and `dynamics` — DESIGN.md §7.1's center algorithm,
- * §7.2/§7.4's rows, and §1.3's two scopes.
+ * The two level dimensions, `tempo` and `dynamics`.1's center algorithm,
+ * the rows, and the two scopes.
  *
  * One module because they are one algorithm with two vocabularies. What separates them from
  * every other dimension is that a level is not a number in the document: it is a *string* that
  * may be a number, a `<tempoDef>`/`<dynamicsDef>` name, or an MEI placeholder, and which of
- * those it is decides WHERE the transform writes (D-C: never rewrite a name as a number — that
+ * those it is decides WHERE the transform writes (never rewrite a name as a number — that
  * severs the style linkage the def-side transform depends on).
  *
- * ## The order is the specification (A4/A5)
+ * ## The order is the specification
  *
  * 1. Classify every site and build the skip set: string levels that resolve to nothing, def
  *    values that are not finite, defs reached from instructions with different `@beatLength`,
@@ -28,7 +28,7 @@
  * Excluding `@transition.to` stops a later ritardando target from pulling the center down and
  * thereby speeding up the opening constant tempo, and costs nothing expressively: the
  * log-difference of a pair scales by exactly `s` whatever the center is. The exclusion extends
- * to a def that only a `@transition.to` names — §7.1 says "at least one in-scope level string
+ * to a def that only a `@transition.to` names — the design says "at least one in-scope level string
  * references" — which is still transformed, just not averaged.
  *
  * `styleScope.findStyleDef` resolves a part's header first and the global one second, as a
@@ -65,7 +65,7 @@ import { geometricMean } from './transforms.js';
 /**
  * The quarter-note normalization of a `<tempo>`: raw `bpm` values with different `@beatLength`
  * are not comparable, so the center is computed on `bpm · beatLength · 4` and each value mapped
- * back through its own factor (§7.2). Four because `@beatLength` is a fraction of a whole note,
+ * back through its own factor. Four because `@beatLength` is a fraction of a whole note,
  * so a quarter note is 0.25 and a quarter-note bpm normalizes to 1 — which is what makes
  * `options.center.tempo` readable as quarter-note bpm.
  */
@@ -77,7 +77,7 @@ const NO_NORMALIZATION = 1;
 /** What the level pass computed, for the performance report's `centers` and `bounds`. */
 export interface LevelOutcome {
   readonly center: number | null;
-  /** §8's `r`: the largest `max(x/c, c/x)` over the population. Null without a center. */
+  /** the `r`: the largest `max(x/c, c/x)` over the population. Null without a center. */
   readonly deviationRatio: number | null;
 }
 
@@ -115,11 +115,11 @@ interface DefRecord {
   readonly site: SiteRef;
   /** Every normalization factor a referencing instruction imposes. More than one ⇒ skip. */
   readonly normalizations: Set<number>;
-  /** True once a prevailing-level string (not a `@transition.to`) names it — §7.1. */
+  /** True once a prevailing-level string (not a `@transition.to`) names it. */
   referencedByLevel: boolean;
   skipped: boolean;
   /**
-   * The transformed value, computed but NOT yet written (F1) — see `transformAndWrite` for why
+   * The transformed value, computed but NOT yet written — see `transformAndWrite` for why
    * def writes wait until every pair has been checked.
    */
   pending: number | null;
@@ -133,7 +133,7 @@ interface DefRecord {
  * Apply one level dimension to one performance.
  *
  * The returned center is echoed in the report so a caller can pass it back through
- * `options.center` and recover exact composition under clamping (A3), which is P2's only
+ * `options.center` and recover exact composition under clamping, which is P2's only
  * remedy there.
  */
 export function applyLevelDimension(
@@ -201,7 +201,7 @@ class LevelPass {
     }
 
     if (this.options.scope === 'gesture') {
-      // §1.3: gesture scope has no performance-wide center at all — each pair is scaled around
+      // gesture scope has no performance-wide center at all — each pair is scaled around
       // its own geometric mean, and constants and def values are untouched.
       this.applyGestureScope();
       return { center: null, deviationRatio: null };
@@ -224,7 +224,7 @@ class LevelPass {
     return { center, deviationRatio: deviationRatioOf(population, center) };
   }
 
-  // --- Phase 1: classify every site, building the skip set (A4/A5) ------------------------
+  // --- Phase 1: classify every site, building the skip set ------------------------
 
   private classify(): void {
     for (const environment of environmentsOf(this.performance)) {
@@ -247,7 +247,7 @@ class LevelPass {
   ): void {
     const normalization = this.normalizationOf(entry.element);
     if (normalization === null) {
-      // §7.2: the renderer skips a `<tempo>` without `@beatLength` entirely, so every
+      // the renderer skips a `<tempo>` without `@beatLength` entirely, so every
       // attribute on it is inert — including its transition target.
       this.accumulator.countInert();
       this.sink.note(
@@ -300,7 +300,7 @@ class LevelPass {
     });
   }
 
-  /** `isPrevailingLevel` separates §7.1's population member from the transition target. */
+  /** `isPrevailingLevel` separates the population member from the transition target. */
   private classifyEndpoint(
     row: RegistryRow,
     attribute: string,
@@ -326,7 +326,7 @@ class LevelPass {
     };
 
     if (reading.kind === 'unresolvable') {
-      // §7.2: MEI's '+', '-' and '?' placeholders and every unresolvable name land here. The
+      // MEI's '+', '-' and '?' placeholders and every unresolvable name land here. The
       // renderer's 100.0 fallback is deliberately NOT reproduced — it is a rendering default,
       // not a reading of the document, and it must never become a center member.
       endpoint.skipped = true;
@@ -348,11 +348,11 @@ class LevelPass {
       return endpoint;
     }
 
-    // §1.2's gate is applied to the value the transform will actually see — the NORMALIZED one
-    // (F11). Gating the raw value instead lets a `<tempo>` whose bpm and beatLength are each
+    // the gate is applied to the value the transform will actually see — the NORMALIZED one
+    //. Gating the raw value instead lets a `<tempo>` whose bpm and beatLength are each
     // finite and positive but whose product underflows enter the population un-gated, where
     // `geometricMean` refuses it and the whole dimension goes inert without the offending site
-    // ever being named. §7.1's invariant is that the population IS the transform set.
+    // ever being named. The invariant is that the population IS the transform set.
     const gated = reading.value * normalization;
     if (!row.valueDomain(gated)) {
       endpoint.skipped = true;
@@ -363,7 +363,7 @@ class LevelPass {
         site,
         `@${attribute} = ${reading.value}${
           normalization === NO_NORMALIZATION ? '' : ` (normalized: ${gated})`
-        } is outside the domain §7 gives it`,
+        } is outside the domain the design gives it`,
       );
     }
     return endpoint;
@@ -403,7 +403,7 @@ class LevelPass {
    * The def half of the skip set: a value the gate rejects, and a def with no single
    * normalization factor.
    *
-   * The second is §7.2's heterogeneous-`@beatLength` rule: a `tempoDef` borrows the
+   * The second is the heterogeneous-`@beatLength` rule: a `tempoDef` borrows the
    * referencing instruction's `@beatLength`, so a def named from a half-note tempo and from a
    * quarter-note one has two different quarter-note values and no single one to transform. The
    * first is needed because `parseJavaDouble` accepts Java's `NaN` and `Infinity` literals, so
@@ -435,13 +435,13 @@ class LevelPass {
           record.site,
           `@value = ${record.value}${
             normalization === NO_NORMALIZATION ? '' : ` (normalized: ${gated})`
-          } is outside the domain §7 gives it`,
+          } is outside the domain the design gives it`,
         );
       }
     }
   }
 
-  // --- Phase 2: the center, over exactly the surviving population (§7.1) ------------------
+  // --- Phase 2: the center, over exactly the surviving population ------------------
 
   private buildPopulation(): readonly number[] {
     const population: number[] = [];
@@ -478,7 +478,7 @@ class LevelPass {
    * center to transform them around.
    *
    * `inert` rather than `skipped`: nothing is wrong with a `@transition.to` of 90 whose map's
-   * prevailing levels are all placeholders — it is unreachable, which is §7.5's distinction
+   * prevailing levels are all placeholders — it is unreachable, which is the distinction
    * between "does not use curvature" and "uses curvature where it does nothing".
    */
   private inertEveryEndpoint(): void {
@@ -494,13 +494,13 @@ class LevelPass {
   // --- Phase 3: transform, validate, write -------------------------------------------------
 
   /**
-   * Plan every write, settle the refusals, and only then touch the document (F1).
+   * Plan every write, settle the refusals, and only then touch the document.
    *
    * A def `@value` is ONE site shared by every instruction that names it, so a def write
    * flushed before the pair-collapse guard has run cannot be taken back — and the guard would
    * then suppress only the instruction-attribute half of a collapsing pair, writing exactly
-   * the half-applied gesture it exists to prevent. Measured on the §8 reference fixture: at
-   * `s = 1.766`, just above §8's own dynamics sampling ceiling, an authored `f → 115`
+   * the half-applied gesture it exists to prevent. Measured on the reference fixture: at
+   * `s = 1.766`, just above the dynamics sampling ceiling, an authored `f → 115`
    * crescendo became a `127 → 115` diminuendo while the report claimed the pair was refused.
    */
   private transformAndWrite(center: number): void {
@@ -544,7 +544,7 @@ class LevelPass {
       for (const endpoint of endpointsOf(instruction)) {
         if (endpoint.skipped) continue;
         if (endpoint.reading.kind === 'def') {
-          // D-C: the def's `@value` is the site; the instruction attribute holds a NAME, and
+          // the def's `@value` is the site; the instruction attribute holds a NAME, and
           // rewriting it as a number would sever the linkage the def-side write depends on.
           const record = this.defs.get(endpoint.reading.def);
           endpoint.after = record?.after ?? endpoint.reading.value;
@@ -671,9 +671,9 @@ class LevelPass {
   /**
    * The gesture-scope commit: the same guard, but nothing is deferred.
    *
-   * Under gesture scope def values are untouched by construction (§1.3), so both endpoints of
+   * Under gesture scope def values are untouched by construction, so both endpoints of
    * every pair the engine writes are instruction attributes and the refusal is enforceable
-   * immediately — the deferral F1 requires under global scope has nothing to defer here.
+   * immediately — the deferral the design requires under global scope has nothing to defer here.
    *
    * @returns false when the guard refused the pair — the caller's cue that nothing downstream
    *   of this transition endpoint (the end-marker duplicate) may move either.
@@ -707,8 +707,8 @@ class LevelPass {
   }
 
   /**
-   * R6(a) clamps the dynamics LEVEL attributes and nothing else: tempo has no musical ceiling
-   * the MPM can name, and inventing one would be the magic constant C2 forbids.
+   * The clamp covers the dynamics LEVEL attributes and nothing else: tempo has no musical ceiling
+   * the MPM can name, and inventing one would be the magic constant the design forbids.
    */
   private clamp(value: number, site: SiteRef): number {
     if (this.domain !== 'dynamics') return value;
@@ -727,7 +727,7 @@ class LevelPass {
   }
 
   /**
-   * §7.4 — the clamp bites only at the top, so two adjacent named levels converge and can
+   * the clamp bites only at the top, so two adjacent named levels converge and can
    * become identical: on the reference fixture both `f` and `ff` reach the ceiling at
    * `s ≈ 4`, after which every note marked `f` and every note marked `ff` renders at one
    * velocity. The exaggeration would DESTROY a dynamic distinction rather than widen it, so
@@ -762,7 +762,7 @@ class LevelPass {
     }
   }
 
-  // --- Gesture scope (§1.3, A7, D-I) -------------------------------------------------------
+  // --- Gesture scope -------------------------------------------------------
 
   /**
    * `gesture` scope: each transition pair is scaled around its OWN geometric mean, constants
@@ -773,7 +773,7 @@ class LevelPass {
    * 48 in a {48,48,97} map renders at 59.3 under attenuation 0.1, the inverse of "damp the
    * background".
    *
-   * A pair with a def-valued endpoint has no writable site here (defs are untouched and D-C
+   * A pair with a def-valued endpoint has no writable site here (defs are untouched and the rule
    * forbids rewriting a name as a number), so it is refused and reported rather than half
    * applied.
    */
@@ -821,7 +821,7 @@ class LevelPass {
         this.dimension,
         level.reading.kind === 'def' ? level.site : target.site,
         'a named endpoint has no writable site under gesture scope: defs are untouched, and ' +
-          'rewriting a name as a number would sever the style linkage (D-C)',
+          'rewriting a name as a number would sever the style linkage',
       );
       return;
     }
@@ -869,14 +869,14 @@ class LevelPass {
   }
 
   /**
-   * §7.2/A7/D-I — the MEI end-marker duplicate.
+   * the MEI end-marker duplicate.
    *
    * MEI exports a `<dynamics>` transition and then repeats its `@transition.to` as the *level*
    * of the next instruction, so one musical value is written at two sites. They are not
-   * independent levers, so moving the second with the first does not violate D-C's one-site
+   * independent levers, so moving the second with the first does not violate the one-site
    * rule, and leaving it behind would put a discontinuity where the document had none.
    *
-   * Detection is the conjunction §7.2 states: the *next* instruction, in the same environment,
+   * Detection is the conjunction the design states: the *next* instruction, in the same environment,
    * at a strictly later date, constant, and resolving to exactly the transition's target value
    * in the same normalized space.
    *
@@ -884,10 +884,10 @@ class LevelPass {
    * which for `dynamics` is looser than the next one in the view. `this.instructions` is not
    * the date-stable view — {@link classifyInstruction} returns early for an element with
    * neither a level nor a target, so `.at(index + 1)` steps over such an element. For tempo
-   * that is correct: a `<tempo>` without `@beatLength` is skipped by the renderer too (§7.2,
+   * that is correct: a `<tempo>` without `@beatLength` is skipped by the renderer too (the
    * `TempoMap.getTempoDataOf` returns null for it), so it opens no span. For dynamics it is
    * not: a `<dynamics>` carrying neither `@volume` nor `@transition.to` classifies away here,
-   * but the renderer ENDS the previous span with it (AD-33.4). Measured through `performMsm` on
+   * but the renderer ENDS the previous span with it. Measured through `performMsm` on
    * five notes, with a transition `volume="60" transition.to="90"` at 0 and a constant
    * `volume="90"` at 2880:
    *
@@ -903,7 +903,7 @@ class LevelPass {
    * The fix is not "compare view positions": that would also stop tempo stepping over the
    * `<tempo>` it is right to step over. It needs a per-dimension notion of "an element the
    * renderer ignores entirely" versus "an element the renderer treats as a boundary", which is
-   * a §7.2 ruling. Do not read the current rule as settled until that ruling lands.
+   * a further ruling. Do not read the current rule as settled until that ruling lands.
    */
   private markEndMarkerDuplicates(): void {
     for (const [index, instruction] of this.instructions.entries()) {
@@ -937,7 +937,7 @@ class LevelPass {
       return;
     }
 
-    // F2: the duplicate is DETECTED in quarter-note space, so it must be WRITTEN there too.
+    // the duplicate is DETECTED in quarter-note space, so it must be WRITTEN there too.
     // `target.after` has already been divided by the TRANSITION's own `@beatLength`; writing it
     // straight into the duplicate's `@bpm` is correct only where the two instructions share a
     // beat unit. Where they do not — a quarter-note transition followed by a half-note marker —
@@ -983,7 +983,7 @@ function onlyNormalization(record: DefRecord): number {
   return NO_NORMALIZATION;
 }
 
-/** §8's `r`, the document-side input a caller completes the tempo bound formula with. */
+/** the `r`, the document-side input a caller completes the tempo bound formula with. */
 function deviationRatioOf(population: readonly number[], center: number): number | null {
   let ratio: number | null = null;
   for (const value of population) {

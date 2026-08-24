@@ -1,14 +1,14 @@
 /**
- * The dynamics curve — DESIGN.md §5.3. `g(t) = ln(volume(t))`, in nepers.
+ * The dynamics curve. `g(t) = ln(volume(t))`, in nepers.
  *
  * ## The defined object is the IDEAL Bézier, not the renderer's approximation of it
  *
- * §5.0 rule 3 / R20 is the reason this module does not call `bezier.ts`'s `tForDate`. That
+ * Rule 3 is the reason this module does not call `bezier.ts`'s `tForDate`. That
  * function inverts the curve's x-component by bisection and stops at a ONE-TICK tolerance in the
  * date domain (`bezier.ts:57-78`), so the renderer's `date ↦ volume` is a staircase with
  * thousands of treads across a long transition and no smooth quadrature rule can converge
  * against it. The DEFINED comparison object is the smooth ideal Bézier; `tForDate` is the
- * renderer's approximation of it and belongs to the §6.3 replay, where the divergence is bounded
+ * renderer's approximation of it and belongs to the replay, where the divergence is bounded
  * by `|Δvolume| ≤ |v′(t)| · 1 tick / |x′(t)|`.
  *
  * {@link idealCurveParameter} therefore inverts the same cubic to machine precision: the same
@@ -16,16 +16,16 @@
  *
  * ## What the renderer does that a reader would not guess
  *
- * - Trailing transitions are inert (AD-8), exactly as in tempo: `DynamicsMap.getEndDate:187-193`
+ * - Trailing transitions are inert, exactly as in tempo: `DynamicsMap.getEndDate:187-193`
  *   has the same `MAX_VALUE` shape, so a trailing `volume=40 transition.to=100` performs a flat
  *   40. `all_maps.mpm` ends with `volume="80" transition.to="110"` and its reference rendering
  *   shows velocities around 80, not a crescendo.
  * - `@curvature` and `@protraction` are read only in the transition branch
  *   (`DynamicsMap.ts:170-181`), default 0.0, and are clamped to `[0,1]` and `[−1,1]` on the way
- *   in. `<movement>` defaults to 0.4 instead (§5.8/AD-13), which is why the shared Bézier
+ *   in. `<movement>` defaults to 0.4 instead, which is why the shared Bézier
  *   machinery must not share a default.
  * - The neutral is velocity 100, before the first instruction and for a wholly absent map
- *   (AD-9ii, `DynamicsMap.ts:251-253`) — not a left extension of the first instruction.
+ *   (`DynamicsMap.ts:251-253`) — not a left extension of the first instruction.
  * - `@subNoteDynamics` switches the rendering MECHANISM and is a structural finding, never a
  *   curve difference: on a sub-note span every note is pinned to velocity 100 and the shape
  *   becomes a CC 7 channel-volume curve. Two documents identical but for the flag are distance 0
@@ -88,7 +88,7 @@ export interface DynamicsCurve {
   readonly notes: readonly DynamicsCurveNote[];
 }
 
-/** The neutral dynamics curve: velocity 100 everywhere (R6). */
+/** The neutral dynamics curve: velocity 100 everywhere. */
 export function neutralDynamicsCurve(): DynamicsCurve {
   return {
     segments: [
@@ -106,7 +106,7 @@ export function neutralDynamicsCurve(): DynamicsCurve {
 
 /**
  * `DynamicsMap.clampCurvature` / `clampProtraction`, applied on the way in — including what they
- * do to a value that is not a number (MINOR-4).
+ * do to a value that is not a number.
  *
  * The clamps are two comparisons, `value < 0` and `value > 1`, and `NaN` fails both — so an
  * unusable `@curvature` reaches the curve as `NaN` rather than as the 0.0 an absent one gets.
@@ -122,7 +122,7 @@ function shapeParameter(element: Element, name: string, low: number, high: numbe
 }
 
 /**
- * Invert the Bézier's x-component to MACHINE PRECISION — the ideal curve of §5.0 rule 3.
+ * Invert the Bézier's x-component to MACHINE PRECISION — the ideal curve of the rule 3.
  *
  * `x(t) = ((u·t + v)·t + 3x₁)·t` with `u = 3x₁ − 3x₂ + 1`, `v = −6x₁ + 3x₂`, the same Horner
  * form `bezier.ts` uses, monotone on `[0,1]` for control points in range. Fifty bisections take
@@ -165,7 +165,7 @@ function valueFraction(t: number): number {
 
 interface RawDynamics {
   readonly dateTicks: number;
-  /** Null where the renderer skips the instruction — `@volume` absent (AD-33.4). */
+  /** Null where the renderer skips the instruction — `@volume` absent. */
   readonly volume: number | null;
   readonly transitionTo: number | null;
   readonly curvature: number;
@@ -181,15 +181,15 @@ interface RawDynamics {
  * next `<dynamics>`), so a `<style>` between two instructions is transparent — unlike
  * `asynchronyMap`, where it is not.
  *
- * A `<dynamics>` with no `@volume` is a SKIP, not a no-op (AD-33.4). `getDynamicsDataOf` rejects
+ * A `<dynamics>` with no `@volume` is a SKIP, not a no-op. `getDynamicsDataOf` rejects
  * it (`DynamicsMap.ts:162-163`), but `getEndDate:187-193` scans for the next element NAMED
  * `dynamics` regardless of whether it parses, so the volume-less element still ends the previous
  * span; `renderDynamicsToMap` then `continue`s past it and the next valid instruction's inner
  * loop pins every note in the gap to `velocity="100.0"` (`DynamicsMap.ts:251-253`). Same shape as
- * tempo's AD-9i, same constant, a different mechanism. Reading it as "the previous span
+ * tempo's skip rule, same constant, a different mechanism. Reading it as "the previous span
  * continues" costs `|ln 60 − ln 100| = 0.511` nepers — 5.36 JND — held across the whole gap.
  *
- * An unresolvable LEVEL is still not a skip: R8 makes it the renderer's 100.0.
+ * An unresolvable LEVEL is still not a skip: the design makes it the renderer's 100.0.
  */
 export function readDynamicsSegments(
   view: OrderedMapView | null,
@@ -211,7 +211,7 @@ export function readDynamicsSegments(
     const volumeText = readAttributeValue(element, 'volume');
 
     if (volumeText === null) {
-      // The renderer skips it but still ends the previous span with it (AD-33.4).
+      // The renderer skips it but still ends the previous span with it.
       return {
         dateTicks: entry.date * resolution.scaleFactor,
         volume: null,
@@ -247,7 +247,7 @@ export function readDynamicsSegments(
       volume: volume.value,
       transitionTo: transitionTo === null ? null : transitionTo.value,
       // Read ONLY in the transition branch, and defaulted to 0.0 there — not 0.4, which is
-      // <movement>'s default and a different family (§5.8/AD-13).
+      // <movement>'s default and a different family.
       curvature: shapeParameter(element, 'curvature', 0, 1),
       protraction: shapeParameter(element, 'protraction', -1, 1),
       subNoteDynamics: readAttributeValue(element, 'subNoteDynamics') === 'true',
@@ -294,7 +294,7 @@ export function readDynamicsSegments(
         detail:
           'no @volume: the renderer skips the instruction but still ends the previous span ' +
           'with it, and pins every note up to the next valid <dynamics> to velocity 100 ' +
-          '(DynamicsMap.ts:251-253, AD-33.4)',
+          '(DynamicsMap.ts:251-253)',
       });
       const nextValid = elementAtOrNull(
         valid,
@@ -362,7 +362,7 @@ export function readDynamicsSegments(
           dateTicks: raw.dateTicks,
           detail:
             'last <dynamics> of the map: getEndDate is MAX_VALUE, so @transition.to is ' +
-            'inert and the span performs flat at @volume (AD-8)',
+            'inert and the span performs flat at @volume',
         });
     }
 
@@ -370,7 +370,7 @@ export function readDynamicsSegments(
       notes.push({
         kind: 'renderer-default-level',
         dateTicks: raw.dateTicks,
-        detail: 'unresolvable level performed at the renderer default of 100.0 (R8/AD-1)',
+        detail: 'unresolvable level performed at the renderer default of 100.0',
       });
 
     // Structural, never a curve difference — and inert on the last instruction, by the same
@@ -382,7 +382,7 @@ export function readDynamicsSegments(
         detail:
           'subNoteDynamics: the span is performed as a CC 7 channel-volume curve with every ' +
           'note pinned to velocity 100, not as per-note velocity — same date-axis curve, ' +
-          'different MIDI mechanism (§5.3)',
+          'different MIDI mechanism',
       });
   }
 
@@ -396,7 +396,7 @@ export function readDynamicsSegments(
 }
 
 /**
- * The segment governing `ticks`, right-continuous (A-B1).
+ * The segment governing `ticks`, right-continuous.
  *
  * A SCAN, deliberately — the same three reasons `tempoCurve.segmentAt` gives, in the same shape:
  * the `!Number.isFinite(endTicks)` arm, the `?? last(curve.segments)` fallback, and skip gaps

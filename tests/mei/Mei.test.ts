@@ -980,7 +980,7 @@ describe('Mei.layersToStaffs – one staff per layer', () => {
 
   it('drops an oStaff that holds only oLayer children – reproduced upstream behaviour', () => {
     // layersToStaffs matches oStaff but moves only `layer` children, and detaches the
-    // original unconditionally. PARITY.md §4 records this.
+    // original unconditionally. PARITY.md the design records this.
     const mei = new Mei(
       score(
         '<scoreDef><staffGrp><staffDef n="1" lines="5"/></staffGrp></scoreDef>',

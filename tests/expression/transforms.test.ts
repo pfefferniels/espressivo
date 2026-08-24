@@ -1,13 +1,13 @@
 /**
- * The scale spaces of `src/expression/transforms.ts`, against DESIGN §1's properties.
+ * The scale spaces of `src/expression/transforms.ts`, against the properties.
  *
- * P1–P5 hold automatically for any monotone bijection with `T(neutral) = 0` (DESIGN §1.1),
- * so this suite cannot validate a single registry choice — that is §7's job and A14's render
+ * P1–P5 hold automatically for any monotone bijection with `T(neutral) = 0`,
+ * so this suite cannot validate a single registry choice — that is the job and the render
  * tests'. It pins that the closed forms are the ones DESIGN specifies, that they behave in
- * IEEE-754 the way §1.1 says they do rather than the way they would over ℝ, and that every
+ * IEEE-754 the way the design says they do rather than the way they would over ℝ, and that every
  * departure is a refusal rather than a written NaN.
  *
- * No RNG (R2). Every sweep is a loop over a fixed grid.
+ * No RNG. Every sweep is a loop over a fixed grid.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -42,13 +42,13 @@ import type {
 import { numberAt, pairwise } from '../../src/prelude/index.js';
 
 /**
- * A3 contracts P2 as exact "only on the clamp-free subdomain and only to ~1 ULP". Measured
+ * P2 is exact "only on the clamp-free subdomain and only to ~1 ULP". Measured
  * over the grids below, the worst conditioned deviation is 1.07 ULP; 8 is the budget, enough
  * headroom for a `Math.pow` slightly less accurate than this machine's. Conditioned is the
  * load-bearing word — see {@link amplificationAt}. The budget is far too loose to discriminate
  * between closed forms: an `exp`/`log` round trip passes it at 2.2e-2 where the closed form
- * reaches 2.7e-2, and even a different METRIC passes — §7.3's rejected log-1-over-`exponent`
- * reading of `meanTempoAt` comes in at 2.0e-2. Per DESIGN §1.1, P1-P5 constrain the neutral and
+ * reaches 2.7e-2, and even a different METRIC passes — the rejected log-1-over-`exponent`
+ * reading of `meanTempoAt` comes in at 2.0e-2. P1-P5 constrain the neutral and
  * not the metric, which is why the metric anchors below are a separate block.
  */
 const COMPOSITION_ULPS = 8;
@@ -62,7 +62,7 @@ const JOINT_TRIM_ULPS = 24;
 /**
  * How far a value's distance from the nearest bound amplifies one ULP of error.
  *
- * Conditioning, not a defect, is why raw deviations exceed A3's "~1 ULP": a `curvature` of
+ * Conditioning, not a defect, is why raw deviations exceed the "~1 ULP": a `curvature` of
  * 0.99999999 stored as a double has 8 significant digits of distance from 1 left, which the
  * second transform's `1 − x` recovers with relative error `eps/(1−x)`. At `x = 0.99, s₂ = 4`
  * that costs 1.3e-11 absolute; every interior triple stays at 1 ULP.
@@ -122,8 +122,8 @@ const POSITIVE_FACTORS = [0.25, 0.5, 2, 4] as const;
 const REAL_FACTORS = [-2, -0.5, 0.25, 0.5, 2, 4] as const;
 
 /**
- * One entry per scalar scale space of DESIGN §1's table. The `logit` interval and the
- * `log-around-center` center are the registry's own (§7.3, §7.5/§7.14, §7.1).
+ * One entry per scalar scale space of the table. The `logit` interval and the
+ * `log-around-center` center are the registry's own.
  */
 const SPACES: readonly SpaceUnderTest[] = [
   {
@@ -192,7 +192,7 @@ const SPACES: readonly SpaceUnderTest[] = [
   },
 ];
 
-/** Windows whose total trim stays clear of the A6 clamp under every factor product below. */
+/** Windows whose total trim stays clear of the clamp under every factor product below. */
 const TRIM_WINDOWS: readonly RubatoWindow[] = [
   { lateStart: 0, earlyEnd: 0.8 },
   { lateStart: 0.1, earlyEnd: 0.95 },
@@ -203,10 +203,10 @@ const TRIM_WINDOWS: readonly RubatoWindow[] = [
 ];
 const TRIM_FACTORS = [0.5, 2] as const;
 
-/** DESIGN §4's default. An IEEE saturation guard, not a musical bound (A6). */
+/** the default. An IEEE saturation guard, not a musical bound. */
 const MIN_RUBATO_WINDOW = 1e-6;
 
-describe('s-domains are data (DESIGN §1, A3)', () => {
+describe('s-domains are data', () => {
   it('covers every scale space including the joint trim', () => {
     const tags: readonly ScaleSpaceTag[] = [
       'log-around-center',
@@ -260,7 +260,7 @@ describe('s-domains are data (DESIGN §1, A3)', () => {
   });
 });
 
-describe('P1 — s = 1 is the identity bit for bit (DESIGN §1.1, A2)', () => {
+describe('P1 — s = 1 is the identity bit for bit', () => {
   it.each(SPACES)('$name returns its input exactly', ({ space, values }) => {
     for (const x of values) {
       expect(Object.is(expectOk(transformInSpace(space, x, 1)), x)).toBe(true);
@@ -269,7 +269,7 @@ describe('P1 — s = 1 is the identity bit for bit (DESIGN §1.1, A2)', () => {
 
   it('holds where the arithmetic does not: mu*(48/mu)^1 !== 48', () => {
     const center = Math.sqrt(20 * 100);
-    // DESIGN §1.1's own counter-example. The branch is what makes P1 true, not the formula.
+    // the counter-example. The branch is what makes P1 true, not the formula.
     expect(center * Math.pow(48 / center, 1)).not.toBe(48);
     expect(expectOk(logAroundCenter(48, 1, center))).toBe(48);
     expect(expectOk(logit(0.3, 1, 0, 1))).toBe(0.3);
@@ -293,7 +293,7 @@ describe('P1 — s = 1 is the identity bit for bit (DESIGN §1.1, A2)', () => {
   });
 });
 
-describe('P2 — composition (DESIGN §1.1, A3)', () => {
+describe('P2 — composition', () => {
   it.each(SPACES)(
     '$name: s1 after s2 equals s1*s2',
     ({ space, values, factors, scale, boundDistance }) => {
@@ -307,7 +307,7 @@ describe('P2 — composition (DESIGN §1.1, A3)', () => {
             const composed = transformInSpace(space, first.value, s1);
             const direct = transformInSpace(space, x, s1 * s2);
             // A refusal on either path is a saturation, i.e. outside the clamp-free
-            // subdomain on which A3 contracts P2 at all.
+            // subdomain on which P2 is contracted at all.
             if (!composed.ok || !direct.ok) continue;
             // The intermediate is what the second transform has to read back, so it is its
             // proximity to a bound — not the input's or the result's — that sets the budget.
@@ -343,7 +343,7 @@ describe('P2 — composition (DESIGN §1.1, A3)', () => {
     }
   });
 
-  it('log-around-center holds the center invariant, which is what makes P2 exact (§7.1)', () => {
+  it('log-around-center holds the center invariant, which is what makes P2 exact', () => {
     const population = [40, 55, 60, 72, 90, 120];
     const center = expectOk(geometricMean(population));
     for (const s of REAL_FACTORS) {
@@ -354,7 +354,7 @@ describe('P2 — composition (DESIGN §1.1, A3)', () => {
     }
   });
 
-  it('the joint trim composes and preserves the head:tail ratio (§7.6)', () => {
+  it('the joint trim composes and preserves the head:tail ratio', () => {
     let compared = 0;
     for (const window of TRIM_WINDOWS) {
       const ratio = window.lateStart / (1 - window.earlyEnd);
@@ -389,7 +389,7 @@ describe('P2 — composition (DESIGN §1.1, A3)', () => {
   });
 });
 
-describe('P3 — domain closure comes from the transform, not a clamp (DESIGN §1.1)', () => {
+describe('P3 — domain closure comes from the transform, not a clamp', () => {
   it.each(SPACES)(
     '$name maps its domain into itself for every admissible s',
     ({ space, values, factors }) => {
@@ -409,7 +409,7 @@ describe('P3 — domain closure comes from the transform, not a clamp (DESIGN §
     expect(boundaryPowerLow(0.5, -1).ok).toBe(false);
   });
 
-  it('the joint trim keeps 0 <= lateStart < earlyEnd <= 1 (§7.6)', () => {
+  it('the joint trim keeps 0 <= lateStart < earlyEnd <= 1', () => {
     for (const window of TRIM_WINDOWS) {
       for (const s of [0, 0.25, 0.5, 1, 2, 4, 8, 16, 17, 64, 1e6]) {
         const result = jointTrimWindow(window, s, MIN_RUBATO_WINDOW);
@@ -423,7 +423,7 @@ describe('P3 — domain closure comes from the transform, not a clamp (DESIGN §
   });
 });
 
-describe('P4 — the neutral is a fixed point for every admissible s (DESIGN §1.1)', () => {
+describe('P4 — the neutral is a fixed point for every admissible s', () => {
   it.each(SPACES)('$name fixes its neutral exactly', ({ space, factors }) => {
     const neutral = neutralOf(space);
     for (const s of [...factors, 0, 1]) {
@@ -431,7 +431,7 @@ describe('P4 — the neutral is a fixed point for every admissible s (DESIGN §1
     }
   });
 
-  it('states each space neutral as DESIGN §1 does', () => {
+  it('states each space neutral', () => {
     expect(neutralOf({ kind: 'log-around-center', center: 72 })).toBe(72);
     expect(neutralOf({ kind: 'log-around-1' })).toBe(1);
     expect(neutralOf({ kind: 'logit', lower: 0, upper: 1 })).toBe(0.5);
@@ -442,7 +442,7 @@ describe('P4 — the neutral is a fixed point for every admissible s (DESIGN §1
     expect(neutralOf({ kind: 'gain-ordered' })).toBe(0);
   });
 
-  it('fixes the boundary values §7.5/§7.14 declare admissible, for s > 0', () => {
+  it('fixes the boundary values declared admissible, for s > 0', () => {
     // `curvature = 1` and `protraction = ±1` are authored values, not saturation cliffs.
     for (const s of [0.25, 0.5, 2, 4, 1e6]) {
       expect(Object.is(expectOk(boundaryPowerLow(1, s)), 1)).toBe(true);
@@ -476,7 +476,7 @@ describe('P4 — the neutral is a fixed point for every admissible s (DESIGN §1
   });
 });
 
-describe('s = 0 writes the neutral through a closed form (DESIGN §1, A3)', () => {
+describe('s = 0 writes the neutral through a closed form', () => {
   it.each(SPACES)('$name maps every value to its neutral', ({ space, values }) => {
     const neutral = neutralOf(space);
     for (const x of values) {
@@ -504,9 +504,9 @@ describe('s = 0 writes the neutral through a closed form (DESIGN §1, A3)', () =
   });
 });
 
-describe('saturation is refused, not written (DESIGN §1, A3)', () => {
-  it('refuses the logit cliffs §7.3 and §8 measured', () => {
-    // §7.3: "the logit saturates to exactly 1.0 at s ~ 8 for 0.99".
+describe('saturation is refused, not written', () => {
+  it('refuses the measured logit cliffs', () => {
+    // "the logit saturates to exactly 1.0 at s ~ 8 for 0.99".
     expect(1 / (1 + Math.pow((1 - 0.99) / 0.99, 8))).toBe(1);
     const at99 = logit(0.99, 8, 0, 1);
     expect(at99.ok).toBe(false);
@@ -514,7 +514,7 @@ describe('saturation is refused, not written (DESIGN §1, A3)', () => {
     // The step below the cliff is still a value, and still interior.
     expect(expectOk(logit(0.99, 7, 0, 1))).toBeLessThan(1);
 
-    // §8: "s ~ 16.75 for 0.9".
+    // "s ~ 16.75 for 0.9".
     expect(logit(0.9, 16, 0, 1).ok).toBe(true);
     const at9 = logit(0.9, 17, 0, 1);
     expect(at9.ok).toBe(false);
@@ -523,7 +523,7 @@ describe('saturation is refused, not written (DESIGN §1, A3)', () => {
     // At the lower bound the cliff arrives far later, and only where the bound is not 0.
     // `a + (b−a)/(1+w^s)` reaches `a` once the quotient falls below half an ULP of `a` —
     // immediate for protraction's −1, but meanTempoAt's `a = 0` contributes no cancellation and
-    // the quotient has to underflow the whole double range (s ≈ 155 for 0.01). §7.3 cites only
+    // the quotient has to underflow the whole double range (s ≈ 155 for 0.01). Only
     // the upper cliff because that is the one an authored value reaches.
     const towardZero = logit(0.01, 8, 0, 1);
     expect(expectOk(towardZero)).toBeGreaterThan(0);
@@ -536,8 +536,8 @@ describe('saturation is refused, not written (DESIGN §1, A3)', () => {
     if (!towardMinusOne.ok) expect(towardMinusOne.error).toBe('saturation-to-boundary');
   });
 
-  it('refuses boundary-power reaching an exact bound (A6 IEEE analysis)', () => {
-    // A6: once `(1−x)^s < 2^−54`, `1 − (1−x)^s` rounds to exactly 1.0.
+  it('refuses boundary-power reaching an exact bound', () => {
+    // once `(1−x)^s < 2^−54`, `1 − (1−x)^s` rounds to exactly 1.0.
     expect(Math.pow(1 - 0.9, 17)).toBeLessThan(Math.pow(2, -54));
     expect(1 - Math.pow(1 - 0.9, 17)).toBe(1);
     const saturated = boundaryPowerLow(0.9, 17);
@@ -578,7 +578,7 @@ describe('saturation is refused, not written (DESIGN §1, A3)', () => {
   });
 });
 
-describe('the validation gate refuses non-finite inputs (DESIGN §1.2)', () => {
+describe('the validation gate refuses non-finite inputs', () => {
   const NON_FINITE = [NaN, Infinity, -Infinity] as const;
 
   it.each(SPACES)(
@@ -610,7 +610,7 @@ describe('the validation gate refuses non-finite inputs (DESIGN §1.2)', () => {
       expect(boundaryPowerHigh(x, 2).ok).toBe(false);
       expect(logit(x, 2, 0, 1).ok).toBe(false);
     }
-    // §7.3's "curvature=1.5 at s=2.5 renders NaN" hazard: refused at the gate instead.
+    // the "curvature=1.5 at s=2.5 renders NaN" hazard: refused at the gate instead.
     expect(boundaryPowerLow(1.5, 2.5).ok).toBe(false);
     expect(Number.isNaN(1 - Math.pow(1 - 1.5, 2.5))).toBe(true);
   });
@@ -649,9 +649,9 @@ describe('the validation gate refuses non-finite inputs (DESIGN §1.2)', () => {
   });
 });
 
-describe('the joint trim guard (DESIGN §7.6, A6)', () => {
+describe('the joint trim guard', () => {
   it('reparameterizes through the total trim rather than mapping the bounds separately', () => {
-    // RESOLVED-2's counter-example: independent boundary-power maps cross at the s solving
+    // the counter-example: independent boundary-power maps cross at the s solving
     // `ee^s + (1−ls)^s = 1` — about 1.36 for a (0.4, 0.6) window.
     const s = 1.4;
     const independentLateStart = 1 - Math.pow(1 - 0.4, s);
@@ -679,7 +679,7 @@ describe('the joint trim guard (DESIGN §7.6, A6)', () => {
     }
   });
 
-  it('absorbs a saturating total trim into the clamp instead of refusing it (§8)', () => {
+  it('absorbs a saturating total trim into the clamp instead of refusing it', () => {
     // The one place a boundary saturation is not a refusal: called on the scalar space
     // directly, the same total trim is refused.
     expect(boundaryPowerLow(0.9, 17).ok).toBe(false);
@@ -721,7 +721,7 @@ describe('the joint trim guard (DESIGN §7.6, A6)', () => {
   });
 });
 
-describe('geometricMean — the center population (DESIGN §7.1, A5)', () => {
+describe('geometricMean — the center population', () => {
   it('is the unweighted geometric mean', () => {
     expect(expectOk(geometricMean([20, 100]))).toBeCloseTo(Math.sqrt(2000), 12);
     expect(expectOk(geometricMean([1, 2, 4]))).toBeCloseTo(2, 12);
@@ -733,7 +733,7 @@ describe('geometricMean — the center population (DESIGN §7.1, A5)', () => {
   });
 
   it('returns an all-equal population exactly', () => {
-    // A piecewise-constant map is the dominant corpus shape (§1.3); a center off by an ULP
+    // A piecewise-constant map is the dominant corpus shape; a center off by an ULP
     // there moves every value the run writes.
     expect(Math.exp((Math.log(48) * 3) / 3)).not.toBe(48);
     expect(Object.is(expectOk(geometricMean([48, 48, 48])), 48)).toBe(true);
@@ -766,10 +766,10 @@ describe('geometricMean — the center population (DESIGN §7.1, A5)', () => {
 
 describe('metric anchors — the numbers DESIGN chose, not merely a valid T', () => {
   // Each is a value DESIGN states, and each separates the chosen metric from the alternative
-  // it was chosen over — which nothing above can do (DESIGN §1.1).
+  // it was chosen over — which nothing above can do.
 
-  it('logit over the position, not log-1 over the renderer exponent (§7.3)', () => {
-    // §7.3's own discriminator: "x=0.25 at s=2 gives 0.1 vs 0.0625". The rejected reading
+  it('logit over the position, not log-1 over the renderer exponent', () => {
+    // the discriminator: "x=0.25 at s=2 gives 0.1 vs 0.0625". The rejected reading
     // scales `exponent = ln0.5/ln x` in log-1; the chosen one scales where in the span the mean
     // tempo falls, which is what the format exposes.
     expect(expectOk(logit(0.25, 2, 0, 1))).toBeCloseTo(0.1, 15);
@@ -779,24 +779,24 @@ describe('metric anchors — the numbers DESIGN chose, not merely a valid T', ()
     expect(rejectedExponentMetric).toBeCloseTo(0.0625, 15);
   });
 
-  it('protraction on logit(-1,1) (§7.5, §7.14)', () => {
+  it('protraction on logit(-1,1)', () => {
     // w = 0.5/1.5 = 1/3; at s = 2, −1 + 2/(1 + 1/9) = 0.8.
     expect(expectOk(logit(0.5, 2, -1, 1))).toBeCloseTo(0.8, 15);
     expect(expectOk(logit(-0.5, 2, -1, 1))).toBeCloseTo(-0.8, 15);
   });
 
-  it('curvature on boundary-power(low), neutral at the lower bound (§7.5)', () => {
+  it('curvature on boundary-power(low), neutral at the lower bound', () => {
     expect(expectOk(boundaryPowerLow(0.5, 2))).toBeCloseTo(0.75, 15);
     expect(expectOk(boundaryPowerLow(0.5, 0.5))).toBeCloseTo(1 - Math.SQRT1_2, 15);
   });
 
-  it('levels scale their log-ratio to the center by exactly s (§7.1, §7.2)', () => {
+  it('levels scale their log-ratio to the center by exactly s', () => {
     // What makes `global` scope work on piecewise-constant maps: the ratio of any value to the
     // center is raised to s, so section contrast grows without the center moving.
     const center = 72;
     expect(expectOk(logAroundCenter(144, 2, center))).toBeCloseTo(center * 4, 12);
     expect(expectOk(logAroundCenter(36, 2, center))).toBeCloseTo(center / 4, 12);
-    // And the log-difference of a transition pair scales by s regardless of the center (§1.3).
+    // And the log-difference of a transition pair scales by s regardless of the center.
     const pair = [60, 120].map((x) => expectOk(logAroundCenter(x, 2, center)));
     const what = 'the transformed transition pair';
     expect(Math.log(numberAt(pair, 1, what) / numberAt(pair, 0, what))).toBeCloseTo(
@@ -805,14 +805,14 @@ describe('metric anchors — the numbers DESIGN chose, not merely a valid T', ()
     );
   });
 
-  it('ratio gains and signed offsets (§7.6, §7.10, §7.12)', () => {
+  it('ratio gains and signed offsets', () => {
     expect(expectOk(logAroundOne(2, 3))).toBeCloseTo(8, 12);
     expect(expectOk(logAroundOne(0.5, 2))).toBeCloseTo(0.25, 15);
     expect(expectOk(gain(-12.5, 2))).toBe(-25);
     expect(expectOk(orderedGain(20, 0.5))).toBe(10);
   });
 
-  it('the joint trim splits the transformed total on the original ratio (§7.6)', () => {
+  it('the joint trim splits the transformed total on the original ratio', () => {
     // (0.2, 0.9): t = 0.3, t' = 1 − 0.7² = 0.51, split 2:1 into 0.34 and 0.17.
     const result = expectOk2(
       jointTrimWindow({ lateStart: 0.2, earlyEnd: 0.9 }, 2, MIN_RUBATO_WINDOW),
@@ -858,8 +858,7 @@ describe('dispatch', () => {
 });
 
 /**
- * {@link deviation}'s scale for `T` values: one neper is the unit these quantities are read in
- * (comparison/DESIGN.md §4, AD-26.1).
+ * {@link deviation}'s scale for `T` values: one neper is the unit these quantities are read in.
  */
 const NEPER_SCALE = 1;
 
@@ -869,7 +868,7 @@ const NEPER_SCALE = 1;
  */
 const FORWARD_ULPS = 8;
 
-describe('forward maps — `T` itself (comparison/DESIGN.md §4)', () => {
+describe('forward maps — `T` itself', () => {
   it.each(SPACES)(
     '$name: T(C(x,s)) = s*T(x) over the sampled grid',
     ({ space, values, factors, scale, boundDistance }) => {
@@ -919,8 +918,8 @@ describe('forward maps — `T` itself (comparison/DESIGN.md §4)', () => {
     }
   });
 
-  it('returns the signed infinities comparison §4 enumerates, leaving the cap to the caller', () => {
-    // All of these are legal authored values. §4's capped metric is what makes them finite,
+  it('returns the signed infinities comparison enumerates, leaving the cap to the caller', () => {
+    // All of these are legal authored values. The capped metric is what makes them finite,
     // so this module must not clamp them or the cap would apply twice.
     expect(forwardInSpace({ kind: 'boundary-power-low' }, 1)).toBe(-Infinity);
     expect(forwardInSpace({ kind: 'boundary-power-high' }, 0)).toBe(-Infinity);
@@ -944,7 +943,7 @@ describe('forward maps — `T` itself (comparison/DESIGN.md §4)', () => {
     for (const [space, x] of boundaries) {
       const forward = forwardInSpace(space, x);
       for (const s of POSITIVE_FACTORS) {
-        // §7.5's fixed points: the closed form returns the bound itself, so `T` returns the
+        // the fixed points: the closed form returns the bound itself, so `T` returns the
         // same infinity — which is `s · (±∞)` for every s > 0, the sign being what the
         // identity actually asserts here.
         expect(forwardInSpace(space, expectOk(transformInSpace(space, x, s)))).toBe(forward);
@@ -952,13 +951,13 @@ describe('forward maps — `T` itself (comparison/DESIGN.md §4)', () => {
     }
   });
 
-  it('makes s = 0 the branch DESIGN §1 says it is: T(neutral) = 0, never 0 * infinity', () => {
+  it('makes s = 0 the branch the design says it is: T(neutral) = 0, never 0 * infinity', () => {
     const space: ScaleSpace = { kind: 'boundary-power-low' };
     expect(forwardInSpace(space, expectOk(transformInSpace(space, 1, 0)))).toBe(0);
     expect(0 * forwardInSpace(space, 1)).toBeNaN();
   });
 
-  it('cancels the center in every difference, which is why comparison drops it (§4)', () => {
+  it('cancels the center in every difference, which is why comparison drops it', () => {
     const pairs = [
       [48, 60],
       [60, 120],
@@ -975,7 +974,7 @@ describe('forward maps — `T` itself (comparison/DESIGN.md §4)', () => {
     }
   });
 
-  it('gives NaN outside a log space domain — §4 typed document error, not a distance', () => {
+  it('gives NaN outside a log space domain — a typed document error, not a distance', () => {
     expect(forwardLogAroundOne(-1)).toBeNaN();
     expect(forwardLogAroundCenter(-1, 72)).toBeNaN();
     expect(forwardBoundaryPowerLow(1.5)).toBeNaN();
@@ -985,7 +984,7 @@ describe('forward maps — `T` itself (comparison/DESIGN.md §4)', () => {
 
   it('does not gate its input, so the registry predicate has to run first', () => {
     // `boundary-power-low` below its lower bound is the trap: finite, plausible, and wrong.
-    // Comparison §4 checks the row's valueDomain before ever calling T.
+    // Comparison checks the row's valueDomain before ever calling T.
     expect(forwardBoundaryPowerLow(-1)).toBeCloseTo(Math.LN2, 15);
     expect(isInValueDomain({ kind: 'boundary-power-low' }, -1)).toBe(false);
   });

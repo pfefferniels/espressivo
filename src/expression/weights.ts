@@ -1,5 +1,5 @@
 /**
- * DESIGN.md D-H: one knob, fifteen dimensions — and the prototype's tuned vector, kept as data.
+ * One knob, fifteen dimensions — and the prototype's tuned vector, kept as data.
  *
  * `exaggerateMpm` takes a factor per dimension; a user interface usually has one slider.
  * {@link weightedFactors} is the map between them, and it is the prototype's own:
@@ -10,7 +10,7 @@
  * The prototype applied `getDefaultWeights()` to every render that asked for exaggeration,
  * with no parameter to see the taste or turn it off (`PerformService.java:92-95`; a
  * sketchiness-only render took a different path and was never weighted). Here the vector is an
- * exported preset — C2's "named preset documented as heuristic" — and the default is no
+ * exported preset — the "named preset documented as heuristic" — and the default is no
  * weighting at all.
  */
 import {
@@ -20,7 +20,7 @@ import {
 } from './registry.js';
 
 /**
- * D-H's per-dimension weight vector: how much of the single scalar each dimension takes.
+ * the per-dimension weight vector: how much of the single scalar each dimension takes.
  *
  * Structurally an {@link ExaggerationFactors}, semantically its opposite — a factor says "scale
  * this dimension by s", a weight says "how much of s does this dimension get". Both default to
@@ -28,11 +28,11 @@ import {
  */
 export type ExaggerationWeights = Partial<Readonly<Record<ExpressionDimension, number>>>;
 
-/** D-H's neutral weight: the dimension receives the scalar unchanged. */
+/** the neutral weight: the dimension receives the scalar unchanged. */
 export const IDENTITY_WEIGHT = 1;
 
 /**
- * The prototype's tuned eight-value profile, mapped onto DESIGN §3's fifteen dimensions.
+ * The prototype's tuned eight-value profile, mapped onto the fifteen dimensions.
  *
  * Transcribed from `PerformService.getDefaultWeights()`
  * (`mpm-renderer/core/src/main/java/meicotools/core/PerformService.java:47-58`), listed with
@@ -46,9 +46,9 @@ export const IDENTITY_WEIGHT = 1;
  * - `rubato` 0.2 → `rubato`. Scaled `rubato@intensity` (:277-290).
  * - `accentuation` 1.3 → `accentuation`. Scaled `accentuationPattern@scale` (:331-340).
  * - `temporalSpread` 1.5 → `ornamentSpread`, `ornamentSpacing`. Scaled `@frameLength` only
- *   (:291-317); `temporalSpread@intensity` (§7.10) was never touched.
+ *   (:291-317); `temporalSpread@intensity` was never touched.
  * - `dynamicsGradient` 0.3 → `ornamentDynamics`. Scaled `ornament@scale` (:320-327), not the
- *   gradient — §7.16/RESOLVED-6 excludes that attribute here, so the weight carries onto
+ *   gradient — the design excludes that attribute here, so the weight carries onto
  *   `dynamicsGradient@transition.from`/`.to` by intent, not by lever.
  * - `relativeDuration` 0.2, `relativeVelocity` 0.3 → `articulation`. Both declared, defaulted,
  *   weighted and read by nothing that touches a document.
@@ -58,10 +58,10 @@ export const IDENTITY_WEIGHT = 1;
  * over-applied weight shows up in the factors record.
  *
  * The articulation collapse: this port's `articulation` is one dimension covering both ratios
- * plus six absolute offsets, so one number stands for two and §3 takes the lower. Articulation
+ * plus six absolute offsets, so one number stands for two and the design takes the lower. Articulation
  * is the most violent dimension in the set — at s = 2 a `relativeDuration` of 0.7 becomes 0.49
  * — so the smaller weight is the error in the safe direction. The dimension does not split
- * without an MSM (D-B).
+ * without an MSM.
  *
  * The five dimensions the prototype had no field for — `asynchrony`, the three imprecision
  * domains, `pedalShape` — are 1.0, which records an absence of evidence rather than a tuning
@@ -69,7 +69,7 @@ export const IDENTITY_WEIGHT = 1;
  * sibling, which is why those two inherit instead.
  *
  * A heuristic, not a recommendation: nothing in DESIGN derives these numbers and no listening
- * test in this repository validates them. §8's per-dimension ranges are the derived guidance.
+ * test in this repository validates them. The per-dimension ranges are the derived guidance.
  *
  * ```ts
  * spotlightMpm(mpm, { ids, attenuation: 0.1 });                    // the prototype's shader
@@ -104,10 +104,10 @@ function fail(message: string): never {
 }
 
 /**
- * D-H's lerp: turn one scalar into a full factor record, `sᵈ = 1 + wᵈ·(s − 1)`.
+ * the lerp: turn one scalar into a full factor record, `sᵈ = 1 + wᵈ·(s − 1)`.
  *
  * Every dimension appears in the result, including the ones weighted 1, so the record says what
- * the run asked for without the caller reconstructing R3's defaulting rule.
+ * the run asked for without the caller reconstructing the defaulting rule.
  *
  * Two algebraic facts worth relying on: `s = 1` yields the identity record for any weights, so
  * a preset can never make the neutral slider position do something; and `w = 0` pins its
@@ -115,7 +115,7 @@ function fail(message: string): never {
  *
  * A weight above 1 can drive a factor negative — `weightedFactors(0.3, {ornamentSpread: 1.5})`
  * is −0.05 — which for the dimensions whose scale spaces run over a half-line is outside the
- * admissible domain (§1/A3). Rejecting it is left to `exaggerateMpm`, where every other factor
+ * admissible domain. Rejecting it is left to `exaggerateMpm`, where every other factor
  * is checked, so one message names the offending dimension in both paths.
  *
  * @param s the single scalar; 1 is the identity

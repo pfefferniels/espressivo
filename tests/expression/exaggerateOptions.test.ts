@@ -1,5 +1,5 @@
 /**
- * The options layer: DESIGN.md §4's defaults and A11's rejections.
+ * The options layer: the defaults and the rejections.
  *
  * Everything rejected here is a programmer error, never a document condition, and each message
  * names the offender — because the facade that wraps these into `InvalidOptionError` (W3)
@@ -55,7 +55,7 @@ function resolved<T>(result: Result<T, string>): T {
   return result.value;
 }
 
-describe('resolveOptions — defaults (§4)', () => {
+describe('resolveOptions — defaults', () => {
   it('fills in every option', () => {
     expect(resolved(resolveOptions())).toEqual({
       performance: null,
@@ -66,11 +66,11 @@ describe('resolveOptions — defaults (§4)', () => {
     });
   });
 
-  it('defaults the velocity floor to 1, not 0 — velocity 0 is a note-off (R6a)', () => {
+  it('defaults the velocity floor to 1, not 0 — velocity 0 is a note-off', () => {
     expect(DEFAULT_VELOCITY_RANGE).toEqual({ min: 1, max: 127 });
   });
 
-  it('defaults the rubato guard to the documented IEEE saturation bound (A6)', () => {
+  it('defaults the rubato guard to the documented IEEE saturation bound', () => {
     expect(DEFAULT_MIN_RUBATO_WINDOW).toBe(1e-6);
   });
 
@@ -79,7 +79,7 @@ describe('resolveOptions — defaults (§4)', () => {
   });
 });
 
-describe('resolveOptions — rejections (A11)', () => {
+describe('resolveOptions — rejections', () => {
   it('rejects an inverted velocity range', () => {
     expect(refusal(resolveOptions({ velocityRange: { min: 100, max: 10 } }))).toMatch(
       /velocityRange\.min must be below/,
@@ -113,7 +113,7 @@ describe('resolveOptions — rejections (A11)', () => {
   });
 });
 
-describe('resolveFactors — R3 and A11', () => {
+describe('resolveFactors', () => {
   it('defaults every missing key to the identity', () => {
     const factors = resolved(resolveFactors({ tempo: 2 }));
     expect(factors.tempo).toBe(2);
@@ -130,7 +130,7 @@ describe('resolveFactors — R3 and A11', () => {
   });
 
   it('rejects an unknown key and lists the vocabulary', () => {
-    // The failure mode A11 exists for: a misspelt key would otherwise be a silent identity,
+    // The failure mode the design exists for: a misspelt key would otherwise be a silent identity,
     // and a caller sampling factors into a record has no way to notice.
     expect(() => run({ tempoShapes: 1.4 } as unknown as ExaggerationFactors)).toThrow(
       /unknown exaggeration dimension: "tempoShapes"/,
@@ -154,7 +154,7 @@ describe('resolveFactors — R3 and A11', () => {
     expect(() => run({ tempo: -1, asynchrony: -2, articulation: -0.5 })).not.toThrow();
   });
 
-  it('accepts 0 everywhere — it is the closed-form "write the neutral" (A3)', () => {
+  it('accepts 0 everywhere — it is the closed-form "write the neutral"', () => {
     const zeros = Object.fromEntries(
       EXPRESSION_DIMENSIONS.map((dimension) => [dimension, 0]),
     ) as ExaggerationFactors;

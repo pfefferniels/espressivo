@@ -68,7 +68,7 @@ describe('siteRef', () => {
       ).toEqual([2, 0]);
     });
 
-    it('fills every field of DESIGN §4', () => {
+    it('fills every field', () => {
       const { performance, dynamics } = instructions(DOCUMENT);
       const site = instructionSiteRef(
         performance.global,

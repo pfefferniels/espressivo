@@ -62,7 +62,7 @@ import type { MovementMap } from './maps/MovementMap.js';
  *
  * A stage declares the phase it consumes and the phase it produces, so hoisting a stage across a
  * boundary is a compile error rather than a silent change of output — which the fixture byte
- * probe does not catch (`docs/history/refactor/log.md`, NC1 and NC3). Two edges are enforced
+ * probe does not catch. Two edges are enforced
  * this way: articulation's symbolic half cannot sink below rubato, and the tempo pass cannot
  * rise above it.
  *
@@ -544,7 +544,7 @@ export class Performance extends AbstractXmlSubtree {
    * can advance it and is otherwise inert.
    *
    * @param msm the score to perform; left unmodified
-   * @param options render knobs (§2.4). Every default is the historic value, so omitting them
+   * @param options render knobs. Every default is the historic value, so omitting them
    *   or passing `{}` renders as this method did before they existed.
    * @returns a new Msm with performance data added
    */
@@ -1112,10 +1112,9 @@ export class Performance extends AbstractXmlSubtree {
    * 1. `ornament.milliseconds.date.offset` shifts `milliseconds.date` by the offset.
    *    `millisecondsDate` keeps the value read *before* that write, and every case below
    *    uses that pre-shift value plus the offset — never the re-read attribute.
-   * 1b. `ornament.milliseconds.fromend.offset` — the one addition MPM v3 makes to this pass
-   *    (DESIGN.md's D5 amendment, journaled in docs/history/ornamentation/LOG.md). It states
-   *    the onset relative to the note's millisecond END, which is the only way to express a
-   *    frame aligned `at end` in a domain that does not exist yet when the ornament is
+   * 1b. `ornament.milliseconds.fromend.offset` — the one addition MPM v3 makes to this pass. It
+   *    states the onset relative to the note's millisecond END, which is the only way to express
+   *    a frame aligned `at end` in a domain that does not exist yet when the ornament is
    *    rendered. It resolves to an ordinary onset shift, so cases 2–4 are untouched by it. The
    *    branch is character-identical to `OrnamentationMap`'s copy, and a test pins that.
    * 2. `ornament.milliseconds.duration` sets an **absolute** end:
@@ -1146,7 +1145,7 @@ export class Performance extends AbstractXmlSubtree {
         millisecondsDateAtt.setValue(String(millisecondsDate + ornamentMillisecondsDateOffset));
       }
 
-      // MPM v3 (DESIGN.md D5 amendment): a millisecond frame aligned "at end" is anchored at
+      // MPM v3: a millisecond frame aligned "at end" is anchored at
       // this note's millisecond END, which the symbolic phase cannot know, so it writes an
       // end-anchored marker instead of an onset offset. Resolving it into
       // ornamentMillisecondsDateOffset keeps the rest of this method v2. The end is read

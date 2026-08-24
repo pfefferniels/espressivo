@@ -7,13 +7,14 @@
  *
  * A replication rather than an import: the layer zone (eslint.config.js, `expression`) forbids
  * importing anything under `src/mpm/**` except `names.ts`, because `new Mpm(text)` rewrites the
- * document in its own constructor (D-A/A1). `tests/expression/temporalValue.test.ts` pins the
+ * document in its own constructor. `tests/expression/temporalValue.test.ts` pins the
  * transliteration against the real parser on a separate parse of the same text.
  *
  * It carries the SUFFIX, where the renderer's `TemporalValue.ts` carries a domain. The renderer
  * parses `80%` into `{ value: 80, domain: 'relative' }` and serializes it back through
  * `formatTemporalValue`, which rebuilds the text from the domain — a canonicalizing round trip
- * (`"0.0ticks"` comes back as `"0ticks"`, a suffix-less value comes back suffixed), and D-A
+ * (`"0.0ticks"` comes back as `"0ticks"`, a suffix-less value comes back suffixed), and the
+ * raw-tree discipline
  * permits changing only the NUMBER the caller asked to scale. A document whose corpus spelling
  * is `frameLength="44"`, which is what the format's own sample encodings write (PARITY.md §6.2
  * D3), must come back as `"88"` and not `"88ticks"`, or the engine has silently upgraded a
@@ -123,7 +124,7 @@ export function formatTemporalText(temporal: TemporalText): string {
  * ticks.
  *
  * That fallback chain is `TemporalSpread.ts`'s `legacyFallbackDomain` (PARITY.md §6.2 D3), and
- * it is why DESIGN §7.15's claim that v3 "removes §7.9's branch on the unit" is only half true:
+ * it is why the claim that v3 "removes the branch on the unit" is only half true:
  * a suffix-less v3 value still defers to a sibling enum, and suffix-less is what the format's
  * own sample corpus writes. The applier reads it for the report only.
  *

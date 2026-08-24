@@ -1,12 +1,12 @@
 /**
- * §6's edit path as a report: eleven dimensions' scripts, one document pair, one orientation.
+ * the edit path as a report: eleven dimensions' scripts, one document pair, one orientation.
  *
  * `editScript.ts` searches, `editState.ts` presents a state as a map view, `dimensions.ts`
- * supplies each dimension's `Φ` and `‖·‖₁`. This file turns the result into §9.3's `DiffReport`
+ * supplies each dimension's `Φ` and `‖·‖₁`. This file turns the result into the `DiffReport`
  * — sites, dates, measures, attribute deltas, the two totals per dimension — and is where
- * §6.4's orientation rule lives.
+ * the orientation rule lives.
  *
- * ## The script is computed once and inverted (§6.4, AD-25.4)
+ * ## The script is computed once and inverted
  *
  * The traceback precedence `substitute > delete > insert` is deterministic but not
  * transposition-covariant: transposing the inputs maps "delete `a_i`" to "insert `a_i`", so at a
@@ -14,7 +14,7 @@
  * another. Mirroring is made true by construction — the canonical orientation is decided from
  * content, the script is computed in it, and the other direction is the inversion.
  *
- * Content-derived, not label-derived (AD-25.4): `diffMpm(a, b)` and `diffMpm(b, a)` present the
+ * Content-derived, not label-derived: `diffMpm(a, b)` and `diffMpm(b, a)` present the
  * same role names in both directions, so a rule keyed on `'a'` and `'b'` would not distinguish
  * the two calls at all. The key is the document's canonical serialization followed by the
  * performance selector, compared in code-unit order; equal keys mean identical inputs and the
@@ -22,8 +22,8 @@
  *
  * ## What the report does not carry
  *
- * No `applyEditScript` writer (§6.5): the ops carry concrete values and are machine-applicable
- * in principle, but a writer ships when a consumer asks for one. And no `boundary_prf` — §6.5
+ * No `applyEditScript` writer: the ops carry concrete values and are machine-applicable
+ * in principle, but a writer ships when a consumer asks for one. And no `boundary_prf` — the
  * derives it from `opCounts` in a cookbook recipe with the non-equivalence caveat, because
  * mpmify's matcher is greedy-nearest with a tolerance while this one is a cost-minimizing DP.
  */
@@ -74,7 +74,7 @@ import type {
 
 /** What the facade hands the interior, with every default already resolved. */
 export interface InteriorDiffOptions extends InteriorCompareOptions {
-  /** A-Q5's `fragment`/`consolidate` ops (§6.1's `moves`); off unless the caller asks. */
+  /** the `fragment`/`consolidate` ops (the `moves`); off unless the caller asks. */
   readonly moves?: boolean;
 }
 
@@ -83,7 +83,7 @@ export interface InteriorDiffOptions extends InteriorCompareOptions {
 // ---------------------------------------------------------------------------
 
 /**
- * §6.4's canonical key: the document's canonical serialization, then the performance selector.
+ * the canonical key: the document's canonical serialization, then the performance selector.
  *
  * `serializeMpmRoot` is what `canonicalMpm` is built on — the facade's function cannot be used
  * here, since the comparison layer may not import `src/api` (MINOR-5's zone) — so the bytes are
@@ -107,7 +107,7 @@ function callerIsCanonical(
   selectorB: string | number | undefined,
 ): boolean {
   // Code-unit order (`<`), never `localeCompare`, which is locale-dependent and would break
-  // R2's byte-identity across environments — the module's own ban, applied to itself.
+  // the byte-identity across environments — the module's own ban, applied to itself.
   return orientationKey(rootA, selectorA) <= orientationKey(rootB, selectorB);
 }
 
@@ -167,11 +167,11 @@ function buildDiff(options: InteriorDiffOptions): DiffReport {
   const notes: ComparisonNote[] = [];
   const scripts: EditScript[] = [];
 
-  // §9.1's notes, on the edit path (W4 MAJOR-5). Which kinds belong here is decided by what the
-  // diff consumes — AD-70.3's rule for the option surface, applied to the report surface. Two
+  // the notes, on the edit path. Which kinds belong here is decided by what the
+  // diff consumes — the rule for the option surface, applied to the report surface. Two
   // do.
   //
-  // `plausibility` is the one AD-70.3 names, and the reason `plausibleRange` stays on
+  // `plausibility` is the one the design names, and the reason `plausibleRange` stays on
   // `DiffMpmOptions` rather than joining the `Omit`: `plausibilityFindings` reads the two
   // documents and nothing else — not the aggregate, not the weights, not the comparison — and
   // the diff parses the same two documents. An implausible `@bpm` is also exactly the site the
@@ -198,7 +198,7 @@ function buildDiff(options: InteriorDiffOptions): DiffReport {
       });
 
   // `estimate-degradation` for the MPM-derived scope rule: `DiffReport.scopes` reports
-  // `rule: 'mpm'`, and DESIGN §9.3 says that rule carries this note. The wording is
+  // `rule: 'mpm'`, and the design says that rule carries this note. The wording is
   // `compare.ts`'s, because it is the same fact about the same documents.
   if (scopes.rule === 'mpm')
     notes.push(
@@ -210,7 +210,7 @@ function buildDiff(options: InteriorDiffOptions): DiffReport {
         pair.window.endQuarters,
         `the per-part sum runs over ${String(scopes.sides.length)} scopes taken from the MPM's ` +
           'own <part> elements, because no MSM was supplied. What the renderer performs is one ' +
-          'scope per rendered MSM part (AD-55.2), which the documents alone cannot answer: an ' +
+          'scope per rendered MSM part, which the documents alone cannot answer: an ' +
           'MPM part the score never names performs nothing, and a score part with no MPM ' +
           'counterpart performs the global maps anyway. Supply an `msm` for the counted quantity',
       ),
@@ -262,8 +262,8 @@ function buildDiff(options: InteriorDiffOptions): DiffReport {
     const dCurve = total?.dCurve.total ?? 0;
     const scriptCost = total?.scriptCost.total ?? 0;
     dimensions[dimension] = {
-      // R5's guarantee is a statement about the curve-shaped dimensions, and the null case is
-      // the event-shaped ones (§9.3): their `d_k` is an alignment optimum rather than a curve
+      // the guarantee is a statement about the curve-shaped dimensions, and the null case is
+      // the event-shaped ones: their `d_k` is an alignment optimum rather than a curve
       // integral, so calling it `dCurve` would name it as something it is not.
       dCurve: EVENT_SHAPED.includes(dimension) ? null : dCurve,
       scriptCost,
@@ -315,7 +315,7 @@ function buildDiff(options: InteriorDiffOptions): DiffReport {
 const EVENT_SHAPED: readonly ComparisonDimension[] = ['articulation', 'ornamentation'];
 
 /**
- * §9.5's total order on scripts: part, then map, then dimension.
+ * the total order on scripts: part, then map, then dimension.
  *
  * A null part is the global scope and sorts first, which is the order `readScopes` produces and
  * the order `parts` is reported in. Two scripts cannot tie on all three, since one (part, map)
@@ -406,7 +406,7 @@ function editOpOf(
 }
 
 /**
- * Every registry attribute the op changes, priced by §4's capped local metric.
+ * Every registry attribute the op changes, priced by the capped local metric.
  *
  * A registry-driven walk rather than eleven hooks — `plausibility.ts`'s shape, for the same
  * reason: the rows already say which attributes each container's elements carry, and a
@@ -460,7 +460,7 @@ function readValue(element: Element | null, row: ComparisonRegistryRow): number 
 }
 
 /**
- * The row's value for §4's metric: `⊥` where it is absent or outside the row's own domain.
+ * The row's value for the metric: `⊥` where it is absent or outside the row's own domain.
  *
  * The `⊥` reading of an absent attribute is what `localDistance`'s documentation prescribes for
  * the edit path — "no comparable value gets a metric-safe price instead of a hole in the
@@ -473,7 +473,7 @@ function readValued(element: Element | null, row: ComparisonRegistryRow): Valued
 }
 
 // ---------------------------------------------------------------------------
-// The mirror (§6.4)
+// The mirror
 // ---------------------------------------------------------------------------
 
 /**
@@ -504,9 +504,9 @@ function invertReport(report: DiffReport): DiffReport {
       matched: pairing.matched,
     })),
     scripts: report.scripts.map(invertScript),
-    // Re-sorted after the swap (W4 MAJOR-5): `sortNotes` orders on `document` and on the
+    // Re-sorted after the swap: `sortNotes` orders on `document` and on the
     // serialized note, both of which the swap changes, so mapping in place would leave the
-    // mirrored report holding the forward report's order — and §6.4's claim is byte-identity,
+    // mirrored report holding the forward report's order — and the claim is byte-identity,
     // not set equality.
     notes: sortNotes(
       report.notes.map((entry) => ({
@@ -588,7 +588,7 @@ function invertScript(script: EditScript): EditScript {
       ...script.opCounts,
       insert: script.opCounts.delete,
       delete: script.opCounts.insert,
-      // A-Q5's pair swaps for the same reason the plain pair does: on a real pair the forward
+      // the pair swaps for the same reason the plain pair does: on a real pair the forward
       // direction had 9 fragments and 2 consolidates, and the reverse reported 2 and 9 in the
       // ops while unswapped counts still said 9 and 2.
       fragment: script.opCounts.consolidate,

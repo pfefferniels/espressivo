@@ -2,7 +2,7 @@
 //
 // Scope: MEI / MSM+MPM => expressive MIDI. Format conversions (MusicXML,
 // MIDI->MSM, MEI->MusicXML), audio, playback, chroma/pitches and SVG are out
-// of scope; see docs/history/refactor/log.md.
+// of scope.
 
 import type { Element } from './xml/XomTypes.js';
 import {
@@ -75,8 +75,7 @@ export {
   EngineInvariantError,
   ComparisonEngineError,
 } from './api/errors.js';
-// The comparison facade (comparison/DESIGN.md §9.7). Member by member for the reason the two
-// above are.
+// The comparison facade. Member by member for the reason the two above are.
 export {
   compareMpm,
   compareMpmCorpus,
@@ -227,7 +226,7 @@ export { Mpm } from './mpm/Mpm.js';
 // `accentuationPatternDef` gains `length="4"` — so the tree is not byte-faithful to the
 // input; `src/expression/mpmDocument.ts` documents the full list. And the resolved data
 // below is the RENDERER's arithmetic, which is not the same object as the ideal curves
-// `compareMpm` integrates (see `docs/comparison.md` §5.0).
+// `compareMpm` integrates (see `docs/comparison.md`).
 
 // The environments a performance is read through: `<performance>` → `<global>` / `<part>`,
 // each with its `<header>` of definitions and `<dated>` of instruction maps.
@@ -389,7 +388,7 @@ export { InstrumentsDictionary } from './midi/InstrumentsDictionary.js';
 export type { KeyValue } from './supplementary/KeyValue.js';
 export { RandomNumberProvider } from './supplementary/RandomNumberProvider.js';
 
-// Version. RULE M6 makes `VERSION` the API; the `Meico` object keeps `Meico.version`
+// Version. RULE the design makes `VERSION` the API; the `Meico` object keeps `Meico.version`
 // resolving for existing callers.
 export { VERSION } from './version.js';
 export const Meico = { version: VERSION } as const;

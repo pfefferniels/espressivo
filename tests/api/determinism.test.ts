@@ -1,9 +1,10 @@
 /**
  * The render knobs, exercised through the facade: the imprecision seed (RULE F7, the downstream
- * consumer's request (b) in docs/history/refactor/state.json) and the movement sampling step
+ * consumer's request) and the movement sampling step
  * (RULE I5).
  *
- * The class-level tests prove the plumbing through the four hops of §2.4. What is proved here
+ * The class-level tests prove the plumbing through the four seed hops (ARCHITECTURE.md §2.4).
+ * What is proved here
  * is that `PerformOptions` reaches it: the facade is the layer the consumer calls, and a knob
  * that is validated and then dropped passes every one of those tests.
  */
@@ -99,7 +100,7 @@ describe('facade: imprecision seed (RULE F7)', () => {
   });
 
   it('stays nondeterministic without a seed — the default path is untouched', () => {
-    // The third leg of §2.4's gate (c), and the one a sabotaged derivation turns red: if the
+    // The third leg of the gate (c), and the one a sabotaged derivation turns red: if the
     // seed derivation applied when no seed was given, these two would become identical.
     expect(render()).not.toBe(render());
   });

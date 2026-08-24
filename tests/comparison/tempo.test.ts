@@ -1,10 +1,10 @@
 /**
- * The tempo curve and its distance — DESIGN.md §5.1, plus the first real regression anchors.
+ * The tempo curve and its distance, plus the first real regression anchors.
  *
  * Two kinds of test. Inline documents pin the four renderer behaviours that decide the curve and
  * that no fixture exercises together — the degenerate table, the inert trailing transition, the
  * skip gap, the pre-first default. The vendored Telemann document pins actual numbers, because a
- * curve that is right in every unit test can still be wired up wrongly, and P-C9's shape
+ * curve that is right in every unit test can still be wired up wrongly, and the shape
  * (Baroque and Romantic close, Fast far from both) is a claim about the world that a synthetic
  * fixture cannot make.
  */
@@ -52,7 +52,7 @@ const curveFor = (map: string, header = ''): TempoCurve => {
   return curveOf(pair, 'a');
 };
 
-describe('tempo curve: the degenerate table (AD-9iii)', () => {
+describe('tempo curve: the degenerate table', () => {
   const tempo = (extra: string) =>
     `<tempo date="0.0" bpm="60" beatLength="0.25" ${extra}/><tempo date="2880.0" bpm="60" beatLength="0.25"/>`;
 
@@ -87,7 +87,7 @@ describe('tempo curve: the degenerate table (AD-9iii)', () => {
   });
 });
 
-describe('tempo curve: trailing transitions are inert (AD-8)', () => {
+describe('tempo curve: trailing transitions are inert', () => {
   it('performs the LAST instruction as a constant whatever its transition says', () => {
     const curve = curveFor(
       '<tempo date="0.0" bpm="60" beatLength="0.25"/>' +
@@ -108,7 +108,7 @@ describe('tempo curve: trailing transitions are inert (AD-8)', () => {
   });
 });
 
-describe('tempo curve: skips and the pre-first region (AD-9i / AD-9ii)', () => {
+describe('tempo curve: skips and the pre-first region', () => {
   it('performs [0, firstValidDate) at the no-tempo default of 100 qbpm', () => {
     const curve = curveFor('<tempo date="1440.0" bpm="60" beatLength="0.25"/>');
     expect(quarterBpmAt(curve, 0)).toBe(NO_TEMPO_QUARTER_BPM);
@@ -156,13 +156,13 @@ describe('tempo curve: levels and normalization', () => {
     expect(quarterBpmAt(curve, 0)).toBe(101);
   });
 
-  it('performs an unresolvable level at the renderer default and reports it (R8/AD-1)', () => {
+  it('performs an unresolvable level at the renderer default and reports it', () => {
     const curve = curveFor('<tempo date="0.0" bpm="Allegrissimo" beatLength="0.25"/>');
     expect(quarterBpmAt(curve, 0)).toBe(100);
     expect(curve.notes.some((note) => note.kind === 'renderer-default-level')).toBe(true);
   });
 
-  it('reads right-continuously: the value AT an instruction date is that instruction (A-B1)', () => {
+  it('reads right-continuously: the value AT an instruction date is that instruction', () => {
     const curve = curveFor(
       '<tempo date="0.0" bpm="60" beatLength="0.25"/><tempo date="720.0" bpm="90" beatLength="0.25"/>',
     );
@@ -170,7 +170,7 @@ describe('tempo curve: levels and normalization', () => {
     expect(quarterBpmAt(curve, 719.999)).toBeCloseTo(60, 6);
   });
 
-  it('is 100 qbpm everywhere for an absent map (R6 absence-is-neutral)', () => {
+  it('is 100 qbpm everywhere for an absent map (absence is neutral)', () => {
     const neutral = neutralTempoCurve();
     expect(quarterBpmAt(neutral, 0)).toBe(100);
     expect(quarterBpmAt(neutral, 99999)).toBe(100);
@@ -196,7 +196,7 @@ describe('the refinement grid', () => {
     expect(grid).toEqual([0, 720, 1440]);
   });
 
-  it('is identical under swapping the documents (R2)', () => {
+  it('is identical under swapping the documents', () => {
     const forward = pairOf(
       '<tempo date="0.0" bpm="60" beatLength="0.25"/><tempo date="1440.0" bpm="90" beatLength="0.25"/>',
       '<tempo date="0.0" bpm="60" beatLength="0.25"/><tempo date="720.0" bpm="80" beatLength="0.25"/>',
@@ -237,11 +237,11 @@ describe('tempo distance: metric properties on the W2 subset', () => {
   const CONSTANT_90 =
     '<tempo date="0.0" bpm="90" beatLength="0.25"/><tempo date="2880.0" bpm="90" beatLength="0.25"/>';
 
-  it('P-C1 identity: a document against itself is exactly 0', () => {
+  it('identity: a document against itself is exactly 0', () => {
     expect(distanceBetween(CONSTANT_60, CONSTANT_60)).toBe(0);
   });
 
-  it('P-C2 symmetry: bit-exact under swapping', () => {
+  it('symmetry: bit-exact under swapping', () => {
     expect(distanceBetween(CONSTANT_60, CONSTANT_120)).toBe(
       distanceBetween(CONSTANT_120, CONSTANT_60),
     );
@@ -253,7 +253,7 @@ describe('tempo distance: metric properties on the W2 subset', () => {
     expect(distanceBetween(CONSTANT_60, CONSTANT_120)).toBeCloseTo(expected, 9);
   });
 
-  it('P-C3 triangle inequality, to quadrature precision', () => {
+  it('triangle inequality, to quadrature precision', () => {
     // The three constants are pointwise ordered, so this is the EQUALITY case and the only
     // slack is quadrature error. The tolerance is therefore relative — an absolute epsilon
     // on a quantity of magnitude 10^3 is meaningless.
@@ -263,7 +263,7 @@ describe('tempo distance: metric properties on the W2 subset', () => {
     expect(ab).toBeLessThanOrEqual((ac + cb) * (1 + 1e-9));
   });
 
-  it('P-C4 encoding invariance: a transition equals its dense step approximation', () => {
+  it('encoding invariance: a transition equals its dense step approximation', () => {
     // The module's central distinction: two documents that PERFORM the same curve are at
     // distance ~0 however differently they are written. A linear ramp 60→120 over 4 quarters
     // against 32 constant steps sampling the same ramp right-continuously.
@@ -287,7 +287,7 @@ describe('tempo distance: metric properties on the W2 subset', () => {
     expect(distance).toBeLessThan(rampAgainstFlat * 0.05);
   });
 
-  it('prices an absent map against a present one rather than dropping the dimension (R6)', () => {
+  it('prices an absent map against a present one rather than dropping the dimension', () => {
     const pair = readComparisonPair({
       a: tempoDoc(CONSTANT_120),
       b:
@@ -305,8 +305,8 @@ describe('tempo distance: metric properties on the W2 subset', () => {
     expect(distance).toBeCloseTo((Math.log(120 / 100) / TEMPO_JND_NEPERS) * 4, 6);
   });
 
-  it('P-C2 symmetry on a POWER-VS-POWER cell, which is where it broke (CAPITAL-3)', () => {
-    // A P-C2 test on two CONSTANTS never reaches criticalPointTicks. Passing the segments in
+  it('symmetry on a POWER-VS-POWER cell, which is where it broke', () => {
+    // A symmetry test on two CONSTANTS never reaches criticalPointTicks. Passing the segments in
     // document order makes powerCriticalPoint compute separately-rounded reciprocals —
     // algebraically equal, not equal in IEEE754 — and 11.7 % of argument sets differ by one
     // ulp, which moves the split point, the GL-10 abscissae, and the reported bits. Hence the
@@ -324,14 +324,14 @@ describe('tempo distance: metric properties on the W2 subset', () => {
     expect(forward).toBeGreaterThan(0);
   });
 
-  it('is deterministic: two runs agree bit for bit (R2)', () => {
+  it('is deterministic: two runs agree bit for bit', () => {
     expect(distanceBetween(CONSTANT_60, CONSTANT_120)).toBe(
       distanceBetween(CONSTANT_60, CONSTANT_120),
     );
   });
 });
 
-describe('Telemann regression anchors (P-C9)', () => {
+describe('Telemann regression anchors', () => {
   const anchor = (a: string, b: string) => {
     const pair = readComparisonPair({ a: TELEMANN, performanceA: a, performanceB: b });
     return tempoDistance(curveOf(pair, 'a'), curveOf(pair, 'b'), pair.window, pair.ppq.lcm);
@@ -377,7 +377,7 @@ describe('Telemann regression anchors (P-C9)', () => {
     expect(anchor('Fast', 'Baroque').distance).toBe(baroqueFast.distance);
   });
 
-  it('is exactly zero against itself on real data (P-C1)', () => {
+  it('is exactly zero against itself on real data', () => {
     expect(anchor('Baroque', 'Baroque').distance).toBe(0);
   });
 });

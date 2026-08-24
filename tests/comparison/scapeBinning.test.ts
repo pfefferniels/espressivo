@@ -51,7 +51,7 @@ describe('a point atom lands in the bin that contains it', () => {
     ).toEqual([11, 22, 33, 44]);
   });
 
-  it('gives an atom exactly on an interior edge to the bin it OPENS (A-B1/R27)', () => {
+  it('gives an atom exactly on an interior edge to the bin it OPENS', () => {
     // Right-continuity at an interior edge, where the window-end case cannot decide it:
     // 4 belongs to [4, 6), never to [2, 4).
     expect(unitCells([{ startQuarters: 4, endQuarters: 4, mass: 9 }])).toEqual([0, 0, 9, 0]);

@@ -3,7 +3,7 @@ import { OrnamentNote, readJavaDouble } from './OrnamentNote.js';
 import type { OrnamentDef } from '../../styles/defs/OrnamentDef.js';
 
 /**
- * Read an `<ornament>`'s note pool: its `<note>` children, in document order (DESIGN.md D1).
+ * Read an `<ornament>`'s note pool: its `<note>` children, in document order.
  *
  * Shared by the two live readers of an ornament — `OrnamentationMap.getOrnamentDataOf` and the
  * inline reader in `OrnamentationMap.apply` — so that a change to the pool grammar cannot land
@@ -35,17 +35,17 @@ export function parseOrnamentNotePool(xml: Element): OrnamentNote[] {
 /**
  * Read an `<ornament>`'s `repetitions` (`ornament.xml:39-50`): how many times the `|: … :|`
  * group of `note.order` is repeated *in addition* to being played once, so the number of
- * plays is `repetitions + 1` (DESIGN.md D9; the spec's own exemplum spells "repeating … three
- * times … So, it is played four times").
+ * plays is `repetitions + 1` (the spec's own exemplum spells "repeating … three times … So, it
+ * is played four times").
  *
  * Lenient in one direction only: `-1` is accepted, an undocumented meico extension meaning
- * "fill the frame" (D9), while any other unusable value is logged and falls back to the
+ * "fill the frame", while any other unusable value is logged and falls back to the
  * schema default `0` rather than propagating a `NaN` into a loop bound. Non-integers are
  * passed through untouched — rounding them would invent a rule no source states, and the
  * expansion engine owns what a fractional repeat count means.
  *
  * The parse is `parseJavaDouble`, for the reason spelled out at `OrnamentNote.readPitchValue`
- * (DESIGN.md D16; PARITY.md §6.8): this attribute has no grammar either, so the choice of
+ * (PARITY.md §6.8): this attribute has no grammar either, so the choice of
  * parser is observable — `repetitions=""` is unusable here and says so, where `Number` read it
  * as `0` and took the default silently.
  */
@@ -70,9 +70,9 @@ export function parseOrnamentRepetitions(raw: string): number {
  * {@link applyGeneratedOrnament} returns them, and the caller inserts them.
  *
  * `spacing` is null whenever the notes already carry their final tick dates, which is every
- * tick-domain and `%` frame (DESIGN.md D4 resolves those in the symbolic phase). It is a
- * function rather than a `TemporalSpread` because a millisecond frame aligned `at end` writes
- * a marker the v2 class has no name for (the D5 amendment). It must run *after* the dynamics
+ * tick-domain and `%` frame, both resolved in the symbolic phase. It is a function rather than
+ * a `TemporalSpread` because a millisecond frame aligned `at end` writes a marker the v2 class
+ * has no name for. It must run *after* the dynamics
  * gradient, which is the v2 transformer order and is observable in the attribute order of the
  * augmented MSM.
  */
@@ -96,7 +96,7 @@ export interface OrnamentGeneration {
  * {@link notes} (the pool of auxiliary notes the ornament may play), {@link repetitions} (how
  * often `note.order`'s repeat group runs) and {@link noteid} (the principal note the ornament
  * decorates). An ornament showing none of them is a v2 ornament and takes the untouched v2 code
- * path (DESIGN.md D6).
+ * path.
  *
  * The two readers are `OrnamentationMap.getOrnamentDataOf`, which returns null unless it can
  * resolve BOTH the style and the `ornamentDef`, and the inline reader in
@@ -147,7 +147,7 @@ export interface Ornament {
    * spellings — `ornament-principal-note-ref` asserts `@noteid[starts-with(., '#')]` — so
    * normalising on read would silently repair a document that a validator rejects, and
    * re-serializing it would change bytes the author wrote. Use {@link principalNoteId} to
-   * resolve it against MSM ids (DESIGN.md D7 accepts both spellings for resolution).
+   * resolve it against MSM ids; resolution accepts both spellings.
    */
   readonly noteid: string | null;
 }
@@ -163,8 +163,8 @@ export const NO_V3_ORNAMENT_FIELDS = {
 /**
  * {@link Ornament.noteid} with a leading `#` removed — the form that matches an MSM `xml:id`.
  * Null when the ornament names no principal note, which sends the renderer down the rest of
- * DESIGN.md D7's fallback chain (a non-pool reference in `note.order`, then absolute
- * `midi.pitch` on every pool note).
+ * the fallback chain (a non-pool reference in `note.order`, then absolute `midi.pitch` on
+ * every pool note).
  */
 export function principalNoteId(ornament: Ornament): string | null {
   const { noteid } = ornament;

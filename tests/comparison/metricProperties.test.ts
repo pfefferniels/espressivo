@@ -1,19 +1,19 @@
 /**
- * P-C1 / P-C2 / P-C3 / P-C3b over the standing adversarial family — §10, promoted under
- * AD-33.5.
+ * Identity, symmetry, the triangle inequality and zero-set transitivity, over the standing
+ * adversarial family.
  *
  * A triangle test on three pointwise-ordered constants sits at the triangle's equality case: it
  * can fail only on quadrature error, so it tests the quadrature and not the metric. These
  * properties run over the adversarial family instead, whose members carry `⊥` by seven routes,
- * the cap, a renderer-default level, a tempo skip, a dynamics skip, AD-35's unbounded
+ * the cap, a renderer-default level, a tempo skip, a dynamics skip, the unbounded
  * resurrected span, and the one power-vs-power pair that reaches `criticalPointTicks`.
  *
  * The two EVENT dimensions are included: their distance is an argmin over monotone alignments
- * and §5.6 argues its metric status in prose — measured, an uncapped `localDistance` fails
+ * and ornamentation argues its metric status in prose — measured, an uncapped `localDistance` fails
  * ornamentation's triangle test where no curve dimension shows anything.
  *
- * Every comparison runs under one EXPLICIT shared window (§10): under a pair-derived window the
- * three windows of a triple differ and R3 does not claim the triangle inequality at all (M2).
+ * Every comparison runs under one EXPLICIT shared window: under a pair-derived window the
+ * three windows of a triple differ and the metric does not claim the triangle inequality at all.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -35,7 +35,7 @@ import { elementAt } from '../../src/prelude/index.js';
  * The list IS `COMPARISON_DIMENSIONS`, so a dimension cannot be in the report and absent here.
  * The distance is taken through `evaluateDimension`, the same entry the driver calls, so a
  * dimension's metric properties are checked over everything its `d_k` is made of — which for
- * articulation means the alignment optimum AND AD-55.1's default step function, two components
+ * articulation means the alignment optimum AND the default step function, two components
  * reaching the number by different routes.
  */
 const DIMENSIONS = COMPARISON_DIMENSIONS;
@@ -78,7 +78,7 @@ function distanceFor(dimension: Dimension, pair: ComparisonPair): number {
 /**
  * Distance between two members under the shared explicit window, memoized on the ORDERED pair.
  *
- * Ordered, deliberately: an unordered key would make P-C2 tautological, comparing a cached
+ * Ordered, deliberately: an unordered key would make the symmetry check tautological, comparing a cached
  * number with itself instead of running the two directions through the integrator.
  */
 const CACHE = new Map<string, number>();
@@ -94,7 +94,7 @@ function distance(dimension: Dimension, x: AdversarialMember, y: AdversarialMemb
 
 describe('the adversarial family itself', () => {
   it('has twenty-eight members with distinct hazards', () => {
-    // AD-33.5 requires a cut that opens a failure surface to extend the family, and this count
+    // the design requires a cut that opens a failure surface to extend the family, and this count
     // is what makes that an obligation rather than an intention.
     expect(ADVERSARIAL_FAMILY).toHaveLength(28);
     expect(new Set(ADVERSARIAL_FAMILY.map((member) => member.name)).size).toBe(28);
@@ -108,7 +108,7 @@ describe('the adversarial family itself', () => {
     }
   });
 
-  it('runs under a piece-derived window, so R3 is unconditional', () => {
+  it('runs under a piece-derived window, so the guarantee is unconditional', () => {
     const pair = readComparisonPair({
       a: elementAt(ADVERSARIAL_FAMILY, 0, 'the adversarial family').mpm,
       b: elementAt(ADVERSARIAL_FAMILY, 1, 'the adversarial family').mpm,
@@ -119,7 +119,7 @@ describe('the adversarial family itself', () => {
   });
 });
 
-describe.each(DIMENSIONS)('P-C1 identity — %s', (dimension) => {
+describe.each(DIMENSIONS)('identity — %s', (dimension) => {
   it.each(ADVERSARIAL_FAMILY.map((member) => [member.name, member] as const))(
     'is exactly 0 against itself: %s',
     (_name, member) => {
@@ -128,7 +128,7 @@ describe.each(DIMENSIONS)('P-C1 identity — %s', (dimension) => {
   );
 });
 
-describe.each(DIMENSIONS)('P-C2 bit-exact symmetry — %s', (dimension) => {
+describe.each(DIMENSIONS)('bit-exact symmetry — %s', (dimension) => {
   it('holds for every ordered pair, to the last bit', () => {
     for (const [x, y] of adversarialPairs()) {
       const forward = distance(dimension, x, y);
@@ -141,10 +141,10 @@ describe.each(DIMENSIONS)('P-C2 bit-exact symmetry — %s', (dimension) => {
   });
 });
 
-describe.each(DIMENSIONS)('P-C3 triangle inequality — %s', (dimension) => {
+describe.each(DIMENSIONS)('triangle inequality — %s', (dimension) => {
   it('holds for every triple with EVERY member as the middle term', () => {
     // All three assignments of the middle term: a fixed middle checks one inequality of the
-    // three a triple asserts, and §4's cap binds only when a ⊥ member sits BETWEEN two laws
+    // three a triple asserts, and the cap binds only when a ⊥ member sits BETWEEN two laws
     // whose uncapped distance exceeds 2·δ_row — so with one fixed middle, whether that
     // arrangement is reached at all depends on the family's array order.
     for (const [x, y, z] of adversarialTriples())
@@ -164,7 +164,7 @@ describe.each(DIMENSIONS)('P-C3 triangle inequality — %s', (dimension) => {
   });
 });
 
-describe.each(DIMENSIONS)('P-C3b zero-set transitivity — %s', (dimension) => {
+describe.each(DIMENSIONS)('zero-set transitivity — %s', (dimension) => {
   it('holds across the family: two zeros compose to a zero', () => {
     // Over the real family rather than three encodings of one constant, so it reaches the ⊥ and
     // capped paths it is the cheapest detector for.
@@ -206,17 +206,17 @@ describe('the family reaches the paths the wave could not see', () => {
     const accentuation = ADVERSARIAL_FAMILY.find((member) => member.name === 'accentuation-bottom');
     const pedal = ADVERSARIAL_FAMILY.find((member) => member.name === 'pedal-bottom');
     const ordinary = ADVERSARIAL_FAMILY.find((member) => member.name === 'accentuation-and-pedal');
-    // An aborting accentuationPatternDef (R21) and a non-monotone date component: different
+    // An aborting accentuationPatternDef and a non-monotone date component: different
     // failures in different dimensions, both ⊥ and both δ_row from a real curve.
     expect(distance('accentuation', accentuation!, ordinary!)).toBeGreaterThan(0);
     expect(distance('pedal', pedal!, ordinary!)).toBeGreaterThan(0);
   });
 
-  it('reaches AD-35’s unbounded span, and the window still bounds it', () => {
+  it('reaches the unbounded span, and the window still bounds it', () => {
     const resurrected = ADVERSARIAL_FAMILY.find((member) => member.name === 'pedal-resurrected');
     const plain = ADVERSARIAL_FAMILY.find((member) => member.name === 'plain');
     const d = distance('pedal', resurrected!, plain!);
-    // A span whose end is Number.MAX_VALUE integrates over [0, 4] like any other (AD-35 b).
+    // A span whose end is Number.MAX_VALUE integrates over [0, 4] like any other.
     expect(Number.isFinite(d)).toBe(true);
     expect(d).toBeGreaterThan(0);
   });
@@ -251,7 +251,7 @@ describe('the family reaches the paths the wave could not see', () => {
   it('reaches a NON-TRIVIAL articulation alignment, not an all-drops one', () => {
     // The two anchor sets sit an eighth of a quarter apart, so `λ_date` makes exactly one match
     // cheaper than two drops and the DP has to trade. An all-drops optimum would exercise the
-    // sum and not the argmin, which is the construction §5.6 makes the semantic definition.
+    // sum and not the argmin, which is the construction the design makes the semantic definition.
     const pair = readComparisonPair({
       a: member('articulation-anchors').mpm,
       b: member('articulation-offset').mpm,
@@ -270,14 +270,14 @@ describe('the family reaches the paths the wave could not see', () => {
     expect(events.unmatchedB).toBeGreaterThan(0);
   });
 
-  it('reaches AD-55.1’s default step function as a component of its own', () => {
+  it('reaches the default step function as a component of its own', () => {
     // `articulation-default` carries NO atoms — only two `<style>` switches — so anything it
     // scores is the step function's, by a different route from every other event member.
     expect(distance('articulation', member('articulation-default'), PLAIN())).toBeGreaterThan(0);
   });
 
   it('reaches ornamentation’s incomparable pair, and prices it at the cap', () => {
-    // A tick frame against a millisecond frame has no common domain without a tempo map (§5.6):
+    // A tick frame against a millisecond frame has no common domain without a tempo map:
     // two matched anchors, each at 2·δ_row. Against a document with no ornaments the same member
     // is an ordinary deviation-from-neutral, which is what makes the pair ⊥ and not merely a
     // large number.

@@ -39,7 +39,7 @@ describe('mpmDocument', () => {
     });
 
     it('is NOT the identity on the input bytes — but no longer because of xmlns', () => {
-      // Why §1.1 contracts identity against canonicalBaseline() and never against the caller's
+      // Why identity is contracted against canonicalBaseline() and never against the caller's
       // own text. `Element.wrap` drops namespace declarations at parse, and `Element.toXML`
       // re-emits a default-namespace declaration only where the namespace actually changes, so
       // the count round-trips exactly and a document does not grow by being read.

@@ -1,8 +1,8 @@
 /**
- * The per-method behavioural comparison ARCHITECTURE.md RULE M2a demands before
+ * The per-method behavioural comparison ARCHITECTURE.md RULE the design demands before
  * `src/msm/Msm.ts`'s module-local navigation helpers may be merged onto `src/xml/`.
  *
- * RULE M2a names eight of them — `getAttribute`, `getAttributeValue`,
+ * RULE the design names eight of them — `getAttribute`, `getAttributeValue`,
  * `getFirstChildElement`, `getAllChildElements`, `getNextSiblingElement`, `cloneElement`,
  * `getFilenameWithoutExtension`, `addUUID` — and says: "a probe that feeds both
  * implementations the same element trees, including namespaced children and elements with
@@ -177,7 +177,7 @@ function everyElement(root: Element): Element[] {
 const corpus: Element[] = documents.flatMap((d) => everyElement(d.root));
 
 /**
- * The adversarial trees RULE M2a names by hand: a namespaced attribute, an element whose
+ * The adversarial trees RULE the design names by hand: a namespaced attribute, an element whose
  * children share a local name across two namespaces, text nodes wedged between elements,
  * and a detached element with no parent at all.
  */

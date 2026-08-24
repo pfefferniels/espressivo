@@ -1,15 +1,16 @@
 /**
  * The claims about {@link exaggerateMpm} that only a render can settle.
  *
- * R5a structural invariance is the universal half: the transform writes no `@date`, adds or
+ * Structural invariance is the universal half: the transform writes no `@date`, adds or
  * removes no element, and adds or removes no attribute. Only attribute values change. Every
  * fixture × every factor record is swept for it, at the document level, where a violation is a
  * diff of two strings rather than a note that landed a bar late.
  *
- * R5b symbolic invariance is the half mlign consumes: performing an exaggerated MPM against
+ * Symbolic invariance is the half mlign consumes: performing an exaggerated MPM against
  * the same MSM yields the same notes — same ids, same symbolic dates, same durations, same
  * pitches — and differs only in what a performance is for. It does not hold universally, and
- * the exception is pinned rather than excluded: see "MPM v3 note-generating ornaments". R5
+ * the exception is pinned rather than excluded: see "MPM v3 note-generating ornaments". The
+ * invariance claim
  * predates the v3 ornamentation program, which introduced a renderer pass that creates notes
  * whose symbolic geometry is derived from the attributes two dimensions scale.
  *
@@ -18,10 +19,10 @@
  * run moved something — which is why the three v3 tick-frame fixtures are enriched below
  * before being swept.
  *
- * A14 expected direction closes a gap the property suite cannot (DESIGN §1.1): P1–P5 hold for
+ * The expected-direction table closes a gap the property suite cannot: P1–P5 hold for
  * any monotone bijection with the right neutral, so they validate no registry choice. What
  * validates one is whether the effect moves the way the dimension's name promises. All fifteen
- * dimensions get a direction test; the table above the A14 block records which observation
+ * dimensions get a direction test; the table above records which observation
  * level each uses and why.
  *
  * ## Seedless-safe assertions
@@ -67,7 +68,7 @@ function document(dated: string, header = ''): XmlText {
  * The two ornament dimensions that lay notes out in time inside a frame — as opposed to
  * `ornamentDynamics`, which only shades them.
  *
- * They are named as a set because the divergence pinned at the bottom of the R5 section is a
+ * They are named as a set because the divergence pinned at the bottom of the invariance section is a
  * property of that role, not of either attribute: on an MPM v3 ornament that generates notes,
  * both the frame's width and its spacing curve decide where those notes land, and on a frame
  * that resolves into ticks that landing is a symbolic date.
@@ -97,7 +98,7 @@ function pair(folder: string, name: string, mpm?: XmlText): Pair {
 /**
  * A v3 tick-frame fixture, with two non-ornament maps grafted on.
  *
- * Without them the R5b sweep on these three would be vacuous: removing `ornamentSpread` and
+ * Without them the symbolic invariance sweep on these three would be vacuous: removing `ornamentSpread` and
  * `ornamentSpacing` from the factor record leaves the fixture with no site any dimension
  * writes, so the "invariance" assertion would render the canonical baseline twice and compare
  * it to itself. The graft is what gives the claim content — the reduced record writes two tempo
@@ -128,9 +129,9 @@ function generatingV3(name: string): Pair {
 /** Real Java-generated pairs, chosen for the dimensions they exercise between them. */
 const PAIRS: readonly Pair[] = [
   // Level pairs on both sides: tempo defs (Andante/Adagio) and dynamics defs (p/ff/pp), with
-  // transitions — the shape §1.3's `global` scope exists for.
+  // transitions — the shape the `global` scope exists for.
   pair('fixtures/reference', 'tempo_dynamics_spans'),
-  // Eight articulation defs, including the D-B-lopsided `stacc`.
+  // Eight articulation defs, including the lopsided `stacc`.
   pair('fixtures/reference', 'articulations'),
   // Three maps over two parts — the multi-part path through the same code.
   pair('fixtures/reference', 'multi_part'),
@@ -177,8 +178,8 @@ function without(
  * a negative `s` leaves the domain and P3 fails — `resolveFactors` rejects those, and the
  * error-surface suite is where that belongs. `0` and `6` are here to make the sweep adversarial
  * rather than representative: `0` drives every dimension onto its closed-form neutral (the one
- * value §1 forbids computing as `0 · T(x)`) and `6` drives the level dimensions into
- * `velocityRange`'s clamp and the rubato window into A6's guard.
+ * value the design forbids computing as `0 · T(x)`) and `6` drives the level dimensions into
+ * `velocityRange`'s clamp and the rubato window into the guard.
  *
  * `everyDimension` is what the anti-vacuity guard keys on. A record naming one dimension may
  * legitimately write nothing — `{tempo: 1.5}` on a document with no tempo map is an honest
@@ -218,7 +219,7 @@ const datesIn = (mpm: XmlText): readonly string[] => mpm.match(/\sdate(?:\.end)?
 
 /**
  * The document with every attribute value blanked: its elements, its attribute names, and
- * their order — everything R5a says the transform may not touch.
+ * their order — everything the design says the transform may not touch.
  *
  * Blanking rather than counting is deliberate. A count would pass a transform that deleted one
  * attribute and created another; this compares the whole skeleton, so any add, remove, rename
@@ -227,11 +228,11 @@ const datesIn = (mpm: XmlText): readonly string[] => mpm.match(/\sdate(?:\.end)?
 const skeletonOf = (mpm: XmlText): string => mpm.replace(/="[^"]*"/g, '=""');
 
 /**
- * A note's identity and its place in the score — everything R5b promises is untouched.
+ * A note's identity and its place in the score — everything symbolic invariance promises is untouched.
  *
  * Generated ids are canonicalised because an MPM v3 ornament draws a fresh `meico_<uuid>` per
  * render (`ornamentation-v3.test.ts`'s convention): two renders of the same document already
- * disagree on those bytes, so comparing them raw would fail R5b for a reason that has nothing
+ * disagree on those bytes, so comparing them raw would fail symbolic invariance for a reason that has nothing
  * to do with the transform. What the canonicalisation preserves is exactly what matters — how
  * many generated notes there are and where each sits in the walk.
  */
@@ -261,7 +262,7 @@ function symbolicShape(data: PerformanceData): unknown {
 }
 
 /**
- * Every rendered quantity a performance is for: the half R5b expects to move.
+ * Every rendered quantity a performance is for: the half symbolic invariance expects to move.
  *
  * The control-change streams are in here rather than only the notes because one dimension —
  * `pedalShape` — renders exclusively into them. Without it the `movement` fixture would
@@ -282,10 +283,10 @@ const performWith = (pairUnderTest: Pair, mpm: XmlText): PerformanceData =>
   performMsmToData({ msm: pairUnderTest.msm, mpm });
 
 // ---------------------------------------------------------------------------
-// R5a — the universal, document-level half
+// the universal, document-level half
 // ---------------------------------------------------------------------------
 
-describe('R5a: the transform changes attribute values and nothing else', () => {
+describe('the transform changes attribute values and nothing else', () => {
   it.each(PAIRS)('$name keeps its dates and its whole skeleton at every factor', (p) => {
     const canonical = canonicalMpm(p.mpm);
     const canonicalDates = datesIn(canonical);
@@ -304,10 +305,10 @@ describe('R5a: the transform changes attribute values and nothing else', () => {
 });
 
 // ---------------------------------------------------------------------------
-// R5b — the render-level half
+// the render-level half
 // ---------------------------------------------------------------------------
 
-describe('R5b: exaggeration is symbolically invariant end to end', () => {
+describe('exaggeration is symbolically invariant end to end', () => {
   describe.each(PAIRS)('$name', (p) => {
     const baseline = performWith(p, p.mpm);
 
@@ -328,7 +329,7 @@ describe('R5b: exaggeration is symbolically invariant end to end', () => {
 
   /**
    * The anti-vacuity half at the render level: the report claims writes, and the render moves,
-   * in the quantities R5b explicitly leaves free.
+   * in the quantities symbolic invariance explicitly leaves free.
    */
   describe.each(PAIRS)('$name really changed', (p) => {
     it('moves milliseconds, velocities or control changes where the report says it wrote', () => {
@@ -339,7 +340,7 @@ describe('R5b: exaggeration is symbolically invariant end to end', () => {
   });
 
   /**
-   * The exception to R5b, pinned deliberately rather than excluded quietly.
+   * The exception to symbolic invariance, pinned deliberately rather than excluded quietly.
    *
    * MPM v3 ornamentation is a renderer pass that generates notes, and it computes their
    * symbolic `@date` and `@duration` from the `<temporalSpread>` frame — the same frame
@@ -347,7 +348,7 @@ describe('R5b: exaggeration is symbolically invariant end to end', () => {
    * `frameLength="50%"` of the principal note, doubling the spread lays the turn's four notes
    * across the whole principal instead of half of it, and every one of them lands on a
    * different symbolic date. Nothing in the document was mis-transformed: this engine writes
-   * no `@date` here either (R5a above covers these pairs too), and there is no way to both
+   * no `@date` here either (structural invariance above covers these pairs too), and there is no way to both
    * widen the window an ornament's notes occupy and leave those notes where they were.
    *
    * The boundary is exactly two conditions, and each has a control here: the ornament must
@@ -356,7 +357,7 @@ describe('R5b: exaggeration is symbolically invariant end to end', () => {
    * map, so it moves milliseconds only). `%` resolves into the tick domain, which is why a
    * fixture with no `ticks` suffix anywhere is nonetheless in scope.
    */
-  describe('MPM v3 note-generating ornaments: where R5b does not reach', () => {
+  describe('MPM v3 note-generating ornaments: where symbolic invariance does not reach', () => {
     const symbolic = (p: Pair, factors: ExaggerationFactors) =>
       symbolicShape(performWith(p, exaggerate(p.mpm, factors).mpm));
 
@@ -380,10 +381,10 @@ describe('R5b: exaggeration is symbolically invariant end to end', () => {
       },
     );
 
-    it('drives the carved head leftover to a zero-length note at s = 2 (§7.9 cliff)', () => {
+    it('drives the carved head leftover to a zero-length note at s = 2 (the cliff)', () => {
       // The concrete shape of the divergence, so a change to it cannot pass unnoticed: the
       // turn's notes double in length and the principal's surviving leftover is carved to
-      // nothing. §7.9 predicts exactly this class of outcome and calls the row's P5r `cliff`.
+      // nothing. The row's P5r is `cliff`, which predicts exactly this class of outcome.
       const turn = pair('fixtures-v3', 'turn-atstart');
       const shapes = (factors: ExaggerationFactors) =>
         notesOf(performWith(turn, exaggerate(turn.mpm, factors).mpm))
@@ -431,7 +432,7 @@ describe('R5b: exaggeration is symbolically invariant end to end', () => {
 });
 
 // ---------------------------------------------------------------------------
-// A14 — expected direction, all fifteen dimensions
+// expected direction, all fifteen dimensions
 // ---------------------------------------------------------------------------
 
 /**
@@ -471,10 +472,10 @@ function widestLimit(mpm: XmlText): number {
   return Math.max(...values);
 }
 
-describe('A14: the effect moves in the direction the dimension names', () => {
+describe('the effect moves in the direction the dimension names', () => {
   /*
-   * Which observation level each dimension is asserted at, and why. A14's whole point is that
-   * a document-level assertion cannot validate a metric choice (DESIGN §1.1) — so `rendered`
+   * Which observation level each dimension is asserted at, and why. The whole point is that
+   * a document-level assertion cannot validate a metric choice — so `rendered`
    * is used wherever the rendered effect is deterministic and observable, and `written` only
    * where it provably is not.
    *
@@ -499,10 +500,10 @@ describe('A14: the effect moves in the direction the dimension names', () => {
    * The three imprecision rows are `written` because their rendered offset is drawn from a
    * PRNG. `all_maps` happens to seed its distributions, but the charter forbids resting an
    * assertion on that, and the width a distribution declares is the quantity the dimension
-   * actually scales — D-F's atomic group, scaled as one.
+   * actually scales — the atomic group, scaled as one.
    *
    * `ornamentSpread` and `ornamentSpacing` use the millisecond-frame fixture deliberately: on
-   * a tick-resolved frame their rendered effect is the R5b divergence pinned above, and an
+   * a tick-resolved frame their rendered effect is the symbolic invariance divergence pinned above, and an
    * onset reading there would be measuring symbolic movement rather than performed movement.
    */
 
@@ -529,7 +530,7 @@ describe('A14: the effect moves in the direction the dimension names', () => {
     '<dynamicsMap><dynamics date="0.0" volume="20" transition.to="120" curvature="0.4" protraction="0.5"/>' +
       '<dynamics date="7200.0" volume="120"/></dynamicsMap>',
   );
-  // The corpus fixture writes raw tick values into `@beat`/`@length`, which §7.8 names as a
+  // The corpus fixture writes raw tick values into `@beat`/`@length`, which the design names as a
   // documented real-world no-op — it renders a nearly flat ramp worth 0.004 velocity units. A
   // pattern in beats is what makes the accent audible, and therefore what makes a direction
   // claim about it mean anything.
@@ -607,7 +608,7 @@ describe('A14: the effect moves in the direction the dimension names', () => {
     },
     {
       // Every def in this fixture carries either `@relativeVelocity` or
-      // `@absoluteVelocityChange` and none carries both, so §7.7's non-monotone affine pair is
+      // `@absoluteVelocityChange` and none carries both, so the non-monotone affine pair is
       // out of the picture — which is what makes a monotonicity claim admissible here at all.
       dimension: 'articulation',
       factors: [0.5, 1, 2],
@@ -665,7 +666,7 @@ describe('A14: the effect moves in the direction the dimension names', () => {
         ),
     },
     {
-      // §3 admits `pedalShape` on the argument that the curve parameters "move the instant at
+      // the design admits `pedalShape` on the argument that the curve parameters "move the instant at
       // which the pedal crosses the receiver's on/off threshold", so that instant is the
       // reading. The renderer samples the curve at a fixed value grid and emits the time each
       // value is reached, which is why the values are identical across s and the times are not.
@@ -712,7 +713,7 @@ describe('A14: the effect moves in the direction the dimension names', () => {
     return crossing!.milliseconds;
   }
 
-  it('covers every dimension DESIGN §3 declares', () => {
+  it('covers every dimension the design declares', () => {
     expect(readings.map((row) => row.dimension).sort()).toEqual([...EXPRESSION_DIMENSIONS].sort());
   });
 
@@ -733,7 +734,7 @@ describe('A14: the effect moves in the direction the dimension names', () => {
     expect(spread(velocities)).toBeCloseTo(0, 9);
   });
 
-  it('asynchrony: the onset deviation is exactly proportional to s (§7.12)', () => {
+  it('asynchrony: the onset deviation is exactly proportional to s', () => {
     const deviation = (s: number) =>
       onsetDeviation(
         notesOf(performWith(asynchrony, exaggerate(asynchrony.mpm, { asynchrony: s }).mpm)),
@@ -747,7 +748,7 @@ describe('A14: the effect moves in the direction the dimension names', () => {
     // this document resolves through a shared def, and at s = 0 both endpoints of each
     // transition land on the center — `String(to') === String(volume')`, which is the
     // renderer's exact-float test for a constant instruction. Writing that would delete the
-    // gesture rather than scale it, so D-I's pair-collapse guard refuses both endpoints, and
+    // gesture rather than scale it, so the pair-collapse guard refuses both endpoints, and
     // the transitive fixpoint carries the refusal to the defs the pair resolves through.
     const { report, mpm } = exaggerate(spans.mpm, { dynamics: 0 });
     expect(report.totalWrites).toBe(0);

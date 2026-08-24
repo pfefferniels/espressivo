@@ -17,7 +17,7 @@
  *   collects `descendant::*[contains(local-name(),'Map') or local-name()='score']`, both
  *   feeding a map keyed by local name where a later entry replaces an earlier one. The
  *   pre-order child walk here visits the same elements in the same order. `Element.query` is
- *   banned by D-A because it serializes the subtree with `toXML()`, re-parses it and maps
+ *   banned because it serializes the subtree with `toXML()`, re-parses it and maps
  *   hits back by child-index path — O(document) per call; `xml/tree.js`'s `allChildElements`
  *   and its two-argument `firstChildElement` are `query` in a wrapper (tree.ts:94,
  *   tree.ts:150) and banned for the same reason.

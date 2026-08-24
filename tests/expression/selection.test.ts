@@ -1,5 +1,5 @@
 /**
- * `resolveSelection` — DESIGN.md D-I's type → dimension table, and the two ways an id can fail.
+ * `resolveSelection` — the type → dimension table, and the two ways an id can fail.
  *
  * The documents here are hand-built for the same reason the applier's are: what needs covering
  * is one element of every selectable type plus the types that must NOT resolve, and no fixture
@@ -60,7 +60,7 @@ const EVERY_TYPE = document(
   '<tempoStyles><styleDef name="S"><tempoDef xml:id="def" name="fast" value="140.0"/></styleDef></tempoStyles>',
 );
 
-describe('resolveSelection: D-I maps an element type onto the dimensions it governs', () => {
+describe('resolveSelection maps an element type onto the dimensions it governs', () => {
   it.each([
     ['tem', 'tempo', ['tempo', 'tempoShape']],
     ['dyn', 'dynamics', ['dynamics', 'dynamicsShape']],
@@ -125,7 +125,7 @@ describe('resolveSelection: D-I maps an element type onto the dimensions it gove
   });
 });
 
-describe('resolveSelection: the two failure kinds (A8)', () => {
+describe('resolveSelection: the two failure kinds', () => {
   it('reports an id no element carries as unresolved', () => {
     const { offenders, resolved } = resolve(EVERY_TYPE, ['nope']);
     expect(resolved).toEqual([]);
@@ -146,8 +146,8 @@ describe('resolveSelection: the two failure kinds (A8)', () => {
     ]);
   });
 
-  it('reports a tuning distribution as unmappable and names the map that decided it (A9)', () => {
-    // §7.16: nothing in this codebase reads `tuning.offset`, so the domain is inert by
+  it('reports a tuning distribution as unmappable and names the map that decided it', () => {
+    // nothing in this codebase reads `tuning.offset`, so the domain is inert by
     // construction and has no dimension to spare. A caller pointing at one has to be told.
     const offender = elementAt(
       resolve(EVERY_TYPE, ['dtun']).offenders,
@@ -172,7 +172,7 @@ describe('resolveSelection: the two failure kinds (A8)', () => {
   });
 });
 
-describe('D-I agrees with the registry about what each element type governs', () => {
+describe('the mapping agrees with the registry about what each element type governs', () => {
   /** Every dimension the registry writes at an element of this local name. */
   const dimensionsWrittenAt = (element: string): readonly string[] =>
     EXPRESSION_DIMENSIONS.filter((dimension) =>
@@ -185,7 +185,7 @@ describe('D-I agrees with the registry about what each element type governs', ()
   const mapFor = (element: string) =>
     element === 'accentuationPattern' ? 'metricalAccentuationMap' : `${element}Map`;
 
-  it("the selectable vocabulary is exactly D-I's nine rows — no more, no fewer", () => {
+  it('the selectable vocabulary is exactly the nine rows — no more, no fewer', () => {
     // A test that only checks each row against the registry can say nothing about a row that
     // should not exist: adding `['styleDef', ['tempo','rubato']]` to the table leaves the rest
     // of the suite green, and under it a `<styleDef>` id spotlights successfully instead of

@@ -4,7 +4,7 @@
  * The rule says the facade validates domains and not types, and that this is affordable only
  * because the domain predicates are total. The part that is NOT free is a check that reads a
  * field: `window.start` on a non-object faults before the domain row runs, and what escapes is
- * a raw `TypeError` rather than one of §6.2's classes. Before the rule existed, all nine nested
+ * a raw `TypeError` rather than one of the classes. Before the rule existed, all nine nested
  * option objects on the comparison surface did exactly that on `null`.
  *
  * So this sweeps every option field that is declared as an object or a list with the values an

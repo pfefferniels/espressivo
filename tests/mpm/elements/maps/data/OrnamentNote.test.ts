@@ -26,7 +26,7 @@ function captureErrors(run: () => void): string[] {
 }
 
 describe('OrnamentNote', () => {
-  describe('pitch specification (DESIGN.md D8)', () => {
+  describe('pitch specification (PARITY.md §6.2 D8)', () => {
     it('should read midi.pitch as an absolute pitch', () => {
       const n = note('xml:id="n1" midi.pitch="64"')!;
       expect(n.id).toBe('n1');

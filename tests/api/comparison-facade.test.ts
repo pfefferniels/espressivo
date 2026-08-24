@@ -1,7 +1,7 @@
 /**
- * The comparison facade — DESIGN.md §9's surface, at the boundary a consumer sees.
+ * The comparison facade — the surface, at the boundary a consumer sees.
  *
- * Three things are tested here and nowhere else: the validation table (§9.4), which is the whole
+ * Three things are tested here and nowhere else: the validation table, which is the whole
  * of what a caller can get wrong; the typed errors and their document identity, because "MPM a"
  * versus "MPM b" is the difference between a fixable message and a bisection; and the plain-data
  * contract (RULE F1, §9.6), which the interior cannot check because it is a statement about what
@@ -40,7 +40,7 @@ const simple = (bpm: number): string =>
   '</dated></global></performance></mpm>';
 
 describe('compareMpm end to end', () => {
-  it('compares two performances of one document with `b` omitted (C16)', () => {
+  it('compares two performances of one document with `b` omitted', () => {
     const { report } = compareMpm({
       a: TELEMANN,
       performanceA: 'Baroque',
@@ -52,13 +52,13 @@ describe('compareMpm end to end', () => {
     expect(Object.keys(report.dimensions)).toEqual([...COMPARISON_DIMENSIONS]);
   });
 
-  it('is exactly 0 against itself, under Object.is after the −0 normalization (P-C1)', () => {
+  it('is exactly 0 against itself, under Object.is after the −0 normalization', () => {
     const { report } = compareMpm({ a: simple(90), b: simple(90) });
     expect(Object.is(report.aggregate.distance, 0)).toBe(true);
     for (const dimension of COMPARISON_DIMENSIONS) {
       expect(Object.is(report.dimensions[dimension].distance, 0)).toBe(true);
       // The signed descriptors too, under `Object.is` rather than `===`, which would accept
-      // `-0` — the assertion §10's P-C1 asks for by name (A20).
+      // `-0` — the assertion the design asks for by name.
       const signed = report.dimensions[dimension].meanSigned;
       if (signed !== null) expect(Object.is(signed, 0)).toBe(true);
     }
@@ -76,7 +76,7 @@ describe('compareMpm end to end', () => {
    * validator and lands in the echoed weight vector, where `Object.is`-based assertions and the
    * JSON round trip would then disagree about a value the caller can see.
    */
-  it('normalizes −0 to +0 at the boundary, so JSON and Object.is agree (MINOR-2, A20)', () => {
+  it('normalizes −0 to +0 at the boundary, so JSON and Object.is agree', () => {
     const { report } = compareMpm({
       a: simple(90),
       b: simple(120),
@@ -143,7 +143,7 @@ describe('compareMpm end to end', () => {
     expect(first.dimensions.tempo).not.toBe(second.dimensions.tempo);
   });
 
-  it('echoes the settings and never the documents (A12)', () => {
+  it('echoes the settings and never the documents', () => {
     const { report } = compareMpm({
       a: simple(90),
       b: simple(120),
@@ -157,7 +157,7 @@ describe('compareMpm end to end', () => {
   });
 });
 
-describe('§9.4’s validation table', () => {
+describe('the validation table', () => {
   const compare = (options: Parameters<typeof compareMpm>[0]) => () => compareMpm(options);
   const a = simple(90);
 
@@ -184,20 +184,20 @@ describe('§9.4’s validation table', () => {
     expect(compare({ a, jnd: { 'tempo/tempo@bpm': 0 } })).toThrow(/> 0/);
   });
 
-  it('rejects an inverted, negative or non-finite window (A16)', () => {
+  it('rejects an inverted, negative or non-finite window', () => {
     expect(compare({ a, window: { start: 4, end: 4 } })).toThrow(/must be < window.end/);
     expect(compare({ a, window: { start: -1, end: 4 } })).toThrow(/>= 0/);
     expect(compare({ a, window: { start: 0, end: Number.POSITIVE_INFINITY } })).toThrow(/finite/);
   });
 
-  it('rejects an invariance mode on an EVENT dimension (AD-20)', () => {
+  it('rejects an invariance mode on an EVENT dimension', () => {
     expect(compare({ a, invariance: { articulation: 'level' } })).toThrow(/no curve to centre/);
     expect(compare({ a, invariance: { ornamentation: 'level-gain' } })).toThrow(InvalidOptionError);
     // …and accepts it on a curve dimension.
     expect(compare({ a, invariance: { tempo: 'level' } })).not.toThrow();
   });
 
-  it('rejects a selector that is not a non-negative integer (A17)', () => {
+  it('rejects a selector that is not a non-negative integer', () => {
     expect(compare({ a, performanceA: -1 })).toThrow(/non-negative integer/);
     expect(compare({ a, performanceB: 1.5 })).toThrow(InvalidOptionError);
   });
@@ -211,7 +211,7 @@ describe('§9.4’s validation table', () => {
   });
 });
 
-describe('§9.4’s errors carry the document’s identity', () => {
+describe('the errors carry the document’s identity', () => {
   it('names which document failed to parse, in the order a, b, msm', () => {
     expect(() => compareMpm({ a: 'not xml', b: simple(90) })).toThrow(/^MPM a:/);
     expect(() => compareMpm({ a: simple(90), b: '<nope/>' })).toThrow(/^MPM b:/);
@@ -239,13 +239,13 @@ describe('§9.4’s errors carry the document’s identity', () => {
     );
   });
 
-  it('routes a document with no <performance> to PerformanceNotFoundError (C8)', () => {
+  it('routes a document with no <performance> to PerformanceNotFoundError', () => {
     const empty = `<mpm xmlns="${NS}"/>`;
     expect(() => compareMpm({ a: empty })).toThrow(PerformanceNotFoundError);
     expect(() => compareMpm({ a: empty })).toThrow(/contains no <performance>/);
   });
 
-  it('rejects a document that resolves a non-positive tempo (M11)', () => {
+  it('rejects a document that resolves a non-positive tempo', () => {
     const zero =
       `<mpm xmlns="${NS}"><performance name="p" pulsesPerQuarter="720"><global><header/>` +
       '<dated><tempoMap><tempo date="0.0" bpm="0" beatLength="0.25"/></tempoMap></dated>' +
@@ -254,14 +254,14 @@ describe('§9.4’s errors carry the document’s identity', () => {
     expect(() => compareMpm({ a: zero, b: simple(90) })).toThrow(/MPM a: .*quarter-BPM/);
   });
 
-  it('exports ComparisonEngineError as its own class, not EngineInvariantError’s (A15)', () => {
+  it('exports ComparisonEngineError as its own class, not EngineInvariantError’s', () => {
     expect(new ComparisonEngineError('x')).toBeInstanceOf(Error);
     expect(barrel.ComparisonEngineError).toBe(ComparisonEngineError);
     expect(ComparisonEngineError).not.toBe(barrel.EngineInvariantError);
   });
 });
 
-describe('neutralMpm (C8)', () => {
+describe('neutralMpm', () => {
   it('is a document with one empty performance, and compares to itself at 0', () => {
     const neutral = neutralMpm();
     const { report } = compareMpm({ a: neutral, b: neutral });
@@ -295,7 +295,7 @@ describe('neutralMpm (C8)', () => {
   });
 });
 
-describe('the export surface (§9.7)', () => {
+describe('the export surface', () => {
   it('re-exports the facade member by member from the package root', () => {
     expect(barrel.compareMpm).toBe(compareMpm);
     expect(barrel.neutralMpm).toBe(neutralMpm);
@@ -303,7 +303,7 @@ describe('the export surface (§9.7)', () => {
     expect(barrel.COMPARISON_JND_KEYS).toBe(COMPARISON_JND_KEYS);
   });
 
-  it('hands the consumer the SAME frozen vocabulary the validator reads (A25)', () => {
+  it('hands the consumer the SAME frozen vocabulary the validator reads', () => {
     expect(Object.isFrozen(COMPARISON_DIMENSIONS)).toBe(true);
     expect(Object.isFrozen(COMPARISON_JND_KEYS)).toBe(true);
     // Frozen matters because the ESM re-export hands out the object the option validator reads:

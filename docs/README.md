@@ -18,8 +18,3 @@ Two documents live at the repository root because they are not guides:
   reproduced on purpose, with Java line citations. Cited by identifier from the guides above.
 - [`ARCHITECTURE.md`](../ARCHITECTURE.md) — the standing architectural contract. Its numbered
   `RULE`s are cited from 72 files in `src/` and `tests/`, and partly enforced by `eslint.config.js`.
-
-[`history/`](history/README.md) holds the campaign records — charters, design documents,
-append-only journals, verification reports — of the work that produced the port. They are history
-rather than documentation, kept because `PARITY.md` and ~180 JSDoc comments cite them by ruling
-identifier. The per-campaign `DESIGN.md` files are the authority behind the guides above.

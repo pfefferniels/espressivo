@@ -2,7 +2,7 @@
  * MINOR-4 — the malformed-value table, ruled by the renderer.
  *
  * Three legal-but-malformed inputs where the comparison could repair what the renderer does not.
- * Every claim is measured through `performMsm` (AD-43.1), and the measurements do not all agree
+ * Every claim is measured through `performMsm`, and the measurements do not all agree
  * with the verification report that raised them.
  *
  * | input | the report predicted | the renderer does | the comparison reads |
@@ -17,7 +17,7 @@
  * fraction at `t = 0.5` is `(3 − 2t)t² = 0.5` for EVERY shape. A `⊥` there would price a
  * performance the renderer gives perfectly well at `δ_row`.
  *
- * The two rubato rows DO reach `⊥`, which is what makes AD-36.2's capped integrator forced for
+ * The two rubato rows DO reach `⊥`, which is what makes the capped integrator forced for
  * that dimension, as it already is for accentuation and pedal.
  */
 import { describe, it, expect } from 'vitest';
@@ -52,7 +52,7 @@ const doc = (dated: string, header = ''): string =>
   '<part name="p" number="1" midi.channel="0" midi.port="0"><header/><dated/></part>' +
   '</performance></mpm>';
 
-/** What the renderer performs, per note — the only evidence this file accepts (AD-43.1). */
+/** What the renderer performs, per note — the only evidence this file accepts. */
 function performed(dated: string, header = ''): readonly { velocity: string; date: string }[] {
   const out = performMsm({ msm: MSM, mpm: doc(dated, header) });
   return [...out.matchAll(/<note\b[^>]*>/g)].map((match) => {
@@ -187,7 +187,7 @@ describe('MINOR-4 row 2: a present-but-unusable @intensity is NOT inherited from
     expect(curve.notes.map((note) => note.kind)).toContain('renderer-error');
   });
 
-  it('prices the ⊥ frame at δ_row per quarter, which is what AD-1 asks for', () => {
+  it('prices the ⊥ frame at δ_row per quarter, which is what the design asks for', () => {
     const report = compareMpm({
       a: doc(withStyle('<rubato date="0.0" name.ref="D" intensity="abc"/>'), RUBATO_STYLES),
       b: doc(withStyle('<rubato date="0.0" name.ref="D"/>'), RUBATO_STYLES),
@@ -242,7 +242,7 @@ describe('MINOR-4 row 3: @frameLength that the renderer cannot use', () => {
   });
 });
 
-describe('AD-36.2: rubato’s first ⊥ route forces its capped integrator', () => {
+describe('rubato’s first ⊥ route forces its capped integrator', () => {
   it('keeps the triangle inequality with a ⊥ document as the middle term', () => {
     const window = { start: 0, end: 4 };
     // A frame of FOUR quarters, not one: the displacement is bounded by the frame length, and

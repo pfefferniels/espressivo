@@ -1,6 +1,6 @@
 /**
  * The numerical core, tested against closed forms and against the two measured failures
- * DESIGN.md §5.0 exists to prevent.
+ * the design exists to prevent.
  *
  * The hard-coded Gauss–Legendre table is re-derived here from scratch — Newton's method on the
  * Legendre polynomial `P₁₀`, using nothing from the module under test — because a table that
@@ -117,13 +117,13 @@ describe('gaussLegendre10', () => {
     expect(gaussLegendre10((x) => x, 5, 1)).toBe(0);
   });
 
-  it('gives bit-identical results for repeated calls (R2)', () => {
+  it('gives bit-identical results for repeated calls', () => {
     const f = (x: number) => Math.log(60 + 60 * x * x);
     expect(gaussLegendre10(f, 0, 1)).toBe(gaussLegendre10(f, 0, 1));
   });
 });
 
-describe('the tempo substitution (rule 1, M6)', () => {
+describe('the tempo substitution (rule 1)', () => {
   /**
    * `∫₀¹ ln(b + d·u^e) du` has no elementary closed form, so the reference is a very fine
    * composite Simpson — 200 001 points, which is far past what GL-10 is being asked for.
@@ -148,7 +148,7 @@ describe('the tempo substitution (rule 1, M6)', () => {
     expect(substituted(60, 60, 1)).toBeCloseTo(reference(60, 60, 1), 10);
   });
 
-  it('beats the naive rule for e < 1, which is what rule 1 was written for (M6)', () => {
+  it('beats the naive rule for e < 1, which is what rule 1 was written for', () => {
     // e = 0.5 → Jacobian exponent 1/e−1 = 1, i.e. a smooth linear weight.
     // The threshold is set by the REFERENCE, not by the substitution: composite Simpson at
     // 2·10⁵ points is itself only good to ~2·10⁻¹⁰ relative here, while a 2·10⁶-point run
@@ -160,7 +160,7 @@ describe('the tempo substitution (rule 1, M6)', () => {
   });
 
   /**
-   * MEASURED DEFECT in §5.0 rule 1. The substitution is claimed to work "for every e"; for
+   * MEASURED DEFECT in the rule 1. The substitution is claimed to work "for every e"; for
    * e > 1 the Jacobian exponent goes negative, the weight becomes singular at z = 0, and GL-10
    * loses most of the mass. These assertions record the failure, not an endorsement of it.
    */
@@ -185,7 +185,7 @@ describe('the tempo substitution (rule 1, M6)', () => {
     expect(relativeError(substituted(60, 60, e), reference(60, 60, e))).toBeGreaterThan(1e-6);
   });
 
-  describe('the graded mesh (AD-28.1, the ruled scheme)', () => {
+  describe('the graded mesh (the ruled scheme)', () => {
     const graded = (b: number, d: number, e: number) =>
       integrateGradedPower((u) => Math.log(b + d * Math.pow(u, e)), e);
 
@@ -224,8 +224,8 @@ describe('the tempo substitution (rule 1, M6)', () => {
       expect(relativeError(graded(60, 60, e), exact)).toBeLessThan(1e-9);
     });
 
-    it('meets the JND-scale requirement AD-28.2 makes the real target', () => {
-      // Tempo JND is ln(1.025) per AD-27.6.
+    it('meets the JND-scale requirement the design makes the real target', () => {
+      // Tempo JND is ln(1.025).
       const tempoJnd = Math.log(1.025);
       for (const meanTempoAt of [0.05, 0.5, 0.9, 0.99]) {
         const e = exponentOf(meanTempoAt);
@@ -239,7 +239,7 @@ describe('the tempo substitution (rule 1, M6)', () => {
       expect(() => integrateGradedPower((u) => u, NaN)).toThrow(RangeError);
     });
 
-    it('is bit-stable across repeated calls (R2)', () => {
+    it('is bit-stable across repeated calls', () => {
       const f = (u: number) => Math.log(60 + 60 * Math.pow(u, 3));
       expect(integrateGradedPower(f, 3)).toBe(integrateGradedPower(f, 3));
     });
@@ -252,9 +252,9 @@ describe('the tempo substitution (rule 1, M6)', () => {
   });
 });
 
-describe('powerCriticalPoint (rule 2, M7)', () => {
+describe('powerCriticalPoint (rule 2)', () => {
   it('splits the measured double-crossing case between its two roots', () => {
-    // §5.0's own counterexample: 72.6→132.6 at e=2 versus 60→120 at e=1 cross at u=0.3
+    // the counterexample: 72.6→132.6 at e=2 versus 60→120 at e=1 cross at u=0.3
     // and u=0.7 with EQUAL endpoint signs, so an endpoint test finds no bracket.
     expect(powerCriticalPoint(60, 2, 60, 1)).toBeCloseTo(0.5, 12);
   });
@@ -305,7 +305,7 @@ describe('bisectSignChange', () => {
     expect(bisectSignChange((x) => x, 0, 1)).toBe(0);
   });
 
-  it('is mirror-symmetric: negating f gives the same root bit for bit (M16)', () => {
+  it('is mirror-symmetric: negating f gives the same root bit for bit', () => {
     const f = (x: number) => Math.log(72.6 + 60 * x * x) - Math.log(60 + 60 * x);
     const negated = (x: number) => -f(x);
     const split = powerCriticalPoint(60, 2, 60, 1)!;
@@ -320,7 +320,7 @@ describe('integrateAbsolute', () => {
     expect(integrateAbsolute((x) => x - 1, 0, 2)).toBeCloseTo(1, 12);
   });
 
-  it('gets the double-crossing cell right, where integrating |f| whole does not (M7)', () => {
+  it('gets the double-crossing cell right, where integrating |f| whole does not', () => {
     const f = (u: number) => Math.log(72.6 + 60 * u * u) - Math.log(60 + 60 * u);
     const split = powerCriticalPoint(60, 2, 60, 1)!;
 
@@ -361,8 +361,8 @@ describe('integrateAbsolute', () => {
 });
 
 /**
- * `integrateCappedAbsolute` — §4's cap under the integral, for the dimensions that can reach
- * `⊥` and therefore must not price a value-value pair above `2·δ_row` (§5.4, §5.8).
+ * `integrateCappedAbsolute` — the cap under the integral, for the dimensions that can reach
+ * `⊥` and therefore must not price a value-value pair above `2·δ_row`.
  */
 describe('integrateCappedAbsolute', () => {
   it('is integrateAbsolute exactly when the cap cannot bind', () => {
@@ -374,7 +374,7 @@ describe('integrateCappedAbsolute', () => {
     expect(integrateCappedAbsolute(f, 1e9, 0, 2, splits).capped).toBe(false);
   });
 
-  it('gets the corner the cap introduces exactly, on the affine case §5.4 integrates', () => {
+  it('gets the corner the cap introduces exactly, on the affine case', () => {
     // ∫₀⁴ min(|x − 1|, 1) dx: |x−1| is 1 at x = 0 and again at x = 2, and capped beyond.
     // Below the cap it contributes ∫₀² |x−1| = 1; above it, 2 units of length × 1 = 2.
     const result = integrateCappedAbsolute((x) => x - 1, 1, 0, 4);
@@ -392,7 +392,7 @@ describe('integrateCappedAbsolute', () => {
     expect(result.mass).toBeLessThan(50);
   });
 
-  it('is symmetric under negation, which P-C2 needs', () => {
+  it('is symmetric under negation, which the symmetry property needs', () => {
     const f = (x: number) => Math.sin(4 * x) * 3;
     const g = (x: number) => -f(x);
     expect(integrateCappedAbsolute(f, 2, 0, 2, []).mass).toBe(

@@ -1,5 +1,5 @@
 /**
- * §8's corpus mathematics: Lance–Williams, PAM, silhouette, Jacobi, classical MDS, seriation.
+ * the corpus mathematics: Lance–Williams, PAM, silhouette, Jacobi, classical MDS, seriation.
  *
  * Every algorithm here is checked against an oracle that shares no line with it: a definition, a
  * closed form, a brute-force enumeration. Asserting the outputs a first run happened to produce
@@ -26,7 +26,7 @@ import { elementAt, numberAt } from '../../src/prelude/index.js';
 // ---------------------------------------------------------------------------
 
 /**
- * Checked random access into the flat `n × n` row-major arrays §8 uses. Every read here is a
+ * Checked random access into the flat `n × n` row-major arrays the corpus uses. Every read here is a
  * computed index, and an unchecked slip produces `NaN` several assertions downstream.
  */
 const cell = (matrix: DistanceMatrix, row: number, column: number): number =>
@@ -234,7 +234,7 @@ describe('Lance–Williams agglomeration', () => {
   });
 });
 
-describe('AD-25.2: every tie is broken on a LABEL, so the corpus is permutation-equivariant', () => {
+describe('every tie is broken on a LABEL, so the corpus is permutation-equivariant', () => {
   // A tie-rich matrix: every distance equal, which is what a corpus of `both-neutral`
   // dimensions or a duplicated document produces. Under index-keyed rules this is exactly where
   // a permutation changes the merge structure rather than relabeling it.
@@ -278,7 +278,7 @@ describe('AD-25.2: every tie is broken on a LABEL, so the corpus is permutation-
   });
 
   /**
-   * The corpus-level P-C6 test uses a tie-free corpus with one fixed permutation and no `k`, so
+   * The corpus-level order-independence test uses a tie-free corpus with one fixed permutation and no `k`, so
    * `medoids` is null there and PAM's tie rule is never reached.
    *
    * The matrix is two clean blocks with an interior distance of 0, so `{one from each block}`
@@ -536,7 +536,7 @@ describe('silhouette', () => {
   });
 
   /**
-   * The silhouette under permutation (AD-72.2), on a corpus big enough to show it.
+   * The silhouette under permutation, on a corpus big enough to show it.
    *
    * `a` and `b` sum a cluster's members, collected in the caller's item order, and
    * floating-point addition is not associative. The six-item vendored corpus does not show it —
@@ -601,10 +601,10 @@ describe('silhouette', () => {
    * permutes. The cause is one level up, in `exhaustiveMedoids`' tie key: two subsets with
    * different costs can share a label multiset, and no label-keyed rule can choose between them.
    *
-   * That is why §8 requires labels unique after expansion. What the requirement buys is
+   * That is why the design requires labels unique after expansion. What the requirement buys is
    * asserted here: invariance on the supported domain.
    */
-  it('rests its invariance on §8’s unique labels, and refuses the domain where it fails', () => {
+  it('rests its invariance on the unique labels, and refuses the domain where it fails', () => {
     const n = 12;
     const next = lcg(20260817);
     const values = new Array<number>(n * n).fill(0);
@@ -802,7 +802,7 @@ describe('classical MDS', () => {
   });
 
   /**
-   * AD-67.1's sign rule: among the components tied at the peak relatively, the lowest-label one
+   * the sign rule: among the components tied at the peak relatively, the lowest-label one
    * is positive. On a corpus with a unique peak that is the naive rule verbatim.
    *
    * The naive rule — largest magnitude positive, ties on exactly equal magnitude to the lowest
@@ -920,9 +920,9 @@ describe('seriation', () => {
  * arrives with ulp-level noise on it, and a tie rule that tests `===` before falling back to the
  * label decides on that noise. The exact tie is not repairable at this layer, and the module
  * says so in data: where two retained eigenvalues coincide, the eigenspace has no canonical
- * basis and `degenerate` is true (AD-67.1).
+ * basis and `degenerate` is true.
  */
-describe('AD-67.1: the embedding is permutation-equivariant, and says where it is not', () => {
+describe('the embedding is permutation-equivariant, and says where it is not', () => {
   /** Both products read back in the caller's own labels, which is the only comparable frame. */
   const readback = (matrix: DistanceMatrix, labels: readonly string[]) => {
     const embedding = classicalMds(matrix, 2, labels);

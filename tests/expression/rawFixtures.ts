@@ -1,7 +1,7 @@
 /**
  * Hand-built MPM strings for the expression engine's raw-document tests.
  *
- * DESIGN.md §7.7 records why these are hand-built rather than taken from the integration
+ * the design records why these are hand-built rather than taken from the integration
  * corpus: that corpus is a blind spot for exactly the paths this layer exercises. Every
  * `<articulation>` in it carries only `name.ref` and `noteid`, its maps are already in date
  * order, and none of them puts a `<style>` switch at the same date as the instruction it

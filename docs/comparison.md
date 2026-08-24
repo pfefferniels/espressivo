@@ -3,7 +3,8 @@
 > **An espressivo addition.** Java meico applies an MPM to a score; it has no notion of comparing
 > two performances. There is no reference behaviour to be byte-equivalent to, so this module makes
 > no parity claim of any kind and is reachable from nothing the equivalence suites drive. It is
-> verified against its own design document and against the MPM format's vendored sample corpus.
+> verified against the MPM format's vendored sample corpus, and by property tests against the
+> closed forms it approximates.
 >
 > Back to the [README](../README.md).
 
@@ -410,7 +411,5 @@ exactly the representation Todd's kinematic models, Repp's parabolic ritard and 
 
 ## The full model
 
-The eleven dimensions, the per-attribute registry, the renderer-truth readings each one is
-compiled from, and the reasoning behind every inclusion and exclusion are in
-[docs/history/comparison/DESIGN.md](https://github.com/pfefferniels/espressivo/blob/main/docs/history/comparison/DESIGN.md)
-(a repository document; the npm package does not carry it).
+The eleven dimensions are `src/comparison/dimensions.ts`; the per-attribute registry, and the
+renderer-truth reading each dimension is compiled from, is `src/comparison/registry.ts`.

@@ -1,10 +1,10 @@
 /**
- * Parts, map resolution and part matching — where DESIGN.md §5.0's *two* shadowing rules
+ * Parts, map resolution and part matching — where the *two* shadowing rules
  * live.
  *
  * ## Maps shadow wholesale; style defs do not
  *
- * §5.0 (AD-16 / R22) keeps these apart; conflating them is a bug with audible consequences:
+ * the design keeps these apart; conflating them is a bug with audible consequences:
  *
  * - Maps. `Performance.resolvePartMaps:603-632` is `dated.getMap(TYPE) ?? global`, per type. A
  *   part-local `tempoMap` replaces the global one entirely, including for dates it does not
@@ -15,7 +15,7 @@
  *   with no per-def merge, while leaving the global `"B"` visible.
  *
  * Only the first rule is implemented here. The second is `styleScope`'s and must stay so —
- * §5.0 says resolution "must go through `styleScope`, never through a direct header scan" — so
+ * the design says resolution "must go through `styleScope`, never through a direct header scan" — so
  * this module carries the environments a level resolution needs and never resolves one itself.
  *
  * ## Which parts exist at all
@@ -23,7 +23,7 @@
  * `Part.parseData:90-105` throws when `@number`, `@midi.channel` or `@midi.port` is missing or
  * empty, `Part.fromXml` turns that into a failure, and `Performance.parseData:213-219` `continue`s
  * past it. Such a `<part>` is never performed, and charging a document for material the renderer
- * discards is what §5.0 rules out in the neighbouring case: a global-vs-part-local encoding
+ * discards is what the design rules out in the neighbouring case: a global-vs-part-local encoding
  * difference with identical resolved curves "is distance 0 plus a structural note — which is
  * correct: it is not performed". A non-renderable part is therefore excluded from matching and
  * flagged, not compared against neutral.
@@ -104,7 +104,7 @@ export function resolveScopeMaps(
 /**
  * The scopes one performance is evaluated over.
  *
- * §5.0: *"Documents that are global-only on both sides evaluate once, not per part."* That
+ * *"Documents that are global-only on both sides evaluate once, not per part."* That
  * decision needs both documents, so it is not taken here — this returns the global scope and
  * every part scope, and {@link matchScopes} is where a pair with no parts on either side
  * collapses to the single global evaluation.
@@ -137,11 +137,11 @@ export function readScopes(performance: PerformanceView): readonly ComparisonSco
 }
 
 /**
- * One row of §9.3's `parts` array: a matched pair, or one side against neutral.
+ * One row of the `parts` array: a matched pair, or one side against neutral.
  *
  * `matched` false with a non-null `numberA` and null `numberB` is "A has this part and B does
- * not", which R6 compares against the neutral curve and reports as a structural note — not an
- * error and not an exclusion, since a pair-dependent part set would break R3 the same way a
+ * not", which is compared against the neutral curve and reported as a structural note — not an
+ * error and not an exclusion, since a pair-dependent part set would break the metric the same way a
  * pair-dependent dimension set would.
  */
 export interface ScopePairing {
@@ -151,7 +151,7 @@ export interface ScopePairing {
   readonly nameA: string | null;
   readonly nameB: string | null;
   readonly matched: boolean;
-  /** True when both sides are present and their `@name` disagrees (§5.0 reports it). */
+  /** True when both sides are present and their `@name` disagrees (the design reports it). */
   readonly nameDisagreement: boolean;
   /** Null on the side that has no scope here. */
   readonly a: ComparisonScope | null;
@@ -161,7 +161,7 @@ export interface ScopePairing {
 /**
  * Match two performances' scopes: global to global, parts by `@number`.
  *
- * The union, in a deterministic order — R2 requires that `compare(a,b)` and `compare(b,a)`
+ * The union, in a deterministic order — the design requires that `compare(a,b)` and `compare(b,a)`
  * agree bit for bit, so the row order may not depend on which document is `a`. Numbered
  * parts sort by number; parts with no usable `@number` cannot be matched at all and follow
  * in document order, each against neutral.

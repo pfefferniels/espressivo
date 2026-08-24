@@ -49,10 +49,9 @@ export class OrnamentDef extends AbstractXmlSubtree {
    * Unknown children are ignored, and with several children of the same kind the LAST one
    * wins — each is parsed in document order into the same single-valued field.
    *
-   * `alignment` is then resolved per DESIGN.md D2: it is read from this element (where the
-   * spec declares it) **and** from the `temporalSpread` child (where the changelog, the
-   * guidelines prose and the reference implementation put it), with this element winning
-   * when both carry one. A value that is neither `"at start"` nor `"at end"` is logged and
+   * `alignment` is read from this element (where the spec declares it) **and** from the
+   * `temporalSpread` child (where the changelog, the guidelines prose and the reference
+   * implementation put it), with this element winning when both carry one. A value that is neither `"at start"` nor `"at end"` is logged and
    * treated as absent, so a malformed attribute here still lets a well-formed one on the
    * spread through rather than silently forcing the default.
    */
@@ -130,7 +129,7 @@ export class OrnamentDef extends AbstractXmlSubtree {
       old = firstChildElement('temporalSpread', this.getXml());
     }
     if (ts !== null) this.getXml().appendChild(ts.generateXML());
-    // A regenerated spread never carries `alignment` (D2 writes it on ornamentDef only), so a
+    // A regenerated spread never carries `alignment` — it is written on ornamentDef only — so a
     // def that had adopted its alignment from the spread it is now replacing would lose it.
     // Re-assert what the def owns. No-op for every v2 def, whose alignment is the default.
     if (this.alignment !== DEFAULT_ORNAMENT_ALIGNMENT) this.setAlignment(this.alignment);
@@ -177,15 +176,15 @@ export class OrnamentDef extends AbstractXmlSubtree {
 
   /**
    * Where the ornament sits relative to its principal note — `"at start"` (the default) or
-   * `"at end"`, which anchors the frame at the principal's end instead (DESIGN.md D10).
+   * `"at end"`, which anchors the frame at the principal's end instead.
    */
   getAlignment(): OrnamentAlignment {
     return this.alignment;
   }
 
   /**
-   * Which MPM generation this def was read from, or the API it was built with (DESIGN.md
-   * D12). v3 iff it carries an `alignment` attribute, its `temporalSpread` carries one, that
+   * Which MPM generation this def was read from, or the API it was built with. v3 iff it
+   * carries an `alignment` attribute, its `temporalSpread` carries one, that
    * spread is itself v3-sourced, or {@link setAlignment} was called — all four are markers no
    * v2 document can produce, so a v2 def stays v2 and keeps serializing byte-identically.
    */
@@ -197,11 +196,11 @@ export class OrnamentDef extends AbstractXmlSubtree {
    * Set the alignment, in the object and in the element.
    *
    * Writing happens **only here**, and only onto `ornamentDef` — never onto `temporalSpread`
-   * (DESIGN.md D2) — and only for `"at end"`, since `"at start"` is the schema default and
+   * — and only for `"at end"`, since `"at start"` is the schema default and
    * writing it would add an attribute no reader needs. Setting it makes the def v3-sourced.
    *
    * DOCUMENTED CONSEQUENCE: parsing never moves an existing attribute. A reference-style
-   * document that spells `alignment` on its `temporalSpread` is *read* correctly (D2) but
+   * document that spells `alignment` on its `temporalSpread` is *read* correctly but
    * re-serializes with the attribute still on the spread, because this class wraps a live XML
    * subtree and mutating a caller's tree at parse time would be a side effect nothing else in
    * this port has. Calling this method is what canonicalises such a def.

@@ -1,5 +1,5 @@
 /**
- * The metrical-accentuation curve — DESIGN.md §5.4.
+ * The metrical-accentuation curve.
  *
  * `accentuationAt` is a transliteration of `AccentuationPatternDef.getAccentuationAt`, so it is
  * checked against the real thing across a beat sweep; hand-computed expectations would pin a
@@ -7,7 +7,7 @@
  *
  * The renderer class is constructed on a `copy()`: parsing an `accentuationPatternDef` adds
  * `length="4"` and reorders its children (`AccentuationPatternDef.ts:36-40`, `:192-199`), the
- * mutation R1 forbids on a caller's document and the reason the comparison reader reads the
+ * mutation the design forbids on a caller's document and the reason the comparison reader reads the
  * element raw.
  */
 import { describe, it, expect } from 'vitest';
@@ -159,7 +159,7 @@ describe('accentuationAt agrees with the renderer, bit for bit', () => {
   });
 });
 
-describe('the beat grid anchors at the TIME SIGNATURE, not the instruction (AD-12)', () => {
+describe('the beat grid anchors at the TIME SIGNATURE, not the instruction', () => {
   const grid = rendererDefaultBeatGrid();
   const pattern = readAccentuationPattern(
     parseDef(defXml('<accentuation beat="1" value="20"/><accentuation beat="3" value="-10"/>')),
@@ -230,7 +230,7 @@ describe('accentuation spans: loop, skips and ⊥', () => {
     return value.kind === 'value' ? value.value : NaN;
   };
 
-  it('is 0 everywhere for an absent map (R6)', () => {
+  it('is 0 everywhere for an absent map', () => {
     expect(contribution(neutralAccentuationCurve(), 1000)).toBe(0);
   });
 
@@ -263,7 +263,7 @@ describe('accentuation spans: loop, skips and ⊥', () => {
     expect(contribution(curve, 0)).toBe(50);
   });
 
-  it('reads an unresolvable pattern name as ⊥, because the render THROWS (R21)', () => {
+  it('reads an unresolvable pattern name as ⊥, because the render THROWS', () => {
     const curve = curveFor(
       '<style date="0.0" name.ref="M"/><accentuationPattern date="0.0" name.ref="nosuch" scale="1.0"/>',
       HEADER,
@@ -315,11 +315,11 @@ describe('accentuation spans: loop, skips and ⊥', () => {
 });
 
 /**
- * `d_accentuation` — §5.4's density. The curve is piecewise affine, so the integral is exact
+ * `d_accentuation` — the density. The curve is piecewise affine, so the integral is exact
  * once the grid carries every breakpoint, and the oracle is a reference computed without the
  * breakpoint machinery at all: a missing breakpoint shows up there and nowhere else.
  */
-describe('d_accentuation (§5.4)', () => {
+describe('d_accentuation', () => {
   const DEFS =
     '<accentuationPatternDef name="p" length="4.0">' +
     '<accentuation beat="1" value="20" transition.to="-5"/>' +
@@ -347,11 +347,11 @@ describe('d_accentuation (§5.4)', () => {
     `<style date="0.0" name.ref="M"/><accentuationPattern date="0.0" name.ref="${name}" scale="1.0" loop="true"${extra}/>`;
   const SILENT = '<style date="0.0" name.ref="M"/>';
 
-  it('is exactly 0 against itself (P-C1)', () => {
+  it('is exactly 0 against itself', () => {
     expect(distanceOf(patternAt('p'), patternAt('p'), 8).distance).toBe(0);
   });
 
-  it('is symmetric to the last bit (P-C2)', () => {
+  it('is symmetric to the last bit', () => {
     const forward = distanceOf(patternAt('p'), patternAt('q'), 8).distance;
     const reverse = distanceOf(patternAt('q'), patternAt('p'), 8).distance;
     expect(Object.is(forward, reverse)).toBe(true);
@@ -395,7 +395,7 @@ describe('d_accentuation (§5.4)', () => {
     expect(result.mean).toBeCloseTo(result.distance / 4, 12);
   });
 
-  it('sees @loop, which is why AD-10 gave the flag a row', () => {
+  it('sees @loop, which is why the flag has a row', () => {
     // One pattern length is 2880 ticks = 4 quarters, so over eight quarters the looped and
     // unlooped readings differ over the whole second half.
     const looped = patternAt('p');
@@ -420,7 +420,7 @@ describe('d_accentuation (§5.4)', () => {
     const result = distanceOf(broken, patternAt('p'), 4);
     expect(result.capped).toBe(true);
     expect(result.distance).toBeCloseTo(row.delta * 4, 9);
-    // And 0 against itself, which is what makes ⊥ a value rather than a hole (§4).
+    // And 0 against itself, which is what makes ⊥ a value rather than a hole.
     expect(distanceOf(broken, broken, 4).distance).toBe(0);
   });
 

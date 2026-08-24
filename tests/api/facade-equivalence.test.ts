@@ -1,7 +1,7 @@
 /**
  * The facade produces exactly what the class API produces — and, because the facade serializes
  * and re-parses between stages while the class API does not, this is at the same time
- * ARCHITECTURE.md §8.4's required RULE F2 round-trip gate: `convert → serialize → re-parse →
+ * ARCHITECTURE.md the required RULE F2 round-trip gate: `convert → serialize → re-parse →
  * perform` must be byte-identical to `convert → perform`.
  *
  * This is not a Java-equivalence test — `tests/integration/**` owns that, still through the
@@ -71,7 +71,7 @@ function structure(xml: string): string {
  * The same quotient as {@link canonicalise}, taken over MIDI bytes instead of XML.
  *
  * meico writes each note's `xml:id` into the track as a text meta event, so a v3 ornament's
- * generated notes put their `meico_<uuid>` ids in the byte stream (DESIGN.md D10). Two runs of
+ * generated notes put their `meico_<uuid>` ids in the byte stream (). Two runs of
  * the same conversion differ in those bytes by design, and only in those.
  *
  * The replacement is length-preserving — `meico_` plus 36 characters, in and out — because a

@@ -44,13 +44,12 @@ then — and §9.5's `git show` path is deliberately the old one, because that i
 
 Java citations are `File.java:line` in
 [pfefferniels/meico](https://github.com/pfefferniels/meico) (a fork of cemfi/meico); TypeScript
-citations are paths in this repository. The refactor journal entries referenced as `[T…]` live
-in `docs/history/refactor/log.md`.
+citations are paths in this repository.
 
 **The evidence standard every "fixed" entry below meets.** A pipeline byte-probe — 5 deterministic
 all-maps fixtures and all 16 MEI fixtures, each through MSM, MPM, augmented MSM, raw MIDI and
 expressive MIDI, with generated UUIDs canonicalized — produces a transcript hash of
-`169e964bd492bc6a256cea4cea9cfab748c0502da289bc4be03892ae7b726c1e` through the `TD2` wave. Every
+`169e964bd492bc6a256cea4cea9cfab748c0502da289bc4be03892ae7b726c1e` through `TD2`. Every
 fix here was measured on a clean build against a clean build of the commit before it, and all but
 one **left that hash unchanged**.
 
@@ -196,7 +195,7 @@ the corrections as _rejected_ — that inversion is the deliberate half of this 
 
 |             |                                                                                                                                                                |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Item        | `TD2` (ARCHITECTURE.md §6.3 row P1, found in [T6])                                                                                                             |
+| Item        | `TD2` (ARCHITECTURE.md §6.3 row P1)                                                                                                                            |
 | Java        | `TempoDef.java:88`, `DynamicsDef.java:88`, `RubatoDef.java:135,148,153-154`, `AccentuationPatternDef.java:113,122-136,198-212`, `ArticulationDef.java:100-133` |
 | TypeScript  | `src/supplementary/parseJavaDouble.ts` and the five def classes that call it                                                                                   |
 | Guard tests | `tests/supplementary/parseJavaDouble.test.ts` + a malformed-input block in each of the five def test files                                                     |
@@ -233,7 +232,7 @@ DISCOVERED note.
 
 |             |                                                                        |
 | ----------- | ---------------------------------------------------------------------- |
-| Item        | `TD2` (ARCHITECTURE.md §6.3 row P2, found in [T7])                     |
+| Item        | `TD2` (ARCHITECTURE.md §6.3 row P2)                                    |
 | Java        | `MovementMap.java:200`                                                 |
 | TypeScript  | `src/mpm/elements/maps/MovementMap.ts`, `getPreviousPosition`          |
 | Guard tests | `tests/mpm/elements/MovementMap.test.ts`, "position inheritance" block |
@@ -259,7 +258,7 @@ alone kept it out of reach.
 
 |             |                                                                          |
 | ----------- | ------------------------------------------------------------------------ |
-| Item        | `TD2` (ARCHITECTURE.md §6.3 row P4, found in [T4]/[T9])                  |
+| Item        | `TD2` (ARCHITECTURE.md §6.3 row P4)                                      |
 | Java        | present identically in `RandomNumberProvider.java` — this fixes both     |
 | TypeScript  | `src/supplementary/RandomNumberProvider.ts`, `requireUsableIndex`        |
 | Guard tests | `tests/supplementary/RandomNumberProvider.test.ts`, "index guards" block |
@@ -292,12 +291,12 @@ costs 1.7 s and 1.5 GB, and 10^9 spends 1.9 s allocating before V8 refuses to gr
 limit sits at the last value that is merely expensive; at the default 100 ms timing basis it
 stands for about eleven days of music, where a real document reaches an index in the hundreds.
 
-For the record, the inherited description of this bug ([T4], ARCHITECTURE.md §6.3) says it
+For the record, the inherited description of this bug (ARCHITECTURE.md §6.3) says it
 "hangs". On this runtime it does not: it allocates for a few seconds and then dies with an
 untyped `RangeError`. The table above is what a re-run reproduces.
 
 **The guards are pure preconditions, and that is the load-bearing claim**, because the number and
-order of draws _is_ the rendered performance ([T4]). They allocate nothing, draw nothing and
+order of draws _is_ the rendered performance. They allocate nothing, draw nothing and
 touch no field. Proven rather than argued: a probe drawing 7,673 values across all five
 distributions at three seeds — plus fractional, negative and zero indices — hashes identically on
 the unguarded and guarded builds
@@ -343,7 +342,7 @@ fixture bytes, and the pre-existing ground truth stored the _buggy_ value:
 `meico@1d662105`; the ground truth was regenerated from that commit by `GenerateAllMapsReference`.
 
 **What the regeneration moved, categorized.** Of the 40 generated all-maps files, 23 were
-byte-identical, 13 differed only in UUIDs, two were the charter-exempt nondeterministic
+byte-identical, 13 differed only in UUIDs, two were the nondeterministic
 `imprecision_timing_augmented.msm` and `imprecision_timing_expressive.mid`, and exactly **two**
 carried a semantic change — and in both it was `note@velocity` and nothing else:
 
@@ -458,7 +457,7 @@ document, which is the bug stated as a measurement.
 
 |                           |                                                                                                                                                                                                                         |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Item                      | `E1`/`E2` — reported from outside the refactor programme, by the mpmify v4 data-generation campaign                                                                                                                     |
+| Item                      | `E1`/`E2` — reported by the mpmify v4 data generator, from outside this port                                                                                                                                            |
 | Java                      | `ArticulationMap.java:310-356`, `DynamicsMap.java:344-350`                                                                                                                                                              |
 | TypeScript                | `src/mpm/elements/maps/ArticulationMap.ts`, `getArticulationDataOf`; `src/mpm/elements/maps/DynamicsMap.ts`, `getDynamicsDataOf`                                                                                        |
 | Guard tests               | `tests/mpm/elements/ArticulationMap.test.ts`, "reads the inline numeric modifiers" (6); `tests/mpm/elements/DynamicsMap.test.ts`, "reads curvature and protraction" (4) + "addDynamics clamps the curve parameters" (3) |
@@ -483,8 +482,8 @@ writes the corrected value back into the caller's `DynamicsData`; this port does
 payload is now a `readonly` options object and no caller reads it again. That is an argument
 mutation, not an output, so no byte moves.
 
-**The fixture blind spot, which is the part worth keeping.** Both defects survived the whole
-certification programme because the fixtures cannot express them. Every `<articulation>` in
+**The fixture blind spot, which is the part worth keeping.** Both defects survived every
+equivalence suite because the fixtures cannot express them. Every `<articulation>` in
 `tests/integration/fixtures` carries `name.ref` and `noteid` and nothing else, and every
 `<dynamics>` with a `transition.to` carries `curvature="0.0" protraction="0.0"` — which is what
 the fields default to anyway. So the reference corpus agreed with a port that read neither, and
@@ -492,7 +491,7 @@ kept agreeing. The gap was found from outside, by generating MPM documents with 
 values and comparing the two renderers directly. The guard tests above therefore build their XML
 rather than reach for a fixture, and that is deliberate: a fixture cannot pin this.
 
-**Evidence.** The TD4-era verifier probe — 407 hashed checks: all 16 MEI fixtures through MSM,
+**Evidence.** An independent probe — 407 hashed checks: all 16 MEI fixtures through MSM,
 MPM, augmented MSM, raw and expressive MIDI; all 16 reference MSM+MPM pairs performed from disk;
 6 all-maps fixtures; and the XML-layer operations over 88 fixture files — returns
 `528b234043d64d532428c72a176d34ca2d6e1e1831428f4bee3cafe1e64b2175` on both builds, so no fixture
@@ -523,7 +522,7 @@ lists as open.
 
 |                           |                                                                                    |
 | ------------------------- | ---------------------------------------------------------------------------------- |
-| Item                      | `CMP1` (comparison campaign W2 item #1)                                            |
+| Item                      | `CMP1`                                                                             |
 | Java                      | `XmlBase.java:99`, `:128`, `:162`; `mei/Helper.java:1042`, `:1061`                 |
 | TypeScript                | `src/xml/XomTypes.ts` — `stripByteOrderMark`, applied in `Builder.build`           |
 | Guard tests               | `tests/xml/XomTypes.test.ts` (Builder), `tests/api/bom-tolerance.test.ts` (facade) |
@@ -552,7 +551,7 @@ decision either side made about BOMs.
 every document passes through: `XmlBase`'s constructor for `Mei`/`Msm`/`Mpm`
 (`src/xml/XmlBase.ts:56-59`), and the expression layer's two raw parses
 (`src/expression/mpmDocument.ts:52`, `src/expression/msmFacts.ts:80`) which deliberately bypass
-those classes under DESIGN.md D-A. The obvious alternative, `src/api/parse.ts`, cannot do it:
+those classes. The obvious alternative, `src/api/parse.ts`, cannot do it:
 `parseOrThrow` receives an already-bound `() => parse(text)` closure and never sees the text, so
 normalising there would have meant changing its signature and would still have covered only the
 facade — leaving the expression engine, and any future module that follows its raw-`Builder`
@@ -569,7 +568,7 @@ in the course of closing one.
 long as it did. Three of the six encodings in the MPM format's own sample corpus do carry one,
 including both of its multi-performance documents (Telemann _Grave_ TWV 51-D7 with Baroque/Fast/
 Romantic, and Vulpius _Die helle Sonn_ with Baroque/Romantic/Amateur) — the only real
-multi-performance MPM available to the comparison campaign, and the reason the item was pulled
+multi-performance MPM available to the comparison module, and the reason the item was pulled
 forward. All four BOM-affected sample files parse after the fix; before it, three of them threw.
 
 **Evidence.** `npm run verify` green at 4005 tests, up from 3992 — the 13 added are all new
@@ -857,12 +856,12 @@ then throws away.
   style forward across entries — so no fixture, probe or performance can see it; it is visible
   only to a caller who invokes it. Eighteen unit tests in
   `tests/mpm/elements/OrnamentationMap.test.ts` pin the returned shape, including the v3 fields.
-  Flagged by the ornamentation programme's v2 semantics survey (ORN-1 §3.2/§5.3) as the last
-  ornamentation divergence this ledger had not recorded; recorded now.
+  Found by a survey of v2 ornamentation semantics as the last ornamentation divergence this
+  ledger had not recorded; recorded now.
 
 ### `XB1` — malformed XML throws here and yields an empty document there
 
-| Item                      | `XB1` (functional-core campaign, `src/xml` sweep)                                                                       |
+| Item                      | `XB1` (`src/xml`)                                                                                                       |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | Java                      | `XmlBase`'s string constructor: `try { data = builder.build(xml); } catch (ParsingException e) { print; data = null; }` |
 | TypeScript                | `src/xml/XmlBase.ts` `parseXmlString`, and `Builder.build` in `src/xml/XomTypes.ts`                                     |
@@ -892,13 +891,13 @@ not just an internal. The `parsererror` false positive cannot bite a real docume
 or MPM schema has such an element. What is worth correcting is the _comment_ in
 `src/api/pipeline.ts`'s `checkParsed`, which states the Java behaviour ("`XmlBase` swallows the
 `ParsingException` and leaves `data` null") as though it were this port's; that file is outside
-the charter that found this.
+the audit that found this.
 
 ### `TS1` — the work-level tempo's style switch is written even with no style to point at
 
 **Retired by §9**, which removed the branch. Kept as the record of the ruling.
 
-| Item                      | `TS1` (functional-core campaign, `src/mei` sweep)                                                                                                        |
+| Item                      | `TS1` (`src/mei`)                                                                                                                                        |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Java                      | `Mei2MsmMpmConverter.convert`'s per-`mdiv` epilogue: `if (…getAllStyleTypes().get(Mpm.TEMPO_STYLE) != null) tempoMap.addStyleSwitch(0.0, "MEI export");` |
 | TypeScript                | `src/mei/Mei2MsmMpmConverter.ts`, `finishMdiv`'s "finalize the tempoMap" block — removed in §9                                                           |
@@ -938,7 +937,7 @@ overlap". The typed block is `src/**`-only by RULE N6, so `tests/**` is not swep
 
 ### `IMP1` — an imprecision map the reference CRASHES on renders NaN-poisoned output here
 
-| Item                      | `IMP1` (comparison campaign, W3a cut 4)                                                                                                                   |
+| Item                      | `IMP1`                                                                                                                                                    |
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Java                      | `RandomNumberProvider.java:163-166` (`setSeed` clears `series`), `:262-272` (`getValue`), `:370-398` (both correlated draws)                              |
 | TypeScript                | `src/supplementary/RandomNumberProvider.ts:186-190`, `:272-284`, `:355-381`                                                                               |
@@ -1122,7 +1121,7 @@ are excluded from byte comparison.
   from `ImprecisionMap.java:845,894`. A seeded render is therefore reproducible only while no
   two offsets share a date, which for polyphonic input is often false. The facade's
   `PerformOptions.seed` documents exactly this. **Never add byte comparison for imprecision
-  output** (charter rule); the suite excludes it, as do all pipeline probes.
+  output**; the suite excludes it, as do all pipeline probes.
 - **Generated `meico_<uuid>` identifiers** differ per run by construction. The equivalence
   suites canonicalize them by first-occurrence order, which is stronger than deleting them: it
   keeps `goto` → `marker` wiring verifiable. Keep ID-generation call order stable, or the tests
@@ -1177,7 +1176,7 @@ hand-authored MSM + MPM pairs), kept apart from the Java-generated ground truth 
 `tests/integration/fixtures/`, which the whole feature leaves untouched.
 
 The one thing that _is_ measured against the old standard is that **v3 changes nothing about
-v2**, and it is measured at every wave rather than argued: the pipeline byte probe returns
+v2**, and it is measured rather than argued: the pipeline byte probe returns
 `ed158a07d553f9346b958e8943b98c3b8c55a046f4fb4061654567e864e8757f` over 1284 checks and its
 companion `0b58d5a4c281914e605de46eb44be54e223d1eb7b08724702eca1ac703ca8c7c` over 83, both
 identical to the values the pre-ornamentation tree produced; and a call tracer wrapping every
@@ -1198,7 +1197,7 @@ is not vacuous.
 | Corpus             | real MPM encodings decide reader lenience — the strict schematrons reject the format's own sample files                                         |
 
 The reference implementation was audited before any of it was adopted (24-item spec-fidelity
-table, 29-item defect catalogue, in `docs/history/ornamentation/research/lars-v3-implementation.md`), and the
+table, 29-item defect catalogue), and the
 audit's headline is why §6.2 exists at all: **the PR cannot read a spec-conformant v3 file**. Its
 pool child element is `ornamentNote`, which no spec release defines; its `frameLength` parser
 throws on the unit suffix the schematron requires; and its v2 ornamentation path is commented
@@ -1206,7 +1205,7 @@ out. Adopting it as ground truth would have meant reproducing that.
 
 ### 6.2 Where this deliberately diverges from the reference implementation
 
-Each of these is a decision recorded in `docs/history/ornamentation/DESIGN.md` (the `D…` numbers below) and
+Each of these carries a `D…` number, cited by that number from `src/` and `tests/`, and is
 pinned by tests. They are divergences from an unreviewed pull request, not from a release.
 
 - **D1 — the pool child is `<note>`, not `<ornamentNote>`.** The spec's `note.xml` names `note`;
@@ -1355,8 +1354,8 @@ pinned by tests. They are divergences from an unreviewed pull request, not from 
   to preserve.
 - **Numbers are written the way this port writes every number.** `String(x)` gives `"0ticks"` and
   `"50%"` where Java's `Double.toString` would give `"0.0ticks"` and `"50.0%"`. Both satisfy the
-  schematron. This is the port-wide textual divergence (`research/java-ts-v2-ornamentation.md`
-  §5.3), applied consistently rather than specially.
+  schematron. This is the port-wide textual divergence recorded above, applied consistently
+  rather than specially.
 
 ### 6.4 The provenance attributes
 
@@ -1467,7 +1466,7 @@ have stored, so it belongs in a release note rather than in a patch.
 
 §1's `P1` entry replaced `parseFloat` with `parseJavaDouble` in the five def classes, because
 `parseFloat` and `Double.parseDouble` disagree about _failure_. New v3 parse code follows the same
-rule — the D16 ruling, amended into DESIGN.md and journaled in `docs/history/ornamentation/LOG.md` — with one
+rule — the D16 ruling — with one
 deliberate exemption:
 
 - **Exempt: `TemporalValue`** (`frame.offset`, `frameLength`). Its grammar is the spec's own
@@ -1581,7 +1580,7 @@ particular choice, each of the fifteen dimensions additionally carries an expect
 at the strongest deterministically observable level — rendered where the rendered effect is
 deterministic, written-attribute where a PRNG stands in the way. The reasoning behind every
 inclusion, exclusion and metric choice is in
-[docs/history/expression/DESIGN.md](https://github.com/pfefferniels/espressivo/blob/main/expression/DESIGN.md) —
+`docs/expression.md` —
 a repository document, not part of the npm package; §5 of that document is the prototype-feature
 ledger this section summarizes, and §9 records the adversarial review that shaped it.
 
@@ -1633,7 +1632,7 @@ difference from the standard reference generator is the pass under test.
 
 A companion generator applies the pass and exports MSM + MPM. Its output is committed as
 `tests/integration/fixtures-layers-to-staffs/` — a **sibling** of `fixtures/`, not a child, because
-CHARTER invariant 2 freezes `tests/integration/fixtures/**` against additions as well as edits, and
+`tests/integration/fixtures/**` is frozen against additions as well as edits, and
 `fixtures-v3/` set the precedent for a reference set that arrives with a new feature. The frozen
 directory is bit-for-bit untouched by this work; the MEI inputs are read from it and nothing is
 written back. The new set is driven by

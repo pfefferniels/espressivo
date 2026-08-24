@@ -1,5 +1,5 @@
 /**
- * The rubato displacement curve — DESIGN.md §5.2.
+ * The rubato displacement curve.
  *
  * The compared object is the displacement `δ(t) = warp(t) − t`, in quarters, not the warped
  * date itself. Neutral is `δ ≡ 0`, which is what an absent map, an unwarped gap and an identity
@@ -13,7 +13,7 @@
  *
  * ## Four renderer behaviours, each of which changes the curve
  *
- * 1. `@loop` gates the cycle (AD-10). `@loop` defaults to false
+ * 1. `@loop` gates the cycle. `@loop` defaults to false
  *    (`resolveRubato`, `data/rubato.ts`) and `renderRubatoToMap` breaks out of the span at the
  *    first frame
  *    boundary when it is off (`RubatoMap.ts:199-203`). The `mod` in the formula *is* the
@@ -21,7 +21,7 @@
  *    `δ ≡ 0` across the rest of the span. The repo's own fixtures carry
  *    `<rubato frameLength="720.0" lateStart="0.25" earlyEnd="0.75"/>` with no `@loop`, which a
  *    cyclic reading would warp across its whole span.
- * 2. A skipped instruction leaves a neutral gap that still has a breakpoint (AD-16, R23).
+ * 2. A skipped instruction leaves a neutral gap that still has a breakpoint.
  *    `getRubatoDataOf` returns null when neither the element nor a referenced `rubatoDef`
  *    supplies `@frameLength` — "without a frame there is nothing to warp" — but `getEndDate`
  *    scans for the next `<rubato>` regardless of validity, so the skipped element still ends
@@ -29,7 +29,7 @@
  * 3. Clamps run before evaluation (`RubatoMap.ts:136-141`): `lateStart` floored at 0,
  *    `earlyEnd` capped at 1, and an inverted or empty window reset to the full frame `(0, 1)`.
  *    Applying them afterwards would compare inverted warps the renderer never performs.
- * 4. The neutral parametrization is special-cased (AD-21, M18). When
+ * 4. The neutral parametrization is special-cased. When
  *    `intensity === 1 && lateStart === 0 && earlyEnd === 1` the evaluator returns exactly 0
  *    without arithmetic: `L·(τ/L) − τ` does not round-trip for all integer pairs — `(22, 15)`
  *    gives `−1.78e−15`, `(25, 7)` gives `+8.88e−16` — so a fixture that happened to pick such
@@ -56,11 +56,11 @@ import { coveringSegmentAt } from './segments.js';
 /**
  * The `<rubatoDef name="…">` a `<rubato name.ref="…">` inherits from, or null.
  *
- * Style resolution goes through `styleScope.findStyleDef`, which §5.0 requires: a part header
+ * Style resolution goes through `styleScope.findStyleDef`, which the design requires: a part header
  * declaring `styleDef name="A"` hides the global `"A"` entirely, defs and all, and a direct
  * header scan gets that wrong in a way that changes a rendered warp. The def element is then
  * read RAW — constructing `RubatoDef` would add `intensity`/`lateStart`/`earlyEnd` to the
- * document and respell present values (`"1.0"` → `"1"`, `RubatoDef.ts:41-73`), which R1 forbids.
+ * document and respell present values (`"1.0"` → `"1"`, `RubatoDef.ts:41-73`), which the design forbids.
  */
 function findRubatoDef(
   nameRef: string | null,
@@ -78,11 +78,11 @@ function findRubatoDef(
 }
 
 /**
- * The per-instruction frame-boundary budget (AD-10 / R25), a [convention] slot §5.2 leaves
+ * The per-instruction frame-boundary budget, a [convention] slot the design leaves
  * unfilled.
  *
  * `frameLength="1"` is legal and would put 1.7 M boundaries in the grid for one instruction on
- * one part, and R10's budget is expressed in *instructions*, which does not bound this at all.
+ * one part, and the budget is expressed in *instructions*, which does not bound this at all.
  * 1024 clears every musically plausible frame — a 200-quarter piece warped on a sixteenth-note
  * frame needs 800 — while cutting the pathological case by three orders of magnitude. When it
  * bites, a `grid-truncated` note is emitted: the warp is still evaluated correctly everywhere
@@ -101,11 +101,11 @@ export interface RubatoSegment {
   readonly lateStart: number;
   readonly earlyEnd: number;
   readonly loop: boolean;
-  /** True when the clamped parameters are the identity warp — `δ ≡ 0` exactly (M18). */
+  /** True when the clamped parameters are the identity warp — `δ ≡ 0` exactly. */
   readonly neutral: boolean;
   /**
    * The end of the `⊥` interval this segment opens at its own start, or null where it opens
-   * none (MINOR-4).
+   * none.
    *
    * A warp the renderer computes as `NaN` erases every note it touches, and WHERE it touches is
    * the render loop's guard: the whole span under `@loop` or an unusable `@frameLength`, the
@@ -127,7 +127,7 @@ export interface RubatoCurve {
   readonly notes: readonly RubatoCurveNote[];
 }
 
-/** The neutral rubato curve: `δ ≡ 0` everywhere (R6). */
+/** The neutral rubato curve: `δ ≡ 0` everywhere. */
 export function neutralRubatoCurve(): RubatoCurve {
   return { segments: [], breakpointsTicks: [0], notes: [] };
 }
@@ -144,7 +144,7 @@ function clampWindow(lateStart: number, earlyEnd: number): { lateStart: number; 
   let high = earlyEnd;
   // `NaN` fails all three comparisons and SURVIVES, exactly as in the renderer
   // (`RubatoMap.ts:136-141`), which carries it into `computeRubatoTransformation`, writes
-  // `date.perf="NaN"` and drops the note from the MIDI export (MINOR-4, R24). Repairing it to
+  // `date.perf="NaN"` and drops the note from the MIDI export. Repairing it to
   // 0/1 here would be a divergence.
   if (low < 0) low = 0;
   if (high > 1) high = 1;
@@ -161,7 +161,7 @@ type RawRubato =
       readonly earlyEnd: number;
       readonly loop: boolean;
     }
-  /** The warp the renderer performs here is `NaN`, so the notes it touches vanish (R24). */
+  /** The warp the renderer performs here is `NaN`, so the notes it touches vanish. */
   | {
       readonly poisoned: 'span' | 'warped';
       readonly loop: boolean;
@@ -292,15 +292,15 @@ export function readRubatoSegments(
         dateTicks: raw.dateTicks,
         detail:
           'no @frameLength on the element or its rubatoDef — the renderer skips it and the ' +
-          'span is unwarped (AD-16/R23)',
+          'span is unwarped',
       });
       continue;
     }
 
     if (parsed.poisoned !== undefined) {
       // The warp is `NaN` wherever it applies, so every note it touches gets
-      // `date.perf="NaN"` and vanishes from the MIDI export — R24's condition, priced `⊥`
-      // (AD-1, AD-33.1). WHERE it applies is the render loop's own guard: the whole span when
+      // `date.perf="NaN"` and vanishes from the MIDI export — the condition, priced `⊥`.
+      // WHERE it applies is the render loop's own guard: the whole span when
       // `@loop` is on or the frame length itself is unusable, the first frame otherwise.
       const frameLengthTicks =
         parsed.frameLength === undefined
@@ -330,7 +330,7 @@ export function readRubatoSegments(
         detail:
           'an unusable @frameLength, @intensity, @lateStart or @earlyEnd leaves the warp NaN, ' +
           'so every note it touches gets date.perf="NaN" and vanishes from the MIDI export ' +
-          '(R24): the interval reads ⊥ rather than an unwarped gap',
+          ': the interval reads ⊥ rather than an unwarped gap',
       });
       continue;
     }
@@ -370,7 +370,7 @@ export function readRubatoSegments(
         dateTicks: raw.dateTicks,
         detail:
           `frame boundaries capped at ${String(RUBATO_FRAME_BOUNDARY_CAP)} of ` +
-          `${String(wanted)} (AD-10/R25): the warp is still evaluated exactly, only the ` +
+          `${String(wanted)}: the warp is still evaluated exactly, only the ` +
           'refinement grid stops subdividing',
       });
   }
@@ -416,7 +416,7 @@ export function displacementTicksAt(curve: RubatoCurve, ticks: number): number {
   return warped - tau;
 }
 
-/** `δ(t)` in quarters, which is the unit §5.2's JND is stated in. */
+/** `δ(t)` in quarters, which is the unit the JND is stated in. */
 export function displacementQuartersAt(
   curve: RubatoCurve,
   ticks: number,
@@ -425,7 +425,7 @@ export function displacementQuartersAt(
   return displacementTicksAt(curve, ticks) / ticksPerQuarter;
 }
 
-/** The intervals where the renderer's warp is `NaN` — §4's `⊥`, in common ticks (MINOR-4). */
+/** The intervals where the renderer's warp is `NaN` — the `⊥`, in common ticks. */
 export function rubatoBottomSpans(
   curve: RubatoCurve,
 ): readonly { readonly startTicks: number; readonly endTicks: number }[] {

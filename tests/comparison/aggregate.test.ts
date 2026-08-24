@@ -1,5 +1,5 @@
 /**
- * §7's aggregation and AD-19's closing table.
+ * the aggregation and the closing table.
  *
  * Ruzzo–Tompa is tested against a brute-force enumeration of every subsequence rather than
  * against expected segment lists: asserting "these are the segments" pins one answer out of
@@ -145,7 +145,7 @@ describe('Ruzzo–Tompa finds exactly the maximal scoring subsequences', () => {
   });
 
   it('never absorbs a boundary zero, which is what makes the set canonical', () => {
-    // §7.3: a run extended by a zero-score cell contains a proper subsequence of equal score
+    // a run extended by a zero-score cell contains a proper subsequence of equal score
     // and therefore fails maximality. If it did absorb, the run would be [0,2] not [1,1].
     expect(maximalScoringRuns([0, 5, 0])).toEqual([{ start: 1, end: 1 }]);
     expect(maximalScoringRuns([0, 0, 0])).toEqual([]);
@@ -160,9 +160,9 @@ describe('Ruzzo–Tompa finds exactly the maximal scoring subsequences', () => {
   });
 });
 
-// --- §7.2 aggregation ------------------------------------------------------------------------
+// --- aggregation ------------------------------------------------------------------------
 
-describe('§7.2: D = Σ ω_k d_k', () => {
+describe('D = Σ ω_k d_k', () => {
   it('sums the weighted distances', () => {
     const densities = [flat('tempo', 0, 4, 3), flat('dynamics', 0, 4, 5)];
     expect(aggregateDistance(densities, defaultWeights())).toBeCloseTo(12 + 20, 12);
@@ -172,12 +172,12 @@ describe('§7.2: D = Σ ω_k d_k', () => {
     const densities = [flat('tempo', 0, 4, 3), flat('dynamics', 0, 4, 5)];
     const weights: DimensionWeights = { ...defaultWeights(), dynamics: 0 };
     expect(aggregateDistance(densities, weights)).toBeCloseTo(12, 12);
-    // The dimension is still computed (AD-19), which is what makes §7.4's dimension-selective
+    // The dimension is still computed, which is what makes the dimension-selective
     // recipe a recipe rather than a deletion.
     expect(elementAt(densities, 1, 'the dimension densities').distance).toBeCloseTo(20, 12);
   });
 
-  it('is summed in COMPARISON_DIMENSIONS order, not arrival order (R2)', () => {
+  it('is summed in COMPARISON_DIMENSIONS order, not arrival order', () => {
     const forward = [flat('tempo', 0, 4, 0.1), flat('pedal', 0, 4, 0.2)];
     const reversed = [
       elementAt(forward, 1, 'the arrival-ordered densities'),
@@ -195,7 +195,7 @@ describe('§7.2: D = Σ ω_k d_k', () => {
 
 // --- mass, cells and atoms --------------------------------------------------------------------
 
-describe('the density is a measure: cells plus atoms (§5.0)', () => {
+describe('the density is a measure: cells plus atoms', () => {
   it('charges a point mass to the cell it OPENS, right-continuously', () => {
     const density: DimensionDensity = {
       dimension: 'articulation',
@@ -209,7 +209,7 @@ describe('the density is a measure: cells plus atoms (§5.0)', () => {
     expect(massIn(density, 0, 2) + massIn(density, 2, 4)).toBe(7);
   });
 
-  it('spreads a matched pair’s mass uniformly over its date interval (AD-7)', () => {
+  it('spreads a matched pair’s mass uniformly over its date interval', () => {
     const density: DimensionDensity = {
       dimension: 'ornamentation',
       cells: [],
@@ -232,9 +232,9 @@ describe('the density is a measure: cells plus atoms (§5.0)', () => {
   });
 });
 
-// --- §7.3 the segment pass ---------------------------------------------------------------------
+// --- the segment pass ---------------------------------------------------------------------
 
-describe('§7.3: the segment pass', () => {
+describe('the segment pass', () => {
   const thresholds = defaultThresholds();
 
   it('finds nothing when every dimension sits below its threshold', () => {
@@ -285,7 +285,7 @@ describe('§7.3: the segment pass', () => {
     );
   });
 
-  it('refines a boundary to the ROOT of p_D − τ_D, not to the cell edge (AD-19/M9b)', () => {
+  it('refines a boundary to the ROOT of p_D − τ_D, not to the cell edge', () => {
     // One long cell whose density ramps through the threshold at t = 4. A density is
     // non-negative by construction (|Δ|/jnd), so the ramp is `t/4` rather than something that
     // changes sign. Without root refinement the only boundaries available are the cell edges,
@@ -320,7 +320,7 @@ describe('§7.3: the segment pass', () => {
     expect(pass.thresholdPerQuarter).toBe(1);
   });
 
-  it('scores a zero-width cell as its atom mass, since τ · 0 = 0 (AD-19/M9c)', () => {
+  it('scores a zero-width cell as its atom mass, since τ · 0 = 0', () => {
     const density: DimensionDensity = {
       dimension: 'articulation',
       cells: [{ startQuarters: 0, endQuarters: 8, mass: 0, densityAt: () => 0 }],
@@ -331,14 +331,14 @@ describe('§7.3: the segment pass', () => {
     expect(pass.segments).toHaveLength(1);
     expect(segmentAt(pass).mass).toBeCloseTo(9, 12);
     // A zero-width segment has no continuous density, so `peak` reports 0 rather than ∞ —
-    // §9.6's finiteness discipline, and the mass is where the atom is visible.
+    // the finiteness discipline, and the mass is where the atom is visible.
     expect(Number.isFinite(segmentAt(pass).peak)).toBe(true);
   });
 });
 
-// --- AD-19's table -----------------------------------------------------------------------------
+// --- the table -----------------------------------------------------------------------------
 
-describe('AD-19: the table closes', () => {
+describe('the table closes', () => {
   const thresholds = defaultThresholds();
 
   it('rows sum to d_k and the grand total is D', () => {
@@ -427,7 +427,7 @@ describe('AD-19: the table closes', () => {
     expect(table.columnSums[0]).toBeCloseTo(8 + 3 * 8, 12);
   });
 
-  it('is exactly zero throughout for two identical documents (P-C1’s shape)', () => {
+  it('is exactly zero throughout for two identical documents (the shape)', () => {
     const table = attributionTable([flat('tempo', 0, 4, 0)], defaultWeights(), [], 0, 4);
     expect(table.total).toBe(0);
     expect(table.residual).toBe(0);
@@ -435,9 +435,9 @@ describe('AD-19: the table closes', () => {
   });
 });
 
-// --- C11's equivalence block ---------------------------------------------------------------------
+// --- the equivalence block ---------------------------------------------------------------------
 
-describe('C11: the equivalence block', () => {
+describe('the equivalence block', () => {
   it('reports the sub-threshold mass fraction the sentence needs', () => {
     const densities = [
       stepped('tempo', [
@@ -465,7 +465,7 @@ describe('C11: the equivalence block', () => {
     expect(block.byDimension.tempo.subThresholdMassFraction).toBeCloseTo(1.2 / 11.2, 9);
   });
 
-  it('answers 0 rather than NaN when there is no deviation at all (§9.6)', () => {
+  it('answers 0 rather than NaN when there is no deviation at all', () => {
     const densities = [flat('tempo', 0, 8, 0)];
     const thresholds = defaultThresholds();
     const block = equivalenceBlock(densities, thresholds, [], 0, 0, 0, 8);
@@ -511,7 +511,7 @@ describe('C11: the equivalence block', () => {
   /**
    * The field is a fraction, and a dimension evaluated over several part scopes carries one
    * overlapping cell list per scope. Summing each cell's own length counts the same quarter once
-   * per part, so three parts deviating everywhere report 3.0 — outside `[0, 1]`, and §7.3's
+   * per part, so three parts deviating everywhere report 3.0 — outside `[0, 1]`, and the
    * mandated sentence would print "300 % of the window". A single synthetic scope pinning 0.5 is
    * blind to it: on the vendored documents telemann's tempo row measures 3.0000.
    */

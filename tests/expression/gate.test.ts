@@ -1,5 +1,5 @@
 /**
- * The validation gate and the write discipline (DESIGN §1.2, D-A).
+ * The validation gate and the write discipline.
  *
  * These are three one-line rules with document-level consequences, and each is asserted here
  * directly rather than only through the applier, because each is the kind of rule that a
@@ -22,20 +22,20 @@ function element(markup: string): Element {
   return parseMpmRoot(`<mpm xmlns="${MPM_NAMESPACE}">${markup}</mpm>`).getChildElements().get(0);
 }
 
-describe('writeNumber — the three write rules (D-A)', () => {
+describe('writeNumber — the three write rules', () => {
   it('writes an existing attribute in place', () => {
     const dynamics = element('<dynamics volume="60"/>');
     expect(writeNumber(dynamics, 'volume', 72.5)).toBe('written');
     expect(attribute('volume', dynamics)?.getValue()).toBe('72.5');
   });
 
-  it('never creates an attribute — materializing one would invent a gesture (§7.4)', () => {
+  it('never creates an attribute — materializing one would invent a gesture', () => {
     const dynamics = element('<dynamics volume="60"/>');
     expect(writeNumber(dynamics, 'transition.to', 90)).toBe('absent');
     expect(attribute('transition.to', dynamics)).toBeNull();
   });
 
-  it('skips a write whose spelling is unchanged, so R4’s no-op contract stays exact', () => {
+  it('skips a write whose spelling is unchanged, so the no-op contract stays exact', () => {
     const dynamics = element('<dynamics volume="60"/>');
     expect(writeNumber(dynamics, 'volume', 60)).toBe('unchanged');
   });
@@ -46,7 +46,7 @@ describe('writeNumber — the three write rules (D-A)', () => {
     expect(attribute('volume', dynamics)?.getValue()).toBe('60');
   });
 
-  it('refuses a non-finite value — A4’s global invariant, second lock', () => {
+  it('refuses a non-finite value — the global invariant, second lock', () => {
     const dynamics = element('<dynamics volume="60"/>');
     for (const value of [NaN, Infinity, -Infinity]) {
       expect(writeNumber(dynamics, 'volume', value)).toBe('non-finite');
@@ -87,7 +87,7 @@ describe('gateAndTransform — read → validate → transform → validate', ()
   });
 });
 
-describe('clampIntoRange — R6(a)', () => {
+describe('clampIntoRange', () => {
   it('reports whether it bit, so the report can count the event', () => {
     expect(clampIntoRange(200, { min: 1, max: 127 })).toEqual({ value: 127, clamped: true });
     expect(clampIntoRange(0.4, { min: 1, max: 127 })).toEqual({ value: 1, clamped: true });

@@ -1,10 +1,10 @@
 /**
- * DESIGN.md §4's options, their defaults, and the validation that runs before anything is
+ * The options, their defaults, and the validation that runs before anything is
  * parsed.
  *
  * Everything rejected here is a programmer error, not a document condition: an unknown
  * dimension name, a `NaN` factor, a factor outside its dimension's admissible s-domain, an
- * inverted `velocityRange`. A11 makes them errors rather than silent identities because the
+ * inverted `velocityRange`. The design makes them errors rather than silent identities because the
  * silent version is undetectable — a caller who samples `{tempoShape: 1.4}` into a record and
  * misspells the key gets an identity document and no way to notice.
  *
@@ -16,15 +16,15 @@
  * no facade to translate for them.
  *
  * The two numeric defaults are the only numbers the engine needs that no document supplies
- * (C2), and both are echoed in the report when they bite:
+ *, and both are echoed in the report when they bite:
  *
- * - `velocityRange` `{min: 1, max: 127}` — a musical bound (R6a). The floor is 1, not mlign's
+ * - `velocityRange` `{min: 1, max: 127}` — a musical bound. The floor is 1, not mlign's
  *   stated 0, because MIDI velocity 0 is a note-off: clamping a level to 0 would silence notes
  *   rather than quieten them. mlign was notified of the narrowing.
- * - `minRubatoWindow` `1e-6` — an IEEE saturation guard (A6), not a musical bound. Once
+ * - `minRubatoWindow` `1e-6` — an IEEE saturation guard, not a musical bound. Once
  *   `(1−t)^s < 2⁻⁵⁴` the joint trim's `1 − (1−t)^s` rounds to exactly 1.0 and the renderer's
  *   inclusive `lateStart >= earlyEnd` test resets the window to (0,1): no rubato at all,
- *   reached discontinuously. The clamp is what makes §8's "saturates smoothly" true.
+ *   reached discontinuously. The clamp is what makes the "saturates smoothly" true.
  */
 import { andThen, err, fromEntriesExact, mapOk, ok, type Result } from '../prelude/index.js';
 import {
@@ -35,7 +35,7 @@ import {
 } from './registry.js';
 
 /**
- * DESIGN.md §1.3's two scopes (A7).
+ * The two scopes.
  *
  * `global` exaggerates level values around a performance-wide center, so a piecewise-constant
  * map — the dominant shape of mpmify-generated and inferred performances — grows section
@@ -46,21 +46,21 @@ import {
  */
 export type ExaggerationScope = 'global' | 'gesture';
 
-/** DESIGN.md §4's `velocityRange`: the musical ceiling and floor of a dynamics level. */
+/** The `velocityRange`: the musical ceiling and floor of a dynamics level. */
 export interface VelocityRange {
   readonly min: number;
   readonly max: number;
 }
 
-/** §1.3/§7.1 — a caller-supplied center per level dimension. Tempo is quarter-note bpm. */
+/** a caller-supplied center per level dimension. Tempo is quarter-note bpm. */
 export interface CenterOverrides {
   readonly tempo?: number;
   readonly dynamics?: number;
 }
 
-/** DESIGN.md §4, minus `factors` (which {@link applyExaggeration} takes separately). */
+/** The engine's options, minus `factors` (which {@link applyExaggeration} takes separately). */
 export interface ExaggerateOptions {
-  /** Omitted ⇒ ALL performances (A11). A string selects by `@name`, a number by index. */
+  /** Omitted ⇒ ALL performances. A string selects by `@name`, a number by index. */
   readonly performance?: string | number;
   readonly scope?: ExaggerationScope;
   readonly center?: CenterOverrides;
@@ -69,22 +69,22 @@ export interface ExaggerateOptions {
 }
 
 /**
- * R6(a). MIDI velocity 0 is a note-off, so the floor is 1: a clamp must be able to make a
+ * MIDI velocity 0 is a note-off, so the floor is 1: a clamp must be able to make a
  * level quiet without making it silent.
  */
 export const DEFAULT_VELOCITY_RANGE: VelocityRange = { min: 1, max: 127 };
 
 /**
- * A6. Not a musical bound — the smallest total rubato window the guard will leave standing,
+ * Not a musical bound — the smallest total rubato window the guard will leave standing,
  * chosen far below any audible window and far above the ~2⁻⁵³ at which the split's own
  * rounding would decide the answer.
  */
 export const DEFAULT_MIN_RUBATO_WINDOW = 1e-6;
 
-/** §1.3 — `global`, because the alternative is a no-op on the corpus this engine exists for. */
+/** `global`, because the alternative is a no-op on the corpus this engine exists for. */
 export const DEFAULT_SCOPE: ExaggerationScope = 'global';
 
-/** R3 — a missing key means 1 means identity. */
+/** a missing key means 1 means identity. */
 export const IDENTITY_FACTOR = 1;
 
 /** Every option filled in: what the applier reads. */
@@ -163,7 +163,7 @@ export function resolveOptions(
 }
 
 /**
- * A center override is a value in the level dimension's own space (§7.1: quarter-note bpm for
+ * A center override is a value in the level dimension's own space (quarter-note bpm for
  * tempo), so it must satisfy that space's domain — `ℝ>0` — or the transform it parameterizes
  * would refuse every site and the run would silently produce nothing.
  */
@@ -181,9 +181,9 @@ function validateCenter(center: CenterOverrides): Result<CenterOverrides, Option
 }
 
 /**
- * Validate the factors record and fill in the missing keys with 1 (R3).
+ * Validate the factors record and fill in the missing keys with 1.
  *
- * Three rejections, all A11: an unknown key, a non-finite value, and a value outside the
+ * Three rejections: an unknown key, a non-finite value, and a value outside the
  * dimension's admissible s-domain. The third is mathematics rather than hygiene — for a
  * boundary-power dimension `T`'s range is the half-line `(−∞,0]`, so a negative `s` leaves it
  * and P3 (domain closure) fails outright. An error and not a clamp, because `pedalShape: -1`
@@ -222,7 +222,7 @@ export function resolveFactors(
   );
 }
 
-/** Which keys the caller actually supplied — §4's `requestedFactor`, which is null otherwise. */
+/** Which keys the caller actually supplied — the `requestedFactor`, which is null otherwise. */
 export function requestedFactors(
   factors: ExaggerationFactors,
 ): Record<ExpressionDimension, number | null> {

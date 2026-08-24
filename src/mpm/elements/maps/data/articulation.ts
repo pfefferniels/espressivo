@@ -150,7 +150,7 @@ export function articulateNote(articulation: Articulation, note: Element | null)
         durationAtt.setValue(String(duration * articulation.relativeDuration));
         addToListAttribute(note, 'modified', xmlId);
       }
-      // DELIBERATE DIVERGENCE #1 — ARCHITECTURE.md §6.3 row P3, §8.0.
+      // DELIBERATE DIVERGENCE #1 — ARCHITECTURE.md the row P3.
       // Java writes this loop as `for (double reduce = 2.0; durNew >= 0.0; reduce *= 2.0)`
       // with no guard (ArticulationData.java:197), and that never terminates: `reduce`
       // doubles to Infinity, `durNew` converges back to the unchanged `duration`, and

@@ -7,7 +7,7 @@
  * would bury every expectation in 40 characters of namespace. The one place bytes ARE
  * compared is the identity and determinism suite, where bytes are the claim.
  *
- * Every fixture in these tests is hand-built. DESIGN §7.7 records why: the integration corpus
+ * Every fixture in these tests is hand-built. The design records why: the integration corpus
  * is a blind spot for exactly these paths — every `<articulation>` in it carries only
  * `name.ref` and `noteid`, leaving all twelve numeric modifiers unread, and no fixture puts a
  * `<style>` switch at the same date as the instruction it would govern.
@@ -132,17 +132,17 @@ export function noteKinds(performance: PerformanceReport): readonly ReportNoteKi
 // one: `μ·(x/μ)^s` and `x^s·μ^(1−s)` are the same number in ℝ and differ in the last bits in
 // doubles, and these tests assert exact equality.
 
-/** `μ·(x/μ)^s` — level values around a center (§7.1). */
+/** `μ·(x/μ)^s` — level values around a center. */
 export function logAroundCenter(x: number, s: number, center: number): number {
   return center * Math.pow(x / center, s);
 }
 
-/** `x^s` — pure ratio gains (§7.6, §7.7, §7.10). */
+/** `x^s` — pure ratio gains. */
 export function logAroundOne(x: number, s: number): number {
   return Math.pow(x, s);
 }
 
-/** `1 − (1−x)^s` — proportions whose neutral is the lower bound (§7.5, §7.14). */
+/** `1 − (1−x)^s` — proportions whose neutral is the lower bound. */
 export function boundaryPowerLow(x: number, s: number): number {
   return 1 - Math.pow(1 - x, s);
 }

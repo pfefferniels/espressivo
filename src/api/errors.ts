@@ -45,7 +45,7 @@ export class InvalidOptionError extends MeicoError {}
  * exaggeration dimension.
  *
  * The message lists every offender with its kind, `unresolved` or `unmappable`, and the run
- * does not happen (DESIGN.md D-I/A8). Reporting only the first would make fixing a stale
+ * does not happen. Reporting only the first would make fixing a stale
  * selection an iteration; running on the ids that did resolve would silently attenuate
  * dimensions the caller meant to spare.
  *
@@ -60,8 +60,8 @@ export class SelectionNotFoundError extends MeicoError {}
  * not, so the run was abandoned rather than allowed to write a document nobody intends.
  *
  * No document can provoke it, at any factor. Exactly one input can:
- * `ExaggerateOptions.minRubatoWindow` below about 2⁻⁵³. DESIGN.md A6's guard clamps the rubato
- * joint trim to `1 − minRubatoWindow`, then asserts the resulting window is still ordered
+ * `ExaggerateOptions.minRubatoWindow` below about 2⁻⁵³. The guard clamps the rubato joint trim
+ * to `1 − minRubatoWindow`, then asserts the resulting window is still ordered
  * (`lateStart < earlyEnd`) before writing it. Below the double epsilon, `1 − minRubatoWindow`
  * rounds to exactly 1, the clamp stops clamping, and a saturating trim collapses the window
  * onto a point. The option's *validated* domain is the whole of (0,1), so such a value is
@@ -79,7 +79,7 @@ export class EngineInvariantError extends MeicoError {}
  *
  * Distinct from {@link EngineInvariantError} rather than a reuse of it, because that class
  * documents itself as one no document can provoke and under comparison a pathological pair
- * can (DESIGN.md §9.4, A15). Both engines can also run inside one expression, where a caught
+ * can. Both engines can also run inside one expression, where a caught
  * error has to say which of them broke without anyone parsing a message.
  */
 export class ComparisonEngineError extends MeicoError {}

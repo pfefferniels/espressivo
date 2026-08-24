@@ -1,5 +1,5 @@
 /**
- * AD-27.8's scape: the aggregate difference at every position AND every timescale at once.
+ * the scape: the aggregate difference at every position AND every timescale at once.
  *
  * Sapp's timescape is how a musicologist sees that two readings agree bar by bar and diverge
  * over the phrase, or the reverse. The object is a triangle: one cell per (start, size)
@@ -22,7 +22,7 @@
  * shape-versus-scale rule). The bins of one cell then sum to that cell, the bins of one
  * dimension to `d_k`, and the triangle's top cell to `D`.
  *
- * "Conserves" means to the last ULP, not bit-for-bit (W4 MINOR-12): the sums are
+ * "Conserves" means to the last ULP, not bit-for-bit: the sums are
  * floating-point additions in a different association from the one that produced `D`, so at
  * `bins = 1` the top cell reads `2526.4921488423447` against a `D` of `2526.4921488423442`.
  * Measured across the bin counts the tests cover, the worst relative gap is `5.4e-16` — one or
@@ -44,7 +44,7 @@ import { numberAt } from '../prelude/seq.js';
 import { CompensatedSum, gaussLegendre10 } from './quadrature.js';
 import { COMPARISON_DIMENSIONS } from './registry.js';
 
-/** §9.4's ceiling on `scape.bins`: `256` bins is `32 896` cells, which a report can carry. */
+/** the ceiling on `scape.bins`: `256` bins is `32 896` cells, which a report can carry. */
 export const SCAPE_MAX_BINS = 256;
 
 export interface Scape {
@@ -61,7 +61,7 @@ export function scapeIndex(bins: number, size: number, start: number): number {
 /**
  * The aggregate scape of one comparison.
  *
- * The binned quantity is `Σ_k ω_k p_k` — the same aggregate density §7's segments are cut out
+ * The binned quantity is `Σ_k ω_k p_k` — the same aggregate density the segments are cut out
  * of, so a scape cell and a segment mass are the same units and the same measure. Bins are
  * equal in SCORE TIME, which is the abscissa every distance in this module is quoted in.
  */
@@ -76,7 +76,7 @@ export function scapeOf(
   const length = endQuarters - startQuarters;
 
   // A zero-length window has no positions to bin. Every cell is 0, which is the same answer the
-  // aggregate gives it (§9.6's degenerate shape) rather than a division by zero.
+  // aggregate gives it (the degenerate shape) rather than a division by zero.
   const width = length > 0 ? length / count : 0;
   const byDimension = new Map(densities.map((density) => [density.dimension, density]));
 
@@ -123,9 +123,9 @@ export function scapeOf(
  * dimension having reported a different number. A cell with no sampler is apportioned by LENGTH,
  * which is the uniform reading and sums back just as exactly.
  *
- * Atoms are placed the way §5.0 places them: a point mass in the bin it OPENS (right-continuity,
- * A-B1/R27) with the LAST bin closed at the window end so an atom exactly there is not lost, and
- * a spread pair (AD-7) apportioned over the bins its interval covers.
+ * Atoms are placed as elsewhere: a point mass in the bin it OPENS (right-continuity), with the
+ * LAST bin closed at the window end so an atom exactly there is not lost, and
+ * a spread pair apportioned over the bins its interval covers.
  */
 function binnedMass(density: DimensionDensity, edges: readonly number[]): readonly number[] {
   const count = edges.length - 1;

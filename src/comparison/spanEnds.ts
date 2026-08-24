@@ -1,15 +1,15 @@
 /**
  * Where one instruction's span stops — as data, because it is not one rule.
  *
- * DESIGN.md §5.0 ("Span ends resolve per map type", AD-14ii / R12, as corrected by AD-29):
+ * "Span ends resolve per map type":
  * five maps scan forward for the next element of their own local name, and a `<style>` switch
  * never terminates their spans. Two end on ANY next entry — `ImprecisionMap`, whose gaps are
- * real and carry no law at all (§5.9), and `AsynchronyMap`, whose span end is
+ * real and carry no law at all, and `AsynchronyMap`, whose span end is
  * `this.elements[asynIndex + 1].key` with no local-name test. Rev 2 of DESIGN listed
  * `AsynchronyMap` on the same-name side; the renderer settles it the other way and the
- * contradiction is journaled as AD-29.
+ * contradiction is recorded here.
  *
- * Under AD-33.1 the asynchrony case goes further still: the foreign entry does not merely end
+ * The asynchrony case goes further still: the foreign entry does not merely end
  * the span, it opens a `⊥` one, because the map reads an offset off it, gets `NaN`, and every
  * note in that span vanishes from the MIDI export.
  *
@@ -45,16 +45,16 @@ import {
  *
  * - `same-local-name` — scan forward for the next element of the instruction's own name;
  *   `<style>` and anything else is transparent.
- * - `any-entry` — the next entry of any kind ends it, gaps included (§5.9).
+ * - `any-entry` — the next entry of any kind ends it, gaps included.
  * - `event` — the map carries atoms, not spans: an `<articulation>` or `<ornament>` applies to
- *   the note it names, so there is no forward scan to do. §5.0's atom rule ("an atom is charged
- *   to the span it opens", right-continuous per A-B1) governs these, and it is a density-layer
+ *   the note it names, so there is no forward scan to do. The atom rule ("an atom is charged
+ *   to the span it opens", right-continuous) governs these, and it is a density-layer
  *   concern rather than a span-end one.
  */
 export type SpanEndRule = 'same-local-name' | 'any-entry' | 'event';
 
 const RULES: ReadonlyMap<string, SpanEndRule> = new Map<string, SpanEndRule>([
-  // §5's section order. FIVE, not the six §5.0's table lists — see the asynchrony entry.
+  // the section order. FIVE, not the six the table lists — see the asynchrony entry.
   [TEMPO_MAP, 'same-local-name'],
   [RUBATO_MAP, 'same-local-name'],
   [DYNAMICS_MAP, 'same-local-name'],
@@ -62,15 +62,16 @@ const RULES: ReadonlyMap<string, SpanEndRule> = new Map<string, SpanEndRule>([
   [MOVEMENT_MAP, 'same-local-name'],
 
   /**
-   * `asynchronyMap` is `any-entry`, against §5.0's table and with §5.7. DESIGN contradicts
-   * itself: §5.0 lists it among the six maps that scan for their own local name, §5.7 says the
-   * map "takes the next dated child with no local-name test". The renderer settles it for §5.7:
+   * `asynchronyMap` is `any-entry`, against the table and with the asynchrony reading. The
+   * design contradicts
+   * itself: the design lists it among the six maps that scan for their own local name, the design says the
+   * map "takes the next dated child with no local-name test". The renderer settles it:
    *
    * ```ts
    * // AsynchronyMap.renderAsynchronyToMap
    * const asynEndDate = asynIndex < this.elements.length - 1
-   *   ? this.elements[asynIndex + 1].key   // the next ENTRY, whatever it is
-   *   : Number.MAX_VALUE;
+   *   ? this.elements[asynIndex + 1].key   // the next ENTRY, whatever it is:
+   * Number.MAX_VALUE;
    * ```
    *
    * No name test — and `GenericMap.parseData:145-146` indexes every dated child including
@@ -107,7 +108,7 @@ export function spanEndRuleOf(mapLocalName: string): SpanEndRule | null {
 }
 
 /**
- * Assert that a curve reader's hard-coded span scan matches this table — AD-33.6's "wire it
+ * Assert that a curve reader's hard-coded span scan matches this table — the "wire it
  * or remove it".
  *
  * Each reader implements its rule inline, because the scan is woven into how it walks its own

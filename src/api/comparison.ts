@@ -1,5 +1,5 @@
 /**
- * The comparison facade: two MPMs in, one plain-data report out (DESIGN.md §9).
+ * The comparison facade: two MPMs in, one plain-data report out.
  *
  * A third entry point beside {@link module:api/pipeline} and {@link module:api/expression},
  * under the same rules. What it adds to `src/comparison/` is what a facade adds anywhere here:
@@ -7,7 +7,7 @@
  * - **the typed-error boundary** (RULE E2). The interior owns the domain validators — one
  *   definition of what a legal selector or a legal tempo is — and throws its own classes; this
  *   is where those become {@link InvalidOptionError}, {@link PerformanceNotFoundError} and
- *   {@link ComparisonEngineError}, each message naming the document it is about (§9.4, A6);
+ *   {@link ComparisonEngineError}, each message naming the document it is about;
  * - **the document boundary** (RULE F2). XML crosses as text and the XOM tree stays interior;
  * - **the option surface**. Everything the caller can get wrong is validated HERE and validated
  *   **before any document is parsed**, because a caller who both misspells a dimension and
@@ -18,9 +18,9 @@
  * `ExaggerationReport` is: the engine builds them, this layer hands them over unchanged, and a
  * second declaration would be a second thing to keep in step.
  *
- * ## `noteDensityWeight` is not here (AD-52.3a)
+ * ## `noteDensityWeight` is not here
  *
- * §9.2 declared it and AD-3 keeps the MSM note-count weight as design intent, but the weight
+ * The MSM note-count weight is kept as design intent, but the weight
  * function `w(t)` has to reach all eleven dimensions' integrands and this wave does not ship
  * that. An option whose only behaviour is to throw is worse than an absent one — it advertises
  * a capability that is not there — so the key is gone from the surface rather than present and
@@ -28,9 +28,9 @@
  *
  * ## One named-parameter object, and one obligation that follows
  *
- * Every entry point takes ONE options object (F5): two interchangeable MPM texts make positional
+ * Every entry point takes ONE options object: two interchangeable MPM texts make positional
  * arguments a hazard in a way `performMsm`'s single document does not. The obligation is that
- * **the options echo enumerates its scalar fields exactly and never the document texts** (A12) —
+ * **the options echo enumerates its scalar fields exactly and never the document texts** —
  * echoing "options" would copy both documents into the result and then deep-copy them again to
  * satisfy RULE I3(b).
  */
@@ -91,7 +91,7 @@ import {
 } from './validate.js';
 
 // ---------------------------------------------------------------------------
-// Vocabulary (§9.1)
+// Vocabulary
 // ---------------------------------------------------------------------------
 
 export {
@@ -136,17 +136,17 @@ export type {
 } from '../comparison/report.js';
 
 // ---------------------------------------------------------------------------
-// Options (§9.2)
+// Options
 // ---------------------------------------------------------------------------
 
 /**
  * The knobs that define the metric.
  *
- * Shared so that a corpus and a pair can be configured identically, and so that §8's "one option
- * set for the matrix" has a name to be stamped under (A5).
+ * Shared so that a corpus and a pair can be configured identically, and so that the "one option
+ * set for the matrix" has a name to be stamped under.
  */
 export interface ComparisonSettings {
-  /** Quarters. `start < end`, both finite, `start >= 0` (A16). Omit for §5.0's precedence. */
+  /** Quarters. `start < end`, both finite, `start >= 0`. Omit for the precedence. */
   readonly window?: { readonly start: number; readonly end: number };
   readonly weights?: Partial<Record<ComparisonDimension, number>>;
   readonly jnd?: Partial<Record<ComparisonJndKey, number>>;
@@ -156,25 +156,25 @@ export interface ComparisonSettings {
 
 export interface CompareMpmOptions extends ComparisonSettings {
   readonly a: XmlText;
-  /** Omit to compare two performances **inside `a`** (C16). */
+  /** Omit to compare two performances **inside `a`**. */
   readonly b?: XmlText;
   readonly performanceA?: string | number;
   readonly performanceB?: string | number;
   /**
    * Part of the metric, not a report-only side input: it moves the window, the measure mapping
-   * and the beat grid the accentuation phase is anchored to (A11).
+   * and the beat grid the accentuation phase is anchored to.
    */
   readonly msm?: XmlText;
-  /** Opt-in retention of the evaluated curves and densities (C1). */
+  /** Opt-in retention of the evaluated curves and densities. */
   readonly profile?: {
     readonly dimensions?: readonly ComparisonDimension[];
     /** Quarters; step-capped, and the cap is reported when it bites. */
     readonly grid?: 'refinement' | { readonly step: number };
   };
   /**
-   * AD-27.8's scape of the aggregate density — the difference at every position AND scale.
+   * the scape of the aggregate density — the difference at every position AND scale.
    *
-   * §9.2 declares `scape` on the CORPUS options only, and §8's own text names two variants:
+   * `scape` is declared on the CORPUS options only, and the design names two variants:
    * "either a pair's distance or the corpus argmin/argmax performer". This is the first, and it
    * lives here because a pair's scape needs a pair. `1 ≤ bins ≤ 256`.
    */
@@ -182,31 +182,31 @@ export interface CompareMpmOptions extends ComparisonSettings {
 }
 
 /**
- * §6's edit path. `CompareMpmOptions` minus every knob the path does not CONSUME.
+ * the edit path. `CompareMpmOptions` minus every knob the path does not CONSUME.
  *
- * The rule is AD-67.2's, ruled in AD-70.3: a field the diff product cannot act on is absent from
- * the surface, never accepted-and-ignored. AD-25.1's knowability split makes silence the one
- * unacceptable answer — an option unusable given the options alone must ERROR — and AD-52.3a's
+ * The rule: a field the diff product cannot act on is absent from
+ * the surface, never accepted-and-ignored. The knowability split makes silence the one
+ * unacceptable answer — an option unusable given the options alone must ERROR — and the
  * form makes absence better than a throw, since "an option whose only behaviour is to throw is
  * worse than an absent one". A TypeScript caller who writes one fails to compile; a JavaScript
- * caller is ignored, which is what every unrecognized top-level key gets here (AD-54.3).
+ * caller is ignored, which is what every unrecognized top-level key gets here.
  *
  * Four are out, each structural rather than incidental:
  *
- * - `invariance` — §6.2's pricing is RAW and must be. §7.4's modes rescale a curve by that
+ * - `invariance` — the pricing is RAW and must be. The modes rescale a curve by that
  *   DOCUMENT's own moments, and an intermediate edit state is not a document: its moments move
  *   as the script is applied, so a canonicalized `norm` would not be a fixed metric and
- *   `scriptCost ≥ d_curve` would stop being AD-5's theorem.
+ *   `scriptCost ≥ d_curve` would stop being the theorem.
  * - `profile` — a `DiffReport` has no profile to retain.
  * - `weights` — weights exist to combine the eleven dimensions into ONE aggregate, and a
  *   `DiffReport` has no aggregate: every figure in `dimensions` is per-dimension and raw.
  *   Measured while it was still inherited: `weights: { tempo: 0 }` left every `scriptCost`
  *   bit-identical while the echo dutifully reported `0`.
- * - `scape` — AD-27.8's scape is of the AGGREGATE density, which the diff path also has none
+ * - `scape` — the scape is of the AGGREGATE density, which the diff path also has none
  *   of. Measured: `JSON.stringify(diffMpm({…, scape: { bins: 8 }}))` was byte-identical to the
  *   same call without it, and `checkCompareOptions` validated the `bins` on the way past.
  *
- * `plausibleRange` stays because it is CONSUMED, not because it is harmless (AD-70.3).
+ * `plausibleRange` stays because it is CONSUMED, not because it is harmless.
  * `plausibilityFindings` reads the two documents and nothing else — not the aggregate, not the
  * weights, not the comparison — so the diff produces those notes from the same parse, and an
  * implausible `@bpm` is exactly the site the script prices a large op at.
@@ -220,8 +220,8 @@ export interface DiffMpmOptions extends Omit<
    *
    * Omitting them would rely on excess-property checking, which reaches OBJECT LITERALS only,
    * so `diffMpm({ a, ...sharedSettings })` and `diffMpm(wideOptionsVariable)` would compile
-   * clean and drop the four in silence — the accepted-and-ignored behaviour AD-25.1 forbids,
-   * through the one door the type cannot see. And §9.2's rationale for `ComparisonSettings`,
+   * clean and drop the four in silence — the accepted-and-ignored behaviour the design forbids,
+   * through the one door the type cannot see. And the rationale for `ComparisonSettings`,
    * "so a corpus and a pair can be configured identically", makes the shared bag intended
    * usage rather than an edge case. `?: never` is checked on every assignment, spread or not.
    */
@@ -230,7 +230,7 @@ export interface DiffMpmOptions extends Omit<
   readonly invariance?: never;
   readonly profile?: never;
   /**
-   * A-Q5's `fragment` and `consolidate` ops: one instruction became several, or the reverse.
+   * the `fragment` and `consolidate` ops: one instruction became several, or the reverse.
    *
    * Off by default, and the default is the conservative reading rather than the cheap one — a
    * move is emitted where treating a group as ONE edit is strictly cheaper than any sequence of
@@ -241,11 +241,11 @@ export interface DiffMpmOptions extends Omit<
   readonly moves?: boolean;
 }
 
-/** §8's corpus surface. One option set for the whole matrix, which is what makes it one (R3). */
+/** the corpus surface. One option set for the whole matrix, which is what makes it one. */
 export interface CompareCorpusOptions extends ComparisonSettings {
   readonly items: readonly {
     readonly mpm: XmlText;
-    /** Omit in a multi-performance document to EXPAND to one item per performance (§8). */
+    /** Omit in a multi-performance document to EXPAND to one item per performance. */
     readonly performance?: string | number;
     readonly label?: string;
   }[];
@@ -257,9 +257,9 @@ export interface CompareCorpusOptions extends ComparisonSettings {
   /** PAM clusters; omit for none. */
   readonly k?: number;
   readonly embeddingAxes?: number;
-  /** AD-26.3's per-piece percentile context. Context, never a rescaling. */
+  /** the per-piece percentile context. Context, never a rescaling. */
   readonly noiseFloor?: boolean;
-  /** AD-27.8's Sapp variant: per cell, which item is closest to the corpus medoid. */
+  /** the Sapp variant: per cell, which item is closest to the corpus medoid. */
   readonly scape?: { readonly bins: number };
 }
 
@@ -268,17 +268,17 @@ export interface CompareCorpusOptions extends ComparisonSettings {
 // ---------------------------------------------------------------------------
 
 /**
- * Compare two performances — the eleven dimensions of DESIGN.md §3, over one window.
+ * Compare two performances — all eleven dimensions, over one window.
  *
- * The result is plain data (RULE F1): every number is finite or `null` (§9.6), every record is
+ * The result is plain data (RULE F1): every number is finite or `null`, every record is
  * keyed in `COMPARISON_DIMENSIONS` order, and `-0` is normalized to `+0` at this boundary so
- * that `Object.is` assertions and the JSON round trip agree (§9.5, A20).
+ * that `Object.is` assertions and the JSON round trip agree.
  *
  * ```ts
  * const { report } = compareMpm({ a: roll1905, b: roll1927, msm: score });
- * report.aggregate.mean;                       // JND — the human headline (C10)
- * report.segments[0];                          // where the difference is (§7.3)
- * report.equivalence.subThresholdMassFraction; // "93 % of it is below threshold" (C11)
+ * report.aggregate.mean;                       // JND — the human headline
+ * report.segments[0];                          // where the difference is
+ * report.equivalence.subThresholdMassFraction; // "93 % of it is below threshold"
  * ```
  *
  * **What is a distance and what is not.** `distance`, `mean`, the table and `dimensions[k]` are
@@ -288,7 +288,7 @@ export interface CompareCorpusOptions extends ComparisonSettings {
  * no distance, and they do not satisfy the triangle inequality.
  *
  * @param options one bag; `b` defaults to `a`, which compares two performances of one document
- *   (C16) — the shape the only real multi-performance corpus in existence has
+ * — the shape the only real multi-performance corpus in existence has
  * @throws {InvalidOptionError} an unknown dimension or JND key, a non-finite or negative weight,
  *   a JND that is not positive, an inverted or non-finite window, an invariance mode on an event
  *   dimension, a selector that is not a non-negative integer, a multi-performance document with
@@ -296,13 +296,13 @@ export interface CompareCorpusOptions extends ComparisonSettings {
  * @throws {ParseError} `a`, `b` or `msm` is not XML text, is not well-formed, or has the wrong
  *   root element — the message names which of the three
  * @throws {PerformanceNotFoundError} a selector names or indexes nothing, or a document carries
- *   no `<performance>` at all (C8)
+ *   no `<performance>` at all
  * @throws {ComparisonEngineError} the engine broke one of its own invariants
  */
 export function compareMpm(options: CompareMpmOptions): ComparisonResult {
   orInvalidOption(checkCompareOptions(options));
 
-  // §9.4's parse order: `a`, then `b`, then `msm`, so the first failure reported is the
+  // the parse order: `a`, then `b`, then `msm`, so the first failure reported is the
   // earliest one — and each carries its own role, which a single interior parse could not say.
   const rootA = parseDocument('MPM a', options.a, parseMpmRoot, 'mpm');
   const rootB =
@@ -330,7 +330,7 @@ export function compareMpm(options: CompareMpmOptions): ComparisonResult {
 }
 
 /**
- * Diff two performances — §6's typed edit script per (part, map), priced sequentially.
+ * Diff two performances — the typed edit script per (part, map), priced sequentially.
  *
  * Where {@link compareMpm} answers "how far apart are these two performances?", this answers
  * "what would you have to change to turn one into the other, and what does each change cost?".
@@ -340,17 +340,17 @@ export function compareMpm(options: CompareMpmOptions): ComparisonResult {
  * ```ts
  * const { report } = diffMpm({ a: baroque, b: romantic, msm: score });
  * report.scripts[0].ops[0];                  // the first edit, in score order
- * report.scripts[0].topByCost;               // the same ops, largest first (C5)
+ * report.scripts[0].topByCost;               // the same ops, largest first
  * report.dimensions.tempo.reworking;         // how much more the script costs than d_tempo
  * ```
  *
- * **The three numbers per dimension are three numbers** (§6.3): `dCurve` is the lower bound,
+ * **The three numbers per dimension are three numbers**: `dCurve` is the lower bound,
  * `scriptCost` is the DP's own path total, and `replayedDelta` is what the same op set costs
- * applied in the delivered date order. Both totals are `≥ dCurve` by AD-5's theorem, up to the
+ * applied in the delivered date order. Both totals are `≥ dCurve` by the theorem, up to the
  * per-family quadrature ε the report stamps in `inputs.epsilon`.
  *
  * The script is computed once in a CONTENT-derived canonical orientation and inverted for the
- * other direction (§6.4), so `diffMpm(a, b)` and `diffMpm(b, a)` are exact mirrors rather than
+ * other direction, so `diffMpm(a, b)` and `diffMpm(b, a)` are exact mirrors rather than
  * two tracebacks that happened to agree.
  *
  * @throws the same errors {@link compareMpm} throws, on the same inputs
@@ -374,7 +374,7 @@ export function diffMpm(options: DiffMpmOptions): DiffResult {
     jnd: { ...options.jnd },
     plausibleRange: { ...options.plausibleRange },
     // The four the surface does not offer are pinned to their inert values HERE rather than
-    // left to a default a later edit could move (AD-70.3). `resolveWeights(undefined)` is the
+    // left to a default a later edit could move. `resolveWeights(undefined)` is the
     // fixed default vector, which the diff never reads — it has no aggregate to weight — and
     // stating it beats leaving the interior's shape to chance.
     weights: resolveWeights(undefined),
@@ -388,7 +388,7 @@ export function diffMpm(options: DiffMpmOptions): DiffResult {
 }
 
 /**
- * Compare a corpus — §8's matrices and everything read off them.
+ * Compare a corpus — the matrices and everything read off them.
  *
  * ```ts
  * const { report } = compareMpmCorpus({ items: rolls.map((mpm) => ({ mpm })), k: 3 });
@@ -397,7 +397,7 @@ export function diffMpm(options: DiffMpmOptions): DiffResult {
  * report.embedding.negativeEigenvalueMass;  // how non-Euclidean this corpus is
  * ```
  *
- * **One window, one option set, for every cell** (R3) — that is what makes the matrix a matrix
+ * **One window, one option set, for every cell** — that is what makes the matrix a matrix
  * rather than a table of separately-scaled numbers, and it is why the settings are a single bag
  * shared with {@link compareMpm} rather than a per-pair argument. An item naming no performance
  * in a multi-performance document EXPANDS to one item per performance, and labels are required
@@ -441,17 +441,17 @@ export function compareMpmCorpus(options: CompareCorpusOptions): CorpusResult {
   return { report: normalizeZeros(report) };
 }
 
-/** R10's ceiling, raised to 256 by C17 so the 121-file Daten corpus fits in one call. */
+/** The ceiling, raised to 256 so the 121-file Daten corpus fits in one call. */
 const DEFAULT_MAX_ITEMS = 256;
 
 /**
- * The documented empty performance, so that nobody hand-rolls the null baseline (C8).
+ * The documented empty performance, so that nobody hand-rolls the null baseline.
  *
  * Comparing a document against this answers "how far is this performance from a deadpan
- * rendering of the same score?" — every dimension against its own neutral, which is what R6
+ * rendering of the same score?" — every dimension against its own neutral, which is what the
  * makes an absent map perform. It is a `<performance>` with an empty `<dated>` rather than a
  * document with no performance at all, because the latter is a
- * {@link PerformanceNotFoundError} by §9.4 and is the mistake this function exists to prevent.
+ * {@link PerformanceNotFoundError} and is the mistake this function exists to prevent.
  */
 export function neutralMpm(options?: { readonly ppq?: number }): XmlText {
   const ppq = options?.ppq ?? 720;
@@ -466,7 +466,7 @@ export function neutralMpm(options?: { readonly ppq?: number }): XmlText {
   );
 }
 
-/** {@link run} for the corpus — the same §9.4 translation over a third interior. */
+/** {@link run} for the corpus — the same translation over a third interior. */
 function runCorpus(options: InteriorCorpusOptions): CorpusReport {
   try {
     return compareCorpusInterior(options);
@@ -475,7 +475,7 @@ function runCorpus(options: InteriorCorpusOptions): CorpusReport {
   }
 }
 
-/** {@link run} for the edit path — the same §9.4 translation over a different interior. */
+/** {@link run} for the edit path — the same translation over a different interior. */
 function runDiff(options: InteriorDiffOptions): DiffReport {
   try {
     return diffInterior(options);
@@ -484,7 +484,7 @@ function runDiff(options: InteriorDiffOptions): DiffReport {
   }
 }
 
-/** Run the interior, turning its typed throws into the facade's (§9.4). */
+/** Run the interior, turning its typed throws into the facade's. */
 function run(options: InteriorCompareOptions): ComparisonReport {
   try {
     return compareInterior(options);
@@ -493,7 +493,7 @@ function run(options: InteriorCompareOptions): ComparisonReport {
   }
 }
 
-/** §9.4's translation table, shared by both entry points so the two cannot drift. */
+/** the translation table, shared by both entry points so the two cannot drift. */
 function translate(cause: unknown): Error {
   if (cause instanceof PerformanceSelectionNotFoundError)
     return new PerformanceNotFoundError(`MPM ${cause.role}: ${cause.message}`, { cause });
@@ -521,7 +521,7 @@ function translate(cause: unknown): Error {
  * Parse and check the root, with the document's ROLE in the message.
  *
  * `MPM a: …` rather than `MPM: …`, because two are in play and an error naming neither sends
- * the caller bisecting their own inputs (§9.4, A6).
+ * the caller bisecting their own inputs.
  */
 function parseDocument(
   role: string,
@@ -539,14 +539,14 @@ function parseDocument(
 }
 
 // ---------------------------------------------------------------------------
-// Option validation (§9.4's table)
+// Option validation (the table)
 // ---------------------------------------------------------------------------
 
 const DIMENSION_SET = new Set<string>(COMPARISON_DIMENSIONS);
 const JND_KEY_SET = new Set<string>(COMPARISON_JND_KEYS);
 const INVARIANCE_MODES = new Set<string>(['none', 'level', 'level-gain']);
 
-/** AD-20: an event dimension has no curve to centre, so a mode on one is a caller error. */
+/** an event dimension has no curve to centre, so a mode on one is a caller error. */
 const EVENT_DIMENSIONS = new Set<ComparisonDimension>(['articulation', 'ornamentation']);
 
 function checkCompareOptions(options: CompareMpmOptions): Checked {
@@ -566,10 +566,10 @@ function checkCompareOptions(options: CompareMpmOptions): Checked {
 }
 
 /**
- * §9.4's rows for the DIFF surface — a strict subset, and it has to be.
+ * the rows for the DIFF surface — a strict subset, and it has to be.
  *
  * `checkCompareOptions` would reject `scape: { bins: 0 }` here, throwing `InvalidOptionError`
- * about a key `DiffMpmOptions` does not declare, while AD-54.3 says an unrecognized top-level
+ * about a key `DiffMpmOptions` does not declare, while the design says an unrecognized top-level
  * key is IGNORED: a JavaScript caller passing one of the four omitted fields must get the same
  * silence as for `{ nonsense: 1 }`. So this validates exactly what the diff surface offers,
  * and `moves` with it.
@@ -588,7 +588,7 @@ function checkDiffOptions(options: DiffMpmOptions): Checked {
 }
 
 /**
- * §9.4's corpus rows, checked BEFORE any document is parsed (A23).
+ * the corpus rows, checked BEFORE any document is parsed.
  */
 function checkCorpusOptions(options: CompareCorpusOptions): Checked {
   // Two guards in sequence rather than two members of one `allOf`, because everything below
@@ -654,7 +654,7 @@ function checkBoolean(name: string, value: unknown): Checked {
     : rejected(`${name} must be a boolean`);
 }
 
-/** §9.4's `maxItems`: a count, so zero is meaningful and negative is not. */
+/** the `maxItems`: a count, so zero is meaningful and negative is not. */
 function checkNonNegativeInteger(name: string, value: number | undefined): Checked {
   return value === undefined || (Number.isInteger(value) && value >= 0)
     ? accepted
@@ -662,8 +662,8 @@ function checkNonNegativeInteger(name: string, value: number | undefined): Check
 }
 
 /**
- * §9.4's `k` and `embeddingAxes`: the live cases of the knowability split's first branch
- * (AD-25.1). A value outside the range is unusable given the OTHER OPTIONS alone — `items.length`
+ * the `k` and `embeddingAxes`: the live cases of the knowability split's first branch.
+ * A value outside the range is unusable given the OTHER OPTIONS alone — `items.length`
  * is in the same bag — so the caller could have known, and a full plausible-looking report with a
  * silently clamped `k` would hide the typo the option exists to express.
  */
@@ -682,7 +682,7 @@ function checkEnum(
   return value === undefined || vocabulary.includes(value) ? accepted : rejected(problem(value));
 }
 
-/** §9.4's row: `scape.bins` is an integer in `[1, 256]`, and out of range is a caller error. */
+/** the row: `scape.bins` is an integer in `[1, 256]`, and out of range is a caller error. */
 function checkScape(scape: { readonly bins: number } | undefined): Checked {
   return checkNested('scape', scape, ({ bins }) =>
     Number.isInteger(bins) && bins >= 1 && bins <= SCAPE_MAX_BINS
@@ -742,7 +742,7 @@ function checkPlausibleRange(ranges: ComparisonSettings['plausibleRange']): Chec
     JND_KEY_SET,
     (keys) =>
       `unknown plausibleRange key(s): ${keys.join(', ')}; the vocabulary is COMPARISON_JND_KEYS`,
-    // §9.4's table does not state the band's own domain; it is stated here rather than left to
+    // the table does not state the band's own domain; it is stated here rather than left to
     // produce a note that never fires, since a band with `low > high` excludes every value.
     (key, band) =>
       Array.isArray(band) &&
@@ -771,13 +771,13 @@ function checkInvariance(invariance: ComparisonSettings['invariance']): Checked 
         ? accepted
         : rejected(
             `invariance '${mode}' is not defined for '${key}': an event dimension has no curve to ` +
-              'centre (AD-20). Use weights to exclude it instead.',
+              'centre. Use weights to exclude it instead.',
           );
     },
   );
 }
 
-/** Spelled exactly as the interior's `selectPerformance` spells it, so the two agree (A17). */
+/** Spelled exactly as the interior's `selectPerformance` spells it, so the two agree. */
 function checkSelector(name: string, selector: string | number | undefined): Checked {
   if (typeof selector !== 'number') return accepted;
   return Number.isInteger(selector) && selector >= 0
@@ -824,7 +824,7 @@ function resolveInvariance(
 }
 
 /**
- * `-0 ↦ +0` at the report boundary (A20, §9.5).
+ * `-0 ↦ +0` at the report boundary.
  *
  * A signed descriptor is a difference, and a difference of equals is `-0` as often as `+0`
  * depending on which side was subtracted — so `Object.is(compare(a,b).x, compare(b,a).x)` and

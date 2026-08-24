@@ -2,18 +2,18 @@
  * The pair reader: two MPM texts in, one normalized plain-data view of both out.
  *
  * The whole boundary between "a document" and "a comparison": nothing above it re-reads XML,
- * nothing in it evaluates a curve. It produces the substrate DESIGN.md §5.0 assumes exists — a
+ * nothing in it evaluates a curve. It produces the substrate a comparison assumes exists — a
  * common tick grid, matched scopes, resolved maps, ordered instruction views, a window with its
- * two stamps, and the §5.0 comparability evidence.
+ * two stamps, and the comparability evidence.
  *
- * ## Reading discipline (R1)
+ * ## Reading discipline
  *
  * The parse is `expression/mpmDocument`'s raw `Builder` (`parseMpmRoot`), because `new
  * Mpm(text)` rewrites the document in its own constructor: `rubatoDef` gains
  * `intensity`/`lateStart`/`earlyEnd` and has present values respelled,
  * `accentuationPatternDef` gains `length="4"` and has its children reordered,
  * `GenericMap.parseData` ends in an unconditional `sortXml()`, and
- * `Dated.addMap`/`Header.addStyleType` delete duplicates. R1 forbids mutating an input, and a
+ * `Dated.addMap`/`Header.addStyleType` delete duplicates. The design forbids mutating an input, and a
  * reader that provoked those edits could not honestly report what the document says.
  *
  * Navigation is `expression/mpmTree` (which reproduces `Header`/`Dated`'s descendant-axis,
@@ -81,12 +81,12 @@ export interface OrderedMapView {
   /** Null for a map name the MPM model does not define (e.g. a corpus `gestureMap`). */
   readonly spanEndRule: SpanEndRule | null;
   /**
-   * Per-entry resolution, for a view whose entries come from TWO documents (§6's edit states).
+   * Per-entry resolution, for a view whose entries come from TWO documents (the edit states).
    *
    * ABSENT on every view `readScopeMapViews` builds, where one document's tick grid and one
-   * style environment govern the whole map and the reader's own arguments say so. §6's edit path
+   * style environment govern the whole map and the reader's own arguments say so. The edit path
    * is the one caller that needs otherwise: an intermediate state is A's map with some of B's
-   * instructions in it, and each instruction keeps the resolution it PERFORMS (AD-40.2; see
+   * instructions in it, and each instruction keeps the resolution it PERFORMS (see
    * `editState.ts`).
    *
    * Two things vary per entry and nothing else does: the tick `scaleFactor` onto the common grid
@@ -146,11 +146,11 @@ export interface ComparisonDocument {
   readonly scopes: readonly ComparisonScope[];
   /** Last dated instruction, in quarters. 0 for a document with no dated instruction. */
   readonly lastDateQuarters: number;
-  /** Every dated entry across every resolved map of every scope — §5.0's comparability count. */
+  /** Every dated entry across every resolved map of every scope — the comparability count. */
   readonly instructionCount: number;
 }
 
-/** §5.0's C7 evidence that the two documents plausibly encode the same piece. */
+/** The evidence that the two documents plausibly encode the same piece. */
 export interface Comparability {
   readonly lastDateA: number;
   readonly lastDateB: number;
@@ -171,7 +171,7 @@ export interface ComparisonPair {
   readonly b: ComparisonDocument;
   readonly ppq: PpqNormalization;
   readonly window: ComparisonWindow;
-  /** Global row first, then parts by `@number`, then unnumbered — a total order (R2). */
+  /** Global row first, then parts by `@number`, then unnumbered — a total order. */
   readonly scopes: readonly ScopePairing[];
   readonly comparability: Comparability;
 }
@@ -180,7 +180,7 @@ export interface ComparisonPair {
  * A document, as text or as a root the caller already parsed.
  *
  * The facade parses `a`, then `b`, then the MSM so that the FIRST failure reported is the
- * earliest one and each carries its document's role (§9.4) — a text this layer parsed itself
+ * earliest one and each carries its document's role — a text this layer parsed itself
  * could only report "one of them". Passing the root through rather than the text is what keeps
  * that from costing a second parse of a 300 KB document.
  */
@@ -188,23 +188,23 @@ export type MpmSource = string | Element;
 
 export interface ReadComparisonPairOptions {
   readonly a: MpmSource;
-  /** Omit to compare two performances inside `a` (§9.2, C16). */
+  /** Omit to compare two performances inside `a`. */
   readonly b?: MpmSource;
   readonly performanceA?: PerformanceSelector;
   readonly performanceB?: PerformanceSelector;
-  /** The MSM score end in quarters, when an MSM was supplied and could answer (R7). */
+  /** The MSM score end in quarters, when an MSM was supplied and could answer. */
   readonly msmEndQuarters?: number | null;
   /** `options.window`, already validated by the facade. */
   readonly window?: { readonly start: number; readonly end: number } | null;
-  /** The corpus-shared end, when this pair is one cell of a §8 matrix. */
+  /** The corpus-shared end, when this pair is one cell of a corpus matrix. */
   readonly corpusEndQuarters?: number | null;
 }
 
 /**
- * Pick one `<performance>`, with §9.4's three failure modes kept distinct.
+ * Pick one `<performance>`, with the three failure modes kept distinct.
  *
  * A single-performance document needs no selector; two or more without one is ambiguous and
- * throws, which is the strictness §9.2 keeps when it otherwise relaxes `b`.
+ * throws, which is the strictness the design keeps when it otherwise relaxes `b`.
  */
 function selectPerformance(
   performances: readonly PerformanceView[],
@@ -262,7 +262,7 @@ export function readScopeMapViews(scope: ComparisonScope): ReadonlyMap<string, O
  *
  * Counted over each scope's **resolved** maps, so a global map inherited by three parts is
  * counted once per part — which is the right unit, because that is how many times it is
- * performed, and §5.0 evaluates every dimension per part.
+ * performed, and the design evaluates every dimension per part.
  */
 function summarize(scopes: readonly ComparisonScope[]): {
   lastDateTicks: number;
@@ -298,10 +298,10 @@ function readDocument(
 /**
  * Read and normalize a pair.
  *
- * `b` defaults to `a` (§9.2, C16), so that comparing two performances inside one document is
+ * `b` defaults to `a`, so that comparing two performances inside one document is
  * not stricter here than in the corpus entry point; the ambiguity error still fires when a
  * selector is missing. The parse order is `a` then `b`, so the first failure reported is the
- * earliest one (§9.4).
+ * earliest one.
  */
 export function readComparisonPair(options: ReadComparisonPairOptions): ComparisonPair {
   const rootA = typeof options.a === 'string' ? parseMpmRoot(options.a) : options.a;

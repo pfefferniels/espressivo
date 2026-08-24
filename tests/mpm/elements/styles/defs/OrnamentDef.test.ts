@@ -914,7 +914,7 @@ describe('setId(null) on parsed transformers', () => {
 });
 
 // ==========================================================================
-//  MPM v3 — TemporalSpread (DESIGN.md D2, D3, D12) and OrnamentDef.alignment
+//  MPM v3 — TemporalSpread () and OrnamentDef.alignment
 //
 //  Everything below is additive to the v2 suites above: a v2 document must parse
 //  and serialize exactly as it does without v3, which the first suite here nails
@@ -949,7 +949,7 @@ function captureErrors(run: () => void): string[] {
   }
 }
 
-describe('TemporalSpread — v2 byte stability (DESIGN.md D6/D12)', () => {
+describe('TemporalSpread — v2 byte stability ()', () => {
   // A temporalSpread showing no v3 marker parses and re-serializes exactly as it does
   // without v3. Asserted as whole strings rather than attribute by attribute, so that
   // attribute order — byte-visible in the Java fixture comparison — is pinned too.
@@ -1016,7 +1016,7 @@ describe('TemporalSpread — v2 byte stability (DESIGN.md D6/D12)', () => {
   });
 });
 
-describe('TemporalSpread — v3 parsing (DESIGN.md D3)', () => {
+describe('TemporalSpread — v3 parsing (PARITY.md §6.2 D3)', () => {
   it('should read per-value unit suffixes', () => {
     // the spec's own temporalSpread exemplum (temporalSpread.xml:45-48): the two frame
     // values are in different domains, which is what v3 added
@@ -1036,7 +1036,7 @@ describe('TemporalSpread — v3 parsing (DESIGN.md D3)', () => {
   });
 
   it('should default a suffix-less value to ticks', () => {
-    // the real corpus writes frame.offset without a suffix (github-v3-design.md §5);
+    // the real corpus writes frame.offset without a suffix;
     // frame.offset is a v3 marker in its own right, so this is a v3 element
     const ts = spread('frame.offset="0.0" frameLength="300.0"');
     expect(ts.getSourceFormat()).toBe('v3');
@@ -1085,7 +1085,7 @@ describe('TemporalSpread — v3 parsing (DESIGN.md D3)', () => {
   });
 
   it('should read frame.start as an alias of frame.offset once anything marks the element v3', () => {
-    // DESIGN.md D3: any v3 marker makes the whole instance v3.
+    // PARITY.md §6.2 D3: any v3 marker makes the whole instance v3.
     // "frame.start" is v2's spelling, but a suffixed frameLength is a v3 marker, so the
     // element is v3 and its frame.start value is read through D3's alias.
     const ts = spread('frame.start="-22.0" frameLength="44%"');
@@ -1112,9 +1112,9 @@ describe('TemporalSpread — v3 parsing (DESIGN.md D3)', () => {
   });
 
   it('should treat an unparseable v3 value as absent rather than destroying the def', () => {
-    // DESIGN.md D3, diverging from the reference implementation, whose
+    // PARITY.md §6.2 D3, diverging from the reference implementation, whose
     // NumberFormatException on "80%" drops the whole ornamentDef and with it every
-    // ornament referring to it (lars-v3-implementation.md §3.2 item 2)
+    // ornament referring to it
     let ts: TemporalSpread | null = null;
     const messages = captureErrors(() => {
       ts = spread('frame.offset="abcticks" frameLength="60%" intensity="2.0"');
@@ -1198,7 +1198,7 @@ describe('TemporalSpread — v3 parsing (DESIGN.md D3)', () => {
   });
 });
 
-describe('TemporalSpread — v3 serialization (DESIGN.md D12)', () => {
+describe('TemporalSpread — v3 serialization (PARITY.md §6.2 D12)', () => {
   it('should write canonical v3 with unit suffixes and no time.unit', () => {
     const ts = spread('frame.offset="-100.0ms" frameLength="200.0ticks"');
     // formatTemporalValue writes String(x), so "-100.0ms" comes back as "-100ms" — the
@@ -1227,7 +1227,7 @@ describe('TemporalSpread — v3 serialization (DESIGN.md D12)', () => {
   it('should write both frame attributes even when they carry their defaults', () => {
     // unlike the v2 writer, which omits a 0.0. In v3 the value carries the domain, so an
     // omitted frameLength would read back as the 100% default instead of 0% — the exact
-    // round-trip bug the reference implementation has (lars §3.5 "two omission bugs")
+    // round-trip bug the reference implementation has
     const ts = spread('frame.offset="0ticks" frameLength="0%"');
     expect(ts.generateXML().toXML()).toBe(
       `<temporalSpread xmlns="${MPM_NS}" frame.offset="0ticks" frameLength="0%" />`,
@@ -1259,7 +1259,7 @@ describe('TemporalSpread — v3 serialization (DESIGN.md D12)', () => {
   });
 });
 
-describe('TemporalSpread — the v3 API (DESIGN.md D12)', () => {
+describe('TemporalSpread — the v3 API (PARITY.md §6.2 D12)', () => {
   it('should turn a programmatic spread v3 by setting a frame offset', () => {
     const ts = new TemporalSpread();
     expect(ts.getSourceFormat()).toBe('v2');
@@ -1299,7 +1299,7 @@ describe('TemporalSpread — the v3 API (DESIGN.md D12)', () => {
   });
 });
 
-describe('OrnamentDef — alignment (DESIGN.md D2)', () => {
+describe('OrnamentDef — alignment ()', () => {
   /** parse an `<ornamentDef>` given as source text */
   function def(body: string): OrnamentDef {
     return okValue(

@@ -142,7 +142,7 @@ describe('RenderOptions', () => {
       }
     });
 
-    it('matches the derivation §2.4 specifies, recomputed independently', () => {
+    it('matches the derivation the design specifies, recomputed independently', () => {
       // The re-implementation pins the multiplier, the unsigned coercions and the
       // left-to-right fold, any of which could be "simplified" without a test failing.
       const expected = (base: number, parts: number[]) => {

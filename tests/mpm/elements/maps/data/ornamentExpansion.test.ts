@@ -184,7 +184,7 @@ describe('expandOrnament — reference resolution (rule 1)', () => {
   });
 });
 
-describe('expandOrnament — pitch resolution (rule 2, DESIGN.md D8)', () => {
+describe('expandOrnament — pitch resolution (rule 2, PARITY.md §6.2 D8)', () => {
   it('takes midi.pitch as an absolute pitch', () => {
     expect(pitches(run('#abs'))).toEqual([64]);
   });
@@ -290,7 +290,7 @@ describe('resolveDiatonicPitch — the D8 algorithm', () => {
 
 describe('expandOrnament — repetition expansion (rule 3)', () => {
   it('plays a group repetitions+1 times: the spec exemplum trill, 3 → 8 slots', () => {
-    // DESIGN.md §5 vector 3 / spec exemplum: "repeating the trill pattern three times within
+    // the vector 3 / spec exemplum: "repeating the trill pattern three times within
     // the time frame … So, it is played four times." Group is #up #P, so 4 × 2 = 8 slots, and
     // the group does not start on the principal pitch, so no landing note is appended.
     const result = run('|: #up #P :|', { repetitions: 3 });
@@ -504,8 +504,8 @@ describe('expandOrnament — dedup (rule 5)', () => {
   });
 });
 
-describe('expandOrnament — the standard ornament dictionary (github-v3-design.md §4)', () => {
-  // The reference ships these as diatonic step sequences in `ornaments.dict`. Principal C4
+describe('expandOrnament — the standard ornament dictionary', () => {
+  // The reference ships these as diatonic step sequences in `ornaments.dict`. Principal C4,
   // (60) in C major, so a step of +1 is D (62) and −1 is B (59). Each row states the dict's
   // own token string; `order` is that string with the steps bound to pool ids.
   const DICT = [

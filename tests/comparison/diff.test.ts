@@ -1,13 +1,13 @@
 /**
- * `diffMpm` — §6's edit path at the facade, and §6.4's orientation rule.
+ * `diffMpm` — the edit path at the facade, and the orientation rule.
  *
- * The load-bearing test is P-C2's, asserted on `JSON.stringify` rather than on the numbers:
+ * The load-bearing test is symmetry, asserted on `JSON.stringify` rather than on the numbers:
  * comparing totals would miss an asymmetric op order, an unswapped site, or a value pair that
  * stayed put. The swap map is written out as code, so a future field that needs mirroring fails
  * the test rather than quietly breaking the promise.
  *
  * The orientation rule is what makes the mirror possible: the traceback precedence is
- * deterministic but not transposition-covariant (§6.4), so the script is computed once in a
+ * deterministic but not transposition-covariant, so the script is computed once in a
  * content-derived canonical order and inverted. A test checking only "both directions have the
  * same total" would pass on an implementation that ran the DP twice and got two different
  * scripts.
@@ -35,7 +35,7 @@ const GRAVE_SCORE = readFileSync(join(FIXTURES, 'telemann-grave.msm'), 'utf-8') 
 // ---------------------------------------------------------------------------
 
 /**
- * `report`, transformed as §6.4 says the other direction must look — swap, invert, negate.
+ * `report`, transformed as the design says the other direction must look — swap, invert, negate.
  *
  * Written out field by field on purpose. A generic "swap everything named a with everything
  * named b" would mirror a field this design never intended to mirror and would keep passing
@@ -110,10 +110,10 @@ function mirrorOf(report: DiffReport): unknown {
         },
       };
     }),
-    // The notes swap sides and are then re-sorted into §9.5's order: its key runs through
+    // The notes swap sides and are then re-sorted into the order: its key runs through
     // `document` and through the serialized note, both of which the swap changes.
     //
-    // Re-derived from §9.5's stated order rather than by calling the engine's `sortNotes`, which
+    // Re-derived from the stated order rather than by calling the engine's `sortNotes`, which
     // is what keeps this mirror independent: kind, dimension, start, document, message, then the
     // whole note as the final tiebreak.
     notes: [
@@ -139,7 +139,7 @@ function mirrorOf(report: DiffReport): unknown {
   };
 }
 
-/** A-Q5's pair inverts with the plain one: one-became-several read backwards is the reverse. */
+/** the pair inverts with the plain one: one-became-several read backwards is the reverse. */
 const INVERSE: Readonly<Record<EditOp['op'], EditOp['op']>> = {
   insert: 'delete',
   delete: 'insert',
@@ -159,7 +159,7 @@ const MOVE_RANK: Readonly<Record<EditOp['op'], number>> = {
 // ---------------------------------------------------------------------------
 
 /**
- * A short window on the vendored documents. P-C2 is a claim about symmetry, not magnitudes, and
+ * A short window on the vendored documents. The claim is about symmetry, not magnitudes, and
  * every field the mirror touches is present within the first few bars. Sixteen quarters keeps
  * the integrals small enough to walk four pairs in both directions; one pair runs over its full
  * window as well, so a narrow window cannot hide a field that only appears later.
@@ -169,7 +169,7 @@ const SHORT = { start: 0, end: 16 } as const;
 /** Long enough to contain groups worth reading as one edit, short enough to run in under a second. */
 const MOVES = { start: 0, end: 32 } as const;
 
-describe('P-C2: diffMpm(a, b) and diffMpm(b, a) are exact mirrors (§6.4)', () => {
+describe('diffMpm(a, b) and diffMpm(b, a) are exact mirrors', () => {
   const pairs: readonly (readonly [XmlText, string | number, string | number])[] = [
     [TELEMANN, 0, 1],
     [TELEMANN, 1, 2],
@@ -272,7 +272,7 @@ describe('P-C2: diffMpm(a, b) and diffMpm(b, a) are exact mirrors (§6.4)', () =
   });
 
   /**
-   * §9.5's `scripts` order. DESIGN says `(part, map)` and `compareScripts` says
+   * the `scripts` order. DESIGN says `(part, map)` and `compareScripts` says
    * `(part, map, dimension)`; the two describe the same order, because every `(part, map)` in a
    * real report carries exactly one dimension's script — the three imprecision dimensions live
    * in separately-named maps rather than sharing one. So `(part, map)` is already total and
@@ -364,7 +364,7 @@ describe('the report agrees with the comparison it is a path through', () => {
     }
   });
 
-  it('holds §6.2’s theorems and §6.3’s verification at the document level', () => {
+  it('holds the theorems and the verification at the document level', () => {
     const report = diffMpm({
       a: TELEMANN,
       performanceA: 0,
@@ -396,7 +396,7 @@ describe('the report agrees with the comparison it is a path through', () => {
   });
 });
 
-describe('the ops carry what §9.3 says they carry', () => {
+describe('the ops carry what the design says they carry', () => {
   const report = diffMpm({ a: VULPIUS, performanceA: 0, performanceB: 1, window: SHORT }).report;
 
   it('delivers in date order with both orders and a site on every op', () => {
@@ -446,7 +446,7 @@ describe('the ops carry what §9.3 says they carry', () => {
     }
   });
 
-  it('carries measure positions exactly when an MSM is supplied (C3)', () => {
+  it('carries measure positions exactly when an MSM is supplied', () => {
     const msm = readFileSync(join(FIXTURES, 'vulpius-die-helle-sonn.msm'), 'utf-8') as XmlText;
     const withMsm = diffMpm({
       a: VULPIUS,
@@ -458,12 +458,12 @@ describe('the ops carry what §9.3 says they carry', () => {
     const dated = withMsm.scripts.flatMap((script) => script.ops).filter((op) => op.dateA !== null);
     expect(dated.length).toBeGreaterThan(0);
     expect(dated.some((op) => op.measureA !== null)).toBe(true);
-    // Without one, every measure position is null — §9.3's "null everywhere without an MSM".
+    // Without one, every measure position is null — the "null everywhere without an MSM".
     expect(report.scripts.flatMap((s) => s.ops).every((op) => op.measureA === null)).toBe(true);
   });
 });
 
-describe('the neutral baseline and the degenerate shapes (C8, §9.6)', () => {
+describe('the neutral baseline and the degenerate shapes', () => {
   it('diffs a real performance against neutralMpm', () => {
     const report = diffMpm({
       a: TELEMANN,
@@ -514,7 +514,7 @@ describe('the neutral baseline and the degenerate shapes (C8, §9.6)', () => {
   });
 });
 
-describe('the surface (§9.4)', () => {
+describe('the surface', () => {
   it('rejects the same option mistakes compareMpm rejects', () => {
     expect(() =>
       diffMpm({ a: TELEMANN, performanceA: 0, performanceB: 1, window: { start: 4, end: 4 } }),
@@ -527,13 +527,13 @@ describe('the surface (§9.4)', () => {
   });
 
   /**
-   * AD-70.3: a field the diff does not consume is absent, not accepted-and-dropped. An
+   * a field the diff does not consume is absent, not accepted-and-dropped. An
    * inherited-but-unread option is silent — `diffMpm({…, scape: { bins: 8 }})` serializes
    * byte-identically to the call without it, and `weights: { tempo: 0 }` leaves every
    * `scriptCost` bit-identical while the echo reports `0`.
    *
    * TypeScript is the primary guard and is not testable at runtime. What is testable is the
-   * JavaScript caller's path, and this pins both halves of AD-54.3's rule for it: the keys are
+   * JavaScript caller's path, and this pins both halves of the rule for it: the keys are
    * ignored exactly as `{ nonsense: 1 }` is, and they do not throw either.
    */
   it('omits the four options it cannot consume, and neither reads nor rejects them', () => {
@@ -563,17 +563,17 @@ describe('the surface (§9.4)', () => {
   });
 
   /**
-   * The two note kinds of §9.1 the diff path can produce: the MPM-derived scope rule, which
-   * `DiffReport.scopes` reports as `rule: 'mpm'` and which DESIGN §9.3 says carries an
-   * `estimate-degradation` note, and `plausibility`, which AD-70.3 ruled is the reason
+   * The two note kinds the diff path can produce: the MPM-derived scope rule, which
+   * `DiffReport.scopes` reports as `rule: 'mpm'` and which the design says carries an
+   * `estimate-degradation` note, and `plausibility`, which is the reason
    * `plausibleRange` stays on this surface. With no note at all, `invertReport`'s
    * note-inversion branch is dead code and the mirror test cannot reach it.
    */
-  it('reports the notes the edit path can produce (MAJOR-5)', () => {
+  it('reports the notes the edit path can produce', () => {
     const base = { a: TELEMANN, performanceA: 0, performanceB: 1, window: SHORT } as const;
 
     // Unasked, exactly one note: the scope rule. No MSM was supplied, so the per-part sum runs
-    // over the MPM's own <part> elements rather than over rendered MSM parts (AD-55.2), and the
+    // over the MPM's own <part> elements rather than over rendered MSM parts, and the
     // report says so instead of leaving the reader to infer it from `scopes.rule`.
     const plain = diffMpm(base).report;
     expect(plain.scopes.rule).toBe('mpm');
@@ -609,14 +609,14 @@ describe('the surface (§9.4)', () => {
    * The mirror's note handling, on the one shape that can tell it apart from doing nothing.
    * `invertReport` re-sorts the notes after swapping their sides, and on the vendored corpus
    * that re-sort changes nothing: every plausibility message carries the attribute's value, the
-   * two performances never share one at the same site, so no two notes tie on §9.5's key ahead
+   * two performances never share one at the same site, so no two notes tie on the key ahead
    * of `document`. Removing the re-sort leaves every mirror assertion passing.
    *
    * So the case is constructed: two documents whose date-0 `<tempo>` is byte-identical and out
    * of the default band, differing only later. Both sides emit the same note text at the same
    * date, the pair ties on (kind, dimension, startQuarters, message), and `document` orders
-   * them — so mapping the swap in place leaves the mirrored report holding `b, a` where §9.5
-   * says `a, b`. §6.4 claims byte-identity, and that is a byte.
+   * them — so mapping the swap in place leaves the mirrored report holding `b, a` where the
+   * report says `a, b`. Byte-identity is claimed, and that is a byte.
    */
   it('re-sorts the mirrored notes, where two of them differ only in which document they name', () => {
     const withTempo = (later: number): XmlText =>
@@ -640,7 +640,7 @@ describe('the surface (§9.4)', () => {
       expect(JSON.stringify(reverse)).toBe(JSON.stringify(mirrorOf(forward)));
     }
 
-    // Non-vacuity: the tie really is there, on everything §9.5 ranks above `document`. Without
+    // Non-vacuity: the tie really is there, on everything the design ranks above `document`. Without
     // it the test above would assert the mirror on a note set that cannot distinguish a re-sort
     // from a no-op, which is what the vendored corpus gives.
     const report = diffMpm({ a, b, window: SHORT }).report;
@@ -653,7 +653,7 @@ describe('the surface (§9.4)', () => {
     expect(shared.map((entry) => entry.document)).toEqual(['a', 'b']);
   });
 
-  it('honours `moves`, and the plain script is what a caller gets unasked (A-Q5)', () => {
+  it('honours `moves`, and the plain script is what a caller gets unasked', () => {
     // The window size is measured rather than chosen: the 16-quarter window this file uses
     // elsewhere contains no group worth reading as one edit, while the full score window costs
     // 22 s a call and times out under a loaded runner. Thirty-two quarters carries both move

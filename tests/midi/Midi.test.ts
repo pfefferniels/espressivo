@@ -1025,7 +1025,7 @@ describe('Midi', () => {
     });
 
     it('does not read a sysex payload past the end of the data it was given', () => {
-      // MTrk length 5: delta 0, F0, declared length 200 (VLQ 0x81 0x48), no payload.
+      // MTrk length 5: delta 0, declared length 200 (VLQ 0x81 0x48), no payload.
       const midi = Midi.fromBytes(
         pooled([...HEADER, 0x4d, 0x54, 0x72, 0x6b, 0x00, 0x00, 0x00, 0x05, 0x00, 0xf0, 0x81, 0x48]),
       );

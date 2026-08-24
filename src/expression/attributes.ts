@@ -2,7 +2,7 @@
  * Attribute primitives for the expression engine — the only place it reads or writes an
  * XML attribute value.
  *
- * Three rules from DESIGN.md D-A, all byte-visible:
+ * Three rules, all byte-visible:
  *
  * - Writes go through the live {@link Attribute}'s `setValue`, which mutates only
  *   `Attribute._value` (XomTypes.ts:218-220) while the serializer walks `_attributes` front
@@ -10,7 +10,7 @@
  *   `Element.addAttribute` removes and re-pushes (XomTypes.ts:492-500), MOVING the attribute
  *   to the end of the list (`date bpm beatLength` becomes `date beatLength bpm`).
  * - The engine never creates an attribute: {@link writeAttributeValue} refuses a site that
- *   does not already exist and says so in its return value (`gate.ts` carries the §7 reasons).
+ *   does not already exist and says so in its return value (`gate.ts` carries the reasons).
  * - Every number reaches the document through {@link numberToString}, so the formatting of
  *   every written value can be changed, or audited, in one place.
  *
@@ -18,7 +18,7 @@
  * because its three-namespace lookup is what resolves `xml:id` under the bare name `id` —
  * the spelling every id in this port is read with. `xml/tree.js`'s `allChildElements` /
  * `firstChildElement(parent, name)` are NOT safe here: both are implemented with
- * `Element.query` (tree.ts:94, tree.ts:150), the XPath path D-A bans. Navigate with
+ * `Element.query` (tree.ts:94, tree.ts:150), the XPath path the design bans. Navigate with
  * `Element.getChildElements` / `Element.getFirstChildElement` instead.
  */
 import type { Element } from '../xml/XomTypes.js';
@@ -30,7 +30,7 @@ import { attribute } from '../xml/tree.js';
  * `String` is what the surrounding port already uses on this path (`TempoDef.setValue`,
  * `DynamicsDef.setValue`), so a value written here is spelled the way the same value
  * written through the MPM classes would be. Deliberately not `toFixed` or any rounding:
- * rounding is a lossy edit the caller never asked for. The §1.2 validation gate — not this
+ * rounding is a lossy edit the caller never asked for. The validation gate — not this
  * function — is what keeps non-finite values out of the document.
  */
 export function numberToString(value: number): string {

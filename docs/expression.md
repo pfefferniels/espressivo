@@ -127,7 +127,7 @@ const faster = exaggerateMpm(mpmText, {
 
 A weight above 1 can drive a factor negative below `s = 1` — `weightedFactors(0.3, {rubato: 1.5})`
 is about −0.05 — and `exaggerateMpm` rejects that, naming the dimension. Keeping the slider inside
-the admissible range is the caller's job; §8 of the design document has the per-dimension ranges.
+the admissible range is the caller's job.
 
 Rendering per tick: hold the parsed `Msm` and call `msmObj.exportExpressiveMidi(performance, ...)`
 instead of re-parsing through `renderExpressiveMidi` — ~1.2x here, since the MPM itself is fresh
@@ -135,8 +135,6 @@ every tick either way.
 
 ## The full model
 
-The per-attribute registry and the reasoning behind every inclusion and exclusion
-are in
-[docs/history/expression/DESIGN.md](https://github.com/pfefferniels/espressivo/blob/main/docs/history/expression/DESIGN.md)
-(a repository document — the npm package does not carry it); the relationship to the Java-era
-prototype these ideas came from is in [PARITY.md §7](../PARITY.md).
+The per-attribute registry — every MPM attribute the transform touches, and the scale space it
+is moved in — is `src/expression/registry.ts`. The relationship to the Java-era prototype these
+ideas came from is in [PARITY.md §7](../PARITY.md).

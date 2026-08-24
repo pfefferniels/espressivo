@@ -50,9 +50,9 @@ export interface AddOrnamentOptions {
    * keyword.
    */
   readonly noteOrder?: string | readonly string[];
-  /** `noteid` — the principal note, written exactly as given (DESIGN.md D7). */
+  /** `noteid` — the principal note, written exactly as given. */
   readonly noteid?: string;
-  /** `repetitions`; written only when it differs from the default `0` (DESIGN.md D12). */
+  /** `repetitions`; written only when it differs from the default `0`. */
   readonly repetitions?: number;
   /** The note pool, written as `<note>` children in the given order. */
   readonly notes?: readonly OrnamentNote[];
@@ -63,8 +63,7 @@ export interface AddOrnamentOptions {
 /**
  * The `scale` default (`ornament.xml:36-44`). It is `0.0`, not `1.0`: an `<ornament>` without
  * a `scale` is specified to produce no dynamics effect at all, which reads as a bug and is
- * not one (research/java-ts-v2-ornamentation.md §2.4 — the MEI importer writes `scale="0.0"`
- * explicitly for exactly this reason).
+ * not one — the MEI importer writes `scale="0.0"` explicitly for exactly this reason.
  */
 const DEFAULT_ORNAMENT_SCALE = 0.0;
 
@@ -161,7 +160,7 @@ export class OrnamentationMap extends GenericMap {
   }
 
   /**
-   * The v3 writer (DESIGN.md D12): only a caller who asked for v3 gets it.
+   * The v3 writer: only a caller who asked for v3 gets it.
    *
    * Two deliberate differences from the v2 writer, both fixing a round-trip asymmetry rather
    * than following it:
@@ -169,15 +168,15 @@ export class OrnamentationMap extends GenericMap {
    * - `scale` is written **always**, and defaults to the spec's `0.0` instead of `1.0`. The
    *   v2 writer omits `scale` when it is `1.0` while every reader defaults a missing `scale`
    *   to `0.0` (`ornament.xml:36-44`), so writing `1.0` and reading it back yields `0.0` — a
-   *   silently muted dynamics gradient. The reference implementation has the same bug
-   *   (research/lars-v3-implementation.md §5 note 1); D12 diverges from it here.
+   *   silently muted dynamics gradient. The reference implementation has the same bug; this
+   *   writer diverges from it here.
    * - `repetitions` is written **only** when it differs from `0`, so a v3 ornament that does
    *   not repeat looks like one (the reference stamps `repetitions="0"` onto everything).
    *
    * Attribute order extends the v2 order rather than the spec exemplum's (`ornament.xml:66-72`
    * leads with `noteid`): `date` and `name.ref` stay in front so a v2 and a v3 ornament read
    * alike in a diff, and each new attribute sits next to the one it qualifies. Order is
-   * byte-visible (CHARTER §79-80); no Java reference writes these attributes, so nothing
+   * byte-visible; no Java reference writes these attributes, so nothing
    * external binds the choice.
    */
   addOrnamentV3(options: AddOrnamentOptions): number {
@@ -296,7 +295,7 @@ export class OrnamentationMap extends GenericMap {
 
   /**
    * Read the three MPM v3 additions of an `<ornament>`: the principal reference `noteid`, the
-   * repeat count, and the note pool (DESIGN.md D7, D9, D1), plus `note.order` as written.
+   * repeat count, and the note pool, plus `note.order` as written.
    *
    * Shared by {@link getOrnamentDataOf} and by the inline reader inside {@link apply}, which
    * exists so that pass one can carry the style forward across entries — the two must agree on
@@ -392,9 +391,9 @@ export class OrnamentationMap extends GenericMap {
    * ornament it always returns an empty list. See {@link applyOrnament}; it is a
    * contract for note-generating ornaments, and MPM v3 is what fills it.
    *
-   * The v3 branch: an ornament that uses anything v2 cannot express (`isV3Ornament`, the
-   * DESIGN.md D6 gate — a note pool, `noteid`, `repetitions`, or the `note.order` grouping
-   * syntax) is *prepared* here and *instantiated* after the walk, so generated notes appear in
+   * The v3 branch: an ornament that uses anything v2 cannot express (`isV3Ornament` is the
+   * gate — a note pool, `noteid`, `repetitions`, or the `note.order` grouping syntax) is
+   * *prepared* here and *instantiated* after the walk, so generated notes appear in
    * the map only once the walk is over and a later v2 ornament's "every note at this date"
    * still collects what it always collected. See `ornamentInstantiation.ts` for why the
    * deferral is required rather than tidy.
@@ -480,11 +479,11 @@ export class OrnamentationMap extends GenericMap {
         ...OrnamentationMap.readV3OrnamentFields(ornamentXml),
       };
 
-      // MPM v3 (DESIGN.md D6): an ornament that generates notes leaves the v2 path here. It is
+      // MPM v3: an ornament that generates notes leaves the v2 path here. It is
       // only read now — its notes are created after the walk, see this method's comment.
       if (isV3Ornament(ornamentXml, od)) {
         // `expandOrnaments: false` stops here, before `prepareOrnament` — which reads the
-        // ornament but also writes `note.order.perf` back onto it (D7). Skipping the whole
+        // ornament but also writes `note.order.perf` back onto it. Skipping the whole
         // call is what makes "not expanded" mean the document is left as it was found.
         if (!expandOrnaments) continue;
         owners ??= noteOwners(maps);
@@ -553,7 +552,7 @@ export class OrnamentationMap extends GenericMap {
     }
 
     // MPM v3: every note-generating ornament, laid out and instantiated now that the walk has
-    // seen all of them (DESIGN.md D11 needs a principal's ornaments together). Nothing here
+    // seen all of them; the layout needs a principal's ornaments together. Nothing here
     // runs for a document without a v3 ornament.
     if (owners !== null) instantiateOrnaments(prepared, owners, maps);
   }
@@ -638,8 +637,8 @@ export class OrnamentationMap extends GenericMap {
    * A note without `milliseconds.date` is skipped outright — it is the reference point
    * every transformation here is relative to, so there is nothing to compute without it.
    *
-   * MPM v3 adds exactly one branch, `ornament.milliseconds.fromend.offset` (DESIGN.md's D5
-   * amendment): a frame aligned `at end` in the millisecond domain is anchored at a note's
+   * MPM v3 adds exactly one branch, `ornament.milliseconds.fromend.offset`: a frame aligned
+   * `at end` in the millisecond domain is anchored at a note's
    * millisecond END, which the symbolic phase cannot compute, so it is expressed as a static
    * offset from that end and resolved back into an ordinary onset shift here. Everything after
    * it is v2, unchanged, and reads the resolved shift. That branch is character-identical to
@@ -685,7 +684,7 @@ export class OrnamentationMap extends GenericMap {
         millisecondsDateAtt.setValue(String(millisecondsDate + ornamentMillisecondsDateOffset));
       }
 
-      // MPM v3 (DESIGN.md D5 amendment): a millisecond frame aligned "at end" is anchored at
+      // MPM v3: a millisecond frame aligned "at end" is anchored at
       // this note's millisecond END, which the symbolic phase cannot know, so it writes an
       // end-anchored marker instead of an onset offset. Resolving it into
       // ornamentMillisecondsDateOffset keeps the rest of this method v2. The end is read

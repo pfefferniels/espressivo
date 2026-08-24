@@ -127,7 +127,7 @@ export class Mpm extends AbstractMsm {
    * - `'accentuation'` and `'dynamicsGradient'`, the correct spellings of two names the
    *   reference misspells (Mpm.java:214, :218). The misspellings stay alongside them, since a
    *   document written by Java meico may legitimately carry them. See PARITY.md, "Fixed bugs".
-   * - `note`, the pool child an MPM v3 `<ornament>` may carry (DESIGN.md D1), which the spec
+   * - `note`, the pool child an MPM v3 `<ornament>` may carry, which the spec
    *   puts in the MPM namespace. No v2 document has an `<ornament>` with children at all, so
    *   no previous answer changes.
    */

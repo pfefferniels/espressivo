@@ -160,7 +160,7 @@ function checkOrnamentFlag(expandOrnaments: boolean | undefined): Checked {
     : rejected(`expandOrnaments must be a boolean, got ${String(expandOrnaments)}`);
 }
 
-/** The interior's own options object (§2.4). Defaults are resolved inside `src/mpm/`, not here. */
+/** The interior's own options object. Defaults are resolved inside `src/mpm/`, not here. */
 function toRenderOptions(options: PerformOptions | undefined): RenderOptions {
   orInvalidOption(checkPerformOptions(options));
   return {
@@ -193,7 +193,7 @@ function selectPerformance(mpm: Mpm, which: string | number | undefined): Perfor
 }
 
 // ---------------------------------------------------------------------------
-// Reading an augmented MSM (§2.3). XomTypes types appear here and nowhere else.
+// Reading an augmented MSM. XomTypes types appear here and nowhere else.
 // ---------------------------------------------------------------------------
 
 /**
@@ -248,7 +248,7 @@ function optionalString(name: string, e: Element): string | null {
  *   simply "the markers a *generated* note carries" (D10/D15).
  * - the last six — the v3 renderer's provenance stamp on a generated note.
  *
- * Read here rather than into an ornament-shaped mirror of the notes: §2's rule against a
+ * Read here rather than into an ornament-shaped mirror of the notes: the rule against a
  * second representation applies to ornaments as much as to notes.
  */
 const ORNAMENT_MARKER_ATTRIBUTES: readonly string[] = [
@@ -335,7 +335,7 @@ function ccNumberOf(controller: string | null): number {
  * The part's control-change streams: sub-note dynamics from the `channelVolumeMap`, movement
  * (pedalling) from the `positionMap`.
  *
- * Two readings §2 leaves open, decided here. A `positionMap` may mix controllers while a
+ * Two readings the design leaves open, decided here. A `positionMap` may mix controllers while a
  * stream carries exactly one, so entries are grouped by their `controller` value in
  * first-appearance order. And a map with no entries yields no stream at all rather than an
  * empty one. The entries are reported as the MSM holds them, in document order: the

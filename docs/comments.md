@@ -25,15 +25,15 @@ restatement is worse than nothing — it costs a read and rots independently. De
 - **Mutation and aliasing.** Which arguments are written through, what is safe to share.
 - **Deliberate deviation from meico.** Where the port does something the Java does not, or
   keeps a Java quirk on purpose, say which and why. The parity tests are the reason.
-- **Citations.** MIDI/MEI/MPM specification clauses, `DESIGN.md` sections, `docs/history/`
-  rulings. Cite; do not paraphrase at length.
+- **Citations.** MIDI/MEI/MPM specification clauses, `ARCHITECTURE.md` rules, `PARITY.md`
+  entries. Cite; do not paraphrase at length.
 - **Measured facts.** A number that came from running something, with what it was measuring.
 
 ## What does not
 
-- **How the code got here.** "This used to be…", "no longer", "T20 dissolved…", phase and
-  task ids, notes about earlier notes. That is the commit log's job, and the commit log
-  already has it.
+- **How the code got here.** "This used to be…", "no longer", "dissolved in the rewrite",
+  phase and task ids, notes about earlier notes. That is the commit log's job, and the commit
+  log already has it.
 - **Restatement.** `// increment i` over `i++`; a `@param bytes the bytes` that repeats the
   signature.
 - **Argument and self-assessment.** The code does not need to be defended, praised, or
@@ -49,7 +49,7 @@ citation, or its scoping qualifier, still compiles and still reads well — and 
 unsupported or wrong. So when comments are edited in bulk, diff the **citation set** and the
 **measured-number set** of every file before and after, and account for each loss individually:
 
-- citations: `AD-nn`, `§n.n`, rule ids, `PARITY.md`, `docs/history/…`, `Foo.java:nn`
+- citations: `§n.n`, rule ids, `PARITY.md`, `Foo.java:nn`
 - measured numbers: anything with `%`, `·10`, `ulp`, `nepers` — the record of a falsification
 
 Most losses are correct — a review-round id, a stale status note — but they should be losses

@@ -1,8 +1,8 @@
 /**
- * Rubato and asynchrony — DESIGN.md §5.2 and §5.7.
+ * Rubato and asynchrony.
  *
  * The two dimensions that are not logarithmic curves: rubato is a saw-toothed displacement in
- * quarters, asynchrony a step function in milliseconds priced by §4's capped metric. Between
+ * quarters, asynchrony a step function in milliseconds priced by the capped metric. Between
  * them they carry the `⊥` path, the `grid-truncated` path, and the `@loop` gate — the three
  * behaviours a reader is most likely to get backwards.
  */
@@ -64,7 +64,7 @@ const asynchronyFor = (body: string): AsynchronyCurve =>
 // Rubato
 // ---------------------------------------------------------------------------
 
-describe('rubato: the @loop gate (AD-10)', () => {
+describe('rubato: the @loop gate', () => {
   const WARP = 'frameLength="720.0" intensity="2.0"';
 
   it('warps only the FIRST frame when @loop is absent', () => {
@@ -108,7 +108,7 @@ describe('rubato: the @loop gate (AD-10)', () => {
   });
 });
 
-describe('rubato: the neutral parametrization is EXACTLY zero (M18)', () => {
+describe('rubato: the neutral parametrization is EXACTLY zero', () => {
   it('returns 0 without arithmetic for intensity 1 / lateStart 0 / earlyEnd 1', () => {
     const curve = rubatoFor(
       '<rubato date="0.0" frameLength="22.0" intensity="1.0" lateStart="0.0" earlyEnd="1.0" loop="true"/>' +
@@ -165,7 +165,7 @@ describe('rubato: clamps run before evaluation (RubatoMap.ts:136-141)', () => {
 });
 
 describe('rubato: skipped instructions and the frame cap', () => {
-  it('leaves an unwarped gap with a breakpoint where @frameLength is missing (R23)', () => {
+  it('leaves an unwarped gap with a breakpoint where @frameLength is missing', () => {
     const curve = rubatoFor(
       '<rubato date="0.0" frameLength="720.0" intensity="2.0" loop="true"/>' +
         '<rubato date="1440.0" intensity="3.0"/>' +
@@ -177,7 +177,7 @@ describe('rubato: skipped instructions and the frame cap', () => {
     expect(curve.breakpointsTicks).toContain(1440);
   });
 
-  it('caps the frame boundaries and reports it (AD-10/R25)', () => {
+  it('caps the frame boundaries and reports it', () => {
     // frameLength=1 over a long span would otherwise put ~10^6 boundaries in the grid.
     const curve = rubatoFor(
       '<rubato date="0.0" frameLength="1.0" intensity="2.0" loop="true"/>' +
@@ -187,14 +187,14 @@ describe('rubato: skipped instructions and the frame cap', () => {
     expect(curve.notes.some((note) => note.kind === 'grid-truncated')).toBe(true);
   });
 
-  it('is 0 everywhere for an absent map (R6)', () => {
+  it('is 0 everywhere for an absent map', () => {
     expect(displacementTicksAt(neutralRubatoCurve(), 500)).toBe(0);
   });
 });
 
 describe('rubato: the structural u* split (rule 2c) — RG-2', () => {
   /**
-   * Tested at the FUNCTION level, deliberately: AD-34.1 emits the structural split AND the K=16
+   * Tested at the FUNCTION level, deliberately: the integrator emits the structural split AND the K=16
    * mesh together, and those two are measured identical over 3906 pairs (0 wrong, worst
    * 2.718e-4), so no distance-level assertion can distinguish "rule 2c is present" from "rule 2c
    * was deleted". The device is therefore pinned directly.
@@ -275,11 +275,11 @@ describe('rubato: distance', () => {
     ).distance;
   };
 
-  it('P-C1 identity: exactly 0 against itself', () => {
+  it('identity: exactly 0 against itself', () => {
     expect(distanceBetween(WARPED, WARPED)).toBe(0);
   });
 
-  it('P-C2 symmetry: bit-exact under swapping', () => {
+  it('symmetry: bit-exact under swapping', () => {
     const other = WARPED.replace('intensity="2.0"', 'intensity="3.0"');
     expect(distanceBetween(WARPED, other)).toBe(distanceBetween(other, WARPED));
   });
@@ -290,7 +290,7 @@ describe('rubato: distance', () => {
     ).toBeGreaterThan(0);
   });
 
-  it('varies lateStart/earlyEnd, the family that hid CAPITAL-4 (MAJOR-3)', () => {
+  it('varies lateStart/earlyEnd, the family that hid CAPITAL-4', () => {
     // At lateStart=0 / earlyEnd=1, delta-delta vanishes at both frame ends and is single-signed
     // between them — the ONE parameter family in which the sign-cancellation defect cannot
     // occur, and the family every other distance case here sits in.
@@ -305,7 +305,7 @@ describe('rubato: distance', () => {
     expect(d).toBeCloseTo(4 * 1.587576, 2);
   });
 
-  it('stays symmetric on a windowed pair (R2)', () => {
+  it('stays symmetric on a windowed pair', () => {
     const windowed = (i: string, ls: string, ee: string) =>
       `<rubato date="0.0" frameLength="720.0" intensity="${i}" lateStart="${ls}" earlyEnd="${ee}" loop="true"/>` +
       '<rubato date="2880.0" frameLength="720.0"/>';
@@ -314,7 +314,7 @@ describe('rubato: distance', () => {
     expect(Object.is(distanceBetween(a, b), distanceBetween(b, a))).toBe(true);
   });
 
-  it('P-C3 triangle with the relative tolerance', () => {
+  it('triangle with the relative tolerance', () => {
     const two = WARPED;
     const three = WARPED.replace('intensity="2.0"', 'intensity="3.0"');
     const four = WARPED.replace('intensity="2.0"', 'intensity="4.0"');
@@ -330,7 +330,7 @@ describe('rubato: distance', () => {
 // ---------------------------------------------------------------------------
 
 describe('asynchrony: the step curve', () => {
-  it('is 0 ms everywhere for an absent map (R6)', () => {
+  it('is 0 ms everywhere for an absent map', () => {
     const offset = offsetAt(neutralAsynchronyCurve(), 500);
     expect(isBottom(offset)).toBe(false);
     expect(offset.kind === 'value' && offset.value).toBe(0);
@@ -359,7 +359,7 @@ describe('asynchrony: the step curve', () => {
   });
 });
 
-describe('asynchrony: ANY entry ends the span, and a foreign one is ⊥ (AD-33.1)', () => {
+describe('asynchrony: ANY entry ends the span, and a foreign one is ⊥', () => {
   const STYLED =
     '<asynchrony date="0.0" milliseconds.offset="50.0"/>' +
     '<style date="1440.0" name.ref="S"/>' +
@@ -367,7 +367,7 @@ describe('asynchrony: ANY entry ends the span, and a foreign one is ⊥ (AD-33.1
 
   it('opens a ⊥ span on a <style>, not a neutral gap', () => {
     // The map reads an offset off the <style> with no local-name test, gets
-    // parseFloat('') = NaN, and every note in the span vanishes from the MIDI export — the R24
+    // parseFloat('') = NaN, and every note in the span vanishes from the MIDI export — the
     // condition through a foreign element. Priced as a neutral gap instead, the disputed span
     // is out by a factor of 30.
     const curve = asynchronyFor(STYLED);
@@ -399,7 +399,7 @@ describe('asynchrony: ANY entry ends the span, and a foreign one is ⊥ (AD-33.1
   });
 });
 
-describe('asynchrony: a missing offset is ⊥, not 0 (R24/AD-1)', () => {
+describe('asynchrony: a missing offset is ⊥, not 0', () => {
   const POISONED =
     '<asynchrony date="0.0" milliseconds.offset="50.0"/>' +
     '<asynchrony date="1440.0"/>' +
@@ -468,7 +468,7 @@ describe('asynchrony: distance is exact', () => {
     expect(result.capped).toBe(false);
   });
 
-  it('P-C1 identity and P-C2 symmetry', () => {
+  it('identity and symmetry', () => {
     expect(distanceBetween(FIFTY, FIFTY).distance).toBe(0);
     expect(distanceBetween(FIFTY, TWENTY).distance).toBe(distanceBetween(TWENTY, FIFTY).distance);
   });

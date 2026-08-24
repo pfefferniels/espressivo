@@ -1,5 +1,5 @@
 /**
- * The scale spaces of the expression-transform engine (docs/history/expression/DESIGN.md §1).
+ * The scale spaces of the expression-transform engine.
  *
  * Every exaggerable MPM attribute has a monotone bijection `T : D → ℝ` from its musical
  * domain with `T(neutral) = 0`, and the whole engine is one formula in different `T`s:
@@ -7,18 +7,18 @@
  *     x' = T⁻¹( s · T(x) )
  *
  * Pure functions of numbers — no XML, no DOM, no knowledge of which attribute a value came
- * from. Which space an attribute lives in is registry data (DESIGN §7); what a space does is
- * here. Every transform returns a {@link TransformResult}, and DESIGN §1.2's gate turns a
+ * from. Which space an attribute lives in is registry data; what a space does is
+ * here. Every transform returns a {@link TransformResult}, and the gate turns a
  * refusal into a reported skip; the invariant behind that is that the engine never writes a
  * non-finite value. `throw` is reserved for programmer errors (an unknown space tag).
  *
- * Closed forms, not `exp`/`log` round trips (DESIGN §1): `μ·(x/μ)^s` rather than
+ * Closed forms, not `exp`/`log` round trips: `μ·(x/μ)^s` rather than
  * `μ·exp(s·(ln x − ln μ))`, since the round trip is not the identity in doubles even at the
  * fixed points (`μ·(48/μ)¹ = 47.99999999999999`) and `0 · T(x)` is `0·∞ = NaN` at the boundary
- * values §7.5 declares admissible. `Math.pow` rather than `**` throughout, following the
+ * values the design declares admissible. `Math.pow` rather than `**` throughout, following the
  * rendering math this is compared against (`RubatoMap.computeRubatoTransformation`).
  *
- * Refusal is a boundary phenomenon, not a rounding complaint (A3): a result landing on an exact
+ * Refusal is a boundary phenomenon, not a rounding complaint: a result landing on an exact
  * bound has left the open domain the renderer needs, as `meanTempoAt` at exactly 1.0 turns a
  * transition into a constant tempo at the other endpoint.
  */
@@ -31,9 +31,9 @@ import { head, isNonEmpty } from '../prelude/seq.js';
  *
  * - `out-of-domain-input` — the value, the factor, or a space parameter (a center, an
  *   interval bound, the minimum rubato window) is outside its admissible domain, or is
- *   non-finite. DESIGN §1.2: such a value is skipped and reported, never repaired.
+ *   non-finite. Such a value is skipped and reported, never repaired.
  * - `saturation-to-boundary` — the result is mathematically interior but rounds to an
- *   exact bound of the space in doubles (A3's "cliff").
+ *   exact bound of the space in doubles (the "cliff").
  * - `non-finite-result` — the closed form overflowed; the last line of the never-write-a-NaN
  *   invariant, not an expected outcome.
  */
@@ -54,45 +54,45 @@ const transformed = ok;
 const refused = err;
 
 /**
- * `s = 1` is the identity by contract, not by arithmetic (DESIGN §1.1, A2). The
+ * `s = 1` is the identity by contract, not by arithmetic. The
  * dimension-level short-circuit is the primary guarantee; this is the defensive one.
  */
 const IDENTITY_FACTOR = 1;
 
 /**
- * `s = 0` is admissible in every space and means "write the neutral" (DESIGN §1, A3),
+ * `s = 0` is admissible in every space and means "write the neutral",
  * implemented as a branch precisely because `0 · T(x)` is `NaN` where `T(x)` is infinite.
  */
 const NEUTRALIZING_FACTOR = 0;
 
-/** `T = ln x` puts the neutral of a pure ratio gain at 1 (DESIGN §1). */
+/** `T = ln x` puts the neutral of a pure ratio gain at 1. */
 const LOG_AROUND_ONE_NEUTRAL = 1;
 
-/** `T = identity` puts the neutral of a signed offset at 0 (DESIGN §1). */
+/** `T = identity` puts the neutral of a signed offset at 0. */
 const GAIN_NEUTRAL = 0;
 
 /**
- * The infimum of `ℝ>0`, the domain of both log spaces. Not an admissible input (§7.2/§7.6
+ * The infimum of `ℝ>0`, the domain of both log spaces. Not an admissible input (the
  * reject tempo 0 and intensity 0), and the one finite value an output can underflow to —
  * hence also their saturation bound.
  */
 const POSITIVE_DOMAIN_INFIMUM = 0;
 
 /**
- * Boundary-power lives on the closed unit interval. DESIGN §1's table gives `T`'s natural domain
- * as `[0,1)` / `(0,1]`, but §7.5 and §7.14 declare the far bound an admissible fixed point
+ * Boundary-power lives on the closed unit interval. The table gives `T`'s natural domain
+ * as `[0,1)` / `(0,1]`, but the far bound is an admissible fixed point
  * reached "by the closed form, not `0·∞`" — `curvature = 1` is a real authored value, and the
  * closed form is total on `[0,1]`.
  */
 const BOUNDARY_POWER_LOWER = 0;
 const BOUNDARY_POWER_UPPER = 1;
 
-/** The rubato window that applies no trim at all: `lateStart = 0`, `earlyEnd = 1` (§7.6). */
+/** The rubato window that applies no trim at all: `lateStart = 0`, `earlyEnd = 1`. */
 const RUBATO_NEUTRAL_LATE_START = 0;
 const RUBATO_NEUTRAL_EARLY_END = 1;
 
 /**
- * The admissible-`s` domain of a scale space (DESIGN §1, A3). A dimension's domain is the
+ * The admissible-`s` domain of a scale space. A dimension's domain is the
  * intersection over its registry rows, and a factor outside it is an `InvalidOptionError` raised
  * by the facade before anything is parsed — not a clamp. `non-negative` is a mathematical
  * constraint: boundary-power's `T` ranges over a half-line, so `s < 0` leaves it and P3 (domain
@@ -110,11 +110,11 @@ export type ScaleSpace =
   | { readonly kind: 'gain' }
   | { readonly kind: 'gain-ordered' };
 
-/** Every scale space by tag, plus `joint-trim` (§7.6) — a pair transform, not a scalar space. */
+/** Every scale space by tag, plus `joint-trim` — a pair transform, not a scalar space. */
 export type ScaleSpaceTag = ScaleSpace['kind'] | 'joint-trim';
 
 /**
- * The s-domain of every scale space (DESIGN §1's table, A3). `joint-trim` inherits
+ * The s-domain of every scale space. `joint-trim` inherits
  * boundary-power's `s ≥ 0` because it is a boundary-power(low) transform of the total trim.
  */
 export const SCALE_SPACE_FACTOR_DOMAINS: Readonly<Record<ScaleSpaceTag, FactorDomain>> = {
@@ -133,7 +133,7 @@ function satisfiesFactorDomain(domain: FactorDomain, s: number): boolean {
   return domain === 'real' || s >= NEUTRALIZING_FACTOR;
 }
 
-/** Whether `s` is admissible in the named space; a non-finite `s` never is (R3/A11). */
+/** Whether `s` is admissible in the named space; a non-finite `s` never is. */
 export function isAdmissibleFactor(tag: ScaleSpaceTag, s: number): boolean {
   return satisfiesFactorDomain(SCALE_SPACE_FACTOR_DOMAINS[tag], s);
 }
@@ -144,7 +144,7 @@ export function isAdmissibleFactor(tag: ScaleSpaceTag, s: number): boolean {
  */
 interface ScalarSpace {
   readonly factorDomain: FactorDomain;
-  /** The value at which the *renderer* becomes the identity (DESIGN §7's `neutral`). */
+  /** The value at which the *renderer* becomes the identity (the `neutral`). */
   readonly neutral: number;
   readonly contains: (x: number) => boolean;
   /**
@@ -156,7 +156,7 @@ interface ScalarSpace {
 }
 
 /**
- * The read→validate→transform→validate pipeline of DESIGN §1.2, at value level. Order is
+ * The read→validate→transform→validate pipeline, at value level. Order is
  * load-bearing: domain checks first, so a refused input can never be returned as a success by
  * the `s = 1` branch; then the `s = 1` and `s = 0` branches, so neither depends on arithmetic
  * that is inexact or undefined; finiteness and saturation last, on the result.
@@ -174,7 +174,7 @@ function applyScalar(space: ScalarSpace, x: number, s: number): TransformResult 
   // in these spaces is `+0`, so the sign carries nothing.
   const result = computed === 0 ? 0 : computed;
   for (const bound of space.saturationBounds) {
-    // An input already on the bound is a fixed point, not a cliff (§7.5 admits `curvature = 1`
+    // An input already on the bound is a fixed point, not a cliff (the design admits `curvature = 1`
     // and `protraction = ±1`); saturation is an interior value rounded onto a bound.
     if (result === bound && x !== bound) return refused('saturation-to-boundary');
   }
@@ -194,9 +194,9 @@ function logAroundCenterSpace(center: number): ScalarSpace {
 }
 
 /**
- * Level values around a performance-wide center: `x' = μ·(x/μ)^s` (DESIGN §1, §7.1). `center`
+ * Level values around a performance-wide center: `x' = μ·(x/μ)^s`. `center`
  * is {@link geometricMean} of the population the run will transform, or the caller's
- * `options.center`, in quarter-note-normalized space for tempo (`bpm·beatLength·4`, §7.2) —
+ * `options.center`, in quarter-note-normalized space for tempo (`bpm·beatLength·4`) —
  * which this function neither knows nor checks.
  *
  * Domain: `x > 0`, `center > 0`, `s ∈ ℝ`. Refuses a result that underflows to 0.
@@ -217,9 +217,9 @@ const LOG_AROUND_ONE_SPACE: ScalarSpace = {
 };
 
 /**
- * Pure ratio gains: `x' = x^s`, neutral 1 (DESIGN §1). Rubato intensity, ornament spacing
+ * Pure ratio gains: `x' = x^s`, neutral 1. Rubato intensity, ornament spacing
  * intensity, relative articulation factors. Domain `x > 0`, `s ∈ ℝ`; the gate rejects `x ≤ 0`
- * rather than repairing it, which is why A4 dropped the ornament-intensity epsilon floor — this
+ * rather than repairing it, which is why the ornament-intensity epsilon floor was dropped — this
  * space cannot produce a non-positive result from a positive input.
  */
 export function logAroundOne(x: number, s: number): TransformResult {
@@ -241,20 +241,19 @@ function logitSpace(lower: number, upper: number): ScalarSpace {
     saturationBounds: [lower, upper],
     // `a + (b−a)/(1 + ((b−x)/(x−a))^s)`, the reciprocal arrangement of `T⁻¹`. Written the
     // other way round — `a + (b−a)·u^s/(1+u^s)` with `u = (x−a)/(b−x)` — it is `∞/∞ = NaN`
-    // at `x = b`, which §7.5's admissible `protraction = 1` reaches by construction.
+    // at `x = b`, which the admissible `protraction = 1` reaches by construction.
     closedForm: (x, s) => lower + (upper - lower) / (1 + Math.pow((upper - x) / (x - lower), s)),
   };
 }
 
 /**
- * Bounded proportions with an interior neutral: `meanTempoAt` on (0,1), `protraction` on (−1,1)
- * (DESIGN §1, D-D).
+ * Bounded proportions with an interior neutral: `meanTempoAt` on (0,1), `protraction` on (−1,1).
  *
- * Domain: the closed `[lower, upper]`, because §7.5/§7.14 declare `protraction = ±1` admissible
+ * Domain: the closed `[lower, upper]`, because `protraction = ±1` is admissible
  * boundary fixed points reached through the closed form; a narrower predicate — `meanTempoAt`
- * is open (0,1) per §7.3 — is enforced in the registry's gate, not here. `s ∈ ℝ`, and the range
+ * is open (0,1) per is enforced in the registry's gate, not here. `s ∈ ℝ`, and the range
  * is `[lower, upper]` for every real `s`, so P3 holds unconditionally. A result that rounds onto
- * an exact bound is refused (A3): §7.3's measured cliff, reproduced exactly — `x = 0.99`
+ * an exact bound is refused: the measured cliff, reproduced exactly — `x = 0.99`
  * saturates at `s = 8`, `x = 0.9` at `s = 17`.
  */
 export function logit(x: number, s: number, lower: number, upper: number): TransformResult {
@@ -273,11 +272,11 @@ const BOUNDARY_POWER_LOW_SPACE: ScalarSpace = {
 };
 
 /**
- * Proportions whose neutral is the lower bound: `x' = 1 − (1−x)^s` (DESIGN §1). Dynamics and
- * pedal curvature (§7.5, §7.14), and the rubato window's total trim (§7.6).
+ * Proportions whose neutral is the lower bound: `x' = 1 − (1−x)^s`. Dynamics and
+ * pedal curvature, and the rubato window's total trim.
  *
  * Domain `[0,1]`, `s ≥ 0`: `T`'s range is the half-line `(−∞,0]`, so `s < 0` leaves it and the
- * result leaves `[0,1]`. A6's saturation refusal: once `(1−x)^s < 2⁻⁵⁴`, `1 − (1−x)^s` rounds
+ * result leaves `[0,1]`. The saturation refusal: once `(1−x)^s < 2⁻⁵⁴`, `1 − (1−x)^s` rounds
  * to exactly 1.0 — measured at `x = 0.9, s = 17` — and a curvature or trim of exactly 1 is a
  * renderer cliff, not an extreme setting.
  */
@@ -294,9 +293,9 @@ const BOUNDARY_POWER_HIGH_SPACE: ScalarSpace = {
 };
 
 /**
- * Proportions whose neutral is the upper bound: `x' = x^s`, neutral 1 (DESIGN §1). No registry
- * row uses it standalone, since `earlyEnd`, its only candidate, is half of the joint trim
- * (§7.6). Domain `[0,1]`, `s ≥ 0`, symmetric with {@link boundaryPowerLow} including the
+ * Proportions whose neutral is the upper bound: `x' = x^s`, neutral 1. No registry
+ * row uses it standalone, since `earlyEnd`, its only candidate, is half of the joint trim.
+ * Domain `[0,1]`, `s ≥ 0`, symmetric with {@link boundaryPowerLow} including the
  * far-bound fixed point at `x = 0`.
  */
 export function boundaryPowerHigh(x: number, s: number): TransformResult {
@@ -317,7 +316,7 @@ const ORDERED_GAIN_SPACE: ScalarSpace = {
 };
 
 /**
- * Signed offsets: `x' = s·x`, neutral 0 (DESIGN §1, D-E). Asynchrony milliseconds, ornament
+ * Signed offsets: `x' = s·x`, neutral 0. Asynchrony milliseconds, ornament
  * gradient endpoints, absolute articulation deltas. Domain ℝ, `s ∈ ℝ`; no saturation bound,
  * since 0 is this space's interior neutral rather than an escape from the domain, so a result
  * of 0 is written, not refused.
@@ -327,10 +326,10 @@ export function gain(x: number, s: number): TransformResult {
 }
 
 /**
- * {@link gain} restricted to `s ≥ 0` — the stricter s-domain DESIGN §1 attaches to gains that
- * carry an ordering or sign constraint: imprecision limit pairs (§7.13, where `s < 0` inverts
- * every lower/upper pair), `frameLength` (§7.9, where a negative value collapses the spread to
- * a point instead of reversing it), and `accentuationPattern@scale` (§7.8, where `s < 0`
+ * {@link gain} restricted to `s ≥ 0` — the stricter s-domain that attaches to gains which
+ * carry an ordering or sign constraint: imprecision limit pairs (where `s < 0` inverts
+ * every lower/upper pair), `frameLength` (where a negative value collapses the spread to
+ * a point instead of reversing it), and `accentuationPattern@scale` (where `s < 0`
  * inverts the accent contour).
  */
 export function orderedGain(x: number, s: number): TransformResult {
@@ -370,14 +369,14 @@ export function transformInSpace(space: ScaleSpace, x: number, s: number): Trans
   return applyScalar(scalarSpaceOf(space), x, s);
 }
 
-/** The value at which the renderer becomes the identity — what `s = 0` writes (A3). */
+/** The value at which the renderer becomes the identity — what `s = 0` writes. */
 export function neutralOf(space: ScaleSpace): number {
   return scalarSpaceOf(space).neutral;
 }
 
 /**
  * The space's own value domain: the widest set on which its closed form is total and
- * domain-closed. A registry row may narrow it (§7.3's open (0,1) for `meanTempoAt`); it may
+ * domain-closed. A registry row may narrow it (the open (0,1) for `meanTempoAt`); it may
  * not widen it.
  */
 export function isInValueDomain(space: ScaleSpace, x: number): boolean {
@@ -385,31 +384,31 @@ export function isInValueDomain(space: ScaleSpace, x: number): boolean {
   return Number.isFinite(x) && scalar.contains(x);
 }
 
-// --- The forward maps themselves (comparison/DESIGN.md §4) -------------------------------
+// --- The forward maps themselves -------------------------------
 //
 // Everything above composes `T` with `T⁻¹` and never exposes the bijection in between. A
-// *distance* needs the bijection alone: comparison/DESIGN.md §4's local metric is
+// *distance* needs the bijection alone: the local metric is
 // `d_row(x,y) = min(|T(x) − T(y)| / jnd_row, 2·δ_row)`. Sole consumer: `src/comparison/**`.
-// They live beside the closed forms they are property-tested against (comparison §4/§9.7, A24).
+// They live beside the closed forms they are property-tested against.
 //
 // This block is the one place in this module that returns a non-finite number on legal input:
 // the invariant above is about what the engine *writes*, and nothing here writes. `T` is
-// genuinely infinite at the boundary fixed points §7.5 declares admissible, and comparison §4
+// genuinely infinite at the boundary fixed points the design declares admissible, and comparison
 // prices that with the cap above. So the boundaries return ±Infinity and the caller caps:
 // `boundary-power-low` at `x = 1`, `boundary-power-high` and the logarithms at `x = 0`,
 // `logit` at both bounds.
 //
 // These maps do not gate their input; the gate is the registry row's own predicate
-// (comparison §4's `valueDomain`), of which `isInValueDomain` is the space-level form. Out of
-// domain a log-space map returns `NaN` (`ln` of a negative), which comparison §4 makes a typed
+// (comparison the `valueDomain`), of which `isInValueDomain` is the space-level form. Out of
+// domain a log-space map returns `NaN` (`ln` of a negative), which comparison the design makes a typed
 // document error rather than a distance, while a boundary-power map returns a finite number
 // with no signal at all — which is why the gate runs first.
 
 /**
  * `T = ln x` — the forward map of {@link logAroundOne}, and the one comparison uses for the
- * level spaces too (comparison §4), because the center cancels in every difference
+ * level spaces too, because the center cancels in every difference
  * (`ln(x/μ) − ln(y/μ) = ln(x/y)`) and dropping it is a correctness requirement: a center is a
- * property of one performance (§7.1), so two documents bring two centers and `|T_A(x) − T_B(y)|`
+ * property of one performance, so two documents bring two centers and `|T_A(x) − T_B(y)|`
  * would not be symmetric under swapping them.
  *
  * `ln 0 = −∞`; `ln x` for `x < 0` is `NaN`.
@@ -438,7 +437,7 @@ export function forwardLogit(x: number, lower: number, upper: number): number {
 
 /**
  * `T = ln(1 − x)` — the forward map of {@link boundaryPowerLow}, zero at the lower bound and
- * `−∞` at `x = 1` (`curvature = 1`, a value §7.5 admits and comparison §4 caps).
+ * `−∞` at `x = 1` (`curvature = 1`, a value the design admits and comparison caps).
  */
 export function forwardBoundaryPowerLow(x: number): number {
   return Math.log(1 - x);
@@ -496,7 +495,7 @@ export interface RubatoWindow {
 }
 
 /**
- * The rubato window's joint trim (DESIGN §7.6, RESOLVED-2, A6).
+ * The rubato window's joint trim.
  *
  * `lateStart` and `earlyEnd` are not two independent boundary-power values: given independent
  * maps they cross at the `s` solving `ee^s + (1−ls)^s = 1` — s ≈ 1.36 for a trimmed window —
@@ -509,18 +508,18 @@ export interface RubatoWindow {
  * preserved ratio `lateStart : (1 − earlyEnd)`. The neutral (0,1) is fixed, `t` composes
  * exactly, and P5 is restored.
  *
- * The A6 guard clamps `t'` to `1 − minWindow` before the split and asserts `ls' < ee'` on the
+ * The guard clamps `t'` to `1 − minWindow` before the split and asserts `ls' < ee'` on the
  * computed pair. Without it the ℝ proof fails in doubles: once `(1−t)^s < 2⁻⁵⁴`, `1 − (1−t)^s`
  * rounds to exactly 1.0, the split returns `a' + b' = 1`, and the renderer's inclusive
  * `lateStart >= earlyEnd` test trips the very cliff the joint trim exists to remove. That makes
- * this the one place saturation is absorbed rather than refused (§8's rubato row); the only
- * refusal left is the failed assertion, for which the applier raises A6's typed engine error,
+ * this the one place saturation is absorbed rather than refused (the rubato row); the only
+ * refusal left is the failed assertion, for which the applier raises the typed engine error,
  * because only it knows the site.
  *
- * @param window `0 ≤ lateStart < earlyEnd ≤ 1`, the *effective* window of the site (§7.6
+ * @param window `0 ≤ lateStart < earlyEnd ≤ 1`, the *effective* window of the site (the
  *   requires def/element inheritance to be resolved before this is called).
  * @param minWindow the caller's `options.minRubatoWindow`, in (0,1). An IEEE saturation guard,
- *   not a musical bound — DESIGN §4 defaults it to 1e-6.
+ *   not a musical bound — it defaults to 1e-6.
  */
 export function jointTrimWindow(
   window: RubatoWindow,
@@ -562,8 +561,8 @@ export function jointTrimWindow(
   }
 
   // Deliberately not `boundaryPowerLow(totalTrim, s)`: that function refuses a result rounding
-  // onto an exact bound (A3), and here the clamp is the documented remedy for exactly that
-  // case (§8's rubato row). A saturating `t'` is clamped into the window, not refused.
+  // onto an exact bound, and here the clamp is the documented remedy for exactly that
+  // case (the rubato row). A saturating `t'` is clamped into the window, not refused.
   // `t ∈ [0,1)` follows from `0 ≤ ls < ee ≤ 1`, so the closed form is finite for every s ≥ 0.
   const rawTrim = 1 - Math.pow(1 - totalTrim, s);
   const guardedTrim = Math.min(rawTrim, RUBATO_NEUTRAL_EARLY_END - minWindow);
@@ -578,7 +577,7 @@ export function jointTrimWindow(
   ) {
     return refused('non-finite-result');
   }
-  // A6's pre-write assertion, on the computed pair rather than on `t'`: `ls'` and `ee'` are
+  // the pre-write assertion, on the computed pair rather than on `t'`: `ls'` and `ee'` are
   // rounded independently, so `t' < 1` does not by itself prove the pair is ordered.
   if (!(transformedWindow.lateStart < transformedWindow.earlyEnd)) {
     return refused('saturation-to-boundary');
@@ -587,10 +586,9 @@ export function jointTrimWindow(
 }
 
 /**
- * The unweighted geometric mean — the center of the `tempo` and `dynamics` level populations
- * (DESIGN §7.1, A5).
+ * The unweighted geometric mean — the center of the `tempo` and `dynamics` level populations.
  *
- * The caller supplies the already-filtered population: §7.1 computes the skip set first, and the
+ * The caller supplies the already-filtered population: the skip set is computed first, and the
  * population is exactly the distinct element sites the run will transform — numeric level
  * attributes counted once each, plus every referenced def `@value` counted once per def element,
  * with `@transition.to` excluded. That set is what makes the center invariant under the

@@ -1,15 +1,15 @@
 /**
- * P-C2 and P-C11 at the facade — the two properties that are about the REPORT rather than about
+ * Symmetry and finiteness at the facade — the two properties that are about the REPORT rather than about
  * a number in it.
  *
- * P-C2 (symmetry) is asserted on `JSON.stringify` with no replacer and no indentation, because
- * that is what §9.5 pins: "bit-identical output modulo the explicit swap/negation map".
+ * Symmetry is asserted on `JSON.stringify` with no replacer and no indentation, because
+ * that is what the design pins: "bit-identical output modulo the explicit swap/negation map".
  * Comparing distances alone would miss an asymmetric segment ranking, an asymmetric note order
  * or a field that carries a document's identity without swapping. The swap map is written out
  * as CODE in {@link mirror}, so a field that needs mirroring and does not get it fails here.
  *
- * P-C11 (finiteness) walks every number of every result over the whole vendored corpus and the
- * degenerate shapes §9.6 names: finite or `null`, never `NaN`, `Infinity` or `undefined` — the
+ * Finiteness walks every number of every result over the whole vendored corpus and the
+ * degenerate shapes the design names: finite or `null`, never `NaN`, `Infinity` or `undefined` — the
  * discipline `tests/api/plain-data.test.ts` applies to the other two facades.
  */
 import { describe, it, expect } from 'vitest';
@@ -55,7 +55,7 @@ type Mutable = Record<string, unknown>;
 /**
  * The mirror of a report: what `compare(b, a)` must serialize to, given `compare(a, b)`.
  *
- * Three kinds of field, and they are NOT the same operation (§9.5): a pair of fields SWAPS, a
+ * Three kinds of field, and they are NOT the same operation: a pair of fields SWAPS, a
  * signed descriptor NEGATES, and a ratio INVERTS. The map written out here is the contract.
  */
 function mirror(report: ComparisonReport): ComparisonReport {
@@ -101,7 +101,7 @@ function mirror(report: ComparisonReport): ComparisonReport {
   if (drift !== null) {
     swap(drift, 'secondsA', 'secondsB');
     drift.difference = negate(drift.difference);
-    // §9.5 says the ratio INVERTS, which is true of the real number and NOT of the double:
+    // the design says the ratio INVERTS, which is true of the real number and NOT of the double:
     // `1/(a/b)` and `b/a` differ by ulps, measured at 2 on the Albert pair
     // (1.0439297220611783 against 1.0439297220611785). So the mirror takes the quotient of the
     // SWAPPED seconds, which is what the engine computes.
@@ -117,7 +117,7 @@ function mirror(report: ComparisonReport): ComparisonReport {
     }
 
   // The document ROLE swaps, on notes and on the sites they carry, and the note order is a
-  // function of that role (§9.5) — so the array is re-sorted rather than left where the swap
+  // function of that role — so the array is re-sorted rather than left where the swap
   // put it, which would leak the orientation.
   const notes = (copy.notes as Mutable[]).map((note): Mutable => {
     const site = note.site as Mutable | null;
@@ -152,7 +152,7 @@ function swapRole(role: unknown): unknown {
 }
 
 // ---------------------------------------------------------------------------
-// P-C2
+// symmetry
 // ---------------------------------------------------------------------------
 
 interface Pair {
@@ -192,7 +192,7 @@ const PAIRS: readonly Pair[] = [
     performanceB: 'Like a robot',
   },
   {
-    name: 'a real document against the documented neutral baseline (C8)',
+    name: 'a real document against the documented neutral baseline',
     a: VULPIUS,
     b: neutralMpm({ ppq: 480 }),
     performanceA: 'Baroque',
@@ -225,7 +225,7 @@ const PAIRS: readonly Pair[] = [
   },
 ];
 
-describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9.5’s map', () => {
+describe('compare(a, b) and compare(b, a) serialize identically modulo the map', () => {
   for (const pair of PAIRS)
     it(pair.name, () => {
       const forward = compareMpm({
@@ -266,10 +266,10 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
   });
 
   /**
-   * The note comparator has to be TOTAL, and P-C2 above cannot tell: the mirror re-sorts with
+   * The note comparator has to be TOTAL, and the symmetry check above cannot tell: the mirror re-sorts with
    * the same comparator, so a partial order tidies its own ambiguity away.
    *
-   * A comparator that ignores `site` — one of the note keys §9.5 names — leaves four Albert
+   * A comparator that ignores `site` — one of the note keys the design names — leaves four Albert
    * notes tied on every key with four distinct serializations (one plausibility finding raised
    * in the global scope and in each of three part scopes), their relative order decided by sort
    * stability, i.e. by which document was read first. Hence the direct statement: two notes
@@ -319,15 +319,15 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
   });
 
   /**
-   * §9.5's "key order is pinned (A9)". Sorting a key set before comparing it checks membership
-   * and says nothing about order, and P-C2 compares the engine against itself, so a record built
+   * the "key order is pinned". Sorting a key set before comparing it checks membership
+   * and says nothing about order, and the symmetry check compares the engine against itself, so a record built
    * by document traversal would serialize identically both ways and still break the promise.
    *
    * The top-level order is written out as data; the per-dimension records are checked against
-   * `COMPARISON_DIMENSIONS` UNSORTED, which is the invariant §9.5 states
+   * `COMPARISON_DIMENSIONS` UNSORTED, which is the invariant the design states
    * (`Object.fromEntries(COMPARISON_DIMENSIONS.map(…))`, never a document walk).
    */
-  it('pins the key order of the report and of every per-dimension record (§9.5, A9)', () => {
+  it('pins the key order of the report and of every per-dimension record', () => {
     const report = compareMpm({
       a: TELEMANN,
       performanceA: 'Baroque',
@@ -353,7 +353,7 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
       'equivalence',
       'cumulativeDrift',
       'profiles',
-      // AD-27.8's scape sits beside `profiles`: the other opt-in retention of what the density
+      // the scape sits beside `profiles`: the other opt-in retention of what the density
       // holds.
       'scape',
       'notes',
@@ -370,7 +370,7 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
     // accept any order at all.
     expect(inDimensionOrder).not.toEqual([...inDimensionOrder].sort());
 
-    // One nested record too, since §9.5's rule is about every object and not only the top.
+    // One nested record too, since the rule is about every object and not only the top.
     expect(Object.keys(report.dimensions.tempo)).toEqual([
       'state',
       'distance',
@@ -391,10 +391,10 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
 
   /**
    * The same pin for the other two report shapes. A `DiffReport` and a `CorpusReport` are
-   * serialized, diffed and compared by consumers exactly as a `ComparisonReport` is, and §9.5's
+   * serialized, diffed and compared by consumers exactly as a `ComparisonReport` is, and the
    * rule is about every object rather than about one.
    */
-  it('pins the key order of DiffReport and CorpusReport too (§9.5, A9)', () => {
+  it('pins the key order of DiffReport and CorpusReport too', () => {
     const diff = diffMpm({
       a: TELEMANN,
       performanceA: 'Baroque',
@@ -498,11 +498,11 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
   });
 
   /**
-   * §10's P-C6 at the PAIRWISE path. Two runs over the same input text is the cheap half of
+   * the determinism check at the PAIRWISE path. Two runs over the same input text is the cheap half of
    * determinism and the one that catches a report builder keying on object identity or on
    * insertion order.
    */
-  it('is deterministic at the pairwise path: two runs, byte-identical JSON (P-C6)', () => {
+  it('is deterministic at the pairwise path: two runs, byte-identical JSON', () => {
     for (const pair of PAIRS) {
       const run = () =>
         JSON.stringify(
@@ -540,14 +540,14 @@ describe('P-C2: compare(a, b) and compare(b, a) serialize identically modulo §9
 });
 
 // ---------------------------------------------------------------------------
-// P-C11
+// finiteness
 // ---------------------------------------------------------------------------
 
 const doc = (body: string): string =>
   `<mpm xmlns="${NS}"><performance name="p" pulsesPerQuarter="720"><global><header/><dated>` +
   `${body}</dated></global></performance></mpm>`;
 
-/** §9.6's degenerate shapes, each named for the field it is about. */
+/** the degenerate shapes, each named for the field it is about. */
 const DEGENERATE: readonly { readonly name: string; readonly run: () => ComparisonReport }[] = [
   {
     name: 'L = 0: both documents place every instruction at date 0',
@@ -608,7 +608,7 @@ const DEGENERATE: readonly { readonly name: string; readonly run: () => Comparis
   },
 ];
 
-describe('P-C11: every number of every result is finite or null (§9.6)', () => {
+describe('every number of every result is finite or null', () => {
   const check = (report: ComparisonReport, label: string): void => {
     for (const [path, value] of walk(report)) {
       if (typeof value === 'number') expect(Number.isFinite(value), `${label} ${path}`).toBe(true);
@@ -639,7 +639,7 @@ describe('P-C11: every number of every result is finite or null (§9.6)', () => 
       check(degenerate.run(), degenerate.name);
     });
 
-  it('answers null rather than dividing by zero when the window has no length (§9.6)', () => {
+  it('answers null rather than dividing by zero when the window has no length', () => {
     const report = elementAt(DEGENERATE, 0, 'the degenerate cases').run();
     expect(report.window.endQuarters).toBe(report.window.startQuarters);
     expect(report.aggregate.mean).toBeNull();
@@ -653,7 +653,7 @@ describe('P-C11: every number of every result is finite or null (§9.6)', () => 
     ).toBe(true);
   });
 
-  it('reports every dimension under all-zero weights, and excludes them all from D (§7.3)', () => {
+  it('reports every dimension under all-zero weights, and excludes them all from D', () => {
     const report = elementAt(DEGENERATE, 1, 'the degenerate cases').run();
     expect(report.aggregate.distance).toBe(0);
     expect(report.dimensions.tempo.distance).toBeGreaterThan(0);

@@ -1,22 +1,22 @@
 /**
- * The eleven dimensions behind ONE interface — §3's table as a function.
+ * The eleven dimensions behind ONE interface — the table as a function.
  *
  * Everything above this file works on `DimensionEvaluation`s and never on a `TempoCurve` or an
- * `OrnamentAtom`, so §7's aggregation, §9's report shapes and the profile export are written
- * once instead of eleven times. The three genuinely different SHAPES §3 names — curve, event,
+ * `OrnamentAtom`, so the aggregation, the report shapes and the profile export are written
+ * once instead of eleven times. The three genuinely different SHAPES the design names — curve, event,
  * distribution — are the three functions here.
  *
  * ## What a dimension has to answer
  *
  * `d_k`, and where in the window the mass sits (cells with their integrand, atoms with their
- * placement). Then the interpretive companions: §1.2's decomposition where a curve exists,
- * §7.5's signed descriptor, the `⊥` length, the capped-cell count, and whatever the reader
+ * placement). Then the interpretive companions: the decomposition where a curve exists,
+ * the signed descriptor, the `⊥` length, the capped-cell count, and whatever the reader
  * found worth reporting. A dimension that cannot answer one of these answers `null` rather
- * than a stand-in — §1.2 takes moments, and a window with a `⊥` hole in it does not have them.
+ * than a stand-in — the design takes moments, and a window with a `⊥` hole in it does not have them.
  *
- * ## Where the maps come from, and the one place this file departs from AD-3
+ * ## Where the maps come from, and the one place this file departs from the model
  *
- * §5.0 evaluates per part. `Performance.renderParts` iterates over the MSM's parts and calls
+ * Evaluation is per part. `Performance.renderParts` iterates over the MSM's parts and calls
  * `resolvePartMaps(mpmPart, globalMaps)`, whose first line is `if (mpmPart === null) return
  * globalMaps` — so an MSM part with no MPM counterpart inherits the GLOBAL maps wholesale, and
  * does NOT fall back to the neutral curve. Measured end to end through `performMsm`: an MPM with
@@ -24,10 +24,10 @@
  * parts 1 and 2, performs part 1's notes at velocity 110 and part 2's at 40 — not at the
  * neutral 100.
  *
- * AD-3 says an unmatched part "compares against the neutral curve (R6 applied to parts)", which
- * applies R6 one level too early: an absent MAP is the neutral curve, and what a part with no
+ * the design says an unmatched part "compares against the neutral curve", which applies that
+ * rule one level too early: an absent MAP is the neutral curve, and what a part with no
  * counterpart has is not an absent map but the GLOBAL one. So the caller substitutes the other
- * document's global scope for a missing part, degenerating to AD-3's rule exactly when the global
+ * document's global scope for a missing part, degenerating to the rule exactly when the global
  * map is absent too. The difference is not small: |ln(100/40)| = 9.6 JND over the whole part.
  */
 import { filterMap, head, isNonEmpty, last } from '../prelude/index.js';
@@ -106,7 +106,7 @@ import type { ComparisonWindow } from './window.js';
 // The uniform shape
 // ---------------------------------------------------------------------------
 
-/** A note produced inside the interior, before the facade gives it a §9.1 kind. */
+/** A note produced inside the interior, before the facade gives it a kind. */
 export interface RawNote {
   readonly kind: string;
   readonly dimension: ComparisonDimension;
@@ -119,9 +119,9 @@ export interface RawNote {
 /**
  * One cell of a dimension's density, in QUARTERS — `aggregate.ts`'s shape.
  *
- * `densityAt` is NULLABLE, though every dimension supplies one: AD-51.1 has each `*Distance`
- * module hand back the integrand it already evaluates, so AD-19's segment boundaries root-refine
- * exactly rather than falling back to cell resolution. The null is AD-51.1's path for a future
+ * `densityAt` is NULLABLE, though every dimension supplies one: each `*Distance`
+ * module hand back the integrand it already evaluates, so the segment boundaries root-refine
+ * exactly rather than falling back to cell resolution. The null is the path for a future
  * dimension with no pointwise density; `ComparisonReport.cellQuantizedDimensions` names one when
  * it appears, and is empty on every document the engine can produce today.
  */
@@ -137,21 +137,21 @@ export interface DimensionEvaluation {
   /** `d_k` over this scope, in JND·quarters. */
   readonly distance: number;
   readonly cells: readonly EvaluationCell[];
-  /** Event mass, in JND — `κ` is applied where cells and atoms are added (§7.1). */
+  /** Event mass, in JND — `κ` is applied where cells and atoms are added. */
   readonly atoms: readonly EventAtomMass[];
-  /** `(T_a − T_b)/jnd` in JND per quarter, signed (C2); null where no curve exists. */
+  /** `(T_a − T_b)/jnd` in JND per quarter, signed; null where no curve exists. */
   readonly signedAt: ((quarters: number) => number) | null;
   /**
-   * `∫(T_a − T_b) dt / L` over the window, in {@link unit} — §7.5's descriptor, never a
+   * `∫(T_a − T_b) dt / L` over the window, in {@link unit} — the descriptor, never a
    * distance. Null where the dimension has no single T-space quantity to be signed in.
    */
   readonly meanSigned: number | null;
-  /** The canonicalized T-space curves, for §9's profile export; null for the shapeless kinds. */
+  /** The canonicalized T-space curves, for the profile export; null for the shapeless kinds. */
   readonly valueA: ((quarters: number) => number) | null;
   readonly valueB: ((quarters: number) => number) | null;
   /**
    * The pair's refinement grid over this scope, in QUARTERS — carried so that a caller merging
-   * several part scopes can take §1.2's moments over the disjoint union of their curves, since a
+   * several part scopes can take the moments over the disjoint union of their curves, since a
    * mean of a concatenation needs each piece's own partition.
    */
   readonly pairGridQuarters: readonly number[];
@@ -175,7 +175,7 @@ export interface DimensionEvaluation {
   readonly shapeless: boolean;
 }
 
-/** §1.2's four fields plus the signed level and the closing check (§9.3's `Decomposition`). */
+/** the four fields plus the signed level and the closing check (the `Decomposition`). */
 export interface EvaluationDecomposition {
   readonly level: number;
   readonly levelSigned: number;
@@ -192,7 +192,7 @@ export interface DimensionSettings {
   readonly ticksPerQuarter: number;
   readonly jnd: JndOverrides;
   readonly invariance: Readonly<Record<ComparisonDimension, InvarianceMode>>;
-  /** From the MSM (AD-12); null leaves the renderer's own 4/4 default in force. */
+  /** From the MSM; null leaves the renderer's own 4/4 default in force. */
   readonly beatGrid: BeatGrid | null;
   readonly lambdaDate: number;
 }
@@ -272,11 +272,11 @@ const EMPTY_EVENTS = { matched: 0, unmatchedA: 0, unmatchedB: 0, mass: 0 };
 /** Everything a curve-shaped dimension has to supply, in one record. */
 interface CurvePlan<C> {
   readonly dimension: ComparisonDimension;
-  /** The map this dimension reads, which is also the (part, map) scope of its §6 script. */
+  /** The map this dimension reads, which is also the (part, map) scope of its edit script. */
   readonly container: string;
   readonly jndKey: ComparisonJndKey;
   /**
-   * Read a VIEW rather than a side, so §6's edit states go through the same reader. `resolution`
+   * Read a VIEW rather than a side, so the edit states go through the same reader. `resolution`
    * is the fallback for a view whose entries carry none — every ordinary single-document view; a
    * mixed edit view carries one per entry and never consults it (`document.ts`'s `resolutionAt`).
    */
@@ -287,7 +287,7 @@ interface CurvePlan<C> {
   ) => C;
   readonly breakpoints: (curve: C) => readonly number[];
   /**
-   * The T-space curve, or null where the window carries a `⊥` span — §1.2 takes moments and
+   * The T-space curve, or null where the window carries a `⊥` span — the design takes moments and
    * `⊥` has none, so a stand-in would be a number a reader would interpret as a value.
    */
   readonly sampler: (curve: C, startTicks: number, endTicks: number) => SampledCurve | null;
@@ -295,7 +295,7 @@ interface CurvePlan<C> {
     curve: C,
   ) => readonly { readonly startTicks: number; readonly endTicks: number }[];
   /**
-   * `d_k` over a window. The WINDOW is a parameter rather than a closure because §6's edit path
+   * `d_k` over a window. The WINDOW is a parameter rather than a closure because the edit path
    * integrates the same function over the sub-interval a transition can change
    * (`editState.affectedTicks`); every other caller passes `settings.window`.
    */
@@ -349,7 +349,7 @@ function evaluateCurve<C>(
 
   // Moments are taken on each document's OWN breakpoints, which is what makes the
   // canonicalization pair-independent BY CONSTRUCTION rather than by an argument about
-  // quadrature exactness (§7.4, AD-20: the transform is per DOCUMENT and never pair-dependent).
+  // quadrature exactness (the transform is per DOCUMENT and never pair-dependent).
   const samplerA = plan.sampler(curveA, startTicks, endTicks);
   const samplerB = plan.sampler(curveB, startTicks, endTicks);
   const gridA = documentGrid(plan.breakpoints(curveA), startTicks, endTicks);
@@ -360,7 +360,7 @@ function evaluateCurve<C>(
   const requested = settings.invariance[plan.dimension];
   const notes: RawNote[] = [...plan.notes(curveA, 'a'), ...plan.notes(curveB, 'b')];
 
-  // AD-25.1's knowability split: a mode this DOCUMENT cannot carry — a window with a `⊥` span
+  // the knowability split: a mode this DOCUMENT cannot carry — a window with a `⊥` span
   // in it has no moments — degrades with a typed note, because the caller could not have known
   // when they wrote the option bag.
   let invariance = requested;
@@ -540,12 +540,12 @@ export function evaluateDimension(
 }
 
 /**
- * §6's script for one dimension over one (part, map) scope — all eleven of them.
+ * the script for one dimension over one (part, map) scope — all eleven of them.
  *
- * Pricing is RAW, never canonicalized: §7.4's invariance modes rescale a curve by that
+ * Pricing is RAW, never canonicalized: the invariance modes rescale a curve by that
  * DOCUMENT's own moments, and an intermediate edit state is not a document — its moments move as
  * the script is applied, so a canonicalized `norm` would not be a fixed metric and
- * `scriptCost ≥ d_curve` would stop being AD-5's theorem. The identity pair is used throughout,
+ * `scriptCost ≥ d_curve` would stop being the theorem. The identity pair is used throughout,
  * and the `dCurve` reported beside a script is the identity one.
  *
  * Both sides use the SAME `jnd`, the row's resolved value, so `norm` is one function of the
@@ -593,11 +593,11 @@ export interface EditScriptOptions {
    * checked again.
    */
   readonly localize?: boolean;
-  /** A-Q5's `fragment`/`consolidate` moves; off unless the caller asks (§6.1's `moves`). */
+  /** the `fragment`/`consolidate` moves; off unless the caller asks (the `moves`). */
   readonly moves?: boolean;
 }
 
-/** One dimension's §6 script over one scope, with the lower bound it is a theorem about. */
+/** One dimension's edit script over one scope, with the lower bound it is a theorem about. */
 export interface DimensionEditScript {
   readonly dimension: ComparisonDimension;
   readonly container: string;
@@ -605,7 +605,7 @@ export interface DimensionEditScript {
 }
 
 /**
- * What a dimension has to supply for §6, whatever shape its `Φ` is.
+ * What a dimension has to supply for the edit path, whatever shape its `Φ` is.
  *
  * `represent` reads ONE state — the reader the semantic level already uses, over the edit view —
  * and `norm` is that dimension's own `d_k` over a window. The curve dimensions fill this in from
@@ -624,16 +624,16 @@ interface EditPlan<S> {
    * unconditionally, each for its own reason:
    *
    * - `pedal`: `getPreviousPosition` scans BACKWARDS over entry indices for an inherited
-   *   `@transition.to` (PARITY P2, AD-35.4's hazard class), so a movement can depend on an
+   *   `@transition.to` (PARITY P2, the hazard class), so a movement can depend on an
    *   instruction before it and the left bound does not hold.
-   * - `articulation`, per AD-60.2: AD-37.1's default step function is RETROACTIVE — its value on
+   * - `articulation`: the default step function is RETROACTIVE — its value on
    *   `[0, firstSwitchDate)` is the first switch's default — so editing a `<style>` reaches
    *   arbitrarily far LEFT, and its value after an interval is governed by the last switch at or
    *   before it, which the interval's right bound (the next unchanged INSTRUCTION, not the next
    *   unchanged SWITCH) need not contain. Hazard instance #7, the first that fails in BOTH
    *   directions; forcing it on measured `scriptCost = 506.9999999999999` against
    *   `d_articulation = 2583`, a 5.09× violation of `scriptCost ≥ d`.
-   * - `ornamentation`: its map SCOPE is a whole-map property (AD-60.3) that a mixed state does
+   * - `ornamentation`: its map SCOPE is a whole-map property that a mixed state does
    *   not have.
    *
    * Where it does apply the argument is the curve's, one step stronger: outside the interval the
@@ -722,7 +722,7 @@ function curveEditScript<C>(
 }
 
 /**
- * §5.5's TWO components in one script (AD-55.1).
+ * the TWO components in one script.
  *
  * `d_articulation` is the alignment optimum PLUS the `@defaultArticulation` step function, both
  * read off the same map: the atoms from its `<articulation>` elements, the steps from its
@@ -772,9 +772,9 @@ function articulationEditPlan(
 }
 
 /**
- * §5.6's atoms, with the map SCOPE decided so that both endpoints stay exact.
+ * the atoms, with the map SCOPE decided so that both endpoints stay exact.
  *
- * `OrnamentationMap.apply` branches on whether a local header exists (AD-44's defect 8: in a
+ * `OrnamentationMap.apply` branches on whether a local header exists (the defect 8: in a
  * global map every `<style>` after the first successful one is ignored outright), so the scope is
  * a property of the MAP rather than of an entry — and a state holding instructions from both
  * documents has no single one. A state carrying any A instruction takes A's scope and one
@@ -813,7 +813,7 @@ function ornamentationEditPlan(
   };
 }
 
-/** §5.9's spans, priced by the same `W₁` the semantic level uses, with invariance off. */
+/** the spans, priced by the same `W₁` the semantic level uses, with invariance off. */
 function imprecisionEditPlan(
   dimension: ImprecisionDomain,
   a: ScopeSide,
@@ -856,7 +856,7 @@ function tempoPlan(settings: DimensionSettings): CurvePlan<TempoCurve> {
     },
     breakpoints: (curve) => curve.breakpointsTicks,
     sampler: (curve) => (ticks) => Math.log(quarterBpmAt(curve, ticks)),
-    // AD-1: tempo cannot reach `⊥` — an unresolvable level performs the renderer's own 100.0.
+    // tempo cannot reach `⊥` — an unresolvable level performs the renderer's own 100.0.
     bottomSpans: () => [],
     distance: (curveA, curveB, jnd, canonical, window) =>
       tempoDistance(curveA, curveB, window, settings.ticksPerQuarter, jnd, canonical),
@@ -866,11 +866,11 @@ function tempoPlan(settings: DimensionSettings): CurvePlan<TempoCurve> {
 }
 
 /**
- * §9.4's `qbpm ≤ 0` row (M11), checked where the curve is built.
+ * the `qbpm ≤ 0` row, checked where the curve is built.
  *
  * A transition between two positive endpoints stays positive, so the endpoints are the whole
  * check: a power interpolation of `qbpm0 > 0` and `qbpm1 > 0` cannot reach 0. The throw is the
- * interior's (§9.4 gives it the domain validators) and the facade types it.
+ * interior's (the design gives it the domain validators) and the facade types it.
  */
 function requirePositiveTempo(curve: TempoCurve, role: 'a' | 'b'): void {
   for (const segment of curve.segments) {
@@ -1001,11 +1001,11 @@ function pedalPlan(settings: DimensionSettings): CurvePlan<PedalCurve> {
 }
 
 /**
- * §5.8's structural channel for `@controller` (AD-36.3).
+ * the structural channel for `@controller`.
  *
  * The attribute is excluded from the metric because it says WHICH controller carries the curve
- * and not what the curve does — the reader's spans are deliberately flat across controllers
- * (AD-13/R9). But two documents driving `sustain` and `soft` do perform differently, so the
+ * and not what the curve does — the reader's spans are deliberately flat across controllers.
+ * But two documents driving `sustain` and `soft` do perform differently, so the
  * exclusion is reported here rather than left silent.
  *
  * Silent for the ordinary document: a map that drives only `sustain` is the default and saying
@@ -1028,8 +1028,8 @@ function controllerNotes(
       endQuarters: settings.window.endQuarters,
       message:
         `the movementMap drives ${controllers.map((name) => `'${name}'`).join(', ')}: ` +
-        '@controller is excluded from the metric as a name (§4, AD-36.3) and the spans are flat ' +
-        'across controllers (AD-13/R9), so a document driving a different controller is reported ' +
+        '@controller is excluded from the metric as a name and the spans are flat ' +
+        'across controllers, so a document driving a different controller is reported ' +
         'here rather than priced',
     },
   ];
@@ -1039,10 +1039,10 @@ function controllerNotes(
 
 /**
  * The two event dimensions share everything but their reader and their findings; the shared part
- * is where AD-7's `κ` and §9.3's `events` block come from.
+ * is where the `κ` and the `events` block come from.
  *
- * `continuous` is articulation's default step function (AD-55.1) and is empty for ornamentation:
- * a dimension can carry BOTH an atomic and an absolutely continuous part, which is what §5.0's
+ * `continuous` is articulation's default step function and is empty for ornamentation:
+ * a dimension can carry BOTH an atomic and an absolutely continuous part, which is what the
  * measure says and what `d_k = alignment optimum + step mass` needs here.
  */
 function eventEvaluation(
@@ -1076,9 +1076,9 @@ function eventEvaluation(
     valueA: null,
     valueB: null,
     pairGridQuarters: [],
-    // Event dimensions accumulate over rows in four different units (§5.5: quarters, ms,
+    // Event dimensions accumulate over rows in four different units (quarters, ms,
     // velocity, ratio), so there is no single T-space unit for a signed mean to be in — which
-    // is also why §9.3's `meanSigned` is null here rather than 0.
+    // is also why the `meanSigned` is null here rather than 0.
     unit: 'dimensionless',
     space: 'event',
     decomposition: null,
@@ -1089,15 +1089,15 @@ function eventEvaluation(
       mass: result.distance,
     },
     bottomLengthQuarters: 0,
-    // §9.3's `cappedCells` counts CELLS for a curve dimension and ANCHORS here — the unit the
-    // dimension's density is carried in either way (AD-54.2). Articulation has both parts, so it
+    // the `cappedCells` counts CELLS for a curve dimension and ANCHORS here — the unit the
+    // dimension's density is carried in either way. Articulation has both parts, so it
     // reports both counts added: the field is a count of CAP EVENTS.
     cappedCells: result.cappedAnchors + continuous.cappedCells,
     rowDistances,
     notes,
     timeSignatureSource: null,
     datePositionKnown,
-    // AD-20 makes 'level'/'level-gain' an InvalidOptionError on an event dimension, which the
+    // the design makes 'level'/'level-gain' an InvalidOptionError on an event dimension, which the
     // facade raises before this runs; reaching here with one would be an engine invariant.
     invariance: requested,
     shapeless: false,
@@ -1134,7 +1134,7 @@ function evaluateArticulation(
     settings.jnd,
   );
 
-  // AD-55.1's second component: `<style>@defaultArticulation` governs every note that carries
+  // the second component: `<style>@defaultArticulation` governs every note that carries
   // no atom of its own, so it is a step function over score time and it is priced as one.
   const defaultA = readDefault(a);
   const defaultB = readDefault(b);
@@ -1161,7 +1161,7 @@ function evaluateArticulation(
         endQuarters: quarters,
         message:
           `@${finding.attribute} differs (${String(finding.a)} against ${String(finding.b)}) and ` +
-          'is read by nothing (R14/R9b): reported, never priced',
+          'is read by nothing: reported, never priced',
       };
     }),
   ];
@@ -1184,7 +1184,7 @@ function evaluateArticulation(
       startQuarters: settings.window.startQuarters,
       endQuarters: settings.window.endQuarters,
       message:
-        'id-anchored articulations are window-EXEMPT (AD-39.1): they are never dropped by a ' +
+        'id-anchored articulations are window-EXEMPT: they are never dropped by a ' +
         'narrowed window, and without an MSM their mass is spread over the whole window ' +
         'because the note they target has no known date',
     });
@@ -1307,7 +1307,7 @@ function evaluateImprecision(
     })),
     atoms: [],
     // A law has a location but not a curve: there is no pointwise signed density to profile, so
-    // §9.3's `valueA`/`valueB` are null for the distribution dimensions.
+    // the `valueA`/`valueB` are null for the distribution dimensions.
     signedAt: null,
     // The μ-weighted mean of `ℓ_A − ℓ_B` is the quantity a curve dimension's signed mean is, and
     // the decomposition already computes it.
@@ -1350,10 +1350,10 @@ function processKey(domain: ImprecisionDomain): ComparisonJndKey {
 }
 
 /**
- * §5.9's `W₂` decomposition in §1.2's shape.
+ * the `W₂` decomposition in the shape.
  *
  * `shape` is `√(2(1 − ρ))` here, as for the curve dimensions, rather than the `√∫2σ_Aσ_B(1−ρ)dμ`
- * term the imprecision module accumulates: §9.3 declares one meaning for the field across every
+ * term the imprecision module accumulates: the design declares one meaning for the field across every
  * dimension, and a field that meant two things would be a quiet unit mismatch. The module's own
  * term is recoverable from `l2Squared` and the other three.
  */
@@ -1371,7 +1371,7 @@ function imprecisionDecomposition(
   };
 }
 
-/** The map container each dimension reads — §3's correspondence, as a lookup. */
+/** The map container each dimension reads — the correspondence, as a lookup. */
 export function containerOf(dimension: ComparisonDimension): string {
   switch (dimension) {
     case 'tempo':
@@ -1399,7 +1399,7 @@ export function containerOf(dimension: ComparisonDimension): string {
   }
 }
 
-/** Whether a scope carries any entry at all in a dimension's map — §9.3's `both-neutral`. */
+/** Whether a scope carries any entry at all in a dimension's map — the `both-neutral`. */
 export function hasEntries(side: ScopeSide, dimension: ComparisonDimension): boolean {
   const view = viewOf(side, containerOf(dimension));
   return view !== null && view.entries.length > 0;

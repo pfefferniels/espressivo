@@ -1,7 +1,7 @@
 /**
- * The imprecision reader — DESIGN.md §5.9, AD-14, AD-46, AD-47.
+ * The imprecision reader.
  *
- * Every renderer claim here is measured through `performMsm` (AD-43.1): the harness performs a
+ * Every renderer claim here is measured through `performMsm`: the harness performs a
  * real MSM against a real MPM and reads the millisecond dates back. Nothing rests on a map-level
  * probe or on arithmetic done by hand.
  *
@@ -122,7 +122,7 @@ const UNIFORM = (attributes: string): string =>
 
 // --- the degenerate table ------------------------------------------------------------------
 
-describe('§5.9’s degenerate table is one rule: an absent parameter reads as 0', () => {
+describe('the degenerate table is one rule: an absent parameter reads as 0', () => {
   it('uniform with BOTH limits absent performs δ₀ — pipeline', () => {
     const withMap = performedDates(UNIFORM('milliseconds.timingBasis="300"'));
     const withoutMap = performedDates('');
@@ -130,7 +130,7 @@ describe('§5.9’s degenerate table is one rule: an absent parameter reads as 0
     expect(lawsEqual(lawOf(UNIFORM('milliseconds.timingBasis="300"')), DELTA_ZERO)).toBe(true);
   });
 
-  it('uniform with ONE limit absent is U(limit, 0) — the row §5.9 does not state', () => {
+  it('uniform with ONE limit absent is U(limit, 0) — the row the design does not state', () => {
     const absent = performedDates(UNIFORM('limit.lower="-30" milliseconds.timingBasis="300"'));
     const explicit = performedDates(
       UNIFORM('limit.lower="-30" limit.upper="0" milliseconds.timingBasis="300"'),
@@ -153,7 +153,7 @@ describe('§5.9’s degenerate table is one rule: an absent parameter reads as 0
     expect(absent).toEqual(explicit);
   });
 
-  it('gaussian with BOTH limits absent is the untruncated law — AD-14iv’s mixture', () => {
+  it('gaussian with BOTH limits absent is the untruncated law — the mixture', () => {
     const law = lawOf(
       '<distribution.gaussian date="0.0" seed="7" deviation.standard="10" milliseconds.timingBasis="300"/>',
     );
@@ -178,7 +178,7 @@ describe('§5.9’s degenerate table is one rule: an absent parameter reads as 0
     ).toBe(true);
   });
 
-  it('triangular with BOTH clips absent performs δ₀ — AD-47’s null draw', () => {
+  it('triangular with BOTH clips absent performs δ₀ — the null draw', () => {
     const clipless =
       '<distribution.triangular date="0.0" seed="9" limit.lower="-30" limit.upper="30" mode="0" milliseconds.timingBasis="300"/>';
     expect(performedDates(clipless).map(Number)).toEqual(performedDates('').map(Number));
@@ -223,7 +223,7 @@ describe('§5.9’s degenerate table is one rule: an absent parameter reads as 0
 
 // --- the ⊥ routes ---------------------------------------------------------------------------
 
-describe('⊥ routes exist (AD-36.2’s question, answered by measurement)', () => {
+describe('⊥ routes exist (the question, answered by measurement)', () => {
   it('an EMPTY distribution.list makes every note vanish', () => {
     const dates = performedDates('<distribution.list date="0.0" milliseconds.timingBasis="300"/>');
     expect(dates).toEqual(['NaN', 'NaN', 'NaN', 'NaN']);
@@ -281,7 +281,7 @@ describe('⊥ routes exist (AD-36.2’s question, answered by measurement)', () 
     expect(isBottomAt(negative)).toBe(false);
   });
 
-  it('§4 calls @seed inert; on a CORRELATED family it destroys the performance', () => {
+  it('the design calls @seed inert; on a CORRELATED family it destroys the performance', () => {
     const seeded =
       '<distribution.correlated.brownianNoise date="0.0" seed="99" stepWidth.max="3" limit.lower="-30" limit.upper="30" milliseconds.timingBasis="300"/>';
     const unseeded =
@@ -368,13 +368,13 @@ describe('⊥ routes exist (AD-36.2’s question, answered by measurement)', () 
     expect(errors).toHaveLength(1);
     const only = elementAt(errors, 0, 'the renderer-error notes');
     expect(only.detail).toContain('empty-list');
-    expect(only.detail).toContain('R24');
+    expect(only.detail).toContain('vanishes from the MIDI export');
   });
 });
 
 // --- spans, gaps and the entry walk ---------------------------------------------------------
 
-describe('spans end on any entry, and gaps are δ₀ (AD-14ii, R12)', () => {
+describe('spans end on any entry, and gaps are δ₀', () => {
   it('a <style> WITH @name.ref ends the span and leaves the rest exactly unperturbed', () => {
     const dates = performedDates(
       `${UNIFORM(
@@ -387,7 +387,7 @@ describe('spans end on any entry, and gaps are δ₀ (AD-14ii, R12)', () => {
     expect(performedDates('').map(Number)[0]).toBe(0);
   });
 
-  it('a <style> WITHOUT @name.ref is not an entry at all — AD-35.4, one level lower', () => {
+  it('a <style> WITHOUT @name.ref is not an entry at all — one level lower', () => {
     const body = UNIFORM('limit.lower="-30" limit.upper="30" milliseconds.timingBasis="300"');
     expect(performedDates(`${body}<style date="720.0"/>`)).toEqual(performedDates(body));
     expect(readFor(`${body}<style date="720.0"/>`).spans).toHaveLength(1);
@@ -446,7 +446,7 @@ describe('spans end on any entry, and gaps are δ₀ (AD-14ii, R12)', () => {
     expect(lawsEqual(lawOf(body), DELTA_ZERO)).toBe(true);
   });
 
-  it('an absent map is the neutral reading — δ₀ everywhere (R6)', () => {
+  it('an absent map is the neutral reading — δ₀ everywhere', () => {
     const neutral = neutralImprecisionReading('imprecisionTiming');
     expect(neutral.spans).toHaveLength(0);
     const law = lawAt(neutral, 12345);
@@ -456,7 +456,7 @@ describe('spans end on any entry, and gaps are δ₀ (AD-14ii, R12)', () => {
 
 // --- timingBasis ----------------------------------------------------------------------------
 
-describe('milliseconds.timingBasis: derivation and family-dependence (AD-14iii)', () => {
+describe('milliseconds.timingBasis: derivation and family-dependence', () => {
   it('is derived from the limits for uniform / gaussian / brownian, in the timing domain', () => {
     const span = spanAt(
       readFor('<distribution.uniform date="0.0" limit.lower="-30" limit.upper="30"/>'),
@@ -534,7 +534,7 @@ describe('correlated families: processParameters and the index-dependent margina
     );
     expect(processParametersAt(reading, 0)).toEqual([
       { attribute: 'stepWidth.max', value: 3 },
-      // AD-14iii folds the basis into the process for a correlated family, and only there.
+      // The basis folds into the process for a correlated family, and only there.
       { attribute: 'milliseconds.timingBasis', value: 60 },
     ]);
   });
@@ -562,7 +562,7 @@ describe('correlated families: processParameters and the index-dependent margina
       '<distribution.correlated.compensatingTriangle date="0.0" degreeOfCorrelation="2" limit.lower="-30" limit.upper="30" clip.lower="-10" clip.upper="10"/>',
     );
     expect(law.kind).toBe('clipped');
-    // Clip-less is δ₀ — the clip bounds coerce to 0 and clamp everything onto it (AD-47).
+    // Clip-less is δ₀ — the clip bounds coerce to 0 and clamp everything onto it.
     expect(
       lawsEqual(
         lawOf(
@@ -602,7 +602,7 @@ describe('the dynamics and toneduration domains read the same laws', () => {
     expect(perturbed.map(Number)).not.toEqual(neutral.map(Number));
     // NUMERICALLY equal, not byte-equal: a δ₀ map still touches the attribute and the
     // write-back re-serializes it ("100.0" -> "100") — a byte-level fingerprint with no
-    // numeric content (AD-47).
+    // numeric content.
     expect(performedVelocities(UNIFORM('milliseconds.timingBasis="300"')).map(Number)).toEqual(
       neutral.map(Number),
     );

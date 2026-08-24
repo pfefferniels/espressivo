@@ -1,7 +1,7 @@
 /**
- * P-C5 — the cross-module property: `compareMpm` and `exaggerateMpm` are one mathematics.
+ * the cross-module property: `compareMpm` and `exaggerateMpm` are one mathematics.
  *
- * §1.3's Proposition 1, as AD-6 corrected it. Exaggeration acts multiplicatively in T-space at
+ * Proposition 1, as corrected. Exaggeration acts multiplicatively in T-space at
  * row values: a factor `s` maps a value `v` to `n + s(v − n)` around its dimension's neutral
  * `n`, so the T-space distance from the original is `|1 − s|·|v − n|` — proportional to
  * `|1 − s|` and to the document's own deviation from neutral. The comparison integrates exactly
@@ -17,7 +17,7 @@
  * on constant-only fixtures; on a transition the renderer interpolates in raw space between
  * breakpoints and it survives at the breakpoints alone, which is what part (iii) measures.
  *
- * `s < 0` is outside the claim (§1.3: `r = −1` there) and is not tested.
+ * `s < 0` is outside the claim (`r = −1` there) and is not tested.
  */
 import { describe, it, expect } from 'vitest';
 import { compareMpm, exaggerateMpm } from '../../src/api/index.js';
@@ -62,7 +62,7 @@ const BOUNDED_KINDS = new Set([
  * Whether either module reports that it stopped being affine on this run.
  *
  * Two ways out of the law, both reported rather than inferred: the transform saturates and names
- * the site, or the metric's own cap binds (§4: `min(|T(x) − T(y)|, 2·δ_row)`), truncating a
+ * the site, or the metric's own cap binds (`min(|T(x) − T(y)|, 2·δ_row)`), truncating a
  * difference the transform made faithfully — at `s = 4` an accentuation scale of 1.5 becomes 6,
  * and 90 velocity units of difference is past the 60 the cap allows.
  */
@@ -213,7 +213,7 @@ const CONSTANT_FIXTURES: readonly {
   },
 ];
 
-describe('P-C5 (i): the EXACT law on constant-only fixtures', () => {
+describe('the EXACT law on constant-only fixtures', () => {
   const FACTORS = [0.25, 0.5, 1.5, 2, 4];
 
   for (const fixture of CONSTANT_FIXTURES) {
@@ -229,7 +229,7 @@ describe('P-C5 (i): the EXACT law on constant-only fixtures', () => {
         let below = 0;
         let above = 0;
         for (const s of FACTORS) {
-          // A factor that saturates a bound, or a difference §4's cap truncates, is outside the
+          // A factor that saturates a bound, or a difference the cap truncates, is outside the
           // law — and both modules say so in their reports, so the skip is a reported fact.
           if (lawIsUnreachable(fixture, s)) continue;
           const measured = distance(
@@ -242,19 +242,19 @@ describe('P-C5 (i): the EXACT law on constant-only fixtures', () => {
           else above += 1;
         }
         // Non-vacuity: the law must be exercised on both sides of the identity. `|1 − s|` and
-        // `|ln s|` agree in sign but not in shape, so a one-sided check cannot tell AD-6's law
+        // `|ln s|` agree in sign but not in shape, so a one-sided check cannot tell the law
         // from its rival.
         expect(below, 'no unsaturated factor below s = 1').toBeGreaterThanOrEqual(1);
         expect(above, 'no unsaturated factor above s = 1').toBeGreaterThanOrEqual(1);
         expect(below + above).toBeGreaterThanOrEqual(3);
       });
 
-      it('is exactly 0 at s = 1, which is the identity (P-C1)', () => {
+      it('is exactly 0 at s = 1, which is the identity', () => {
         const identity = exaggerate(fixture.mpm, fixture.expression, 1);
         expect(distance(fixture.mpm, identity, fixture.comparison)).toBe(0);
       });
 
-      it('is monotone in |1 − s|, not in |ln s| (AD-6)', () => {
+      it('is monotone in |1 − s|, not in |ln s|', () => {
         const measured = FACTORS.filter((s) => !lawIsUnreachable(fixture, s))
           .map((s) => ({
             spread: Math.abs(1 - s),
@@ -273,14 +273,14 @@ describe('P-C5 (i): the EXACT law on constant-only fixtures', () => {
 });
 
 /**
- * A reporting gap this property found, pinned where it was found. §4's cap binds inside
+ * A reporting gap this property found, pinned where it was found. The cap binds inside
  * `localDistance`, which the event dimensions call once per row, so an event evaluation
  * reporting `cappedCells: 0` unconditionally truncates a difference at `2·δ_row` and says
- * nothing about it (AD-2 requires cap events to be reported). They are counted over the chosen
+ * nothing about it (the design requires cap events to be reported). They are counted over the chosen
  * alignment rather than inside the cost function: the DP evaluates that function at every cell
  * of its table, so a counter there would report the search rather than the answer.
  */
-describe('AD-2’s cap events are reported by the event dimensions too', () => {
+describe('the cap events are reported by the event dimensions too', () => {
   const articulation = doc(
     '<articulationMap><articulation date="0.0" relativeDuration="0.5" relativeVelocity="1.4"/>' +
       '<articulation date="1440.0" relativeDuration="1.3"/></articulationMap>',
@@ -298,7 +298,7 @@ describe('AD-2’s cap events are reported by the event dimensions too', () => {
     ).toBe(false);
   });
 
-  it('counts the anchors where it bound, and emits the note (AD-2)', () => {
+  it('counts the anchors where it bound, and emits the note', () => {
     // At s = 4 the composed `relativeDuration` is 0.5⁴, i.e. |ln| = 2.08 nepers over a JND of
     // ln(1.10) — 21.8 JND on one row, past the 2·δ_row = 20 the cap allows.
     const { report } = compareMpm({
@@ -317,7 +317,7 @@ describe('AD-2’s cap events are reported by the event dimensions too', () => {
  * The three dimensions the law does not cover, each for a reason the design already records, and
  * each stated as a measurement: an unmeasured exception is indistinguishable from a defect.
  */
-describe('P-C5 (i): where the law does not reach, and why', () => {
+describe('where the law does not reach, and why', () => {
   it('rubato: expression trims the WINDOW jointly, the comparison prices the displacement', () => {
     const rubato = doc(
       '<rubatoMap><rubato date="0.0" frameLength="720.0" intensity="2.0" loop="true"/>' +
@@ -325,8 +325,8 @@ describe('P-C5 (i): where the law does not reach, and why', () => {
     );
     const deviation = distance(rubato, exaggerate(rubato, ['rubato'], 0), 'rubato');
     const measured = distance(rubato, exaggerate(rubato, ['rubato'], 2), 'rubato');
-    // §4's flag 2: expression's rubato window rows are `joint-trim` and the comparison prices
-    // the window as L1 on the endpoints (§5.2/A-Q10), a documented substitution rather than the
+    // the flag 2: expression's rubato window rows are `joint-trim` and the comparison prices
+    // the window as L1 on the endpoints, a documented substitution rather than the
     // same space. The displacement curve is also not affine in `@intensity`.
     expect(measured / deviation).toBeCloseTo(0.799884775, 6);
   });
@@ -338,7 +338,7 @@ describe('P-C5 (i): where the law does not reach, and why', () => {
     );
     const deviation = distance(dynamics, exaggerate(dynamics, ['dynamics'], 0), 'dynamics');
     // At s = 2 the upper level would land past 127 and `velocityRange` clamps it, so the
-    // transform is no longer affine and neither is the distance. The clamp is R6(a)'s and the
+    // transform is no longer affine and neither is the distance. The clamp is the and the
     // exaggeration report names every site it bound.
     const clamped = distance(dynamics, exaggerate(dynamics, ['dynamics'], 2), 'dynamics');
     expect(clamped / (1 * deviation)).toBeCloseTo(0.760852688, 6);
@@ -351,7 +351,7 @@ describe('P-C5 (i): where the law does not reach, and why', () => {
         '<movement date="2880.0" position="0.9"/>' +
         '<movement date="5760.0" position="0.4"/></movementMap>',
     );
-    // §3's correspondence maps `pedal ⊇ {pedalShape}` and nothing else: the expression
+    // the correspondence maps `pedal ⊇ {pedalShape}` and nothing else: the expression
     // dimensions have no `pedal` level, so a factor moves the curvature and not the position.
     // The law is vacuous here rather than false.
     expect(distance(pedal, exaggerate(pedal, ['pedalShape'], 0), 'pedal')).toBe(0);
@@ -377,11 +377,11 @@ function tempoRowValues(mpm: string): readonly number[] {
   );
 }
 
-describe('P-C5 (ii): the BREAKPOINT-level law on a transition-bearing fixture', () => {
+describe('the BREAKPOINT-level law on a transition-bearing fixture', () => {
   /**
    * Differences of log row values cancel the centre:
    * `ln v' = ln n + s(ln v − ln n)` for every row value `v`, so for any two of them
-   * `ln v₁' − ln v₂' = s(ln v₁ − ln v₂)` and `n` disappears. §4's flag 1 records that the
+   * `ln v₁' − ln v₂' = s(ln v₁ − ln v₂)` and `n` disappears. The flag 1 records that the
    * collapse of `log-around-center` to the bare logarithm is a property of differences.
    */
   it('scales every difference of log row values by exactly s', () => {
@@ -407,7 +407,7 @@ describe('P-C5 (ii): the BREAKPOINT-level law on a transition-bearing fixture', 
   });
 });
 
-describe('P-C5 (iii): the measured d_shape bound on transitions', () => {
+describe('the measured d_shape bound on transitions', () => {
   const at = (s: number) => distance(TRANSITION, exaggerate(TRANSITION, ['tempo'], s), 'tempo');
 
   /**

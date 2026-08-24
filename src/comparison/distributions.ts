@@ -1,9 +1,9 @@
 /**
- * The distribution mathematics of DESIGN.md §5.9: the LAWS an imprecision span declares, their
+ * The imprecision mathematics: the LAWS an imprecision span declares, their
  * CDFs and quantiles, and the two distances — `W₁` (the headline density's pointwise value) and
- * `W₂` with §1.2's location / spread / shape decomposition (the interpretive table).
+ * `W₂` with the location / spread / shape decomposition (the interpretive table).
  *
- * Everything here is deterministic and analytic; nothing samples. §2's rule is that no PRNG
+ * Everything here is deterministic and analytic; nothing samples. The rule is that no PRNG
  * touches any comparison path — the render draws numbers, this module compares the law they are
  * drawn from.
  *
@@ -24,23 +24,23 @@
  *   longer bounds it. Measured, `limit.lower="-30" limit.upper="30" mode="99"` draws values up to
  *   30 (clipped from ~58), which a textbook triangular cannot produce.
  *
- * ## Accuracy, per family (§5.9, M13a)
+ * ## Accuracy, per family
  *
  * `W₁ = ∫|F_A − F_B| dx` is EXACT for the polynomial-CDF families (delta / uniform / triangular
  * / clipped / list): between two structural breakpoints the difference of two CDFs is a
  * quadratic, GL-10 is exact to degree 19, and the absolute value is resolved at the crossings
- * rather than integrated through. Completeness of the crossing search is bought the way §5.0's
+ * rather than integrated through. Completeness of the crossing search is bought the way the
  * rules 2b/2c buy it — by emitting BOTH a structural split (the quadratic's vertex,
- * {@link quadraticVertex}) and a fixed subdivision, per AD-34.1, since a quadratic can cross
+ * {@link quadraticVertex}) and a fixed subdivision, since a quadratic can cross
  * twice inside one piece with equal endpoint signs.
  *
  * Any pair involving a Gaussian integrates at the special-function ε instead: `Φ` is not a
  * polynomial. {@link standardNormalCdf} is a convergent all-positive series below `z = 2` and a
  * continued fraction above it — deliberately not the Abramowitz–Stegun 7.1.26 rational, whose
- * `7.5·10⁻⁸` misses §5.0's own claim for this family by five orders, and not a Chebyshev table,
+ * `7.5·10⁻⁸` misses the claim for this family by five orders, and not a Chebyshev table,
  * whose correctness would rest on forty transcribed digits rather than on an argument.
  *
- * The measured figures, which are what §9.3's `imprecision` family carries (against an
+ * The measured figures, which are what the `imprecision` family carries (against an
  * independent composite GL-10 quadrature of the density, sharing no coefficient with the
  * implementation):
  *
@@ -53,20 +53,20 @@
  * | `W₁` against 14 closed forms, per SUPPORT SCALE | 3.0·10⁻¹⁶ |
  * | `W₂` moments against closed forms | 1.5·10⁻¹⁵ relative |
  * | `ρ` against `7√2/10` / `√(3/π)` | bit-exact / 1.1·10⁻¹⁵ |
- * | §1.2's closing identity | 4.1·10⁻¹⁴ relative |
+ * | the closing identity | 4.1·10⁻¹⁴ relative |
  *
  * Three of those rows replace superseded figures a blind pin had let stand: `Φ`'s left tail was
  * published as 4.9·10⁻¹⁴ (MINOR-2, {@link ERFC_CONTINUED_FRACTION_LIMIT}) and `Φ⁻¹`'s right tail
  * as 1.12·10⁻⁹ (MAJOR-3, {@link standardNormalQuantile}). `W₁`'s 3.6·10⁻¹⁶ was a RELATIVE figure
  * that two near-identical laws falsify by eleven orders; the machine-precise quantity is the
- * error against the laws' support scale (MAJOR-2, AD-55.3), which `compare.ts`'s
- * `EPSILON_FIGURES` carries. §5.0's record quotes "Acklam at `|err| < 1.15·10⁻⁹`" here; the
+ * error against the laws' support scale, which `compare.ts`'s
+ * `EPSILON_FIGURES` carries. The record quotes "Acklam at `|err| < 1.15·10⁻⁹`" here; the
  * numbers above supersede it by six orders.
  *
  * `W₂` and its decomposition integrate in the QUANTILE domain, where the triangular's `√` and
  * the Gaussian's `Φ⁻¹` are not polynomials, so those are quadrature in every case; the panels
  * are breakpoint-aware and the Gaussian's tails are refined geometrically. The two ρ constants
- * §5.9 names — `7√2/10` for uniform-vs-symmetric-triangular and `√(3/π)` for uniform-vs-Gaussian
+ * the design names — `7√2/10` for uniform-vs-symmetric-triangular and `√(3/π)` for uniform-vs-Gaussian
  * — are re-derived in the tests and pinned as the references this quadrature must reproduce.
  * They are deliberately NOT implemented as fast paths: one code path cannot disagree with itself.
  */
@@ -106,7 +106,7 @@ export interface TriangularLaw {
 }
 
 /**
- * AD-14iv's exact mixture, which is what the rejection sampler with an escape hatch draws:
+ * the exact mixture, which is what the rejection sampler with an escape hatch draws:
  *
  *     L = (1 − q^N)·TruncNormal(0, σ; lo, hi) + q^N·N(0, σ),  N = 10000, q = P(outside)
  *
@@ -128,7 +128,7 @@ export interface GaussianLaw {
   readonly upper: number;
   /**
    * The normal's mean. Always 0 as a document declares it — the renderer multiplies a STANDARD
-   * deviate by σ and never adds an offset — and non-zero only after §7.4's `'level'` invariance
+   * deviate by σ and never adds an offset — and non-zero only after the `'level'` invariance
    * has shifted the law. A field rather than a wrapper so that every law folds under an affine
    * map ({@link affineLaw}). The limits stay ABSOLUTE, so a shifted law's truncation window
    * moves with it.
@@ -143,7 +143,7 @@ export interface GaussianLaw {
  * is `series[i % n]`, a fractional index interpolating between neighbours), so the values a given
  * render performs are not in general list members. Which index a note lands on is a function of
  * its millisecond date and the timing basis — a render-path artifact this module refuses to
- * model, as §5.9 refuses to model the chord shake. The DECLARED law is the empirical one.
+ * model, for the same reason the chord shake is not modelled. The DECLARED law is the empirical one.
  */
 export interface ListLaw {
   readonly kind: 'list';
@@ -169,7 +169,7 @@ export interface ClippedLaw {
 
 export type ImprecisionLaw = BaseLaw | ClippedLaw;
 
-/** `δ₀`: the degenerate table's answer, and the law of an absent imprecision map (R6). */
+/** `δ₀`: the degenerate table's answer, and the law of an absent imprecision map. */
 export const DELTA_ZERO: DeltaLaw = Object.freeze({ kind: 'delta', at: 0 });
 
 /** The mixture's `N` — `RandomNumberProvider.nextDouble`'s `attempts > 10000` escape. */
@@ -205,7 +205,7 @@ export function uniformLaw(lower: number, upper: number): DeltaLaw | UniformLaw 
 /**
  * The renderer's triangular, or null where its construction has no CDF at all.
  *
- * Null for `lower > upper`, the pedal precedent (§5.8, AD-35) rather than a fussy domain check:
+ * Null for `lower > upper`, the pedal precedent rather than a fussy domain check:
  * with the limits inverted the two branches of the inverse-CDF formula run in opposite
  * directions, so `u ↦ x(u)` is not monotone and there is no distribution function to integrate.
  * Measured at `limit.lower="30" limit.upper="-30" mode="0"`: the branches produce `[30, 72)` and
@@ -225,7 +225,7 @@ export function triangularLaw(
 }
 
 /**
- * The AD-14iv mixture. `σ = 0` is `δ₀`; the sign of `σ` is immaterial because the normal is
+ * The mixture. `σ = 0` is `δ₀`; the sign of `σ` is immaterial because the normal is
  * symmetric and the renderer multiplies a standard deviate by it (measured: `σ = −10` draws
  * the same law as `σ = 10`).
  */
@@ -253,7 +253,7 @@ export function listLaw(values: readonly number[]): DeltaLaw | ListLaw | null {
  * `clamp(base, lower, upper)`, collapsing where the clip is vacuous or total.
  *
  * A clip that does not reach the base's support is dropped, so two encodings of one
- * performed law compare equal — the AD-40.2 principle ("price the resolved performed
+ * performed law compare equal — the principle ("price the resolved performed
  * effect") applied to a distribution.
  */
 export function clippedLaw(base: BaseLaw, lower: number, upper: number): ImprecisionLaw {
@@ -268,17 +268,17 @@ export function clippedLaw(base: BaseLaw, lower: number, upper: number): Impreci
 }
 
 /**
- * `scale·X + shift` as another law of the same vocabulary — §7.4's invariance modes, applied
+ * `scale·X + shift` as another law of the same vocabulary — the invariance modes, applied
  * to a distribution.
  *
  * Every kind FOLDS; nothing is wrapped — the reason {@link GaussianLaw} carries a `center`. A
  * wrapper would make a transformed law a different SHAPE from the one the reader produced, and
  * every consumer would need a case for it; folding keeps one vocabulary, so `d(A, A) = 0` stays
- * exact after canonicalization, which is what P-C3 needs.
+ * exact after canonicalization, which is what the triangle inequality needs.
  *
  * `scale` must be positive: a negative one reflects the law, which is not what either mode asks
  * for, and `0` collapses it to a point mass the caller means as a degenerate case rather than a
- * canonicalization. AD-20's `σ = 0` rule handles that one a level up.
+ * canonicalization. the `σ = 0` rule handles that one a level up.
  */
 export function affineLaw(law: ImprecisionLaw, scale: number, shift: number): ImprecisionLaw {
   if (!(scale > 0) || !Number.isFinite(scale) || !Number.isFinite(shift))
@@ -352,7 +352,7 @@ export function supportOf(law: ImprecisionLaw): readonly [number, number] {
  * unreachable and the other overshoots — `lower + √(s·b)` above, `upper − √(s·a)` below — which
  * is why the support is computed rather than assumed.
  *
- * The branch fraction is CLAMPED into `[0, 1]` (W3 CAPITAL-3). `fraction = (mode − lower)/scale`
+ * The branch fraction is CLAMPED into `[0, 1]`. `fraction = (mode − lower)/scale`
  * is the `u` at which the sampler switches branches, so for `mode > upper` it exceeds 1 and the
  * rising branch runs all the way to `u = 1`: the supremum is `lower + √(scale·belowMode)`, not
  * the mode. Unclamped, `T(0, 1, 1000)` claimed a hull reaching 1000 where the renderer's own
@@ -527,7 +527,7 @@ export function standardNormalQuantile(p: number): number {
   // One Halley step on f(x) = Φ(x) − p, skipped where the density underflows, since the
   // correction is then 0/0 rather than small.
   //
-  // The residual is formed COMPLEMENTARILY for `x > 0` (W3 MAJOR-3). `Φ(x) − p` cancels
+  // The residual is formed COMPLEMENTARILY for `x > 0`. `Φ(x) − p` cancels
   // completely as `p → 1` — both terms are 1 to sixteen digits — so the correction was noise
   // there and Acklam's raw 1.15e-9 survived: measured 1.124e-9 relative at `p = 1 − 1e-13`
   // against 1.41e-17 at `p = 1e-13`, an asymmetry of 4.5·10⁵. `(1 − p) − Φ(−x)` is the same
@@ -708,7 +708,7 @@ export function cdfBreakpoints(law: ImprecisionLaw): readonly number[] {
     }
     case 'gaussian': {
       // The mixture is smooth except at the truncation edges, and Φ's own curvature is
-      // resolved by σ-spaced nodes — the same reason §5.0's rule 1 grades its mesh. Six
+      // resolved by σ-spaced nodes — the same reason the rule 1 grades its mesh. Six
       // sigmas rather than the hull's twelve: beyond that `Φ` differs from its own limit by
       // under 1e-9, so further nodes buy nothing and cost a piece each.
       const nodes: number[] = [law.lower, law.upper];
@@ -744,7 +744,7 @@ export function quantileBreakpoints(law: ImprecisionLaw): readonly number[] {
 
 // --- W₁ ------------------------------------------------------------------------------------
 
-/** Split points per piece, in the spirit of §5.0 rule 2c: BOTH sets, never one (AD-34.1). */
+/** Split points per piece, in the spirit of the rule 2c: BOTH sets, never one. */
 const W1_PIECE_SUBDIVISIONS = 16;
 
 /**
@@ -753,7 +753,7 @@ const W1_PIECE_SUBDIVISIONS = 16;
  *
  * For the polynomial families `F_A − F_B` really IS a quadratic between structural breakpoints,
  * so this is not a heuristic there: fitting three points determines it exactly, and splitting at
- * the vertex leaves two monotone branches on which `bisectSignChange` is complete. §5.0's rule 2
+ * the vertex leaves two monotone branches on which `bisectSignChange` is complete. The rule 2
  * buys the same completeness for tempo from a closed-form critical point; here the closed form
  * is a three-point fit, since the coefficients depend on which pieces of which two CDFs meet.
  */
@@ -771,12 +771,12 @@ export function quadraticVertex(f: (x: number) => number, a: number, b: number):
 }
 
 /**
- * `W₁(A, B) = ∫ |F_A(x) − F_B(x)| dx` — §5.9's headline pointwise density, before the row's
+ * `W₁(A, B) = ∫ |F_A(x) − F_B(x)| dx` — the headline pointwise density, before the row's
  * JND divides it.
  *
  * Exact for the polynomial-CDF families and at the special-function ε where a Gaussian is
  * involved (module doc). The identity short-circuit is not an optimization: `d(A, A) = 0`
- * has to be EXACT for P-C1, and a quadrature that returns 3·10⁻¹⁷ instead would make the
+ * has to be EXACT for identity, and a quadrature that returns 3·10⁻¹⁷ instead would make the
  * zero set wrong in a way no tolerance can repair downstream.
  */
 export function wasserstein1(a: ImprecisionLaw, b: ImprecisionLaw): number {
@@ -810,7 +810,7 @@ export function wasserstein1(a: ImprecisionLaw, b: ImprecisionLaw): number {
   return total.total;
 }
 
-// --- W₂ and §1.2's decomposition -----------------------------------------------------------
+// --- W₂ and the decomposition -----------------------------------------------------------
 
 /**
  * `ρ` between a uniform law and an untruncated Gaussian, `√(3/π) ≈ 0.977205`.
@@ -841,33 +841,33 @@ const QUANTILE_PANEL_SUBDIVISIONS = 8;
 export interface W2Decomposition {
   /** `W₂(A, B) = ‖Q_A − Q_B‖₂`. */
   readonly w2: number;
-  /** `|ℓ_A − ℓ_B|` — §1.2's location term, as a root. */
+  /** `|ℓ_A − ℓ_B|` — the location term, as a root. */
   readonly location: number;
   /** `|σ_A − σ_B|` — the spread term, as a root. */
   readonly spread: number;
   /** `√(2σ_Aσ_B(1 − ρ))` — the shape term, as a root; 0 where either law is spreadless. */
   readonly shape: number;
-  /** `ρ`, or null where either law is spreadless (§1.2's discipline). */
+  /** `ρ`, or null where either law is spreadless (the discipline). */
   readonly rho: number | null;
-  /** True where a spread was recognized as structurally 0 — §1.2's `shapeless` companion. */
+  /** True where a spread was recognized as structurally 0 — the `shapeless` companion. */
   readonly shapeless: boolean;
   readonly meanA: number;
   readonly meanB: number;
   readonly sigmaA: number;
   readonly sigmaB: number;
-  /** `‖Q_A − Q_B‖₂²` against `location² + spread² + 2σ_Aσ_B(1−ρ)` — §1.2's closing check. */
+  /** `‖Q_A − Q_B‖₂²` against `location² + spread² + 2σ_Aσ_B(1−ρ)` — the closing check. */
   readonly closingResidual: number;
 }
 
 /**
- * §1.2's lemma in the quantile domain: `W₂²` split into location, spread and shape.
+ * the lemma in the quantile domain: `W₂²` split into location, spread and shape.
  *
  * The panels carry every quantile breakpoint of both laws, an equal subdivision of each, and
  * a geometric refinement at both ends where a Gaussian's quantile grows without bound. The
  * three terms are EXACT given the moments — the identity is algebra — so the only error is
  * in the moments themselves, and `closingResidual` reports it rather than asserting it away.
  *
- * Variance is `∫(Q − ℓ)²`, never `∫Q² − ℓ²` (AD-32/§1.2): the second form cancels
+ * Variance is `∫(Q − ℓ)²`, never `∫Q² − ℓ²`: the second form cancels
  * catastrophically for a law whose mean dwarfs its spread, which is the ordinary case for a
  * list of measured offsets clustered far from zero.
  */
@@ -922,11 +922,11 @@ export function wasserstein2Decomposition(a: ImprecisionLaw, b: ImprecisionLaw):
 }
 
 /**
- * AD-32's floor, restated for the quantile domain.
+ * the floor, restated for the quantile domain.
  *
  * `decomposition.ts` carries the same constant for curves, for the same reason: a law with no
  * spread integrates to a variance of ~1e−31 rather than to 0, so `σ === 0` has to be recognized
- * structurally or §1.2's degenerate convention never fires and `ρ` is reported for a point mass.
+ * structurally or the degenerate convention never fires and `ρ` is reported for a point mass.
  */
 export const SPREAD_NOISE_FLOOR = 1e-12;
 
@@ -941,7 +941,7 @@ function quantilePanels(a: ImprecisionLaw, b: ImprecisionLaw): readonly number[]
   // `u → 0, 1`; the triangular's is not, but its DERIVATIVE is (`Q = lo + √(u·s·a)` has infinite
   // slope at 0), and a uniform mesh reported σ for `T(−30, 30, 0)` as 12.24716 against the closed
   // form 30/√6 = 12.24745 — a relative 2.4·10⁻⁵ that put ρ(uniform, triangular) 6.7·10⁻⁶ off
-  // §5.9's `7√2/10`. Twelve decades matches the ±12σ support hull the CDF side uses, and costs
+  // the `7√2/10`. Twelve decades matches the ±12σ support hull the CDF side uses, and costs
   // nothing on the families with no singularity: GL-10 is exact on their quantiles for any
   // panelling at all.
   for (let decade = 1; decade <= QUANTILE_TAIL_DECADES; ++decade) {
@@ -973,7 +973,7 @@ function quantilePanels(a: ImprecisionLaw, b: ImprecisionLaw): readonly number[]
 /**
  * Structural equality of two laws — the identity fast path.
  *
- * Structural rather than numeric because it has to be a decision, not a tolerance: `P-C1`
+ * Structural rather than numeric because it has to be a decision, not a tolerance: identity
  * requires `d(A, A) = 0` exactly, and the constructors have already canonicalized the
  * spellings that differ without differing (an inverted uniform, a vacuous clip, a zero σ).
  */

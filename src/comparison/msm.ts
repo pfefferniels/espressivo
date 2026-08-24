@@ -1,9 +1,9 @@
 /**
  * What the comparison reads from an optional MSM — the score behind the two performances.
  *
- * §9.2 makes `msm` part of the metric, not a report-only side input (A11): it moves the window
- * (§5.0's `'msm'` rule), the measure mapping (C3) and the beat grid the accentuation phase is
- * anchored to (AD-12).
+ * the design makes `msm` part of the metric, not a report-only side input: it moves the window
+ * (the `'msm'` rule), the measure mapping and the beat grid the accentuation phase is
+ * anchored to.
  *
  * ## What it reads, and what it deliberately does not
  *
@@ -11,7 +11,7 @@
  * two. The note-level facts stay in `expression/msmFacts.ts` and are reused rather than
  * reimplemented; two readers of one format is how they drift.
  *
- * AD-12's forward-only `timeSignatureMap` walk is NOT implemented in full.
+ * the forward-only `timeSignatureMap` walk is NOT implemented in full.
  * `accentuationDistance` takes ONE {@link BeatGrid}, so a meter that changes mid-piece would
  * need the evaluator to take a grid FUNCTION and to add a breakpoint at every change. A map
  * with exactly one time signature is therefore exact (the renderer's forward walk never
@@ -39,26 +39,26 @@ export interface TimeSignatureEntry {
   readonly denominator: number;
 }
 
-/** §9.3's `measures` row (C3). */
+/** the `measures` row. */
 export interface MeasureEntry {
   readonly number: number;
   readonly startQuarters: number;
   readonly timeSignature: { readonly numerator: number; readonly denominator: number };
 }
 
-/** C3's three-state measure position: a measure number and a beat inside it. */
+/** the three-state measure position: a measure number and a beat inside it. */
 export interface MeasurePosition {
   readonly number: number;
   readonly beat: number;
 }
 
 /**
- * One `<part>` of the score, as `Performance.renderParts` sees it (AD-55.2).
+ * One `<part>` of the score, as `Performance.renderParts` sees it.
  *
  * This is the list the per-part sum counts, because it is the list the renderer iterates:
  * `renderParts` walks the MSM's parts and calls `resolvePartMaps(getCorrespondingPart(part), …)`,
  * so an MPM `<part>` with no MSM counterpart is never a scope and an MSM part with no MPM
- * counterpart is one anyway — inheriting the global maps wholesale (AD-52.2).
+ * counterpart is one anyway — inheriting the global maps wholesale.
  */
 export interface MsmPartScope {
   /** Position among the MSM's `<part>` children. */
@@ -79,7 +79,7 @@ export interface ComparisonMsm {
   readonly measures: readonly MeasureEntry[];
   /** How many notes the score carries, per part number where it has one. */
   readonly noteCount: number;
-  /** In document order — `renderParts`' own iteration (AD-55.2). */
+  /** In document order — `renderParts`' own iteration. */
   readonly parts: readonly MsmPartScope[];
   readonly facts: MsmFacts;
 }
@@ -168,7 +168,7 @@ const RENDERER_DEFAULT_SIGNATURE = { numerator: 4, denominator: 4 };
  * Measures are numbered from 1 and the walk restarts its counting nowhere — a new time
  * signature continues the numbering, which is what a bar number means. A signature whose date
  * falls mid-measure starts a new measure at its own date, exactly as the renderer's phase
- * anchor does (AD-12: the phase anchors at the TIME SIGNATURE, never at the instruction).
+ * anchor does (the phase anchors at the TIME SIGNATURE, never at the instruction).
  */
 function measureGrid(
   timeSignatures: readonly TimeSignatureEntry[],
@@ -225,7 +225,7 @@ export function measurePositionAt(
   if (measures.length === 0) return null;
   // A linear scan rather than `upperBoundBy`, which would be the natural shape and is cheaper:
   // `measureGrid` builds one entry per bar up to `MAX_MEASURES` (100 000) and this is called
-  // twice per §9.3 op and twice per §7.3 segment, so the product is a real quadratic. What holds
+  // twice per reported op and twice per segment, so the product is a real quadratic. What holds
   // it here is the `NaN` answer. A `NaN` `quarters` never fires `startQuarters > quarters`, so
   // the scan runs to the end and reports `{ number: <last bar in the score>, beat: NaN }` — a bar
   // number for a position in no bar. The bound would answer `null`, which is what the docstring
@@ -245,7 +245,7 @@ export function measurePositionAt(
 }
 
 /**
- * The beat grid the accentuation phase anchors to (AD-12), in the caller's common ticks.
+ * The beat grid the accentuation phase anchors to, in the caller's common ticks.
  *
  * Null where the MSM carries no usable time signature, which leaves the renderer's own 4/4
  * default in force — the same answer, differently stamped.

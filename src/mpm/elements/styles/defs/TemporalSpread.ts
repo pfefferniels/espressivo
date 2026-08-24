@@ -11,7 +11,7 @@ import type { TemporalDomain, TemporalValue } from './TemporalValue.js';
  * PARITY NOTE — v2 only, and deliberately left a TS `enum`. MPM v3 removed `time.unit` and
  * moved the unit onto each value (see {@link TemporalDomain}, which has a third member
  * `relative` this type cannot express). Converting it to an `as const` union would change the
- * emitted JS and break the tests that import it, so it stays (architecture brief §1.7) and is
+ * emitted JS and break the tests that import it, so it stays and is
  * simply not used by the v3 reading of the element.
  */
 export enum FrameDomain {
@@ -36,7 +36,7 @@ export enum NoteOffShift {
  *
  * Declared here rather than in `OrnamentDef`, where the attribute belongs, purely for module
  * layering: this module must not import `OrnamentDef`, yet its parser has to read the attribute
- * too. DESIGN.md D2 accepts the value on *both* elements, with `ornamentDef` winning, so both
+ * too. The value is accepted on *both* elements, with `ornamentDef` winning, so both
  * readers share this vocabulary and {@link parseOrnamentAlignment} is the single place that
  * decides what a legal value is.
  */
@@ -59,10 +59,9 @@ export function parseOrnamentAlignment(raw: string): OrnamentAlignment | null {
  * Which generation of MPM an object was read from — or, for objects built in code, which
  * API built it.
  *
- * DESIGN.md D12's "serialization is generation-preserving". MPM documents carry no version
- * marker at all (same namespace, no `@version`, see
- * `docs/history/ornamentation/research/github-v3-design.md` §1), so the generation can only be
- * inferred from which attributes are present. Objects remember what they were and write back
+ * Serialization is generation-preserving. MPM documents carry no version marker at all — same
+ * namespace, no `@version` — so the generation can only be inferred from which attributes are
+ * present. Objects remember what they were and write back
  * what they were: a v2-sourced spread must re-serialize byte-identically, or the `all-maps`
  * fixture comparison goes red.
  */
@@ -76,24 +75,24 @@ const DEFAULT_V3_FRAME_OFFSET: TemporalValue = { value: 0.0, domain: 'ticks' };
 
 /**
  * The `frameLength` default, `100%` (`temporalSpread.xml:38`, the element's own override of
- * `att.time.frameLength`). DESIGN.md D3: a bare `<temporalSpread>` in a v3 context spans the
- * whole principal note, where the v2 default of `0.0` spans nothing.
+ * `att.time.frameLength`). A bare `<temporalSpread>` in a v3 context spans the whole principal
+ * note, where the v2 default of `0.0` spans nothing.
  */
 const DEFAULT_V3_FRAME_LENGTH: TemporalValue = { value: 100.0, domain: 'relative' };
 
 /**
  * A trailing v3 unit suffix, as a format probe — not as a validity check.
  *
- * DESIGN.md D3 detects the generation of a `temporalSpread` structurally, and a unit suffix is
- * one of the two markers (the other is the `frame.offset` attribute name itself). The probe
+ * The generation of a `temporalSpread` is detected structurally, and a unit suffix is one of
+ * the two markers (the other is the `frame.offset` attribute name itself). The probe
  * deliberately ignores whether the rest of the value parses: `frameLength="abc%"` is a
- * malformed *v3* value, which D3 answers with log-and-default, not a silent slide back onto the
+ * malformed *v3* value, answered with log-and-default rather than a silent slide back onto the
  * v2 `parseFloat` path.
  */
 const V3_UNIT_SUFFIX = /(?:ms|%|ticks)$/;
 
 /**
- * Decide whether an element is v2 or v3 syntax (DESIGN.md D3/D12).
+ * Decide whether an element is v2 or v3 syntax.
  *
  * Markers, both v3-only by construction: the attribute `frame.offset` (v3 renamed
  * `frame.start` to it and deleted the old name outright — spec commit `71c1980`), or a unit
@@ -101,12 +100,12 @@ const V3_UNIT_SUFFIX = /(?:ms|%|ticks)$/;
  *
  * RULING pinned by test: ANY v3 marker makes the whole instance v3, including the mixed
  * spelling `frame.start="-22.0" frameLength="44%"`. The `frame.start` value is then read
- * through D3's alias and re-emitted as canonical `frame.offset`. The alternative, a
+ * through the alias and re-emitted as canonical `frame.offset`. The alternative, a
  * per-attribute generation, would have to serialize half a v2 and half a v3 element.
  *
  * `alignment` is deliberately NOT a marker here even though it is v3-only: it is not a frame
- * value, it is not serialized by this class at all (D2 puts it on `ornamentDef`), and a
- * `temporalSpread` carrying nothing but a Lars-style `alignment` is otherwise pure v2 and
+ * value, it is not serialized by this class at all (its home is `ornamentDef`), and a
+ * `temporalSpread` carrying nothing but a reference-style `alignment` is otherwise pure v2 and
  * must keep re-serializing as v2. {@link OrnamentDef} does treat it as a marker, for itself.
  */
 function detectSourceFormat(xml: Element): MpmSourceFormat {
@@ -119,12 +118,12 @@ function detectSourceFormat(xml: Element): MpmSourceFormat {
 }
 
 /**
- * The legacy `@time.unit` fallback of DESIGN.md D3, for a v3 value written without a suffix.
+ * The legacy `@time.unit` fallback, for a v3 value written without a suffix.
  *
  * v3 removed `time.unit` from every element (`grep memberOf key="att.time.unit"` over the
  * spec returns nothing), but both frame attributes' own descriptions still point at it and
  * the format's own sample corpus still writes it — `Reger - Moment Musical op 13 no 4.mpm`
- * and the guidelines' first example both do (research/github-v3-design.md §5). So it is
+ * and the guidelines' first example both do. So it is
  * honoured when present, and ticks is the fallback of the fallback (`att.time.unit.xml:19`).
  *
  * Wider than the v2 reader below, which maps everything that is not `"milliseconds"` onto
@@ -146,12 +145,12 @@ function legacyFallbackDomain(xml: Element): TemporalDomain {
 
 /**
  * Read one v3 frame attribute: strict-then-lenient (that chain is exactly what
- * {@link parseTemporalValueLenient} runs), then D3's domain fallback for a suffix-less value.
+ * {@link parseTemporalValueLenient} runs), then the domain fallback for a suffix-less value.
  *
- * @returns null when the value cannot be used, having logged why. D3: the attribute is then
+ * @returns null when the value cannot be used, having logged why. The attribute is then
  *   treated as absent and its default applies — a malformed frame value must never destroy
  *   the whole `ornamentDef` the way the reference implementation's `NumberFormatException`
- *   does (research/lars-v3-implementation.md §3.2 item 2).
+ *   does.
  */
 function readV3FrameValue(att: Attribute, fallbackDomain: TemporalDomain): TemporalValue | null {
   const parsed = parseTemporalValueLenient(att.getValue());
@@ -176,9 +175,9 @@ function readV3FrameValue(att: Attribute, fallbackDomain: TemporalDomain): Tempo
 
 /**
  * The v3 counterpart of {@link TemporalSpread.setFrameLength}'s clamp: negative lengths become
- * 0 while keeping their domain. DESIGN.md D3 keeps the v2.1.4 `minInclusive 0.0` intent even
- * though the v3 regex admits a leading `-` on `frameLength` (`temporalSpread.xml:34`); the
- * reference implementation clamps too (research/lars-v3-implementation.md §3.2 item 6).
+ * 0 while keeping their domain. This keeps the v2.1.4 `minInclusive 0.0` intent even though the
+ * v3 regex admits a leading `-` on `frameLength` (`temporalSpread.xml:34`); the reference
+ * implementation clamps too.
  */
 function clampV3FrameLength(length: TemporalValue): TemporalValue {
   if (length.value >= 0.0) return length;
@@ -198,8 +197,8 @@ function clampV3FrameLength(length: TemporalValue): TemporalValue {
  * **Two readings of one element, chosen by {@link getSourceFormat}.** MPM v3 renamed
  * `frame.start` to `frame.offset`, moved the time unit from the element (`time.unit`) onto each
  * value as a suffix, and changed the `frameLength` default from `0.0` to `100%`. Those are
- * incompatible readings of the same attribute names; DESIGN.md D6/D12 resolve it by
- * generation-preservation rather than conversion:
+ * incompatible readings of the same attribute names, resolved by generation-preservation
+ * rather than conversion:
  *
  * - **v2-sourced** (no v3 marker, or built through the v2 fields) — `frameStart`,
  *   {@link getFrameLength} and `frameDomain` are the state, parsed and written exactly as
@@ -213,12 +212,12 @@ function clampV3FrameLength(length: TemporalValue): TemporalValue {
  * keep their field initialisers (`0.0`, `0.0`, `Ticks`) and **must not be read** — a `relative`
  * domain has no `FrameDomain` counterpart, and `frame.offset="22ms" frameLength="90%"` has no
  * single one either, so any mirror would have to invent a value. Resolving a v3 frame to numbers
- * (`%` against the principal note, DESIGN.md D4) is the renderer's job, and {@link apply} — the
+ * (`%` against the principal note) is the renderer's job, and {@link apply} — the
  * v2 spacing engine — is what it feeds afterwards.
  *
  * `alignment` is read here for compatibility with the reference implementation, which puts it on
  * this element, but is neither owned nor serialized here: the spec's home for it is
- * `ornamentDef` (DESIGN.md D2). See {@link getParsedAlignment}.
+ * `ornamentDef`. See {@link getParsedAlignment}.
  *
  * **Deliberately not an `AbstractXmlSubtree`** (RULE C1a): {@link getXml} lazily generates and
  * caches its element instead of reading a field, so a programmatically built spread serializes
@@ -296,9 +295,8 @@ export class TemporalSpread {
    * The v3 frame reading. Both attributes end up non-null, defaults included, so that
    * `sourceFormat === 'v3'` and "the v3 accessors carry the state" mean the same thing.
    *
-   * `frame.start` is accepted as an alias of `frame.offset` (DESIGN.md D3; the reference
-   * implementation keeps the fallback too — research/lars-v3-implementation.md §3.2 item 4),
-   * which is what carries the mixed spelling of {@link detectSourceFormat}'s ruling across into
+   * `frame.start` is accepted as an alias of `frame.offset` — the reference implementation
+   * keeps the fallback too — which is what carries the mixed spelling of {@link detectSourceFormat}'s ruling across into
    * the canonical output.
    */
   private parseV3Frame(xml: Element): void {
@@ -321,7 +319,7 @@ export class TemporalSpread {
     return this.frameLength;
   }
 
-  /** Which MPM generation this spread was read from, or the API it was built with (D12). */
+  /** Which MPM generation this spread was read from, or the API it was built with. */
   getSourceFormat(): MpmSourceFormat {
     return this.sourceFormat;
   }
@@ -365,8 +363,8 @@ export class TemporalSpread {
    * The `alignment` this element carried, or null if it carried none. Compatibility only, and
    * deliberately without a setter: the spec declares `alignment` on `ornamentDef`
    * (`ornamentDef.xml:25-33`) while the changelog, the guidelines prose and the reference
-   * implementation all put it on `temporalSpread` (research/github-v3-design.md §6 item 1), so
-   * DESIGN.md D2 reads both and writes only the first. {@link OrnamentDef} collects this value;
+   * implementation all put it on `temporalSpread`, so both are read and only the first is
+   * written. {@link OrnamentDef} collects this value;
    * {@link generateXML} never emits it.
    */
   getParsedAlignment(): OrnamentAlignment | null {
@@ -386,7 +384,7 @@ export class TemporalSpread {
    * Floating-point operation order here feeds rendered timing: do not reassociate it.
    *
    * v3 NOTE: this reads the **v2** fields, so it does nothing useful on a v3-sourced spread
-   * until a renderer has resolved that spread's frame to plain numbers (DESIGN.md D4/D5 — `%`
+   * until a renderer has resolved that spread's frame to plain numbers (`%`
    * against the principal note's tick duration, `ms` through the millisecond marker mechanism).
    * That resolution belongs to the renderer, not to this class.
    */
@@ -480,8 +478,7 @@ export class TemporalSpread {
   }
 
   /**
-   * Build (and cache) the element for this spread, in the generation it was sourced from
-   * (DESIGN.md D12).
+   * Build (and cache) the element for this spread, in the generation it was sourced from.
    *
    * **v2** — unchanged: only non-default values are written, so a neutral spread serializes
    * as a bare `<temporalSpread/>`. BYTE-FROZEN against the Java fixtures.
@@ -490,9 +487,9 @@ export class TemporalSpread {
    * `time.unit` anywhere (v3 deleted the attribute). Both frame attributes are written
    * *unconditionally*, unlike their v2 twins, because in v3 the value carries the domain:
    * omitting `frameLength="0%"` as a default would make it indistinguishable from an absent
-   * one, whose default is `100%` — the exact round-trip bug the reference implementation has
-   * (research/lars-v3-implementation.md §3.5, "two omission bugs"). `intensity`,
-   * `noteoff.shift` and `xml:id` are unchanged in v3. `alignment` is never written here (D2).
+   * one, whose default is `100%` — the exact round-trip bug the reference implementation has.
+   * `intensity`, `noteoff.shift` and `xml:id` are unchanged in v3. `alignment` is never written
+   * here; its home is `ornamentDef`.
    *
    * Attribute order is byte-visible, and follows the spec's own `temporalSpread` exemplum
    * (`temporalSpread.xml:45-48`: `frame.offset`, `frameLength`, `intensity`, `noteoff.shift`),

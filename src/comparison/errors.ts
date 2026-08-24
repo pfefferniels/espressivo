@@ -1,25 +1,25 @@
 /**
  * The document layer's own throws, kept out of the facade's classes.
  *
- * DESIGN.md §9.4: *"The interior owns the domain validators (one definition of legality) and
+ * *"The interior owns the domain validators (one definition of legality) and
  * the facade wraps their throws in `InvalidOptionError` with `{ cause }`."* So the selection
  * rules live here, the typed facade surface stays in `src/api/errors.ts`, and `compareMpm`
- * re-throws these with §9.4's role-prefixed message (`MPM a: …`, `MPM b: …`).
+ * re-throws these with the role-prefixed message (`MPM a: …`, `MPM b: …`).
  *
  * They extend `MeicoError` from `src/xml/errors.js`: a layer-1 module may not import from
  * layer 6 (RULE M1), and re-rooting the hierarchy would give the facade a second root that
  * `instanceof` cannot see. Each class carries structured fields rather than a pre-formatted
- * string, so the facade builds its message without parsing one back apart (§9.4).
+ * string, so the facade builds its message without parsing one back apart.
  */
 import { MeicoError } from '../xml/errors.js';
 
-/** Which of the two documents a problem is about — §9.4's role, carried structurally. */
+/** Which of the two documents a problem is about — the role, carried structurally. */
 export type ComparisonDocumentRole = 'a' | 'b';
 
 /**
  * A document holds several performances and the caller named none.
  *
- * §9.4: *"multi-performance document, no selector — `InvalidOptionError` naming the
+ * *"multi-performance document, no selector — `InvalidOptionError` naming the
  * candidates"*. The names travel on the error so the facade can list them.
  */
 export class PerformanceSelectionAmbiguousError extends MeicoError {
@@ -38,7 +38,7 @@ export class PerformanceSelectionAmbiguousError extends MeicoError {
 
 /**
  * The named or indexed performance is not there — including the zero-performance document,
- * which §9.4 routes here on purpose (C8: *"users hand-building neutral documents hit this"*).
+ * which is routed here on purpose (*"users hand-building neutral documents hit this"*).
  */
 export class PerformanceSelectionNotFoundError extends MeicoError {
   constructor(
@@ -57,7 +57,7 @@ export class PerformanceSelectionNotFoundError extends MeicoError {
 /**
  * A selector that is not a usable index or name at all — a negative or fractional number.
  *
- * §9.4 splits this from the not-found case (`InvalidOptionError` versus
+ * This is split from the not-found case (`InvalidOptionError` versus
  * `PerformanceNotFoundError`) because the caller could have known this one without reading
  * the document.
  */
@@ -73,9 +73,9 @@ export class PerformanceSelectorInvalidError extends MeicoError {
 }
 
 /**
- * A resolved quarter-BPM that is not a positive number — §9.4's `qbpm ≤ 0` row (M11).
+ * A resolved quarter-BPM that is not a positive number — the `qbpm ≤ 0` row.
  *
- * A DOCUMENT error rather than a `⊥` span, by §4's split: `⊥` is for a value the renderer
+ * A DOCUMENT error rather than a `⊥` span, by the split: `⊥` is for a value the renderer
  * performs and the comparison cannot read, while a non-positive tempo has no logarithm at all
  * — `T` is `−∞` at 0 and `NaN` below it, so every quantity downstream would be one of those.
  */
@@ -93,9 +93,9 @@ export class NonPositiveTempoError extends MeicoError {
 }
 
 /**
- * Two corpus items reduced to one label after expansion (§8, A8).
+ * Two corpus items reduced to one label after expansion.
  *
- * Every tie in §8's products is broken on a label (AD-25.2), and a PAM medoid's whole value is
+ * Every tie in the products is broken on a label, and a PAM medoid's whole value is
  * naming a real performer, so two documents both labelled `"Welte 1905"` would make "the most
  * typical Hofmann" ambiguous. The message names every collision and the item indices that
  * produced it, since with ~256 items an error naming none sends the caller bisecting their corpus.
@@ -112,7 +112,7 @@ export class CorpusLabelCollisionError extends MeicoError {
   }
 }
 
-/** More items than `maxItems` allows — R10's ceiling, raised to 256 by C17 for the Daten corpus. */
+/** More items than `maxItems` allows — the ceiling, raised to 256 for the Daten corpus. */
 export class CorpusSizeError extends MeicoError {
   constructor(
     readonly count: number,
@@ -126,10 +126,10 @@ export class CorpusSizeError extends MeicoError {
 }
 
 /**
- * A `k` or an `embeddingAxes` outside its domain, checked after §8's item expansion.
+ * A `k` or an `embeddingAxes` outside its domain, checked after the item expansion.
  *
  * The bound depends on the EXPANDED count, which the facade cannot know without reading the
- * documents — a multi-performance item becomes several. Still §9.4's knowable branch rather
+ * documents — a multi-performance item becomes several. Still the knowable branch rather
  * than a degradation note: a silently clamped `k` would answer a different question.
  */
 export class CorpusOptionRangeError extends MeicoError {

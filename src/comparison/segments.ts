@@ -24,7 +24,7 @@
  *   overlaps. Co-dated raws give a zero-width `[d, d)`, which covers nothing.
  * - pedal — lead-in, then span-and-hold per movement; `raws` is in entry order and entries
  *   are date-ordered, so `next.dateTicks >= raw.endTicks` always. The one unbounded span
- *   (`UNBOUNDED_END_TICKS`, AD-35's resurrected movement) cannot overlap anything, because
+ *   (`UNBOUNDED_END_TICKS`, the resurrected movement) cannot overlap anything, because
  *   `endTicksOf` returns that sentinel only when no later entry is named `movement` — which
  *   makes its movement the last raw in the list.
  *
@@ -52,7 +52,7 @@ export interface TickSpan {
 }
 
 /**
- * The segment covering `ticks`, right-continuous (`[start, end)`, A-B1), or `null`.
+ * The segment covering `ticks`, right-continuous (`[start, end)`), or `null`.
  *
  * `segments` must ascend by `startTicks` and must not overlap; see this module's header.
  *

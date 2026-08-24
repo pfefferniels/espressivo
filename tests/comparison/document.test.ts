@@ -76,7 +76,7 @@ describe('ppq normalization', () => {
   });
 
   it('keeps "declared but unusable" distinct from "not declared"', () => {
-    // §5.0/A21: fallbackUsed means exactly "declared none". A document that wrote something
+    // fallbackUsed means exactly "declared none". A document that wrote something
     // unusable did declare one, so it must not be reported as silent.
     const performance = solePerformance(globalDoc('', 'lots'));
     expect(readPpq(performance.element)).toEqual({
@@ -189,7 +189,7 @@ describe('performance selection', () => {
   });
 
   it('separates an invalid selector from a not-found one', () => {
-    // §9.4 splits these because the caller could have known about -1 without reading a file.
+    // These are split because the caller could have known about -1 without reading a file.
     expect(() => readComparisonPair({ a: TELEMANN, performanceA: -1, performanceB: 0 })).toThrow(
       PerformanceSelectorInvalidError,
     );
@@ -198,14 +198,14 @@ describe('performance selection', () => {
     );
   });
 
-  it('routes a zero-performance document to not-found (C8)', () => {
+  it('routes a zero-performance document to not-found', () => {
     const empty = '<mpm xmlns="http://www.cemfi.de/mpm/ns/1.0"/>';
     expect(() => readComparisonPair({ a: empty, b: MINIMAL })).toThrow(
       PerformanceSelectionNotFoundError,
     );
   });
 
-  it('defaults b to a, so one document can compare two of its own performances (C16)', () => {
+  it('defaults b to a, so one document can compare two of its own performances', () => {
     const pair = readComparisonPair({
       a: ALBERT,
       performanceA: 'Axel Berndt',
@@ -233,7 +233,7 @@ describe('scopes, matching and map resolution', () => {
     expect(part?.nameDisagreement).toBe(true);
   });
 
-  it('keeps an unmatched part as a row against neutral rather than dropping it (R6)', () => {
+  it('keeps an unmatched part as a row against neutral rather than dropping it', () => {
     const one =
       '<mpm xmlns="http://www.cemfi.de/mpm/ns/1.0"><performance name="p" pulsesPerQuarter="720">' +
       '<global><header/><dated/></global>' +
@@ -255,7 +255,7 @@ describe('scopes, matching and map resolution', () => {
     expect(pair.comparability.partNumbersMatched).toBe(false);
   });
 
-  it('orders part rows by number, independently of which document is a (R2)', () => {
+  it('orders part rows by number, independently of which document is a', () => {
     const parts = (numbers: readonly string[]) =>
       numbers
         .map(
@@ -347,7 +347,7 @@ describe('scopes, matching and map resolution', () => {
     ]);
   });
 
-  it('lets an EMPTY part-local map shadow a populated global one (AD-16)', () => {
+  it('lets an EMPTY part-local map shadow a populated global one', () => {
     const text =
       '<mpm xmlns="http://www.cemfi.de/mpm/ns/1.0"><performance name="p" pulsesPerQuarter="720">' +
       '<global><header/><dated>' +
@@ -427,7 +427,7 @@ describe('ordered instruction views', () => {
   });
 });
 
-describe('span-end rules (AD-14ii / R12)', () => {
+describe('span-end rules', () => {
   it('gives the span maps that really name-test the same-local-name rule', () => {
     for (const name of [
       'tempoMap',
@@ -439,7 +439,7 @@ describe('span-end rules (AD-14ii / R12)', () => {
       expect(spanEndRuleOf(name)).toBe('same-local-name');
   });
 
-  it('gives asynchronyMap the ANY-ENTRY rule, against §5.0 and with §5.7', () => {
+  it('gives asynchronyMap the ANY-ENTRY rule, against the table and with the renderer', () => {
     // DESIGN contradicts itself; the renderer settles it. AsynchronyMap takes
     // `this.elements[asynIndex + 1].key` with no name test, and GenericMap indexes every
     // dated child including <style>, while TempoMap.getEndDate does test
@@ -470,7 +470,7 @@ describe('span-end rules (AD-14ii / R12)', () => {
   });
 });
 
-describe('window rules and stamps (AD-4)', () => {
+describe('window rules and stamps', () => {
   const base = { lastDateQuartersA: 10, lastDateQuartersB: 20 };
 
   it('falls back to the max last instruction, stamped window-restricted', () => {
@@ -497,8 +497,8 @@ describe('window rules and stamps (AD-4)', () => {
     expect(window.metricGuarantee).toBe('unconditional');
   });
 
-  it('lets an EXPLICIT window outrank the MSM score end (AD-27.1)', () => {
-    // AD-27.1 reverses §5.0's list, which put MSM first: an explicit caller choice outranks
+  it('lets an EXPLICIT window outrank the MSM score end', () => {
+    // The list is reversed from the one that put MSM first: an explicit caller choice outranks
     // the MSM end, as it does every other option here.
     const window = computeWindow({
       ...base,
@@ -536,7 +536,7 @@ describe('window rules and stamps (AD-4)', () => {
   });
 });
 
-describe('renderer-default level resolution (R8 / AD-1)', () => {
+describe('renderer-default level resolution', () => {
   const resolveIn = (
     dated: string,
     header: string,
@@ -583,7 +583,7 @@ describe('renderer-default level resolution (R8 / AD-1)', () => {
   });
 
   it('performs an UNRESOLVABLE tempo level at the renderer default of 100, not as a gap', () => {
-    // AD-1: styleScope refuses to invent a level, which is right for a write transform and
+    // styleScope refuses to invent a level, which is right for a write transform and
     // wrong for a read of what is performed.
     const resolved = resolveIn(
       '<tempoMap><tempo date="0.0" bpm="Allegrissimo" beatLength="0.25"/></tempoMap>',
@@ -659,7 +659,7 @@ describe('⊥ plumbing', () => {
   });
 });
 
-describe('comparability evidence (C7)', () => {
+describe('comparability evidence', () => {
   it('reports the length ratio and the grids for a cross-ppq pair', () => {
     const pair = readComparisonPair({
       a: TELEMANN,

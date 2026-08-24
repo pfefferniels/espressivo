@@ -1,7 +1,7 @@
 /**
  * Repository hygiene: properties of the source files rather than of what they compute.
  *
- * There is one rule here so far, and it earned its place the hard way (AD-70.1).
+ * There is one rule here so far, and it earned its place the hard way.
  * `src/comparison/diff.ts` shipped with two raw NUL bytes in it — a separator written as the
  * character instead of as the `\u0000` escape — and that one byte made the whole file binary
  * to the tools this project is reviewed with:
@@ -18,7 +18,7 @@
  *
  * The perimeter is every tracked directory the project's own text lives in, documents
  * included: they are reviewed the same way the code is, and a NUL makes them just as
- * unreadable (MINOR-R4). Fixture directories stay out, because the MIDI references under
+ * unreadable. Fixture directories stay out, because the MIDI references under
  * `tests/integration/fixtures/**` are legitimately binary — they are byte-for-byte comparison
  * targets, and a NUL is what a MIDI file is made of.
  */
@@ -35,7 +35,7 @@ function walk(directory: string): readonly string[] {
   for (const entry of readdirSync(directory)) {
     // `fixtures*` holds byte-comparison targets — MIDI, and whatever a future parity check
     // needs. Matched by prefix: `fixtures-v3` and `fixtures-layers-to-staffs` are the same
-    // kind of directory and an exact match misses both (MINOR-R4).
+    // kind of directory and an exact match misses both.
     if (entry.startsWith('fixtures') || entry === 'node_modules') continue;
     const path = join(directory, entry);
     if (statSync(path).isDirectory()) found.push(...walk(path));
@@ -44,7 +44,7 @@ function walk(directory: string): readonly string[] {
   return found;
 }
 
-describe('no source file is binary to git and grep (AD-70.1)', () => {
+describe('no source file is binary to git and grep', () => {
   const files = [
     ...walk(join(ROOT, 'src')),
     ...walk(join(ROOT, 'tests')),
@@ -75,11 +75,10 @@ describe('no source file is binary to git and grep (AD-70.1)', () => {
     const walked = files.map((path) => relative(ROOT, path));
     expect(walked).toContain('src/comparison/diff.ts');
     // The widened perimeter, named file by file so a future narrowing fails here.
-    expect(walked).toContain('docs/history/comparison/LOG.md');
-    expect(walked).toContain('docs/history/comparison/DESIGN.md');
-    expect(walked).toContain('docs/history/comparison/W4-VERIFICATION.md');
+    expect(walked).toContain('docs/comparison.md');
+    expect(walked).toContain('docs/equivalence.md');
+    expect(walked).toContain('docs/README.md');
     expect(walked).toContain('README.md');
-    expect(walked).toContain('docs/history/ornamentation/tools/probe.mjs');
     // …and the byte-comparison fixtures stay out, by prefix rather than by exact name.
     expect(walked.some((path) => path.includes('fixtures-v3'))).toBe(false);
     expect(walked.some((path) => path.includes('fixtures-layers-to-staffs'))).toBe(false);

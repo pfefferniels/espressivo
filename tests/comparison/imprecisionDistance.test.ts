@@ -1,8 +1,8 @@
 /**
- * `d_imprecision` — DESIGN.md §5.9's density, §1.2's decomposition, §7.4's invariance.
+ * `d_imprecision` — the density, the decomposition, the invariance.
  *
- * §10's fixture obligations for this dimension: one per row of §5.9's degenerate table (in
- * `imprecisionLaws.test.ts`, where the laws are read) and the SPAN PROPORTIONALITY pin (AD-14v)
+ * the fixture obligations for this dimension: one per row of the degenerate table (in
+ * `imprecisionLaws.test.ts`, where the laws are read) and the SPAN PROPORTIONALITY pin
  * below — the same difference over one bar and over the whole piece, with the RATIO asserted
  * rather than the two numbers separately, because the ratio is the claim.
  */
@@ -52,7 +52,7 @@ const readingFor = (body: string): ImprecisionReading => {
   );
 };
 
-/** An EXPLICIT shared window, so R3's metric guarantee is unconditional (AD-33.5). */
+/** An EXPLICIT shared window, so the metric guarantee is unconditional. */
 const windowOf = (endQuarters: number): ComparisonWindow => ({
   startQuarters: 0,
   endQuarters,
@@ -79,7 +79,7 @@ const distanceOf = (
     invariance,
   );
 
-describe('the density is duration-proportional (AD-14v, §10’s fixture obligation)', () => {
+describe('the density is duration-proportional (the fixture obligation)', () => {
   it('the same difference over one bar and over the whole piece scales exactly', () => {
     // One bar = 4 quarters of an 8-quarter window; then the same difference throughout.
     const oneBar = distanceOf(
@@ -116,14 +116,14 @@ describe('the density is duration-proportional (AD-14v, §10’s fixture obligat
   });
 });
 
-describe('§4’s capped metric on two laws', () => {
+describe('the capped metric on two laws', () => {
   const row = comparisonRowAt(
     'imprecisionTiming',
     'distribution.uniform',
     'limit.upper',
   ) as ComparisonRegistryRow;
 
-  it('prices ⊥ at δ_row from a law and 0 from itself (AD-2)', () => {
+  it('prices ⊥ at δ_row from a law and 0 from itself', () => {
     expect(lawDistance(row, valued(DELTA_ZERO), bottom('renderer-error')).distance).toBe(
       DEFAULT_DELTA_JND,
     );
@@ -173,19 +173,19 @@ describe('the grid, and reading the law at a cell’s left edge', () => {
     expect(result.mean).toBeNull();
   });
 
-  it('gives distance exactly 0 for two identical documents (P-C1)', () => {
+  it('gives distance exactly 0 for two identical documents', () => {
     const body = uniform('0.0', -30, 30) + uniform('1440.0', -10, 10);
     expect(distanceOf(body, body, 8).distance).toBe(0);
   });
 
-  it('is symmetric to the last bit (P-C2)', () => {
+  it('is symmetric to the last bit', () => {
     const a = uniform('0.0', -30, 30) + uniform('1440.0', -10, 10);
     const b =
       '<distribution.triangular date="0.0" limit.lower="-40" limit.upper="20" mode="0" clip.lower="-40" clip.upper="20" milliseconds.timingBasis="300"/>';
     expect(distanceOf(a, b, 8).distance).toBe(distanceOf(b, a, 8).distance);
   });
 
-  it('satisfies the triangle inequality across a mixed family (P-C3)', () => {
+  it('satisfies the triangle inequality across a mixed family', () => {
     const bodies = [
       '',
       uniform('0.0', -30, 30),
@@ -216,7 +216,7 @@ describe('the grid, and reading the law at a cell’s left edge', () => {
   });
 });
 
-describe('processParameters — the component the marginal cannot carry (§5.9, A-B3)', () => {
+describe('processParameters — the component the marginal cannot carry', () => {
   const brownian = (step: number): string =>
     `<distribution.correlated.brownianNoise date="0.0" stepWidth.max="${String(step)}" limit.lower="-30" limit.upper="30" milliseconds.timingBasis="300"/>`;
 
@@ -243,7 +243,7 @@ describe('processParameters — the component the marginal cannot carry (§5.9, 
       8,
     );
     expect(differingBasis.processDistance).toBeGreaterThan(0);
-    // The i.i.d. control: the same basis difference costs exactly nothing (AD-14iii).
+    // The i.i.d. control: the same basis difference costs exactly nothing.
     const iid = distanceOf(
       uniform('0.0', -30, 30),
       uniform('0.0', -30, 30).replace('timingBasis="300"', 'timingBasis="900"'),
@@ -253,7 +253,7 @@ describe('processParameters — the component the marginal cannot carry (§5.9, 
   });
 });
 
-describe('§1.2’s decomposition, on the normalized measure', () => {
+describe('the decomposition, on the normalized measure', () => {
   it('closes the identity over the window', () => {
     const result = distanceOf(
       uniform('0.0', -30, 30),
@@ -294,8 +294,8 @@ describe('§1.2’s decomposition, on the normalized measure', () => {
   });
 });
 
-describe('§7.4’s invariance for a distribution dimension', () => {
-  it('‘level’ removes a shared location offset (AD-20)', () => {
+describe('the invariance for a distribution dimension', () => {
+  it('‘level’ removes a shared location offset', () => {
     const centred = distanceOf(uniform('0.0', -10, 10), uniform('0.0', 40, 60), 8, 'level');
     expect(centred.distance).toBeCloseTo(0, 9);
     // The control: without the mode it is a real difference.

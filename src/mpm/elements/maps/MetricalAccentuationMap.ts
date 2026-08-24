@@ -135,8 +135,8 @@ export class MetricalAccentuationMap extends GenericMap {
       // null when the style is in scope but names no def by this name, and then dereferences
       // it unguarded: the render dies with a NullPointerException. Skipping the instruction
       // instead would render a document the reference refuses, and
-      // `src/comparison/accentuationCurve.ts` (R21) measures the difference between the two.
-      // R21 quotes this error text verbatim, so do not "improve" the message without reading
+      // `src/comparison/accentuationCurve.ts` measures the difference between the two.
+      // The comparison layer quotes this error text verbatim, so do not "improve" it without reading
       // that module first.
       const def = md.accentuationPatternDef;
       if (def === null) throw new TypeError("Cannot read properties of null (reading 'getLength')");

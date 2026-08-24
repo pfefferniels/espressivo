@@ -1,7 +1,7 @@
 /**
- * Ornamentation — DESIGN.md §5.6 as ruled by AD-40, AD-41, AD-42 and AD-43.
+ * Ornamentation.
  *
- * Every renderer claim here is measured through `Performance.perform`: under AD-43.1 "the
+ * Every renderer claim here is measured through `Performance.perform`: "the
  * renderer determines it" means the PIPELINE, not the nearest method — a map-level probe once
  * produced a false "global maps perform nothing" claim. The harness performs a real MSM against
  * a real MPM and reads the notes back, and the reader is asserted against those notes rather
@@ -112,7 +112,7 @@ const GRAD =
 const STYLE0 = '<style date="0.0" name.ref="O"/>';
 const ORN = (extra = ''): string => `<ornament date="0.0" name.ref="g" scale="1.0"${extra}/>`;
 
-describe('AD-43.1 — a GLOBAL ornamentationMap performs', () => {
+describe('a GLOBAL ornamentationMap performs', () => {
   it('performs identically from <global> and from a <part>, through the pipeline', () => {
     expect(chordVelocities(GRAD, `${STYLE0}${ORN()}`, 'part')).toEqual([80, 100, 120]);
     expect(chordVelocities(GRAD, `${STYLE0}${ORN()}`, 'global')).toEqual([80, 100, 120]);
@@ -137,7 +137,7 @@ describe('the gradient the renderer actually performs', () => {
     });
   });
 
-  it('prices two encodings of one performed ramp at 0 (AD-40.2)', () => {
+  it('prices two encodings of one performed ramp at 0', () => {
     const half =
       '<ornamentDef name="g"><dynamicsGradient transition.from="-10.0" transition.to="10.0"/></ornamentDef>';
     const scaled = `<ornament date="0.0" name.ref="g" scale="2.0"/>`;
@@ -149,7 +149,7 @@ describe('the gradient the renderer actually performs', () => {
     );
   });
 
-  it('performs nothing without @scale, and the spread still applies (AD-40.1)', () => {
+  it('performs nothing without @scale, and the spread still applies', () => {
     const both =
       '<ornamentDef name="g"><dynamicsGradient transition.from="-20.0" transition.to="20.0"/>' +
       '<temporalSpread frame.start="-22.0" frameLength="44.0"/></ornamentDef>';
@@ -159,7 +159,7 @@ describe('the gradient the renderer actually performs', () => {
   });
 });
 
-describe('absence has a NEUTRAL, measured (AD-42.3, AD-43.2ii)', () => {
+describe('absence has a NEUTRAL, measured', () => {
   const none = '<ornamentDef name="g"/>';
   const neutralGradient =
     '<ornamentDef name="g"><dynamicsGradient transition.from="0" transition.to="0"/></ornamentDef>';
@@ -187,7 +187,7 @@ describe('absence has a NEUTRAL, measured (AD-42.3, AD-43.2ii)', () => {
     ).toBe(0);
   });
 
-  it('drops cost by CONTENT, not by a flat constant (AD-42.3’s point)', () => {
+  it('drops cost by CONTENT, not by a flat constant (the point)', () => {
     const small = atomsOf(
       '<ornamentDef name="g"><dynamicsGradient transition.from="-1" transition.to="1"/></ornamentDef>',
       `${STYLE0}${ORN()}`,
@@ -286,7 +286,7 @@ describe('the v3 SHAPE gate (@repetitions / @noteid)', () => {
   });
 });
 
-describe('@note.order (AD-41.1)', () => {
+describe('@note.order', () => {
   it('the two orderings genuinely swap which note gets which step', () => {
     expect(chordVelocities(GRAD, `${STYLE0}${ORN(' note.order="ascending pitch"')}`)).toEqual([
       80, 100, 120,
@@ -333,7 +333,7 @@ describe('@note.order (AD-41.1)', () => {
   });
 });
 
-describe('a one-note pool collapses both families (AD-40.3)', () => {
+describe('a one-note pool collapses both families', () => {
   it('performs @transition.to alone, so the reader flattens the ramp to it', () => {
     const one = `${STYLE0}${ORN(' note.order="#n2"')}`;
     const performed = perform(GRAD, one).filter((note) => note.id === 'n2');
@@ -370,7 +370,7 @@ describe('a one-note pool collapses both families (AD-40.3)', () => {
   });
 });
 
-describe('unusable values (AD-42.4)', () => {
+describe('unusable values', () => {
   it('an unusable @scale poisons every velocity, so the gradient reads ⊥', () => {
     const map = `${STYLE0}<ornament date="0.0" name.ref="g" scale="abc"/>`;
     expect(chordVelocities(GRAD, map).every(Number.isNaN)).toBe(true);
@@ -513,7 +513,7 @@ describe('the aligner’s interface, unchanged by its second consumer', () => {
   });
 });
 
-describe('stacked ornaments at one date (AD-44.1, AD-44.2)', () => {
+describe('stacked ornaments at one date', () => {
   const gradB =
     '<ornamentDef name="h"><dynamicsGradient transition.from="-10.0" transition.to="30.0"/></ornamentDef>';
   const summed =
@@ -525,7 +525,7 @@ describe('stacked ornaments at one date (AD-44.1, AD-44.2)', () => {
     expect(chordVelocities(summed, `${STYLE0}${ORN()}`)).toEqual([70, 110, 150]);
   });
 
-  it('so two stacked ornaments compare equal to the one that sums them (AD-44.1)', () => {
+  it('so two stacked ornaments compare equal to the one that sums them', () => {
     expect(
       distance(
         atomsOf(`${GRAD}${gradB}`, `${STYLE0}${ORN()}${ORN_H}`),
@@ -554,7 +554,7 @@ describe('stacked ornaments at one date (AD-44.1, AD-44.2)', () => {
     ]);
   });
 
-  it('AD-44.2 — stacked SPREADS of equal intensity DO sum, which narrows the residual', () => {
+  it('stacked SPREADS of equal intensity DO sum, which narrows the residual', () => {
     const s =
       '<ornamentDef name="s"><temporalSpread frame.start="-22.0" frameLength="44.0"/></ornamentDef>';
     const t =
@@ -568,7 +568,7 @@ describe('stacked ornaments at one date (AD-44.1, AD-44.2)', () => {
     ]);
   });
 
-  it('AD-44.2 — and of DIFFERENT intensity do not sum to any single frame', () => {
+  it('and of DIFFERENT intensity do not sum to any single frame', () => {
     const s =
       '<ornamentDef name="s"><temporalSpread frame.start="-22.0" frameLength="44.0"/></ornamentDef>';
     const u =
@@ -578,7 +578,7 @@ describe('stacked ornaments at one date (AD-44.1, AD-44.2)', () => {
     expect(chordOnsets(`${s}${u}`, stacked)).toEqual([-22, 45, 382]);
   });
 
-  it('AD-45.2 — equal-intensity spreads now COMPOSE, so the encodings compare equal', () => {
+  it('equal-intensity spreads now COMPOSE, so the encodings compare equal', () => {
     const s =
       '<ornamentDef name="s"><temporalSpread frame.start="-22.0" frameLength="44.0"/></ornamentDef>';
     const t =
@@ -606,13 +606,13 @@ describe('stacked ornaments at one date (AD-44.1, AD-44.2)', () => {
 });
 
 /**
- * AD-51.2's atom placement, for the aligner's second consumer.
+ * the atom placement, for the aligner's second consumer.
  *
  * Ornament anchors always carry a date — the window filter drops the ones outside it — so
  * everything here is a real placement and the interesting case is the SPREADING rule, which is
  * where a matched pair at two dates stops being a scalar.
  */
-describe('ornament atom placement (AD-51.2)', () => {
+describe('ornament atom placement', () => {
   const WINDOW = { startQuarters: 0, endQuarters: 8 } as never;
   const at = (date: string, extra = ''): string =>
     `<ornament date="${date}" name.ref="g" scale="1.0"${extra}/>`;
@@ -629,7 +629,7 @@ describe('ornament atom placement (AD-51.2)', () => {
     expect(result.atoms).toHaveLength(result.matched + result.unmatchedA + result.unmatchedB);
   });
 
-  it('spreads a matched pair over the interval between the two dates (AD-7)', () => {
+  it('spreads a matched pair over the interval between the two dates', () => {
     const wider =
       '<ornamentDef name="g"><dynamicsGradient transition.from="-30.0" transition.to="30.0"/></ornamentDef>';
     const result = ornamentationDistance(
@@ -645,7 +645,7 @@ describe('ornament atom placement (AD-51.2)', () => {
     expect(placed.datePositionKnown).toBe(true);
   });
 
-  it('is symmetric under the swap, placement and mass together (P-C2)', () => {
+  it('is symmetric under the swap, placement and mass together', () => {
     const forward = ornamentationDistance(
       atomsOf(GRAD, `${STYLE0}${at('0.0')}${at('1440.0')}`),
       atomsOf(GRAD, `${STYLE0}${at('1440.0')}`),

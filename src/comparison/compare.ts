@@ -1,5 +1,5 @@
 /**
- * The interior driver: two documents in, one §9.3 report out.
+ * The interior driver: two documents in, one report out.
  *
  * Everything below this file computes one dimension over one scope; everything above it
  * validates options and types errors. This is where the eleven dimensions become a comparison —
@@ -7,27 +7,27 @@
  *
  * ## Scopes, and how the parts are summed
  *
- * §5.0 evaluates per part, and AD-3's document-level rule is a sum over the union of both
+ * Evaluation is per part, and the document-level rule is a sum over the union of both
  * documents' parts. Two things follow, and they aggregate differently on purpose:
  *
  * - Mass is additive. Two parts deviating at bar 5 put twice the mass at bar 5, so cells and
  *   atoms are concatenated and the aggregate density is their sum. Overlapping cells are what
  *   `p_k(t) = Σ_parts p_{k,part}(t)` means.
- * - A mean is not. §1.2's decomposition takes moments, and P parts are P curves, not one. So the
+ * - A mean is not. The decomposition takes moments, and P parts are P curves, not one. So the
  *   merged decomposition is taken over the disjoint union of the parts' curves — part `p`
  *   occupies `[p·L, (p+1)·L)` of a virtual abscissa — which is exact, degenerates correctly when
  *   every part inherits one global map (P identical copies have the copy's moments), and needs
  *   no arbitrary choice of a representative part.
  *
- * A document with no `<part>` at all evaluates once in the global scope, which is §5.0's own
+ * A document with no `<part>` at all evaluates once in the global scope, which is the own
  * rule and matches the renderer: an MSM part with no MPM counterpart inherits the global maps
  * wholesale (see `dimensions.ts`'s header for the measurement and for where that departs from
- * AD-3's wording).
+ * the wording).
  *
  * ## What is a distance and what is a descriptor
  *
  * `distance`, `mean`, the table and the matrices are distances. `meanSigned`, `levelSigned`,
- * `direction`, `cumulativeDrift` and the profile's `signed` series are descriptors (§7.5, C2):
+ * `direction`, `cumulativeDrift` and the profile's `signed` series are descriptors:
  * they enter no `d_k`, no `D` and no table cell, and they do not satisfy the triangle
  * inequality. The report keeps them in separate fields for that reason.
  */
@@ -105,7 +105,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 /**
- * §5.0's per-family accuracy record, in both units (AD-28.2).
+ * the per-family accuracy record, in both units.
  *
  * Every figure is measured and its measurement is on the campaign record; none is a target.
  * `relative` is the classical quadrature figure and `jnd` is the same error on the dimension's
@@ -120,9 +120,9 @@ import type {
  * against `0` is checking `scriptCost ≥ d` in exact arithmetic, which a float computation can
  * miss by an ulp and does — measured, articulation at 9.296e-16. So compare against the stamped
  * ε plus an ulp allowance on the magnitudes involved; a nonzero floor for `step` would state a
- * quadrature error that does not exist (W4 MINOR-R2).
+ * quadrature error that does not exist.
  *
- * ## What the `imprecision` relative figure is relative to (AD-55.3)
+ * ## What the `imprecision` relative figure is relative to
  *
  * The support scale, not the answer. `W₁` is computed as `∫|F_A − F_B| dx` over the union
  * support, so a small answer is a small difference of large integrals: the absolute error is
@@ -147,32 +147,32 @@ const EPSILON_FIGURES: Readonly<
   Record<EpsilonFamily, { readonly relative: number; readonly jnd: number }>
 > = Object.freeze({
   // Piecewise-constant readings: the cell integral is `density × length`, with no quadrature in
-  // the time domain at all (§5.7, §5.9). The exact `0` covers this family's genuinely exact
-  // members — asynchrony, articulation and ornamentation — but not rubato, which AD-60.1 gave a
+  // the time domain at all. The exact `0` covers this family's genuinely exact
+  // members — asynchrony, articulation and ornamentation — but not rubato, which has a
   // family of its own.
   //
   // `0` is the quadrature figure, exact in ℝ, and not a claim that the arithmetic is exact in
-  // doubles (W4 MINOR-R2): measured across every scope of the vendored corpus, articulation's
+  // doubles: measured across every scope of the vendored corpus, articulation's
   // worst shortfall is 9.296e-16 — about four ulps of a `d` of 1223, float rounding rather than
   // quadrature error, eleven orders below CAPITAL-1's 7.51e-5.
   step: { relative: 0, jnd: 0 },
-  // AD-28.1's graded mesh, worst case over the legal `meanTempoAt` range; the JND figure is
-  // AD-28.2's, corrected for AD-27.6's halved constant.
+  // the graded mesh, worst case over the legal `meanTempoAt` range; the JND figure is
+  // corrected for the halved constant.
   tempo: { relative: 3.3e-6, jnd: 5.4e-4 },
   // The ideal-curve inversion's conditioning limit at `curvature = 1`, where `x'(0.5) = 0` and
   // a cube-root loss leaves ~6e-4 volume units; every interior curvature is exact to 1e-9.
   bezier: { relative: 6e-6, jnd: 2e-5 },
-  // AD-60.1's sixth family. Rubato's displacement integrates through AD-33.3b's rule 2c — the
-  // structural `u*` split plus a K = 16 mesh — and AD-34.1 measured that integrator's residual
+  // the sixth family. Rubato's displacement integrates through the rule 2c — the
+  // structural `u*` split plus a K = 16 mesh — and that integrator's residual was measured
   // at 2.718e-4 relative over 3906 pairs, which is the figure published here. The JND figure is
-  // the same error on the dimension's own scale: cut A3's worst real-data case is 0.036
+  // the same error on the dimension's own scale: cut the worst real-data case is 0.036
   // JND·quarters over ~50 quarters, i.e. 7e-4 JND, an order below the metric's own resolution —
-  // AD-28.2's point exactly. The worst real-data RELATIVE shortfall (7.51e-5, Telemann part 2)
+  // the point exactly. The worst real-data RELATIVE shortfall (7.51e-5, Telemann part 2)
   // sits well inside the published figure and is pinned separately in `editDimensions.test.ts`,
   // so this band cannot quietly absorb a regression.
   rubato: { relative: 2.718e-4, jnd: 7e-4 },
   // `W₁` against 14 closed forms derived from `∫₀¹|Q_A − Q_B| du`, measured relative to the
-  // laws' support scale (AD-55.3) — see the note above. The JND figure is the same absolute
+  // laws' support scale — see the note above. The JND figure is the same absolute
   // error on the row's own 30 ms / 3 velocity scale.
   imprecision: { relative: 3e-16, jnd: 1.2e-16 },
   // The drift is a seconds quantity and has no JND scale; the 0 is not a claim of exactness but
@@ -195,24 +195,24 @@ export function epsilonRecord(): Record<
   return mapValues(EPSILON_FIGURES, (figures) => ({ ...figures }));
 }
 
-/** §7.5's threshold for calling a segment's direction `'mixed'` [convention]. */
+/** the threshold for calling a segment's direction `'mixed'` [convention]. */
 const MIXED_DIRECTION_FRACTION = 0.5;
 
 /**
- * C7's same-piece heuristic: below this length ratio the pair is flagged [convention].
+ * the same-piece heuristic: below this length ratio the pair is flagged [convention].
  *
- * `0.8` is §5.0's own documented band read as a ratio — `[0.8, 1.25]` on `long/short` is
- * `short/long < 0.8` (W3 MAJOR-7).
+ * `0.8` is the documented band read as a ratio — `[0.8, 1.25]` on `long/short` is
+ * `short/long < 0.8`.
  */
 export const SUSPECT_LENGTH_RATIO = 0.8;
 
 /**
- * C1's step cap: a profile is a report field, not a sample buffer.
+ * the step cap: a profile is a report field, not a sample buffer.
  *
  * 4096 points [convention] — a few hundred kilobytes of JSON per dimension at the outside, and
  * about two points per quarter over a 30-minute movement. An explicit `grid.step` finer than the
  * cap allows is honoured as far as the cap and then coarsened, with a `grid-truncated` note
- * saying so and naming both steps (§9.1).
+ * saying so and naming both steps.
  */
 export const PROFILE_MAX_POINTS = 4096;
 
@@ -239,7 +239,7 @@ export interface InteriorCompareOptions {
     readonly grid?: 'refinement' | { readonly step: number };
   } | null;
   readonly lambdaDate: number;
-  /** AD-27.8's scape; omit or null for none. Bins are clamped to `SCAPE_MAX_BINS`. */
+  /** the scape; omit or null for none. Bins are clamped to `SCAPE_MAX_BINS`. */
   readonly scape?: { readonly bins: number } | null;
 }
 
@@ -282,7 +282,7 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
         pair.window.startQuarters,
         pair.window.endQuarters,
         `the MSM carries ${String(msm.timeSignatures.length)} time signatures and the ` +
-          'accentuation phase is anchored to the first: AD-12’s forward-only walk needs the ' +
+          'accentuation phase is anchored to the first: the forward-only walk needs the ' +
           'evaluator to take a grid function, which this wave does not ship',
       ),
     );
@@ -296,7 +296,7 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
         pair.window.endQuarters,
         `the per-part sum runs over ${String(sides.length)} scopes taken from the MPM's own ` +
           '<part> elements, because no MSM was supplied. What the renderer performs is one scope ' +
-          'per rendered MSM part (AD-55.2), which the documents alone cannot answer: an MPM part ' +
+          'per rendered MSM part, which the documents alone cannot answer: an MPM part ' +
           'the score never names performs nothing, and a score part with no MPM counterpart ' +
           'performs the global maps anyway. Supply an `msm` for the counted quantity',
       ),
@@ -309,7 +309,7 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
         null,
         pair.window.startQuarters,
         pair.window.endQuarters,
-        `an explicit window was given and outranks the MSM (AD-27.1); the MSM’s score end is ` +
+        `an explicit window was given and outranks the MSM; the MSM’s score end is ` +
           `${String(msm.endQuarters)} quarters`,
       ),
     );
@@ -362,7 +362,7 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
         pair.window.startQuarters,
         pair.window.endQuarters,
         'the window has zero length — both documents place every instruction at one date — so ' +
-          'every length-normalized mean is null rather than a division by zero (§9.6)',
+          'every length-normalized mean is null rather than a division by zero',
       ),
     );
   const signedDensity = aggregateSignedDensity(evaluations, options.weights);
@@ -395,7 +395,7 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
           null,
           pair.window.startQuarters,
           pair.window.endQuarters,
-          `§4’s cap bound in ${String(rows.reduce((sum, row) => sum + row.cappedCells, 0))} ` +
+          `the cap bound in ${String(rows.reduce((sum, row) => sum + row.cappedCells, 0))} ` +
             'cells: an incomparable or runaway difference is priced at 2·δ_row, which is what ' +
             'keeps the triangle inequality intact when a ⊥ document is the middle term',
         ),
@@ -424,7 +424,7 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
           `[${String(finding.range[0])}, ${String(finding.range[1])}]; the distance is unchanged`,
       });
 
-  // C7 has two arms (W3 CAPITAL-5): §5.0 asks for the length check between the two MPMs "and
+  // The check has two arms: the design asks for the length check between the two MPMs "and
   // the same check against the score end when an MSM is supplied". The second is where the
   // window comes from — a Telemann MPM reaching 198 quarters against a Vulpius MSM ending at 54
   // compares over 54 quarters, discarding 73 % of the piece. The score is checked against both
@@ -455,12 +455,12 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
           suspectScore
             ? `the MSM's score end is ${String(msm?.endQuarters ?? 0)} quarters against last ` +
               `dates of ${String(pair.comparability.lastDateA)} and ` +
-              `${String(pair.comparability.lastDateB)}, outside C7's [${String(
+              `${String(pair.comparability.lastDateB)}, outside the [${String(
                 SUSPECT_LENGTH_RATIO,
               )}, ${String(1 / SUSPECT_LENGTH_RATIO)}] band — and the window is the SCORE's, so ` +
               'whatever lies beyond it is not compared at all; '
             : ''
-        }their lengths differ by more than C7's band, or they share no part number (C7)`,
+        }their lengths differ by more than the band, or they share no part number`,
       ),
     );
 
@@ -567,23 +567,23 @@ function lengthRatioOf(x: number, y: number): number {
   return longest === 0 ? 1 : Math.min(x, y) / longest;
 }
 
-/** Which document decided how many scopes the per-part sum runs over (AD-55.2). */
+/** Which document decided how many scopes the per-part sum runs over. */
 export type ScopeRule = 'msm' | 'mpm' | 'global';
 
 /**
- * The scope pairs to evaluate, and what drove the count (AD-55.2).
+ * The scope pairs to evaluate, and what drove the count.
  *
  * The count is a multiplier on `D`, so taking it from the wrong document is not a detail.
  * `Performance.renderParts` iterates the MSM's parts and calls
  * `resolvePartMaps(getCorrespondingPart(msmPart), globalMaps)`, so what performs is one scope
  * per rendered MSM part, and an MPM `<part>` the score never names performs nothing.
- * AD-53.2's Telemann 3× pin measured the other reading: adding three empty `<part>` elements to
+ * the Telemann 3× pin measured the other reading: adding three empty `<part>` elements to
  * both documents tripled `D` while the performed MSMs stayed byte-identical.
  *
  * So with an MSM the scopes are the score's, matched into each document the way
  * `getCorrespondingPart` matches — `@number` first, then `@name` — and a side with no
  * counterpart takes its own global scope, which is `resolvePartMaps(null, globalMaps)`
- * (AD-52.2, measured: velocity 40 from the global map, not the neutral 100).
+ * (measured: velocity 40 from the global map, not the neutral 100).
  *
  * Without an MSM there is no score to count and the MPM-driven reading is the only one
  * available. It stands, with the `estimate-degradation` note the caller stamps: an estimate of a
@@ -690,7 +690,7 @@ function densityOf(
       atoms.push({
         startQuarters: atom.startTicks / ticksPerQuarter,
         endQuarters: atom.endTicks / ticksPerQuarter,
-        // §7.1's `κ`, applied where an event's JND becomes commensurable with a quarter of
+        // the `κ`, applied where an event's JND becomes commensurable with a quarter of
         // sustained deviation.
         mass: atom.mass * EVENT_KAPPA_QUARTERS,
       });
@@ -699,7 +699,7 @@ function densityOf(
   return { dimension, cells, atoms, distance: total.total };
 }
 
-/** `Σ_k ω_k p̃_k(t)` — the signed aggregate density, in JND per quarter (C2, §7.5). */
+/** `Σ_k ω_k p̃_k(t)` — the signed aggregate density, in JND per quarter. */
 function aggregateSignedDensity(
   evaluations: ReadonlyMap<ComparisonDimension, readonly DimensionEvaluation[]>,
   weights: DimensionWeights,
@@ -729,11 +729,11 @@ function dimensionComparison(
   const distance = new CompensatedSum();
   for (const row of rows) distance.add(row.distance);
 
-  // `distance` sums over the scopes and `meanSigned` averages over them (W3 MAJOR-11). Mass is
+  // `distance` sums over the scopes and `meanSigned` averages over them. Mass is
   // additive — two parts deviating at bar 5 put twice the mass at bar 5, which is what
   // `p_k(t) = Σ_parts p_{k,part}(t)` means — while `meanSigned` is a descriptor in the row's
   // T-space unit: summing three parts' "A is 4 BPM faster" would report 12 BPM, a number no part
-  // carries and no listener could hear. The same argument §1.2's decomposition makes for taking
+  // carries and no listener could hear. The same argument the decomposition makes for taking
   // moments over the disjoint union, and the reason `bottomLengthQuarters` takes a maximum. On
   // telemann Baroque|Romantic the two read `mean = 8.605` against `meanSigned = −0.0708`: one a
   // distance per quarter summed over three parts, the other a signed level in BPM-nepers held by
@@ -791,7 +791,7 @@ function dimensionComparison(
 }
 
 /**
- * §1.2's decomposition over the disjoint union of the scope rows' curves.
+ * the decomposition over the disjoint union of the scope rows' curves.
  *
  * With one scope this is the row's own decomposition. With several it is the decomposition of
  * the concatenation — part `p` on `[p·L, (p+1)·L)` — which is the only reading that needs no
@@ -855,7 +855,7 @@ function unionDecomposition(unit: string, rows: readonly DimensionEvaluation[]):
   // The `1e-12` floor is a division guard and nothing else: on a zero-length window every row
   // occupies the same degenerate span, `x / 0` is `NaN` or `±Infinity`, and the clamp below
   // would carry that into the index. With the floor the index is 0 and the union degenerates to
-  // the first row's curve, the right answer for a window with no interior — §9.6 already reports
+  // the first row's curve, the right answer for a window with no interior — the report already says
   // every length-normalized mean as null there. `length` itself is never replaced, only the
   // divisor.
   const locate = (x: number): { row: DimensionEvaluation; quarters: number } => {
@@ -926,7 +926,7 @@ function momentsOverGrid(
   const mean = integrateOverGrid(g, grid);
   const variance = integrateOverGrid((x) => (g(x) - mean) * (g(x) - mean), grid);
   const scale = Math.max(Math.abs(mean), 1);
-  // AD-32's floor: a constant curve integrated by quadrature has a variance of order 1e-31,
+  // the floor: a constant curve integrated by quadrature has a variance of order 1e-31,
   // so `σ = 0` has to be recognized structurally rather than by an equality test.
   const sigma = variance < (1e-12 * scale) ** 2 ? 0 : Math.sqrt(Math.max(0, variance));
   return { mean, sigma };
@@ -975,7 +975,7 @@ function reportSegment(
     meanSigned,
     // 'mixed' where the signed integral's magnitude is below a documented fraction of the
     // absolute one — i.e. the segment changes sign inside itself, which is exactly the case a
-    // signed mean alone would report as "no difference in direction" (§7.5).
+    // signed mean alone would report as "no difference in direction".
     direction:
       Math.abs(signedTotal) < MIXED_DIRECTION_FRACTION * Math.abs(segment.mass)
         ? 'mixed'
@@ -1025,7 +1025,7 @@ function driftOf(
  * `readScopeMapViews` is a pure function of the scope, and threading one map view for one
  * secondary product through eleven evaluations would be more coupling than the read costs.
  * `containerOf` rather than a literal, so the drift and the tempo dimension cannot address two
- * different maps if §3's correspondence ever moves.
+ * different maps if the correspondence ever moves.
  */
 function readScopeTempoView(side: ScopeSide) {
   return readScopeMapViews(side.scope).get(containerOf('tempo')) ?? null;
@@ -1055,7 +1055,7 @@ export function note(
   };
 }
 
-/** The interior's own note kinds, mapped onto §9.1's closed vocabulary. */
+/** The interior's own note kinds, mapped onto the closed vocabulary. */
 function fromRawNote(raw: RawNote): ComparisonNote {
   return {
     kind: noteKindOf(raw.kind),
@@ -1081,8 +1081,8 @@ function noteKindOf(kind: string): ComparisonNoteKind {
     case 'capped':
     case 'structural':
       return kind;
-    // R9b's kind (W3 MAJOR-12). AD-8's trailing `@transition.to`, AD-35's trailing `<movement>`
-    // and AD-11i's shadowed duration lever are all "an attribute the renderer reads and never
+    // the kind. The trailing `@transition.to`, the trailing `<movement>`
+    // and the shadowed duration lever are all "an attribute the renderer reads and never
     // applies" — the same finding in three maps. `structural` is the channel for a difference
     // that IS performed but is not a magnitude, so it is the wrong one for these.
     case 'inert-transition':
@@ -1090,7 +1090,7 @@ function noteKindOf(kind: string): ComparisonNoteKind {
     case 'shadowed-lever':
       return 'inert-difference';
     // The readers name their findings after the mechanism that produced them — 'unresolved-def',
-    // 'v3-shape', 'scale-zero', 'declared-law'. Every one of them is §3's structural channel:
+    // 'v3-shape', 'scale-zero', 'declared-law'. Every one of them is the structural channel:
     // read, consequential, and never folded into a distance.
     default:
       return 'structural';
@@ -1098,19 +1098,19 @@ function noteKindOf(kind: string): ComparisonNoteKind {
 }
 
 /**
- * §5.0's and §10/P-C8's structural note: the encoding differs and the performance does not.
+ * the and the structural note: the encoding differs and the performance does not.
  *
- * DESIGN states the rule twice (W3 MAJOR-13, MAJOR-15): "a global-vs-part-local encoding
+ * DESIGN states the rule twice: "a global-vs-part-local encoding
  * difference with identical resolved curves is distance 0 plus a structural note — which is
- * correct: it is not performed" (§5.0), and P-C8's "an explicit neutral instruction ≡ absent
+ * correct: it is not performed", and the "an explicit neutral instruction ≡ absent
  * map: dimension distance exactly 0 — plus the structural note". One note answers both. It is
  * what makes `d_k = 0` legible: without it a caller cannot tell "these encode the same
  * performance the same way" from "these encode the same performance differently" — and the
- * second is what a diff product (§6) is for.
+ * second is what a diff product is for.
  *
  * The signature is per scope: whether the resolved map exists at all, and whether it came from
  * the part's own environment or was inherited from the global one — `resolvePartMaps`' own
- * distinction (AD-16/R22), and the only thing that can differ while the resolved curve does not.
+ * distinction, and the only thing that can differ while the resolved curve does not.
  */
 function encodingNotes(
   dimension: ComparisonDimension,
@@ -1142,8 +1142,8 @@ function encodingNotes(
       pair.window.endQuarters,
       `the two documents encode this dimension differently and perform it identically: ` +
         `a's ${containerOf(dimension)} is [${signatureA}] per evaluated scope against b's ` +
-        `[${signatureB}], and the resolved curves agree, so the distance is exactly 0 (§5.0, ` +
-        'P-C8). An absent map is the neutral curve (R6) and a part-local map that resolves to ' +
+        `[${signatureB}], and the resolved curves agree, so the distance is exactly 0. ` +
+        'An absent map is the neutral curve and a part-local map that resolves to ' +
         'the global one performs the global one, so neither difference is performed',
     ),
   ];
@@ -1159,7 +1159,7 @@ function invarianceNotes(
   if (requested === 'none') return [];
   const notes: ComparisonNote[] = [];
 
-  // AD-25.1's document-content case, and the example the ruling names: a mode requested for a
+  // the document-content case, and the example the ruling names: a mode requested for a
   // dimension neither document carries. The caller could not have known, so it degrades with a
   // typed note rather than throwing.
   if (bothNeutral)
@@ -1175,9 +1175,9 @@ function invarianceNotes(
       ),
     );
 
-  // C9's trap. In a linear space 'level' removes an additive offset only — the multiplicative
+  // the trap. In a linear space 'level' removes an additive offset only — the multiplicative
   // factor survives, because `c·x − mean(c·x) = c(x − mean x)` — while the same mode removes a
-  // factor from a log space. §7.4 requires the sentence so that a report stamping
+  // factor from a log space. The design requires the sentence so that a report stamping
   // `invariance: 'level'` on tempo and on asynchrony is not read as saying the same thing twice.
   const space = rows[0]?.space ?? '';
   if (space === 'gain' || space === 'gain-ordered')
@@ -1190,19 +1190,19 @@ function invarianceNotes(
         pair.window.endQuarters,
         `this dimension's scale space is linear, so invariance '${requested}' removed an ` +
           'OFFSET, not a scale factor: a source read 10 % slow keeps that 10 % here, while the ' +
-          'same mode removes it from tempo and dynamics (§7.4, C9)',
+          'same mode removes it from tempo and dynamics',
       ),
     );
   return notes;
 }
 
 /**
- * §9.5's order on the notes: `(kind, dimension, startQuarters, document, message, site)`.
+ * the order on the notes: `(kind, dimension, startQuarters, document, message, site)`.
  *
- * §9.5 names `site`, and a comparator that omits it leaves four Albert notes — one plausibility
+ * the design names `site`, and a comparator that omits it leaves four Albert notes — one plausibility
  * finding raised in the global scope and in each of three part scopes — tied on every key with
  * four distinct serializations, their order decided by sort stability, i.e. by which document
- * was read first (W3 MAJOR-6).
+ * was read first.
  *
  * The final tiebreak is the note's own serialization, which makes the order total by
  * construction: two notes that compare equal here are equal as data, so no orientation can
@@ -1236,7 +1236,7 @@ export function sortNotes(notes: readonly ComparisonNote[]): readonly Comparison
     .map((entry) => entry.note);
 }
 
-/** Code-unit order, never `localeCompare` — the report must not depend on a locale (§9.5). */
+/** Code-unit order, never `localeCompare` — the report must not depend on a locale. */
 function compareText(x: string, y: string): number {
   return x < y ? -1 : x > y ? 1 : 0;
 }
@@ -1264,7 +1264,7 @@ export function resolvedSettings(
 }
 
 // ---------------------------------------------------------------------------
-// Profiles (C1)
+// Profiles
 // ---------------------------------------------------------------------------
 
 function profilesOf(
@@ -1363,7 +1363,7 @@ function profileDates(
   const step = grid.step;
   const count = Math.floor((end - start) / step);
   if (count + 1 > PROFILE_MAX_POINTS) {
-    // Both steps, requested and actual (W3 MAJOR-8): the factor is not small — an explicit 0.001
+    // Both steps, requested and actual: the factor is not small — an explicit 0.001
     // over a 198-quarter window is coarsened 48×.
     const coarse = (end - start) / (PROFILE_MAX_POINTS - 1);
     notes.push(
@@ -1374,7 +1374,7 @@ function profileDates(
         start,
         end,
         `a step of ${String(step)} quarters would produce ${String(count + 1)} points; the ` +
-          `profile is capped at ${String(PROFILE_MAX_POINTS)} (C1) and the step used was ` +
+          `profile is capped at ${String(PROFILE_MAX_POINTS)} and the step used was ` +
           `${String(coarse)} quarters, coarser by a factor of ${String(coarse / step)}`,
       ),
     );

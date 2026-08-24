@@ -1,12 +1,12 @@
 /**
- * `weightedFactors` and `PROTOTYPE_WEIGHTS` — DESIGN.md D-H's lerp, and the prototype's tuned
- * vector kept as data.
+ * `weightedFactors` and `PROTOTYPE_WEIGHTS` — the lerp, and the prototype's tuned vector kept
+ * as data.
  *
  * Two kinds of claim. The algebra is verifiable — `s = 1` is the identity for any weights,
  * `w = 0` pins a dimension, `w = 1` passes the scalar through — and is tested as such. The
  * preset is a heuristic that nothing derives, so the only honest test of it is that the
  * numbers are the ones the prototype had and that the correspondence onto the fifteen
- * dimensions is the one §3 documents: a pin against drift, not a validation.
+ * dimensions is the one the design documents: a pin against drift, not a validation.
  *
  * The last block tests the public `weightedFactors` rather than this module's, because the two
  * are different functions — the interior throws a plain `Error` and the facade exists to turn
@@ -48,7 +48,7 @@ const DOCUMENT =
   '<asynchronyMap><asynchrony id="a" date="0.0" milliseconds.offset="20.0"/></asynchronyMap>' +
   '</dated></global></performance></mpm>';
 
-describe('weightedFactors: the algebra D-H specifies', () => {
+describe('weightedFactors: the algebra the design specifies', () => {
   it.each<[string, ExaggerationWeights]>([
     ['no weights at all', {}],
     ['the prototype preset', PROTOTYPE_WEIGHTS],
@@ -104,14 +104,14 @@ describe('weightedFactors: the algebra D-H specifies', () => {
   });
 });
 
-describe('PROTOTYPE_WEIGHTS: the correspondence §3 documents, pinned against drift', () => {
+describe('PROTOTYPE_WEIGHTS: the correspondence the design documents, pinned against drift', () => {
   it('carries all fifteen dimensions, so nothing is silently defaulted', () => {
     expect(Object.keys(PROTOTYPE_WEIGHTS).sort()).toEqual([...EXPRESSION_DIMENSIONS].sort());
   });
 
   it.each<[string, ExpressionDimension, number]>([
     ['tempo → tempo', 'tempo', 1.0],
-    ['tempo → tempoShape (A9 split it after the vector was tuned)', 'tempoShape', 1.0],
+    ['tempo → tempoShape (the split it after the vector was tuned)', 'tempoShape', 1.0],
     ['dynamics → dynamics', 'dynamics', 1.1],
     ['dynamics → dynamicsShape', 'dynamicsShape', 1.1],
     ['rubato → rubato', 'rubato', 0.2],
@@ -124,7 +124,7 @@ describe('PROTOTYPE_WEIGHTS: the correspondence §3 documents, pinned against dr
   });
 
   it("collapses the prototype's two articulation fields onto the LOWER of the two", () => {
-    // 0.2 (relativeDuration) and 0.3 (relativeVelocity) became one dimension here, and §3 takes
+    // 0.2 (relativeDuration) and 0.3 (relativeVelocity) became one dimension here, and the design takes
     // the smaller: articulation is the most violent lever in the set, since s = 2 on a
     // relativeDuration of 0.7 leaves 0.49 — half the note gone.
     expect(PROTOTYPE_WEIGHTS.articulation).toBe(0.2);

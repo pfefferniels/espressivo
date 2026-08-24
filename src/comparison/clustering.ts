@@ -1,12 +1,12 @@
 /**
- * §8's clustering: Lance–Williams agglomeration, PAM, and the silhouette that guides `k`.
+ * the clustering: Lance–Williams agglomeration, PAM, and the silhouette that guides `k`.
  *
- * Plain data in, plain data out, and every tie broken on a label (AD-25.2). Exact ties are
- * structural here rather than measure-zero: P-C1 makes `compare(A, A)` exactly 0, R6's
+ * Plain data in, plain data out, and every tie broken on a label. Exact ties are
+ * structural here rather than measure-zero: identity makes `compare(A, A)` exactly 0, and
  * never-drop rule makes `both-neutral` dimensions produce large blocks of exactly-equal
- * distances, and §8's item expansion makes duplicate content easy to introduce by accident.
+ * distances, and the item expansion makes duplicate content easy to introduce by accident.
  * Under index-based rules a tie that resolved to `(0,3)` before a permutation resolves to
- * `(1,2)` after — a different merge, not a relabeling — and P-C6's corpus clause would be false.
+ * `(1,2)` after — a different merge, not a relabeling — and the corpus clause would be false.
  */
 
 import { elementAt, numberAt } from '../prelude/seq.js';
@@ -15,7 +15,7 @@ import { elementAt, numberAt } from '../prelude/seq.js';
 const MATRIX = "the distance matrix's flat N x N buffer";
 const MEDOIDS = 'the medoid list';
 
-/** §8's five linkages. `ward.D2` is named in full because `ward.D` is a silent-wrong-answer trap. */
+/** the five linkages. `ward.D2` is named in full because `ward.D` is a silent-wrong-answer trap. */
 export type Linkage = 'average' | 'single' | 'complete' | 'weighted' | 'ward.D2';
 
 export interface DendrogramMerge {
@@ -34,14 +34,14 @@ export interface Dendrogram {
   readonly order: readonly number[];
 }
 
-/** `m[i*n + j]`, symmetric, zero diagonal — §8's layout. */
+/** `m[i*n + j]`, symmetric, zero diagonal — the layout. */
 export interface DistanceMatrix {
   readonly n: number;
   readonly values: readonly number[];
 }
 
 /**
- * The Lance–Williams coefficients, per §2.F's table.
+ * The Lance–Williams coefficients.F's table.
  *
  * `ward.D2` runs the recurrence on squared dissimilarities and reports `√height`, as
  * `hclust(method = "ward.D2")` does. Its recurrence stays valid on a non-Euclidean input
@@ -82,7 +82,7 @@ function lanceWilliams(
   }
 }
 
-/** Code-unit order (`<`), never `localeCompare` — locale dependence would break R2. */
+/** Code-unit order (`<`), never `localeCompare` — locale dependence would break determinism. */
 function lower(x: string, y: string): boolean {
   return x < y;
 }
@@ -91,7 +91,7 @@ function lower(x: string, y: string): boolean {
  * A total order on item indices by label, falling back to the index where labels are equal.
  *
  * `lower(a, b) ? -1 : 1` is not a comparator: it answers `1` in both directions for two equal
- * labels, which puts `Array.prototype.sort` in unspecified territory (W4 MINOR-R5). §8 requires
+ * labels, which puts `Array.prototype.sort` in unspecified territory. The design requires
  * labels unique after expansion, so `compareMpmCorpus` never reaches the tie; a direct caller of
  * `pam`, `silhouette` or `agglomerate` can.
  *
@@ -99,7 +99,7 @@ function lower(x: string, y: string): boolean {
  * takes 2-3 distinct values over 40 permutations at `n = 12` with duplicated labels, and the
  * index fallback cannot help because the index is what a permutation changes. The cause is one
  * level up, in {@link exhaustiveMedoids}' tie key — two subsets with different costs can share a
- * label multiset, and in the only frame the corpus has they are the same subset. That is why §8
+ * label multiset, and in the only frame the corpus has they are the same subset. That is why the design
  * requires unique labels, enforced by `compareMpmCorpus` before any of this runs.
  */
 function byLabelThenIndex(labels: readonly string[], x: number, y: number): number {
@@ -111,7 +111,7 @@ function byLabelThenIndex(labels: readonly string[], x: number, y: number): numb
 /**
  * Agglomerative clustering by the naive `O(N³)` Lance–Williams update.
  *
- * `N ≤ 256` (R10/C17), so the naive form is `1.7·10⁷` operations at the ceiling and needs no
+ * `N ≤ 256`, so the naive form is `1.7·10⁷` operations at the ceiling and needs no
  * nearest-neighbour chain. Determinism is the selection criterion here, not speed.
  *
  * Ties merge the pair whose `(min label, max label)` is lexicographically smallest, where a
@@ -185,7 +185,7 @@ export function agglomerate(
     const dIj = working.get(bestI)?.get(bestJ) ?? 0;
 
     // Children ordered by smallest contained label, so a permutation of the items relabels the
-    // dendrogram rather than restructuring it (P-C6's corpus clause).
+    // dendrogram rather than restructuring it (the corpus clause).
     const labelI = minLabel.get(bestI) ?? '';
     const labelJ = minLabel.get(bestJ) ?? '';
     const [left, right] = lower(labelI, labelJ) ? [bestI, bestJ] : [bestJ, bestI];
@@ -241,7 +241,7 @@ export function agglomerate(
 // ---------------------------------------------------------------------------
 
 export interface Partition {
-  /** Indices into `labels`; medoids are real performances, which is the point (§2.F). */
+  /** Indices into `labels`; medoids are real performances, which is the point. */
   readonly medoids: readonly number[];
   /** Per item, the index into {@link medoids} of the cluster it belongs to. */
   readonly clusters: readonly number[];
@@ -273,7 +273,7 @@ export const PAM_EXHAUSTIVE_LIMIT = 200_000;
 /**
  * `C(n, k)`, saturating at `limit + 1` so a huge corpus cannot overflow the count.
  *
- * The `Math.min(k, n − k)` is `C(n, k) = C(n, n − k)`, and it is load-bearing (W4 MAJOR-3).
+ * The `Math.min(k, n − k)` is `C(n, k) = C(n, n − k)`, and it is load-bearing.
  * Multiplying up to `k` walks along the row, and `C(n, j)` is unimodal: an intermediate product
  * can blow the limit while the answer itself is tiny. Swept over the legal domain
  * (`n ≤ DEFAULT_MAX_ITEMS = 256`, `1 ≤ k ≤ n`) the unsymmetrized form reported `limit + 1` for
@@ -297,7 +297,7 @@ function chooseCount(n: number, k: number, limit: number): number {
  * The globally cheapest `k`-subset, ties by the sorted label sequence. Null where the space is
  * too big.
  *
- * The sort is AD-25.2 at this call site (W4 CAPITAL-2). `walk` enumerates subsets in ascending
+ * The sort is the label tie-break at this call site. `walk` enumerates subsets in ascending
  * index order, so an unsorted key is the subset's labels *in the caller's own item order* —
  * label-valued but index-ordered, which is not a tie rule at all: two cost-equal subsets compare
  * differently depending on how the corpus was listed. Measured before the sort, on
@@ -340,7 +340,7 @@ function exhaustiveMedoids(
       return;
     }
     // Prune the branches that cannot reach `k`. This belongs with `chooseCount`'s symmetry and
-    // not after it (W4 MAJOR-3): without the guard the walk visits `Σ_{j≤k} C(n, j)` nodes, so
+    // not after it: without the guard the walk visits `Σ_{j≤k} C(n, j)` nodes, so
     // correcting the count alone turns a false flag into a hang — measured, `pam(n = 30,
     // k = 28)` went from 1 ms to 51054 ms. With it the walk visits exactly `C(n, k)` leaves,
     // which is what the limit sizes.
@@ -395,7 +395,7 @@ function labelOrder(n: number, labels: readonly string[]): readonly number[] {
  * Summed in label order, not the caller's item order. Floating-point addition is not
  * associative, so a permuted corpus adds the same numbers in a different sequence and two
  * genuinely cost-equal subsets come out differing by an ulp; `exhaustiveMedoids` then decides on
- * `cost < bestCost` and AD-25.2's label rule is never consulted.
+ * `cost < bestCost` and the label rule is never consulted.
  *
  * Measured on the adversarial corpus at `n = 9, k = 3`, where five subsets attain the optimum:
  * summed in index order the winner `{bottom-span, capped, renderer-default-level}` and the
@@ -424,7 +424,7 @@ function partitionCost(
  * k-medoids by BUILD + SWAP, with every tie on the lowest label.
  *
  * PAM rather than k-means because its exemplars are real performances — "the most typical
- * Hofmann" — where a centroid corresponds to no recording. That is also why §8 requires labels
+ * Hofmann" — where a centroid corresponds to no recording. That is also why the design requires labels
  * unique after expansion: two documents legitimately labelled `"Welte 1905"` would make the
  * medoid ambiguous.
  */
@@ -512,8 +512,8 @@ export function pam(
 /**
  * Silhouette per item: `s(i) = (b − a) / max(a, b)`, valid on any dissimilarity.
  *
- * Two conventions, both §2.F's: a singleton cluster scores 0 (there is no `a` to compute), and
- * `max(a, b) = 0` scores 0 rather than `0/0`. At `N < 20` the figure is noisy, which §8 carries
+ * Two conventions: a singleton cluster scores 0 (there is no `a` to compute), and
+ * `max(a, b) = 0` scores 0 rather than `0/0`. At `N < 20` the figure is noisy, which the report carries
  * as a reported field — `silhouetteReliable` — so a caller cannot read a cluster count off it
  * without seeing the caveat.
  */
@@ -526,7 +526,7 @@ export function silhouette(
   // Written out rather than `groupBy`, on two counts. It buckets the wrong thing: `groupBy`
   // collects the elements it iterates, where a bucket here holds the item index keyed by the
   // cluster at that index — a value projection it does not take. And the buckets are mutated in
-  // place: the `members.sort(...)` below is AD-72.1's repair, and `groupBy`'s
+  // place: the `members.sort(...)` below is the repair, and `groupBy`'s
   // `ReadonlyMap<K, NonEmptyArray<A>>` has no `.sort`.
   const groups = new Map<number, number[]>();
   for (const [item, cluster] of clusters.entries()) {
@@ -535,7 +535,7 @@ export function silhouette(
     else members.push(item);
   }
   // Members in label order, so `a` and `b` accumulate the same numbers in the same sequence
-  // under any permutation of the caller's items (AD-72.1's form, AD-72.2's sweep). The vendored
+  // under any permutation of the caller's items (the form, the sweep). The vendored
   // corpus measured clean here — its clusters are small enough that the additions reassociate
   // exactly — but that is a property of those inputs, not of the code. `labels` defaults to
   // empty, which leaves index order for the algorithm-layer callers that pass none.
@@ -570,5 +570,5 @@ export function silhouette(
   });
 }
 
-/** §8's `silhouetteReliable`: the figure is noisy below this and the field says so (A22). */
+/** the `silhouetteReliable`: the figure is noisy below this and the field says so. */
 export const SILHOUETTE_RELIABLE_MINIMUM = 20;

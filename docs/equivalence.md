@@ -35,16 +35,14 @@ Both are enforced mechanically:
   verifiable rather than deleting it; the render suites need no such step, both sides now
   carrying the reference's ids.
 - **6197 tests across 145 files**, run as a gate (`npm run verify` = clean build + typecheck of the
-  test sources + the full suite) before every single commit of the refactor that produced this
-  codebase, and of every campaign since.
+  test sources + the full suite) before every single commit.
 - **Byte probes for every refactor.** Beyond the suite, each structural change was proven with a
   pipeline probe: all fixtures pushed through MSM, MPM, augmented MSM, raw MIDI and expressive
   MIDI on both the old and the new tree, hashed, and compared — plus emitted-JavaScript diffs to
   show that "style-only" changes were style-only.
 - **Negative controls.** Where a claim was load-bearing, the inverse was tested too: deliberately
   mutating the new code had to _break_ the probe, so that a green result proves the probe can see
-  the thing it claims to check. Roughly a dozen such mutations are recorded in the journal, and the
-  `AccentuationPatternDef` control is why we know a one-character "fix" there moves fixture bytes —
+  the thing it claims to check. The `AccentuationPatternDef` control is why we know a one-character "fix" there moves fixture bytes —
   which is why that fix shipped only once the Java fork had been patched and the affected ground
   truth regenerated from it.
 

@@ -1,12 +1,12 @@
 /**
- * The pedal (movement) curve and its density — DESIGN.md §5.8, as amended by AD-35.
+ * The pedal (movement) curve and its density.
  *
  * The load-bearing test is the DIFFERENTIAL one: the renderer is run for real and its emitted
  * `<position>` events are compared against `positionAt` at their own dates. That checks three
  * things at once that no hand-written expectation could — the span structure, the ideal Bézier
  * against the renderer's own sampled points, and the 127-scaling.
  *
- * The second is the TRAILING-STYLE RESURRECTION (AD-35), pinned with both halves the ruling
+ * The second is the TRAILING-STYLE RESURRECTION, pinned with both halves the ruling
  * names: the event count and range the renderer produces, and the window-bounded pricing the
  * comparison puts on it.
  */
@@ -98,7 +98,7 @@ describe('positionAt agrees with the renderer at its own sampled points', () => 
         '<movement date="1440.0" position="0.0"/>',
     ],
     [
-      'a soft-pedal movement ending a sustain span (flat spans, AD-13)',
+      'a soft-pedal movement ending a sustain span (flat spans)',
       '<movement date="0.0" position="1.0" transition.to="0.0" controller="sustain"/>' +
         '<movement date="360.0" position="0.2" controller="soft"/>' +
         '<movement date="720.0" position="0.4"/>',
@@ -112,7 +112,7 @@ describe('positionAt agrees with the renderer at its own sampled points', () => 
 
     // At a span boundary the renderer emits TWICE at the same date — the ending span's end
     // point and the opening span's start point, on a flat map even on different controllers
-    // (`sustain` closing, `soft` opening). Right-continuity (A-B1) says the opening span
+    // (`sustain` closing, `soft` opening). Right-continuity says the opening span
     // governs, so the event to compare against at a repeated date is the LAST one.
     const lastPerDate = new Map<number, number>();
     for (const [date, position] of events) lastPerDate.set(date, position);
@@ -130,7 +130,7 @@ describe('positionAt agrees with the renderer at its own sampled points', () => 
 
   it('is the IDEAL curve, not the renderer’s one-tick staircase', () => {
     // Between two sampled points the renderer has no value at all; the comparison object does,
-    // and it is the smooth Bézier (§5.0 rule 3). Monotone descent is the checkable consequence.
+    // and it is the smooth Bézier (the rule 3). Monotone descent is the checkable consequence.
     const curve = curveFor(
       '<movement date="0.0" position="1.0" transition.to="0.0"/>' +
         '<movement date="720.0" position="0.0"/>',
@@ -145,7 +145,7 @@ describe('positionAt agrees with the renderer at its own sampled points', () => 
   });
 });
 
-describe('the AD-35 resurrection: a trailing <style> renders the last movement', () => {
+describe('the resurrection: a trailing <style> renders the last movement', () => {
   const MOVEMENTS =
     '<movement date="0.0" position="1.0" transition.to="0.0"/>' +
     '<movement date="720.0" position="0.5" transition.to="0.0"/>';
@@ -176,7 +176,7 @@ describe('the AD-35 resurrection: a trailing <style> renders the last movement',
     // movement moves `size() - 1` past it.
   });
 
-  it('reads the resurrected movement as a real span with an unbounded end (AD-35 a/b)', () => {
+  it('reads the resurrected movement as a real span with an unbounded end', () => {
     const plain = curveFor(MOVEMENTS);
     const resurrected = curveFor(MOVEMENTS + TRAILING_STYLE);
 
@@ -195,7 +195,7 @@ describe('the AD-35 resurrection: a trailing <style> renders the last movement',
     expect(resurrected.notes.some((note) => note.kind === 'resurrected-movement')).toBe(true);
   });
 
-  it('prices it inside the window: flat at @position, which is AD-25.9 by another route', () => {
+  it('prices it inside the window: flat at @position, the same outcome by another route', () => {
     const resurrected = curveFor(MOVEMENTS + TRAILING_STYLE);
     // u ~ 1e-305 for every real date, so the transition performs at its start value — and the
     // difference from an exactly-flat 0.5 is far below anything the metric resolves.
@@ -269,7 +269,7 @@ describe('the timeline is emitted events, and an event holds', () => {
     expect(value.value).toBe(0.25);
   });
 
-  it('is neutral everywhere for an absent map (R6)', () => {
+  it('is neutral everywhere for an absent map', () => {
     const curve = neutralPedalCurve();
     const value = positionAt(curve, 12345);
     if (isBottom(value)) throw new Error('unreachable');
@@ -278,8 +278,8 @@ describe('the timeline is emitted events, and an event holds', () => {
   });
 });
 
-describe('the reading rules §5.8 states', () => {
-  it('defaults @curvature to 0.4 and NOT to dynamics’ 0.0 (AD-13)', () => {
+describe('the reading rules the design states', () => {
+  it('defaults @curvature to 0.4 and NOT to dynamics’ 0.0', () => {
     const shaped = curveFor(
       `<movement date="0.0" position="0.0" transition.to="1.0" curvature="${String(DEFAULT_MOVEMENT_CURVATURE)}"/>` +
         '<movement date="720.0" position="1.0"/>',
@@ -363,7 +363,7 @@ describe('the reading rules §5.8 states', () => {
   });
 });
 
-describe('⊥ — where there is no date ↦ position function at all (§4, §5.8)', () => {
+describe('⊥ — where there is no date ↦ position function at all', () => {
   const bottomAt = (map: string, ticks: number) => isBottom(positionAt(curveFor(map), ticks));
 
   it('reads an out-of-domain @curvature as ⊥, because x(t) stops being monotone', () => {
@@ -374,7 +374,7 @@ describe('⊥ — where there is no date ↦ position function at all (§4, §5.
 
     // The emitted map is a GenericMap and inserts by date, so the backwards dates survive not
     // as an ordering defect but as a VALUE defect: sorted by date, an authored 0 → 1 ramp no
-    // longer ascends. There is no date ↦ position function here, which is what §4's domain gate
+    // longer ascends. There is no date ↦ position function here, which is what the domain gate
     // is for.
     const positions = rendererEvents(map).map(([, position]) => position);
     const ascending = pairwise(positions).every(([previous, position]) => position >= previous);
@@ -431,7 +431,7 @@ describe('d_pedal', () => {
     '<movement date="0.0" position="1.0" transition.to="0.0"/>' +
     '<movement date="720.0" position="0.0"/>';
 
-  it('is exactly 0 against itself (P-C1)', () => {
+  it('is exactly 0 against itself', () => {
     expect(distanceOf(DOWN_THEN_UP, DOWN_THEN_UP, 4).distance).toBe(0);
   });
 
@@ -470,7 +470,7 @@ describe('d_pedal', () => {
     expect(distanceOf(broken, broken, 4).distance).toBe(0);
   });
 
-  it('reports a controller mismatch structurally, never as a distance (§5.8)', () => {
+  it('reports a controller mismatch structurally, never as a distance', () => {
     const sustain =
       '<movement date="0.0" position="1.0" controller="sustain"/>' +
       '<movement date="2880.0" position="1.0"/>';
@@ -501,7 +501,7 @@ describe('d_pedal', () => {
     expect(grid).toContain(720);
   });
 
-  it('is symmetric to the last bit (P-C2)', () => {
+  it('is symmetric to the last bit', () => {
     const a = DOWN_THEN_UP;
     const b =
       '<movement date="0.0" position="0.3" transition.to="0.8" curvature="0.8" protraction="0.5"/>' +

@@ -4,16 +4,16 @@
  *
  * ## `⊥` is a value, not a gap
  *
- * DESIGN.md §5.0: *"The domain is total. Nothing is ever excluded from `[start, end]`. Where a
+ * *"The domain is total. Nothing is ever excluded from `[start, end]`. Where a
  * side has no comparable value the row reads `⊥`; where the renderer has no performed value the
- * span reads `⊥` on that side."* §4 prices `⊥` at `δ_row` from everything and 0 from itself, so
+ * span reads `⊥` on that side."* the design prices `⊥` at `δ_row` from everything and 0 from itself, so
  * it must survive as far as the density layer rather than being resolved to a number or dropped
  * here. This layer only produces and carries the marker; the causes that generate it from the
- * renderer's own failures (§5.4's aborting `accentuationPatternDef`, §5.7's NaN-poisoned
+ * renderer's own failures (the aborting `accentuationPatternDef`, the NaN-poisoned
  * asynchrony span) are the evaluators' to detect, which is why {@link BottomCause} is open here
  * to exactly the one cause a document reader can see.
  *
- * ## The renderer's fabricated 100.0 (R8 / AD-1)
+ * ## The renderer's fabricated 100.0
  *
  * `styleScope.readLevel` answers `def | literal | unresolvable` and refuses to invent a value
  * for the third (`styleScope.ts:26-30`). That refusal is right for the *write* transform it
@@ -34,11 +34,11 @@ import type { MpmEnvironment } from '../expression/mpmTree.js';
  * Why a side has no comparable value.
  *
  * One member today; a union rather than a bare string because the report's note channel keys on
- * the cause and §5.4 and §5.7 add further `renderer-error` variants.
+ * the cause; accentuation and asynchrony add further `renderer-error` variants.
  */
 export type BottomCause = 'renderer-error';
 
-/** §4's `⊥`: priced at `δ_row` from everything, 0 from itself. */
+/** the `⊥`: priced at `δ_row` from everything, 0 from itself. */
 export interface Bottom {
   readonly kind: 'bottom';
   readonly cause: BottomCause;
@@ -49,9 +49,9 @@ export interface Bottom {
  *
  * Deliberately not `Result<T, BottomCause>`, though it is the same two-arm shape. A `Result`'s
  * failure arm means *this computation produced nothing*, and every combinator over it is built
- * on that meaning: `mapOk` skips it, `andThen` short-circuits, `unwrapOr` substitutes. §5.0
+ * on that meaning: `mapOk` skips it, `andThen` short-circuits, `unwrapOr` substitutes. The model
  * says the opposite — "the domain is total, nothing is ever excluded from `[start, end]`" —
- * and §4 gives `⊥` its own arithmetic. It is a member of the value domain, not the absence of
+ * and the design gives `⊥` its own arithmetic. It is a member of the value domain, not the absence of
  * one, so `mapOk(row, f)` over a `⊥` would compile, read correctly, and silently drop the
  * `δ_row` the density layer is owed. The only eliminator is a `kind` switch each caller writes
  * out.
@@ -74,7 +74,7 @@ export function isBottom<T>(value: Valued<T>): value is Bottom {
  * The constant the renderer substitutes for a level it cannot resolve.
  *
  * 100.0 in both domains, and in the tempo case the raw `bpm` — the
- * `bpm · beatLength · 4` normalization to quarter-bpm happens downstream, exactly as R8
+ * `bpm · beatLength · 4` normalization to quarter-bpm happens downstream, exactly as the rule
  * spells it ("100.0 for `bpm`, before the `beatLength·4` normalization").
  */
 export const RENDERER_DEFAULT_LEVEL = 100.0;
@@ -99,7 +99,7 @@ export interface ResolvedComparisonLevel {
 /**
  * Resolve a `@bpm` / `@volume` / `@transition.to` level the way the renderer resolves it.
  *
- * Style lookup must be delegated to `styleScope` (§5.0's second shadowing rule): a part header
+ * Style lookup must be delegated to `styleScope` (the second shadowing rule): a part header
  * declaring `styleDef name="A"` hides the global `"A"` entirely while leaving `"B"` visible, and
  * a direct header scan gets that wrong in a way that changes a rendered velocity rather than
  * merely a lookup path (`styleScope.ts:8-15`, `levels.ts:38-46`).

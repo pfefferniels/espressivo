@@ -1,18 +1,18 @@
 /**
- * The asynchrony deviation density and its integral — DESIGN.md §5.7.
+ * The asynchrony deviation density and its integral.
  *
- * `p_asynchrony(t) = d_row(offset_A(t), offset_B(t))` where `d_row` is §4's capped local metric,
+ * `p_asynchrony(t) = d_row(offset_A(t), offset_B(t))` where `d_row` is the capped local metric,
  * not a bare difference. This is the one dimension whose density IS `localDistance` rather
  * than an integral over a curve, and the reason is `⊥`: a span the renderer poisons with NaN has no value
- * to subtract, and §4 prices it at `δ_row` from everything and 0 from itself. Feeding it
+ * to subtract, and the design prices it at `δ_row` from everything and 0 from itself. Feeding it
  * through the same function that prices ordinary offsets keeps the density total over the
- * window (§5.0) and the metric axioms intact.
+ * window and the metric axioms intact.
  *
  * Both curves are step functions, so every cell of the refinement grid is constant and the
  * integral over a cell is `d_row × cell length` — exact, no quadrature error. This dimension's
- * entry in §9.3's per-family epsilon record is therefore 0 in both units.
+ * entry in the per-family epsilon record is therefore 0 in both units.
  *
- * The `step` role is what `localDistance` was built for (§4): curve dimensions integrate and
+ * The `step` role is what `localDistance` was built for: curve dimensions integrate and
  * consume only the row's `jnd`; step and event rows use the capped attribute metric.
  */
 import { pairwise } from '../prelude/index.js';
@@ -29,12 +29,12 @@ export interface AsynchronyCell {
   readonly startQuarters: number;
   readonly endQuarters: number;
   readonly mass: number;
-  /** True where §4's cap bound this cell — reported through the `capped` note kind. */
+  /** True where the cap bound this cell — reported through the `capped` note kind. */
   readonly capped: boolean;
   /**
-   * `p_asynchrony(t)` in JND per quarter, at a position in quarters (AD-51.1).
+   * `p_asynchrony(t)` in JND per quarter, at a position in quarters.
    *
-   * The integrand this cell's mass was computed from, exposed so AD-19 can refine segment
+   * The integrand this cell's mass was computed from, exposed so the caller can refine segment
    * boundaries to the roots of `p_D − τ_D`. `mass` stays the authority — see `DensityCell`.
    */
   readonly densityAt: (quarters: number) => number;
@@ -72,7 +72,7 @@ export function asynchronyGridTicks(
  *
  * The offset is read at the cell's left edge, which is sound because the grid carries every
  * breakpoint of both curves: no step falls strictly inside a cell, so the left edge's value is
- * the cell's value throughout. Right continuity (A-B1) makes the left edge the correct probe.
+ * the cell's value throughout. Right continuity makes the left edge the correct probe.
  */
 export function asynchronyDistance(
   a: AsynchronyCurve,

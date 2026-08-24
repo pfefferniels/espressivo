@@ -10,7 +10,7 @@ import { MissingNodeError } from './errors.js';
  * ignores the namespace, which is the single most load-bearing property of this module.
  *
  * Moved verbatim out of `mei/Helper` (ARCHITECTURE.md §8.2). Copies of some of these
- * functions still live elsewhere and RULE M2a forbids merging them without a per-method
+ * functions still live elsewhere and RULE the design forbids merging them without a per-method
  * behavioural probe: `src/mpm/Mpm.ts` has two unprobed ones, and `src/msm/Msm.ts`'s
  * `getFilenameWithoutExtension` stays duplicated because it disagrees with `music/text.ts`'s
  * on a dotless filename (`tests/msm/navigationEquivalence.test.ts` pins the difference).
@@ -41,7 +41,7 @@ import { MissingNodeError } from './errors.js';
  * apart at runtime by `typeof arg1` — `(name, ofThis)` here, `(ofThis, localname?)` there.
  * They are still TWO IMPLEMENTATIONS and are still not merged: this one walks
  * `getChildElements()`, the other asks `getFirstChildElement()`, and they disagree on an
- * empty name (see the note on {@link firstChildElementOf}). RULE M2a forbids merging two
+ * empty name (see the note on {@link firstChildElementOf}). RULE the design forbids merging two
  * navigation implementations without a behavioural probe; splitting the overload into two
  * names changes no behaviour at all, and `tests/xml/overloadArmDifferences.test.ts` is the
  * probe that pins where the two answers part company.
@@ -64,7 +64,7 @@ export function firstChildElement(name: string, ofThis: Element | null): Element
   if (ofThis == null) return null;
 
   // `getChildElements()` and not `getFirstChildElement(name)`, which would be the same answer
-  // by the same comparison: RULE M2a forbids merging the two navigation implementations
+  // by the same comparison: RULE the design forbids merging the two navigation implementations
   // without a behavioural probe.
   for (const child of ofThis.getChildElements()) {
     if (child.getLocalName() === name) return child;

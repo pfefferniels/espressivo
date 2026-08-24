@@ -1,9 +1,9 @@
 /**
- * The expression facade: MPM ⇒ MPM, exaggerated (DESIGN.md §4).
+ * The expression facade: MPM ⇒ MPM, exaggerated.
  *
  * A second entry point beside {@link module:api/pipeline}, under the same rules and for a
  * different operation. Where that module converts and renders, this one **edits a document**:
- * text in, text out, nothing performed and nothing extracted (R1). What it adds to the engine
+ * text in, text out, nothing performed and nothing extracted. What it adds to the engine
  * in `src/expression/` is exactly what a facade adds anywhere in this package:
  *
  * - **the typed-error boundary** (RULE E2). The engine has no error vocabulary of its own —
@@ -15,7 +15,7 @@
  *   serialization is `getRootElement().toXML()` (RULE F2a), which is the byte sequence
  *   `canonicalBaseline` compares against and therefore the one P1's identity predicate is
  *   asserted on;
- * - **R1's carve-out, made mechanical.** `options.msm` is read for the report's estimates and
+ * - **the carve-out, made mechanical.** `options.msm` is read for the report's estimates and
  *   for nothing else. The guarantee is not a promise in a comment: {@link toEngineOptions}
  *   builds the interior's option object field by field, so there is no path by which an MSM
  *   could reach a written byte.
@@ -70,8 +70,8 @@ import type {
 } from './types.js';
 
 /**
- * DESIGN.md §3's fifteen dimensions, in registry order — the complete set of keys
- * {@link ExaggerateOptions.factors} accepts (A11).
+ * The fifteen dimensions, in registry order — the complete set of keys
+ * {@link ExaggerateOptions.factors} accepts.
  */
 export { EXPRESSION_DIMENSIONS } from '../expression/registry.js';
 
@@ -82,7 +82,7 @@ export { EXPRESSION_DIMENSIONS } from '../expression/registry.js';
 /**
  * Parse to a raw XOM tree and check the root, the expression engine's way.
  *
- * D-A/A1 forbids `new Mpm(text)` here: the `Mpm` constructor runs the def parsers eagerly, so
+ * The raw-tree discipline forbids `new Mpm(text)` here: the `Mpm` constructor runs the def parsers eagerly, so
  * merely *parsing* a document rewrites it — `rubatoDef` gains three attributes and has present
  * values respelled, `GenericMap.parseData` re-sorts every map's children and hoists them in
  * front of the whitespace, duplicate maps are deleted. A transform that inherited those edits
@@ -107,8 +107,8 @@ function parseRoot(kind: DocumentKind, text: XmlText, parse: (text: string) => E
  *
  * It exists because it is the only thing an identity claim can be *tested* against:
  * `exaggerateMpm(mpm, {factors: {}}).mpm === mpm` is false for every MPM whatever the engine
- * does, since parsing and re-serializing normalizes the `xmlns` declarations. §1.1's P1 is
- * contracted against this instead (A2).
+ * does, since parsing and re-serializing normalizes the `xmlns` declarations. the P1 is
+ * contracted against this instead.
  *
  * It is a function here rather than a re-export of the interior `canonicalBaseline` because a
  * caller compares it against `exaggerateMpm`'s output on the SAME text, so the two must agree
@@ -133,7 +133,7 @@ export function canonicalMpm(mpm: XmlText): XmlText {
  *
  * The enumeration is the point: `factors` is a separate parameter of `applyExaggeration` and
  * `msm` is not an engine concept at all, so listing the five the engine does take is what
- * makes R1's carve-out structural rather than documentary. A spread of `options` would pass
+ * makes the carve-out structural rather than documentary. A spread of `options` would pass
  * the MSM into the engine and rely on it to ignore it.
  */
 function toEngineOptions(options: ExaggerateOptions): EngineOptions {
@@ -147,7 +147,7 @@ function toEngineOptions(options: ExaggerateOptions): EngineOptions {
 }
 
 /**
- * Validate every option **before the document is parsed**, per §4 — and keep what that
+ * Validate every option **before the document is parsed**, per and keep what that
  * validation produced.
  *
  * The ordering is a contract, not an accident: a caller who both misspells a dimension and
@@ -199,18 +199,19 @@ function checkPerformanceIndex(selector: string | number | undefined): Checked {
 /**
  * Exaggerate an MPM's expression: every dimension's deviation from its neutral, scaled.
  *
- * The transform is **pure and deterministic** (R1/R2): the same `(mpm, factors)` always
+ * The transform is **pure and deterministic**: the same `(mpm, factors)` always
  * yields the same bytes, no RNG is involved, and the input string is untouched.
  *
- * **Structural invariance (R5a).** The returned document has the same skeleton as the input's
+ * **Structural invariance.** The returned document has the same skeleton as the input's
  * canonical form: no `@date` is ever written, no element is added or removed, and no attribute
  * is added or removed. Only attribute *values* change. The report says which dimensions were
  * written and how many writes each made, and names every individual site it refused, clamped,
  * skipped or found inert — it does not enumerate the written sites, so this half is a claim
  * about the document's shape, not a site-level diff manifest. It is universal: it holds for
- * every document, every dimension and every factor, including the ones R5b below carves out.
+ * every document, every dimension and every factor, including the ones symbolic invariance
+ * below carves out.
  *
- * **Symbolic invariance (R5b), and its one exception.** Performing the result against the same
+ * **Symbolic invariance, and its one exception.** Performing the result against the same
  * MSM normally yields the same notes at the same symbolic dates, durations and pitches — and,
  * for the notes the score already had, under the same ids; only milliseconds, velocities and
  * control changes move. Notes that a v3 ornament *generates* match by position and date, never
@@ -221,19 +222,19 @@ function checkPerformanceIndex(selector: string | number | undefined): Checked {
  * ornament that generates notes into a tick-resolved frame (a `ticks` suffix, a `%` of the
  * principal, or no suffix at all): the v3 renderer derives those notes' symbolic dates and
  * durations from the frame,
- * so widening or reshaping it necessarily relocates them, and past §7.9's cliff it can carve
+ * so widening or reshaping it necessarily relocates them, and past the cliff it can carve
  * a surviving principal down to a zero-length note. There is no way to both widen the window
  * an ornament's notes occupy and leave those notes where they were; a caller that needs the
  * guarantee holds those two dimensions at 1.
  * `tests/integration/expression-transform.test.ts` pins the boundary in both directions.
  *
- * A factor of 1, or a missing key, is the identity for that dimension and short-circuits it
- * (A2): `factors: {}` and an all-ones record both return {@link canonicalMpm} byte for byte,
+ * A factor of 1, or a missing key, is the identity for that dimension and short-circuits it:
+ * `factors: {}` and an all-ones record both return {@link canonicalMpm} byte for byte,
  * with `report.totalWrites === 0`.
  *
  * ```ts
  * const { mpm, report } = exaggerateMpm(text, { factors: { tempo: 1.6, dynamics: 1.4 } });
- * if (report.totalWrites === 0) skipSample();          // R4's exact no-op contract
+ * if (report.totalWrites === 0) skipSample();          // the exact no-op contract
  * ```
  *
  * @param options `factors` is required; see {@link ExaggerateOptions} for the rest. Omitting
@@ -293,7 +294,7 @@ function readMsm(msm: XmlText): MsmFacts {
  * Run the engine, turning an interior invariant failure into a typed one.
  *
  * Options have already been validated, so nothing `applyExaggeration` re-validates can throw
- * here; what remains is A6's `lateStart < earlyEnd` assertion, which is the engine reporting
+ * here; what remains is the `lateStart < earlyEnd` assertion, which is the engine reporting
  * on itself rather than on the caller.
  */
 function runEngine(root: Element, run: ResolvedRun): ExaggerationReport {
@@ -312,7 +313,7 @@ function runEngine(root: Element, run: ResolvedRun): ExaggerationReport {
 /**
  * A `performance` selector that matched nothing is an error here, not an empty run.
  *
- * The engine reports `performances: []` and leaves the document alone, which is already R4's
+ * The engine reports `performances: []` and leaves the document alone, which is already the
  * "this sample is a no-op" — but a caller who *named* a performance asked a question, and
  * answering it with an unchanged document would hide a typo behind a valid-looking result.
  * The messages are `selectPerformance`'s, so the two facades read alike.
@@ -336,7 +337,7 @@ function requireSelectedPerformance(
 }
 
 /**
- * Fill in each performance's MSM-dependent estimates (A10).
+ * Fill in each performance's MSM-dependent estimates.
  *
  * The walk reads the **transformed** tree, which is what makes the estimates about the values
  * the caller is going to render rather than about the ones they passed in — and it is why
@@ -367,17 +368,17 @@ function withEstimates(
 }
 
 // ---------------------------------------------------------------------------
-// Spotlight (DESIGN.md D-I) — the prototype's shader, with its defects designed out.
+// Spotlight — the prototype's shader, with its defects designed out.
 // ---------------------------------------------------------------------------
 
 /**
  * Bring a selection of instructions forward by damping everything else.
  *
- * This is `Shader.bringOut` generalized (DESIGN.md §5, D-I). It is **not** a second transform:
+ * This is `Shader.bringOut` generalized. It is **not** a second transform:
  * once the selected elements' types are mapped onto dimensions, spotlight is
  * {@link exaggerateMpm} with a derived factor vector — the spared dimensions at 1, every other
  * dimension at `attenuation` — run in `gesture` scope. Everything the engine guarantees
- * therefore holds here unchanged, R5a included.
+ * therefore holds here unchanged, structural invariance included.
  *
  * **Why `gesture` and not `global`.** Under `global` scope a factor below 1 pulls every level
  * *toward the performance-wide center*, so quiet background material is re-levelled **louder**
@@ -430,8 +431,8 @@ export function spotlightMpm(mpm: XmlText, options: SpotlightOptions): Spotlight
     mpm: serializeMpmRoot(root),
     report,
     spared: selection.spared,
-    // Copied out of the interior's own array (CHARTER's public-API rule): the entries are
-    // already plain data, but the arrays holding them are the resolver's.
+    // Copied out of the interior's own array — a facade output is freshly created, never a
+    // view onto interior state. The entries are already plain data; the arrays are not.
     resolvedIds: selection.resolved.map((entry) => ({
       id: entry.id,
       element: entry.element,
@@ -441,16 +442,16 @@ export function spotlightMpm(mpm: XmlText, options: SpotlightOptions): Spotlight
 }
 
 /**
- * D-I's factor vector: the spared dimensions at 1, everything else at `attenuation`.
+ * the factor vector: the spared dimensions at 1, everything else at `attenuation`.
  *
  * The empty-spare-set branch is the one that matters. An empty selection derives an empty
  * spared set, and the arithmetic answer — attenuate all fifteen — is the prototype's worst
  * defect: a `bringOut` of nothing returned a flattened performance and called it a spotlight.
- * D-I makes it the identity instead, so "I have selected nothing" and "I have selected
+ * the design makes it the identity instead, so "I have selected nothing" and "I have selected
  * everything" both leave the document alone.
  *
  * The spared dimensions are written out as an explicit 1 rather than omitted. Both are the
- * identity under R3, but the explicit form is what makes `report.dimensions[d].requestedFactor`
+ * identity, but the explicit form is what makes `report.dimensions[d].requestedFactor`
  * read `1` instead of `null` — the run did ask for the identity there, and a caller comparing
  * two spotlights should be able to see which dimensions were spared from the report alone.
  */
@@ -467,7 +468,7 @@ function spotlightFactors(
 }
 
 /**
- * §4's pre-parse validation for spotlight, returning the attenuation it accepted.
+ * the pre-parse validation for spotlight, returning the attenuation it accepted.
  *
  * `ids` is read as `unknown` because being a list of strings is its readability row: the
  * selection is walked element by element and matched against the document's ids, so a
@@ -499,13 +500,13 @@ function checkSpotlightOptions(options: SpotlightOptions): Result<number, string
 }
 
 /**
- * A8 — every offender at once, or no run at all.
+ * every offender at once, or no run at all.
  *
  * The message is the whole report, one line per offender with its kind, because the alternative
  * to naming them all is a caller fixing a stale selection one id per exception.
  */
 function requireResolvedSelection(selection: Selection): void {
-  // `collect` and not `traverse`: A8 is the accumulating applicative, and this is the one place
+  // `collect` and not `traverse`: `collect` is the accumulating applicative, and this is the one place
   // in the facade where every offender at once is the contract rather than a nicety.
   const checked = collect(selection.offenders, (offender) =>
     err(`  - ${offender.kind}: ${offender.detail}`),
@@ -519,11 +520,11 @@ function requireResolvedSelection(selection: Selection): void {
 }
 
 // ---------------------------------------------------------------------------
-// Weights (DESIGN.md D-H) — one scalar, fifteen factors.
+// Weights — one scalar, fifteen factors.
 // ---------------------------------------------------------------------------
 
 /**
- * DESIGN.md D-H's lerp: expand one scalar into a factor record, `sᵈ = 1 + wᵈ·(s − 1)`.
+ * The lerp: expand one scalar into a factor record, `sᵈ = 1 + wᵈ·(s − 1)`.
  *
  * This is the prototype's `Exaggerate.applyWeights`, which is how a single "how exaggerated?"
  * control becomes a per-dimension vector: a weight of 1 passes the scalar through, 0 pins its
@@ -531,7 +532,8 @@ function requireResolvedSelection(selection: Selection): void {
  * **any** weights, so the neutral position of a slider is neutral whatever preset is loaded.
  *
  * Every dimension appears in the result, so what comes back is exactly what the run applied.
- * See {@link PROTOTYPE_WEIGHTS} for the prototype's tuned vector and DESIGN §8 for the ranges
+ * See {@link PROTOTYPE_WEIGHTS} for the prototype's tuned vector and `docs/expression.md` for
+ * the ranges
  * to sample `s` from.
  *
  * ```ts
@@ -561,14 +563,14 @@ export function weightedFactors(s: number, weights: ExaggerationWeights): Exagge
 }
 
 /**
- * The mpm-renderer prototype's tuned weight profile, preserved as data (D-H).
+ * The mpm-renderer prototype's tuned weight profile, preserved as data.
  *
  * A heuristic, not a recommendation: the numbers are one person's taste, nothing in DESIGN
  * derives them, and no test here validates them musically. They ship because the prototype
  * applied them to every render invisibly, and a documented constant is the difference between a
  * reproducible baseline and a lost one. The default is no weighting.
  *
- * See the constant's own documentation for the correspondence onto DESIGN §3's fifteen
+ * See the constant's own documentation for the correspondence onto the fifteen
  * dimensions, including the two the prototype fused and the five it could not express.
  */
 export { PROTOTYPE_WEIGHTS } from '../expression/weights.js';

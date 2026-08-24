@@ -195,7 +195,7 @@ describe('parseTemporalValueLenient', () => {
   });
 
   it('leaves the fallback policy to the caller', () => {
-    // No ticks default, no time.unit lookup here — DESIGN.md D3 puts both in the reader.
+    // No ticks default, no time.unit lookup here — PARITY.md §6.2 D3 puts both in the reader.
     expect(parseTemporalValueLenient('300.0')?.domain).toBeNull();
   });
 
@@ -238,7 +238,7 @@ describe('formatTemporalValue', () => {
 
   it('uses the house String(x) convention, not Java Double.toString', () => {
     // Java would write "0.0ticks" / "50.0%"; every shipped serializer in this port writes
-    // String(x) instead (research/java-ts-v2-ornamentation.md §5.3 item 5). Both spellings
+    // String(x) instead (PARITY.md, "Numbers are written `720`"). Both spellings
     // satisfy the schematron, and this keeps one number-writing rule in the codebase.
     expect(formatTemporalValue({ value: 0, domain: 'ticks' })).toBe('0ticks');
     expect(formatTemporalValue({ value: 50, domain: 'relative' })).toBe('50%');
@@ -307,7 +307,7 @@ describe('round trip', () => {
   });
 
   it('turns a suffix-less corpus value into a canonical one once the caller picks a domain', () => {
-    // The reader's job (DESIGN.md D3) shown end to end: "-22.0" with no unit becomes
+    // The reader's job (PARITY.md §6.2 D3) shown end to end: "-22.0" with no unit becomes
     // "-22ticks" after the ticks fallback is applied by the caller, not by this module.
     const lenient = parseTemporalValueLenient('-22.0');
     expect(lenient).toEqual({ value: -22, domain: null });

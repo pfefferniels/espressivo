@@ -101,7 +101,7 @@ describe('parseNoteOrder — empty input', () => {
 });
 
 describe('parseNoteOrder — spec exempla', () => {
-  // The four values from the ornament exemplum (research/github-v3-design.md §3.3 and the
+  // The four values from the ornament exemplum (the
   // spec's src/specs/ornament.xml), plus the chord form its <desc> illustrates.
   const EXEMPLA = [
     {
@@ -357,7 +357,7 @@ describe('parseNoteOrder — lenience', () => {
 describe('parseNoteOrder — unspaced bracket salvage', () => {
   it('salvages the spec desc form "[#id1 #id2]"', () => {
     // att.note.order.xml's own <desc> writes chords this way, which its own spaced-token
-    // schematron rejects (research/github-v3-design.md §3.3). Read it, warn about it.
+    // schematron rejects it. Read it, warn about it.
     const order = asList(parseNoteOrder('[#id1 #id2]'));
     expect(idsOf(order)).toEqual([['id1', 'id2']]);
     expect(order.groups).toEqual([]);
@@ -389,9 +389,9 @@ describe('parseNoteOrder — unspaced bracket salvage', () => {
 
 describe('parseNoteOrder — pathological input terminates', () => {
   // The reference tokenizer hangs on a token without '#' because its index never advances
-  // (research/lars-v3-implementation.md §4.2, bug 2). Every case here would hang it; each
+  // Every case here would hang the reference tokenizer; each
   // carries an explicit per-test timeout so a regression fails loudly instead of stalling
-  // the suite (architecture brief §5).
+  // the suite.
   const PATHOLOGICAL = [
     { name: 'a lone "#"', raw: '#' },
     { name: 'a lone "["', raw: '[' },

@@ -13,7 +13,7 @@ import { elementAt } from '../../../../prelude/index.js';
  * `<ornament>` is the *score*, naming pool ids in playing order (see `noteOrder.ts` next
  * door). Pool order itself carries no meaning — `ornament.xml:78-79`: "the order of these
  * note elements have no semantic meaning". Turning ids plus pitch specs into real MSM notes
- * is the renderer's job (DESIGN.md D8/D10); this class only reads and writes the element.
+ * is the renderer's job; this class only reads and writes the element.
  *
  * A class rather than a plain interface because it wraps a live XML subtree (RULE C1), in the
  * generate-on-demand shape of its sibling transformers (RULE C1a): {@link getXml} lazily
@@ -22,9 +22,8 @@ import { elementAt } from '../../../../prelude/index.js';
  * PARITY NOTE — v3-only, with no Java precedent to match. v2 ornaments never had children at
  * all, so nothing here can move a v2 byte. The reference implementation does read a pool, but
  * under the element name `ornamentNote`, which appears in no spec release and which its own
- * MEI converter never writes, so its pool is always empty
- * (research/lars-v3-implementation.md §5 note 2). DESIGN.md D1 rules that name out: the pool
- * child is `note`.
+ * MEI converter never writes, so its pool is always empty. That name is ruled out here: the
+ * pool child is `note`.
  */
 
 /**
@@ -38,7 +37,7 @@ import { elementAt } from '../../../../prelude/index.js';
  * `interval.chromatic` is explicitly a double so that quarter tones are expressible
  * (`note.xml:38-45`). Resolving any of them against a principal note — including what
  * "diatonic" means against a key signature, which the spec leaves at "context-sensitive" —
- * is DESIGN.md D8, and belongs to the renderer.
+ * belongs to the renderer.
  */
 export type OrnamentPitchSpec =
   | { readonly kind: 'midi'; readonly value: number }
@@ -56,7 +55,7 @@ const PITCH_ATTRIBUTE = {
  * What a `<note>` with no pitch attribute at all means. The schematron is
  * `count(@midi.pitch | @interval.chromatic | @interval.diatonic) le 1`, so zero is legal, and
  * the attribute defaults (`interval.chromatic` = `0.0`) then leave the note at the principal
- * note's pitch (DESIGN.md D8, research/github-v3-design.md §3.5).
+ * note's pitch.
  */
 const DEFAULT_PITCH_SPEC: OrnamentPitchSpec = { kind: 'chromatic', value: 0.0 };
 
@@ -65,7 +64,7 @@ const XML_NAMESPACE = 'http://www.w3.org/XML/1998/namespace';
 /**
  * Read one pitch attribute.
  *
- * The parse is `parseJavaDouble`, DESIGN.md D16's rule for new v3 parse code (PARITY.md §6.8).
+ * The parse is `parseJavaDouble`, the rule for new v3 parse code (PARITY.md §6.8).
  * Unlike `TemporalValue`, which is exempt because the spec's own regex admits only the decimal
  * literals every parser agrees on, there is no grammar here at all — `midi.pitch` is an
  * unconstrained attribute value — so the choice of parser is observable at the edges: `""` and
@@ -117,7 +116,7 @@ export function readJavaDouble(text: string): number | null {
 }
 
 /**
- * Apply the schematron's mutual exclusion leniently (DESIGN.md D8): more than one pitch
+ * Apply the schematron's mutual exclusion leniently: more than one pitch
  * attribute is a document error, so it is logged, and the most explicit one wins —
  * `midi.pitch` > `interval.chromatic` > `interval.diatonic`, which is the order
  * `note.xml`'s own remarks rank them in ("most explicit", "more general", "context-sensitive").
@@ -193,7 +192,7 @@ export class OrnamentNote {
    * that a note with no pitch attribute at all decays to, so that the round trip is stable
    * (state in, same state out). No parity is at stake: this element is new in v3 and no Java
    * reference writes it — the reference writes `ornamentNote`, which no spec release defines.
-   * Attribute order is fixed because it is byte-visible (CHARTER §79-80), and the spec's own
+   * Attribute order is fixed because it is byte-visible, and the spec's own
    * exempla (`note.xml:60-70`) write it this way.
    */
   generateXML(): Element {

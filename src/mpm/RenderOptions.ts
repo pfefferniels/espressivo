@@ -83,7 +83,7 @@ export interface RenderContext {
  * 0, which is why {@link RandomNumberProvider}'s own field initializer ends in `|| 1`).
  *
  * Called as `deriveSeed(options.seed, ordinal, impIndex)` — that argument order is
- * normative (§2.4), because the derived seeds are only reproducible if every caller folds
+ * normative, because the derived seeds are only reproducible if every caller folds
  * the same parts in the same order.
  */
 export function deriveSeed(base: number, ...parts: readonly number[]): number {

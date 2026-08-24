@@ -32,8 +32,8 @@ import type { ExaggerationReport } from '../expression/report.js';
  * arrays and object literals, with every absence spelled `null` — and a parallel declaration
  * would be a second copy to keep in step with `src/expression/report.ts` for no gain. The one
  * type that is *not* re-exported is the interior's own `ExaggerateOptions`: the facade's
- * (below) carries `factors` and `msm`, which DESIGN.md §4 puts in the option bag and the
- * engine takes separately or not at all.
+ * (below) carries `factors` and `msm` in the option bag, where the engine takes them
+ * separately or not at all.
  */
 export type { ExaggerationFactors, ExpressionDimension } from '../expression/registry.js';
 export type { CenterOverrides, ExaggerationScope, VelocityRange } from '../expression/options.js';
@@ -135,10 +135,10 @@ export interface MidiOptions {
   readonly generateProgramChanges?: boolean;
 }
 
-/** DESIGN.md §4's option bag for {@link module:api/expression.exaggerateMpm}. */
+/** The option bag for {@link module:api/expression.exaggerateMpm}. */
 export interface ExaggerateOptions {
   /**
-   * How far to exaggerate each dimension. A missing key is 1 is identity (R3), so `{}` is the
+   * How far to exaggerate each dimension. A missing key is 1 is identity, so `{}` is the
    * no-op and `EXPRESSION_DIMENSIONS` is the complete list of keys this accepts — an unknown
    * one is an {@link InvalidOptionError} rather than a silent identity, because the silent
    * version is undetectable to a caller who misspelled a key while sampling.
@@ -148,14 +148,14 @@ export interface ExaggerateOptions {
    * Which performance to transform. Name or 0-based index; **omitted means all of them**.
    *
    * The one place the expression facade diverges from {@link PerformOptions}, because the two
-   * operations differ (A11): `performMsm` renders, and a render needs one performance, so it
+   * operations differ: `performMsm` renders, and a render needs one performance, so it
    * defaults to index 0. This one edits a document, and editing one performance while silently
    * leaving its siblings behind produces a document that means something different from either
    * input.
    */
   readonly performance?: string | number;
   /**
-   * Where the neutral point of the level dimensions lives (§1.3). Default `'global'`.
+   * Where the neutral point of the level dimensions lives. Default `'global'`.
    *
    * `global` exaggerates `tempo` and `dynamics` levels around a performance-wide center, so a
    * piecewise-constant map grows section contrast; `gesture` scales each transition pair
@@ -168,15 +168,15 @@ export interface ExaggerateOptions {
    *
    * Passing back the center a previous run reported is what makes composition exact under
    * clamping: with the center fixed, `exaggerate(s₁) ∘ exaggerate(s₂) = exaggerate(s₁·s₂)`
-   * again (§1.1's P2).
+   * again (the P2).
    */
   readonly center?: CenterOverrides;
-  /** R6(a)'s musical bound on dynamics *level* attributes. Default `{min: 1, max: 127}`. */
+  /** the musical bound on dynamics *level* attributes. Default `{min: 1, max: 127}`. */
   readonly velocityRange?: VelocityRange;
-  /** A6's IEEE saturation guard on the rubato window, in (0,1). Default `1e-6`. */
+  /** the IEEE saturation guard on the rubato window, in (0,1). Default `1e-6`. */
   readonly minRubatoWindow?: number;
   /**
-   * A score, read **only** to fill in the report's `estimates` (A10's carve-out to R1).
+   * A score, read **only** to fill in the report's `estimates`.
    *
    * It never reaches the transform: `api/expression.ts` builds the interior's option object
    * field by field, so there is no path by which an MSM could influence a written byte. Its
@@ -187,20 +187,20 @@ export interface ExaggerateOptions {
   readonly msm?: XmlText;
 }
 
-/** DESIGN.md §4. The transformed document, and what happened to it. */
+/** The transformed document, and what happened to it. */
 export interface ExaggerationResult {
   readonly mpm: XmlText;
-  /** R4's contract: `report.totalWrites === 0` means this sample is a no-op. */
+  /** the contract: `report.totalWrites === 0` means this sample is a no-op. */
   readonly report: ExaggerationReport;
 }
 
-/** DESIGN.md §4/D-I's option bag for {@link module:api/expression.spotlightMpm}. */
+/** The option bag for {@link module:api/expression.spotlightMpm}. */
 export interface SpotlightOptions {
   /**
    * The `xml:id`s of the MPM instructions to bring out. Empty means no selection, which is the
    * identity — never "attenuate everything".
    *
-   * Every id must name an element whose type governs at least one dimension (D-I's table:
+   * Every id must name an element whose type governs at least one dimension (the table:
    * `tempo`, `dynamics`, `rubato`, `articulation`, `accentuationPattern`, `ornament`,
    * `asynchrony`, `movement`, and a `distribution.*` under a timing, dynamics or toneduration
    * imprecision map). Anything else — a `<style>` switch, a def, a score id, a distribution in
@@ -208,8 +208,8 @@ export interface SpotlightOptions {
    */
   readonly ids: readonly string[];
   /**
-   * How far to damp everything the selection does **not** cover, in `(0, 1]`. Required (A8):
-   * the prototype's hardcoded 0.1 is exactly the magic constant C2 forbids.
+   * How far to damp everything the selection does **not** cover, in `(0, 1]`. Required:
+   * the prototype's hardcoded 0.1 is exactly the magic constant the design forbids.
    *
    * 1 is the identity — nothing is damped — and is admitted so that a caller can sweep the
    * control through its neutral. 0 is excluded by the domain rather than by taste: under
@@ -233,7 +233,7 @@ export interface SpotlightSelection {
 }
 
 /**
- * DESIGN.md §4. The spotlit document, what happened to it, and what the selection resolved to.
+ * The spotlit document, what happened to it, and what the selection resolved to.
  *
  * `spared` and `resolvedIds` sit beside the report rather than inside it because they describe
  * the **selection**, which is one decision for the whole run, while every field of
@@ -243,7 +243,7 @@ export interface SpotlightSelection {
  */
 export interface SpotlightResult {
   readonly mpm: XmlText;
-  /** R4's contract, unchanged: `report.totalWrites === 0` means nothing moved. */
+  /** the contract, unchanged: `report.totalWrites === 0` means nothing moved. */
   readonly report: ExaggerationReport;
   /** The dimensions held at 1. Empty exactly when `ids` was empty, i.e. on the identity run. */
   readonly spared: readonly ExpressionDimension[];

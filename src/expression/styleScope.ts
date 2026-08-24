@@ -2,7 +2,7 @@
  * Style resolution and level reading — how a string in `@bpm`, `@volume` or
  * `@transition.to` becomes the number the renderer uses.
  *
- * Two rules from DESIGN.md D-A live here, both deciding which numbers the engine writes, not
+ * Two rules live here, both deciding which numbers the engine writes, not
  * merely how it finds them.
  *
  * Whole-styleDef shadowing, never a per-def merge. `GenericMap.getStyle`
@@ -24,7 +24,7 @@
  * reproduced: 100.0 is a rendering default, not a reading of the document, and feeding it into
  * a geometric mean would invent a level the author never wrote and move every other level.
  * Unresolvable levels are reported as such ({@link LevelReading}'s `unresolvable`) and skipped,
- * per §1.2 and §7.2's "String levels" note — MEI's `'+'`, `'-'` and `'?'` all land here.
+ * MEI's `'+'`, `'-'` and `'?'` all land here.
  */
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
@@ -51,7 +51,7 @@ export interface ResolvedStyleDef {
 
 /**
  * What a level string resolved to — the engine's three site dispositions. `def` means the
- * writable site is the def's `@value` and the instruction attribute must be left alone (D-C
+ * writable site is the def's `@value` and the instruction attribute must be left alone (the rule
  * forbids rewriting a name as a number: it severs the style linkage); `literal` means the
  * instruction attribute is itself the site; `unresolvable` means skip and report.
  *
@@ -129,7 +129,7 @@ export function findStyleDef(
  *
  * One non-finite case survives: Java's grammar accepts the literals `NaN` and `Infinity`, so
  * `value="NaN"` yields a def the index holds with a NaN value. Keeping it out of the transform
- * is the §1.2 gate's job; this function only reports what the renderer would read.
+ * is the gate's job; this function only reports what the renderer would read.
  */
 export function readDefValue(def: Element): number | null {
   const raw = attribute('value', def);

@@ -1,8 +1,8 @@
 /**
  * How the facade says "this option is out of domain" — as a value, not as a throw.
  *
- * Every facade entry point validates its whole option bag before it parses a byte (§4, §9.4,
- * A23). A validator that *returns* its verdict rather than throwing it buys three things a
+ * Every facade entry point validates its whole option bag before it parses a byte.
+ * A validator that *returns* its verdict rather than throwing it buys three things a
  * `check…(options): void` cannot: the checks compose, so one surface can be described as
  * another's rows minus four; a validator can hand back what it resolved instead of making the
  * engine resolve the same bag again; and the failure policy belongs to the composition —
@@ -54,7 +54,7 @@ export function rejected(problem: OptionProblem): Checked {
  * First-failure and not the prelude's accumulating `collect`, because these messages are a
  * published part of the facade's contract — `tests/api/**` reads them, and so do callers — and
  * a multi-line list is a different contract. `collect` is used where accumulation is already
- * the behaviour: `spotlightMpm`'s selection, where A8 says every offender or no run at all.
+ * the behaviour: `spotlightMpm`'s selection, where the design says every offender or no run at all.
  *
  * The arguments are values, so every check *runs* even after one has failed. That is safe
  * because all of them are total pure functions of an already-narrowed field. Where a check

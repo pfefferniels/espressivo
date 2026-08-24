@@ -1,5 +1,5 @@
 /**
- * The two level dimensions: DESIGN §7.1's center population, §7.2/§7.4's rows, §1.3's scopes.
+ * The two level dimensions: the center population, the rows, the scopes.
  *
  * Every expectation is computed from the hand-derived center with the same closed form the
  * engine uses, so the assertions are exact: an ULP-level disagreement between `μ·(x/μ)^s` and
@@ -24,10 +24,10 @@ function geomean(...values: readonly number[]): number {
   return Math.exp(logSum / values.length);
 }
 
-describe('applyExaggeration — tempo (§7.2)', () => {
+describe('applyExaggeration — tempo', () => {
   // Three level sites in three shapes: a def named from a quarter-note instruction, a literal
   // on a half-note instruction, and a def named from an instruction that also carries a
-  // transition target. That target is transformed but excluded from the population (§7.1).
+  // transition target. That target is transformed but excluded from the population.
   const MIXED = globalDocument(
     '<tempoStyles><styleDef name="T">' +
       '<tempoDef id="allegro" name="Allegro" value="120"/>' +
@@ -50,7 +50,7 @@ describe('applyExaggeration — tempo (§7.2)', () => {
     expect(performance.centers.dynamics).toBeNull();
   });
 
-  it('writes the def value, never the name the instruction carries (D-C)', () => {
+  it('writes the def value, never the name the instruction carries', () => {
     const { root } = exaggerate(MIXED, { tempo: 2 });
     expect(textAt(root, 't1', 'bpm')).toBe('Allegro');
     expect(numberAt(root, 'allegro', 'value')).toBe(logAroundCenter(120, 2, CENTER));
@@ -69,7 +69,7 @@ describe('applyExaggeration — tempo (§7.2)', () => {
     expect(numberAt(root, 't3', 'transition.to')).toBe(logAroundCenter(80, 2, CENTER));
   });
 
-  it('reports §8’s deviation ratio from the population, not from the written values', () => {
+  it('reports the deviation ratio from the population, not from the written values', () => {
     const { performance } = exaggerate(MIXED, { tempo: 2 });
     expect(performance.bounds.tempoDeviationRatio).toBe(Math.max(180 / CENTER, CENTER / 60));
   });
@@ -94,7 +94,7 @@ describe('applyExaggeration — tempo (§7.2)', () => {
   });
 });
 
-describe('applyExaggeration — the skip set precedes the center (§7.1, A5)', () => {
+describe('applyExaggeration — the skip set precedes the center', () => {
   const WITH_CASUALTIES = globalDocument(
     '',
     '<tempoMap>' +
@@ -174,7 +174,7 @@ describe('applyExaggeration — the skip set precedes the center (§7.1, A5)', (
   });
 });
 
-describe('applyExaggeration — the exact-center branches (§7.1, R-W2-5/#9)', () => {
+describe('applyExaggeration — the exact-center branches (R-W2-5/#9)', () => {
   // `geometricMean` returns a single-element population and an all-equal one exactly, without a
   // log round trip, so `μ·(x/μ)^s` is `μ·1^s = μ` bit for bit and the write is skipped. A center
   // off by an ULP would rewrite every constant instruction of every mpmify-generated
@@ -222,7 +222,7 @@ describe('applyExaggeration — the exact-center branches (§7.1, R-W2-5/#9)', (
   });
 });
 
-describe('applyExaggeration — dynamics (§7.4)', () => {
+describe('applyExaggeration — dynamics', () => {
   const LADDER = globalDocument(
     '<dynamicsStyles><styleDef name="D">' +
       '<dynamicsDef id="dp" name="p" value="48"/>' +
@@ -237,7 +237,7 @@ describe('applyExaggeration — dynamics (§7.4)', () => {
   );
   const CENTER = geomean(48, 97, 112);
 
-  it('clamps into velocityRange and counts every clamp event (R6a)', () => {
+  it('clamps into velocityRange and counts every clamp event', () => {
     const { root, performance } = exaggerate(LADDER, { dynamics: 4 });
     expect(performance.dimensions.dynamics.clamps).toBe(2);
     // The counter and the note are two statements; assert both, or deleting the note passes.
@@ -249,7 +249,7 @@ describe('applyExaggeration — dynamics (§7.4)', () => {
     expect(numberAt(root, 'dff', 'value')).toBe(127);
   });
 
-  it('names the two levels the clamp collapsed onto one value (§7.4 mergedLevels)', () => {
+  it('names the two levels the clamp collapsed onto one value', () => {
     const { performance } = exaggerate(LADDER, { dynamics: 4 });
     expect(performance.mergedLevels).toEqual([['f', 'ff']]);
     expect(noteKinds(performance)).toContain('merged-levels');
@@ -278,7 +278,7 @@ describe('applyExaggeration — dynamics (§7.4)', () => {
   });
 });
 
-describe('applyExaggeration — gesture scope (§1.3, A7, D-I)', () => {
+describe('applyExaggeration — gesture scope', () => {
   const WITH_END_MARKER = globalDocument(
     '',
     '<dynamicsMap>' +
@@ -300,7 +300,7 @@ describe('applyExaggeration — gesture scope (§1.3, A7, D-I)', () => {
     expect(numberAt(root, 'g1', 'transition.to')).toBe(logAroundCenter(90, 0.5, PAIR_CENTER));
   });
 
-  it('moves the MEI end-marker duplicate with the transition endpoint (§7.2/A7)', () => {
+  it('moves the MEI end-marker duplicate with the transition endpoint', () => {
     const { root, performance } = exaggerate(
       WITH_END_MARKER,
       { dynamics: 0.5 },
@@ -316,7 +316,7 @@ describe('applyExaggeration — gesture scope (§1.3, A7, D-I)', () => {
      *
      * "The next instruction" is the next classified one, and an element carrying neither
      * `@volume` nor `@transition.to` classifies away. The renderer instead ends the previous
-     * span with it (AD-33.4). Measured through `performMsm` on five notes, the same map with
+     * span with it. Measured through `performMsm` on five notes, the same map with
      * and without a bare `<dynamics/>` in the middle performs
      *
      *     without:  60, 67.49…, 75, 82.51…, 90     (one ramp)
@@ -324,7 +324,7 @@ describe('applyExaggeration — gesture scope (§1.3, A7, D-I)', () => {
      *
      * so the later constant is separated from the transition endpoint by a discontinuity the
      * document already contains. It is nevertheless still detected and moved, which this pins.
-     * Changing that is a §7.2 ruling — tempo must keep stepping over a `<tempo>` without
+     * Changing that needs a further ruling — tempo must keep stepping over a `<tempo>` without
      * `@beatLength`, which the renderer really does ignore — so this test goes red first.
      */
     const bareBetween = globalDocument(
@@ -370,7 +370,7 @@ describe('applyExaggeration — gesture scope (§1.3, A7, D-I)', () => {
     );
   });
 
-  it('refuses a pair whose endpoints would collapse onto one value (D-I)', () => {
+  it('refuses a pair whose endpoints would collapse onto one value', () => {
     // s = 0 writes the neutral, which for a pair is its own geomean at BOTH endpoints — and
     // `transitionTo === volume` is the renderer's exact-float test for a constant instruction,
     // so the gesture would be deleted rather than attenuated.
@@ -385,7 +385,7 @@ describe('applyExaggeration — gesture scope (§1.3, A7, D-I)', () => {
   });
 });
 
-describe('applyExaggeration — the s === 1 short-circuit (A2)', () => {
+describe('applyExaggeration — the s === 1 short-circuit', () => {
   const DOCUMENT = globalDocument(
     '',
     '<dynamicsMap><dynamics id="m1" date="0.0" volume="60.0" transition.to="90"/></dynamicsMap>',
@@ -409,7 +409,7 @@ describe('applyExaggeration — the s === 1 short-circuit (A2)', () => {
   });
 });
 
-describe('applyExaggeration — performance selection (A11)', () => {
+describe('applyExaggeration — performance selection', () => {
   const TWO = canonicalBaseline(
     globalDocument(
       '',
@@ -453,10 +453,10 @@ describe('applyExaggeration — performance selection (A11)', () => {
   });
 });
 
-describe('applyExaggeration — refusals at level sites (§1.2, A3, A4)', () => {
+describe('applyExaggeration — refusals at level sites', () => {
   // `s = 400` around a center of 100 drives a level of 10 to `100·(0.1)^400`, which underflows
   // to exactly 0. Zero is not an extreme velocity but off the log space's domain entirely, and
-  // writing it would be the "repair" §1.2 forbids.
+  // writing it would be the "repair" the design forbids.
   const UNDERFLOW = globalDocument(
     '<dynamicsStyles><styleDef name="D"><dynamicsDef id="dp" name="p" value="10"/>' +
       '</styleDef></dynamicsStyles>',

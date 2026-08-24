@@ -35,8 +35,8 @@ import {
  *
  * {@link positionAt} on a constant movement past its own `startDate` answers `position`: a
  * constant movement holds its position. Java disagrees — it unboxes a null `Double` and
- * throws a NullPointerException at both places that could be asked (MovementData.java:166 and
- * :170). The method has no caller in either language, being dead in `src/`, dead in meico and
+ * throws a NullPointerException at both places that could be asked (MovementData.java:166 and:
+ * 170). The method has no caller in either language, being dead in `src/`, dead in meico and
  * reached only from this port's tests, so no rendered byte depends on the answer.
  *
  * ## RENDERING MATH
@@ -62,7 +62,7 @@ interface MovementCommon {
   readonly endDate: number;
   /** `@position`, normalized 0..1; {@link movementSegment} scales it to 0..127 on the way out. */
   readonly position: Normalized;
-  /** `@curvature`; 0.4 where the element omits it — deliberately not dynamics' 0.0 (§5.8). */
+  /** `@curvature`; 0.4 where the element omits it — deliberately not dynamics' 0.0. */
   readonly curvature: number;
   /** `@protraction`; 0.0 where the element omits it. */
   readonly protraction: number;

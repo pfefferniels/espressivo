@@ -101,11 +101,11 @@ const pedalCurve = () => {
           // A SKIPPED movement: no @position, and its predecessor carries no @transition.to to
           // inherit one from, so `getMovementDataOf` returns null and it renders nothing. But
           // `getEndDate` still finds it, so the span above ends at 720 while nothing new is
-          // emitted — the previous value HOLDS from 720 (§5.8).
+          // emitted — the previous value HOLDS from 720.
           '<movement date="720.0"/>' +
           '<movement date="1440.0" position="0.5"/>' +
           // An entry after the last <movement>, so that movement is not the last ENTRY and is
-          // not excluded by AD-35's `movementIndex < size() - 1` guard.
+          // not excluded by the `movementIndex < size() - 1` guard.
           '<style date="2160.0" name.ref="y"/>',
       ),
     }),

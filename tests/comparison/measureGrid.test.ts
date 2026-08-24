@@ -1,6 +1,6 @@
 /**
  * The measure grid's arithmetic — `readComparisonMsm`'s `measures`, and the `measure` field
- * every §9.3 op and §7.3 segment carries.
+ * every reported op and segment carries.
  *
  * Bar k starts at `first + k · length`, never at a running sum: repeated addition of a
  * non-representable length compounds its rounding error once per bar.

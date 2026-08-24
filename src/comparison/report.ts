@@ -1,5 +1,5 @@
 /**
- * §9.3's report, declared in the interior and re-exported by the facade.
+ * the report, declared in the interior and re-exported by the facade.
  *
  * The shapes live here rather than in `src/api/comparison.ts`, as the expression campaign's
  * `report.ts` does: the engine builds them and the facade hands them over unchanged (RULE F1).
@@ -7,7 +7,7 @@
  * can get wrong — not the shape of a result the engine already produced.
  *
  * Everything here is plain data: no `undefined`, no `Map`, no class, every number finite or
- * `null` (§9.6). The one deviation from §9.3 as written is on {@link ComparisonInputs.settings}.
+ * `null`. The one deviation from the model as written is on {@link ComparisonInputs.settings}.
  */
 import type { ComparisonDimension, ComparisonJndKey } from './registry.js';
 import type { InvarianceMode } from './decomposition.js';
@@ -16,7 +16,7 @@ import type { MeasureEntry, MeasurePosition } from './msm.js';
 
 export type { MeasureEntry, MeasurePosition } from './msm.js';
 
-/** §9.1's note vocabulary. */
+/** the note vocabulary. */
 export type ComparisonNoteKind =
   | 'structural'
   | 'renderer-default-level'
@@ -34,7 +34,7 @@ export type ComparisonNoteKind =
 export type DimensionState = 'compared' | 'both-neutral';
 export type TimeSignatureSource = 'msm' | 'renderer-default';
 
-/** Where in a document something was found (§9.3, A18). */
+/** Where in a document something was found. */
 export interface ComparisonSiteRef {
   readonly document: 'a' | 'b';
   readonly scope: 'global' | 'part';
@@ -58,15 +58,15 @@ export interface ComparisonNote {
   readonly message: string;
 }
 
-/** §1.2 / AD-18: interpretive, non-summing, and labelled as such. */
+/** interpretive, non-summing, and labelled as such. */
 export interface Decomposition {
   /**
    * The T-space unit of `level`/`levelSigned`/`gain`: `'nepers'` for the log dimensions,
-   * `'quarters'`/`'ms'`/`'velocity'`/`'ratio'` elsewhere. Natural log; ×1/ln 2 for log₂ (AD-26.1).
+   * `'quarters'`/`'ms'`/`'velocity'`/`'ratio'` elsewhere. Natural log; ×1/ln 2 for log₂.
    */
   readonly unit: string;
   readonly level: number;
-  /** `ℓ_A − ℓ_B`; > 0 means A faster/louder/later. A descriptor, never a distance (C2). */
+  /** `ℓ_A − ℓ_B`; > 0 means A faster/louder/later. A descriptor, never a distance. */
   readonly levelSigned: number;
   readonly gain: number;
   /** `√(2(1−r))`, dimensionless; null exactly when `shapeless`. */
@@ -80,18 +80,18 @@ export interface DimensionComparison {
   readonly state: DimensionState;
   /** JND·quarters. */
   readonly distance: number;
-  /** JND; null exactly when the window has zero length (A3). */
+  /** JND; null exactly when the window has zero length. */
   readonly mean: number | null;
   /**
    * The T-space unit of `meanSigned`. MPM stores BPM, a RATE, so on tempo a positive
    * `meanSigned` means A is FASTER — the opposite of the seconds-per-beat convention much of the
-   * literature uses (AD-26.1).
+   * literature uses.
    */
   readonly unit: string;
   /**
-   * §7.5's signed descriptor, in {@link unit} — never a distance.
+   * the signed descriptor, in {@link unit} — never a distance.
    *
-   * Averaged over the evaluated scopes, where `distance` is SUMMED (AD-55.5 / W3 MAJOR-11).
+   * Averaged over the evaluated scopes, where `distance` is SUMMED.
    * Mass is additive across parts and a level is not: summing three parts' "A is 4 BPM faster"
    * would report 12 BPM, a figure no part carries. `distance` and `meanSigned` therefore do not
    * stand in a ratio to each other on a multi-part pair.
@@ -104,7 +104,7 @@ export interface DimensionComparison {
     readonly key: ComparisonJndKey;
     /**
      * JND·quarters. A dimension whose rows are priced JOINTLY through one curve integral
-     * attributes the whole of `d_k` to the row carrying the curve and 0 to the rest: §7.2's
+     * attributes the whole of `d_k` to the row carrying the curve and 0 to the rest: the
      * breakdown shows what `ω = 1` weights, and for a curve dimension that is one curve.
      */
     readonly distance: number;
@@ -121,9 +121,9 @@ export interface DimensionComparison {
   readonly bottomLengthQuarters: number;
   readonly cappedCells: number;
   readonly decomposition: Decomposition | null;
-  /** Accentuation only (AD-12); null elsewhere. */
+  /** Accentuation only; null elsewhere. */
   readonly timeSignatureSource: TimeSignatureSource | null;
-  /** False when id-anchored atoms lack an MSM (AD-7, AD-39.1). */
+  /** False when id-anchored atoms lack an MSM. */
   readonly datePositionKnown: boolean;
 }
 
@@ -138,13 +138,13 @@ export interface ComparisonSegment {
   readonly peak: number;
   readonly mean: number;
   readonly peakAtQuarters: number;
-  /** Aggregate-derived (AD-19), so JND per quarter and NOT a T-space unit. */
+  /** Aggregate-derived, so JND per quarter and NOT a T-space unit. */
   readonly meanSigned: number;
   readonly direction: 'a-greater' | 'b-greater' | 'mixed';
   readonly rank: number;
 }
 
-/** AD-19's rows × (segments + remainder) table, row-major. */
+/** the rows × (segments + remainder) table, row-major. */
 export interface AttributionTable {
   readonly dimensions: readonly ComparisonDimension[];
   readonly columnCount: number;
@@ -153,20 +153,20 @@ export interface AttributionTable {
   readonly rowSums: readonly number[];
   readonly columnSums: readonly number[];
   readonly total: number;
-  /** Pinned ≤ 1e−12·D (§7.3). */
+  /** Pinned ≤ 1e−12·D. */
   readonly residual: number;
 }
 
-/** The six epsilon families, each in BOTH units (AD-28.2, AD-60.1). */
+/** The six epsilon families, each in BOTH units. */
 export type EpsilonFamily = 'step' | 'tempo' | 'bezier' | 'rubato' | 'imprecision' | 'drift';
 
 /**
  * Which epsilon family each dimension's quadrature belongs to.
  *
  * The families are about the INTEGRATOR, not the dimension: a piecewise-constant curve
- * integrates exactly (`step`), a `meanTempoAt` power curve carries AD-28.1's graded-mesh error
+ * integrates exactly (`step`), a `meanTempoAt` power curve carries the graded-mesh error
  * (`tempo`), a Bézier transition the inversion's conditioning limit (`bezier`), a warp
- * displacement through AD-33.3b's rule 2c that integrator's residual (`rubato`, AD-60.1), and
+ * displacement through the rule 2c that integrator's residual (`rubato`), and
  * the three distribution dimensions the Wasserstein machinery's (`imprecision`). A dimension
  * that can take more than one shape is filed under the WORST it can reach, which is what keeps
  * the record an upper bound.
@@ -176,17 +176,17 @@ export const EPSILON_FAMILY_OF: Readonly<Record<ComparisonDimension, EpsilonFami
     tempo: 'tempo',
     // A `<dynamics>` transition is a Bézier, so this dimension can reach the bezier family.
     dynamics: 'bezier',
-    // AD-60.1: its OWN family. `rubatoDistance` integrates a warp displacement through rule 2c
+    // its OWN family. `rubatoDistance` integrates a warp displacement through rule 2c
     // (structural `u*` split + K=16 mesh), so the `step` family's "no quadrature in the time
     // domain at all" is false of it — measured at 7.51e-5 relative on the vendored corpus.
     rubato: 'rubato',
     asynchrony: 'step',
-    // §5.4's pattern interpolates linearly between beats, but a transition inside a pattern is
+    // the pattern interpolates linearly between beats, but a transition inside a pattern is
     // the same Bézier machinery the dynamics curve uses.
     accentuation: 'bezier',
     pedal: 'bezier',
     // Both event dimensions price per anchor with no time-domain quadrature at all, and
-    // articulation's default step function is a step reading (AD-55.1).
+    // articulation's default step function is a step reading.
     articulation: 'step',
     ornamentation: 'step',
     imprecisionTiming: 'imprecision',
@@ -196,9 +196,9 @@ export const EPSILON_FAMILY_OF: Readonly<Record<ComparisonDimension, EpsilonFami
 
 export interface ComparisonInputs {
   /**
-   * The fully resolved settings — never the documents (A12).
+   * The fully resolved settings — never the documents.
    *
-   * §9.3 writes this as `Required<ComparisonSettings>`; the resolved form is STRONGER, filling
+   * The model writes this as `Required<ComparisonSettings>`; the resolved form is STRONGER, filling
    * every dimension of `weights` and `invariance` and every key of `jnd`, which `Required<>`
    * cannot express since it removes top-level optionality only.
    */
@@ -222,7 +222,7 @@ export interface ComparisonProfile {
   readonly dates: readonly number[];
   /** `p_k`, JND per quarter. */
   readonly density: readonly number[];
-  /** C2's signed series, JND per quarter. */
+  /** the signed series, JND per quarter. */
   readonly signed: readonly number[];
   /** The T-space curve; null for the event and distribution dimensions. */
   readonly valueA: readonly number[] | null;
@@ -243,10 +243,10 @@ export interface ComparisonReport {
     readonly a: number;
     readonly b: number;
     readonly lcm: number;
-    /** Exactly one thing: a document declared no `@pulsesPerQuarter` (A21). */
+    /** Exactly one thing: a document declared no `@pulsesPerQuarter`. */
     readonly fallbackUsed: boolean;
     readonly assumed: number | null;
-    /** AD-27.2's third state: the raw text of a declared-but-unusable value, per document. */
+    /** the third state: the raw text of a declared-but-unusable value, per document. */
     readonly unusableDeclaration: { readonly a: string | null; readonly b: string | null };
   };
   /** The two documents' own `<part>` sets, matched by `@number` — a fact about the MPMs. */
@@ -258,14 +258,14 @@ export interface ComparisonReport {
     readonly matched: boolean;
   }[];
   /**
-   * What the per-part SUM actually counted, and which document decided it (AD-55.2).
+   * What the per-part SUM actually counted, and which document decided it.
    *
    * `count` is a multiplier on every `d_k` and on `D`, so it is reported rather than inferred
    * from `parts`: the two differ whenever an MPM declares a `<part>` the score does not name, or
    * the other way round. `'msm'` is the counted quantity — one scope per rendered MSM part, what
    * `renderParts` iterates; `'mpm'` is the estimate available without a score and carries an
    * `estimate-degradation` note; `'global'` is the single evaluation a pair with no parts on
-   * either side gets (§5.0).
+   * either side gets.
    */
   readonly scopes: { readonly rule: 'msm' | 'mpm' | 'global'; readonly count: number };
   readonly comparability: {
@@ -279,36 +279,36 @@ export interface ComparisonReport {
     readonly partNumbersMatched: boolean;
     readonly instructionCountA: number;
     readonly instructionCountB: number;
-    /** C7's heuristic: the pair may not encode the same piece. */
+    /** the heuristic: the pair may not encode the same piece. */
     readonly suspectPair: boolean;
   };
-  /** C3; null exactly when no MSM was supplied. */
+  /** Null exactly when no MSM was supplied. */
   readonly measures: readonly MeasureEntry[] | null;
   readonly dimensions: Record<ComparisonDimension, DimensionComparison>;
   readonly aggregate: {
     /** `D`, JND·quarters — additive and length-dependent. */
     readonly distance: number;
-    /** `D / L`, JND — the human headline (C10); null exactly when `L = 0`. */
+    /** `D / L`, JND — the human headline; null exactly when `L = 0`. */
     readonly mean: number | null;
     readonly weights: Record<ComparisonDimension, number>;
     readonly normalization: 'fixed' | 'corpus';
   };
   readonly segments: readonly ComparisonSegment[];
   /**
-   * §7.3's below-threshold column. `mass` is a MASS and is therefore `≥ 0`.
+   * the below-threshold column. `mass` is a MASS and is therefore `≥ 0`.
    *
    * Computed by subtraction from the row total, which is what makes the table close exactly, so
    * it inherits the root refinement's quadrature error with the opposite sign and can go
-   * slightly negative — measured on four of the seven vendored pairs, and invisible to P-C11
-   * because a negative mass is still finite (W3 MINOR-1). `quadratureUnderflow` is how far below
+   * slightly negative — measured on four of the seven vendored pairs, and invisible to the finiteness check
+   * because a negative mass is still finite. `quadratureUnderflow` is how far below
    * zero the subtraction went before the clamp, `≥ 0` and usually exactly 0.
    */
   readonly remainder: { readonly mass: number; readonly quadratureUnderflow: number };
   /**
-   * AD-51.1: the dimensions whose threshold crossings were located at CELL resolution rather
+   * the dimensions whose threshold crossings were located at CELL resolution rather
    * than exactly.
    *
-   * AD-19/M9b refines a segment boundary to the root of `p_D − τ_D`, which needs `p_k` at a
+   * the design refines a segment boundary to the root of `p_D − τ_D`, which needs `p_k` at a
    * point. A dimension supplying no pointwise density falls back to its cell's mean, so its
    * boundaries can sit a cell away from the true crossing. Empty is the good case, and common.
    */
@@ -325,7 +325,7 @@ export interface ComparisonReport {
       }
     >;
   };
-  /** C13; null exactly when the tempo dimension reads `⊥` on both sides. */
+  /** Null exactly when the tempo dimension reads `⊥` on both sides. */
   readonly cumulativeDrift: {
     readonly secondsA: number;
     readonly secondsB: number;
@@ -333,13 +333,13 @@ export interface ComparisonReport {
     readonly ratio: number;
     readonly maxAbsMs: number;
   } | null;
-  /** C1; null exactly when `options.profile` was omitted. */
+  /** Null exactly when `options.profile` was omitted. */
   readonly profiles: Record<ComparisonDimension, ComparisonProfile> | null;
   /**
-   * AD-27.8's scape of the aggregate density; null exactly when `options.scape` was omitted.
+   * the scape of the aggregate density; null exactly when `options.scape` was omitted.
    *
    * `cells[scapeIndex(bins, size, start)]` is the aggregate mass over that sub-window, in
-   * JND·quarters — the measure §7's segments are cut out of, so a scape cell and a segment mass
+   * JND·quarters — the measure the segments are cut out of, so a scape cell and a segment mass
    * are the same units. The last entry is the whole window and equals `aggregate.distance`.
    */
   readonly scape: { readonly bins: number; readonly cells: readonly number[] } | null;
@@ -351,15 +351,15 @@ export interface ComparisonResult {
 }
 
 // ---------------------------------------------------------------------------
-// §6's edit path (§9.3)
+// the edit path
 // ---------------------------------------------------------------------------
 
 /**
- * One op of a §6 script, delivered in application (date) order and carrying both orders (C5).
+ * One op of an edit script, delivered in application (date) order and carrying both orders.
  *
- * `cost` is the SEQUENTIAL price in the delivered order (§6.2), so the ops of one script sum to
+ * `cost` is the SEQUENTIAL price in the delivered order, so the ops of one script sum to
  * that script's `replayedDelta` exactly. `free` is cost 0 by pricing — the state performs the
- * same function before and after the op — never cost 0 by coincidence of rounding (A14).
+ * same function before and after the op — never cost 0 by coincidence of rounding.
  */
 export interface EditOp {
   readonly op: 'insert' | 'delete' | 'substitute' | 'fragment' | 'consolidate';
@@ -372,15 +372,15 @@ export interface EditOp {
   readonly measureB: MeasurePosition | null;
   readonly attributes: readonly EditOpAttribute[];
   /**
-   * How many instructions the op consumes on each side (A-Q5).
+   * How many instructions the op consumes on each side.
    *
    * `1` and `1` for a substitution, `1` and `0` for a deletion; on a `fragment` or
    * `consolidate` one of the two is greater, and an op saying "consolidate" without saying how
-   * many were consolidated would not be actionable. §9.3 does not declare the field, but the two
+   * many were consolidated would not be actionable. The model does not declare the field, but the two
    * move kinds it does declare make it necessary.
    */
   readonly count: { readonly a: number; readonly b: number };
-  /** JND·quarters, sequential (§6.2). */
+  /** JND·quarters, sequential. */
   readonly cost: number;
   readonly free: boolean;
   readonly applicationIndex: number;
@@ -388,10 +388,10 @@ export interface EditOp {
 }
 
 /**
- * One attribute the op changes, priced by §4's capped local metric.
+ * One attribute the op changes, priced by the capped local metric.
  *
  * `deltaJnd` is `localDistance` — `min(|T(x) − T(y)|/jnd, 2·δ_row)`, with an ABSENT attribute
- * read as `⊥` and therefore priced at `δ_row`, §4's rule for a value with no comparable
+ * read as `⊥` and therefore priced at `δ_row`, the rule for a value with no comparable
  * counterpart. A REPORTING figure beside the op, never the op's price, which is `EditOp.cost`.
  */
 export interface EditOpAttribute {
@@ -406,11 +406,11 @@ export interface EditScript {
   readonly part: number | null;
   readonly map: string;
   readonly dimension: ComparisonDimension;
-  /** Date order (§6.1, C5). */
+  /** Date order. */
   readonly ops: readonly EditOp[];
-  /** Indices into {@link ops}, cost-descending — U3's "what matters most" (C5). */
+  /** Indices into {@link ops}, cost-descending — U3's "what matters most". */
   readonly topByCost: readonly number[];
-  /** C12; the `boundary_prf` derivation is a division rather than a scan. */
+  /** The `boundary_prf` derivation is a division rather than a scan. */
   readonly opCounts: {
     readonly insert: number;
     readonly delete: number;
@@ -422,30 +422,30 @@ export interface EditScript {
 }
 
 export interface DiffReport {
-  /** The same provenance block the comparison reports (A14). */
+  /** The same provenance block the comparison reports. */
   readonly inputs: ComparisonReport['inputs'];
   readonly window: ComparisonReport['window'];
   readonly ppq: ComparisonReport['ppq'];
   readonly parts: ComparisonReport['parts'];
   readonly scopes: ComparisonReport['scopes'];
-  /** One per (part, map) that carries at least one op, in a pinned order (§9.5). */
+  /** One per (part, map) that carries at least one op, in a pinned order. */
   readonly scripts: readonly EditScript[];
   readonly dimensions: Record<
     ComparisonDimension,
     {
       /**
        * `d_k` summed over the evaluated scopes — the lower bound both totals are theorems
-       * about, and the RAW one: §7.4's invariance modes rescale by a document's own moments,
+       * about, and the RAW one: the invariance modes rescale by a document's own moments,
        * an intermediate edit state is not a document, so the edit path prices without them and
        * this figure is stated on the same footing.
        */
       readonly dCurve: number | null;
       readonly scriptCost: number;
       readonly replayedDelta: number;
-      /** `scriptCost − dCurve`, `≥ 0` by AD-5's theorem up to the per-family quadrature ε. */
+      /** `scriptCost − dCurve`, `≥ 0` by the theorem up to the per-family quadrature ε. */
       readonly reworking: number;
       /**
-       * `norm(Φ(state after the last op), Φ(B))`, summed over scopes — §6.3's verification.
+       * `norm(Φ(state after the last op), Φ(B))`, summed over scopes — the verification.
        * Exactly 0 for every document this engine can produce, and shipped rather than asserted
        * internally so a reader can see the replay reached B.
        */
@@ -460,14 +460,14 @@ export interface DiffResult {
 }
 
 // ---------------------------------------------------------------------------
-// §8's corpus level (§9.3)
+// the corpus level
 // ---------------------------------------------------------------------------
 
 export interface CorpusReport {
   readonly n: number;
-  /** Unique after expansion (A8); the ONLY place a string appears — everything else indexes. */
+  /** Unique after expansion; the ONLY place a string appears — everything else indexes. */
   readonly labels: readonly string[];
-  /** AD-26.3's rows, one per expanded performance. */
+  /** the rows, one per expanded performance. */
   readonly items: readonly {
     readonly itemIndex: number;
     readonly performance: string;
@@ -490,7 +490,7 @@ export interface CorpusReport {
   readonly medoids: readonly number[] | null;
   readonly clusters: readonly number[] | null;
   readonly silhouette: readonly number[] | null;
-  /** False below 20 items, where the figure is noisy (A22) — a field, not prose. */
+  /** False below 20 items, where the figure is noisy — a field, not prose. */
   readonly silhouetteReliable: boolean;
   readonly embedding: {
     readonly coordinates: readonly number[];
@@ -504,15 +504,15 @@ export interface CorpusReport {
   readonly profiles: readonly {
     readonly toMedoid: Record<ComparisonDimension, number>;
     /**
-     * §7.5's signed companion — a DESCRIPTOR, never a distance, and `null` where the dimension
+     * the signed companion — a DESCRIPTOR, never a distance, and `null` where the dimension
      * has no single T-space quantity to be signed in or the item IS the medoid.
      */
     readonly toMedoidSigned: Record<ComparisonDimension, number | null>;
     readonly toMeanDistance: number;
   }[];
-  /** AD-25.5; null unless `normalization: 'corpus'`. A dimension with no nonzero set is null. */
+  /** Null unless `normalization: 'corpus'`. A dimension with no nonzero set is null. */
   readonly normalizationConstants: Record<ComparisonDimension, number | null> | null;
-  /** AD-26.3; null unless `noiseFloor` was requested. Context, never a rescaling. */
+  /** Null unless `noiseFloor` was requested. Context, never a rescaling. */
   readonly context: {
     readonly percentile: readonly number[];
     readonly corpusMedian: number;
@@ -525,11 +525,11 @@ export interface CorpusReport {
     readonly reason: ComparisonNoteKind;
   }[];
   /**
-   * AD-27.8's corpus scape (Sapp's variant); null unless a `scape` was requested.
+   * the corpus scape (Sapp's variant); null unless a `scape` was requested.
    *
    * `cells` holds ITEM INDICES, not distances: per (start, size) sub-window, which item is
    * closest to the corpus medoid over it — "who plays most typically here, at this timescale".
-   * `kind` says so in the data rather than in prose. The pairwise variant §8 also names — a
+   * `kind` says so in the data rather than in prose. The pairwise variant — a
    * pair's distance per cell — is `ComparisonReport.scape`.
    */
   readonly scape: {
@@ -540,12 +540,12 @@ export interface CorpusReport {
     readonly cells: readonly number[];
   } | null;
   /**
-   * The window every cell was computed over, with AD-4's two stamps.
+   * The window every cell was computed over, with the two stamps.
    *
-   * §8's settings echo carries the window as `{start, end}`. The RULE and the guarantee sit here
-   * beside it because AD-4 makes them the difference between numbers that may be assembled into
+   * the settings echo carries the window as `{start, end}`. The RULE and the guarantee sit here
+   * beside it because the design makes them the difference between numbers that may be assembled into
    * a matrix and numbers that may not, and a corpus result is a matrix. A corpus-shared window is
-   * piece-derived in AD-4's sense even when derived from the items, because it does not vary
+   * piece-derived in the sense even when derived from the items, because it does not vary
    * with the pair.
    */
   readonly window: {
@@ -554,7 +554,7 @@ export interface CorpusReport {
     readonly rule: WindowRule;
     readonly metricGuarantee: MetricGuarantee;
   };
-  /** The echo (A12): scalar settings only, never the document texts. */
+  /** The echo: scalar settings only, never the document texts. */
   readonly settings: ResolvedComparisonSettings;
   readonly notes: readonly ComparisonNote[];
 }

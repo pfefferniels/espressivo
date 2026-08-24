@@ -1,8 +1,8 @@
 /**
- * §8's embedding: classical MDS by cyclic Jacobi, and the seriation that falls out of it.
+ * the embedding: classical MDS by cyclic Jacobi, and the seriation that falls out of it.
  *
  * Nothing here knows what a performance is. The input is a symmetric distance matrix in the
- * row-major `N²` layout §8 pins, plus the LABELS every tie is broken on (AD-25.2), and the
+ * row-major `N²` layout the design pins, plus the LABELS every tie is broken on, and the
  * output is plain data.
  *
  * ## Honest about a non-Euclidean input
@@ -13,14 +13,14 @@
  * result by pretending the negative mass is not there; and
  * `negativeEigenvalueMass = Σ|λ⁻| / Σ|λ|`, the explicit "how non-Euclidean is this?" figure.
  *
- * ## Determinism, and the exact limit of it (AD-67.1)
+ * ## Determinism, and the exact limit of it
  *
  * The sweep order is fixed `(p, q)` ascending, so the rotations are a function of the input.
  * Eigenvectors are defined up to sign and the sign is FIXED — largest-magnitude component
  * positive, ties by lowest LABEL — because without it two runs produce mirror-image plots and
- * §10's P-C6 would be false for a reason that has nothing to do with the metric.
+ * order-independence would be false for a reason that has nothing to do with the metric.
  *
- * Two runs of the SAME matrix are byte-identical. P-C6's corpus clause, about two runs of a
+ * Two runs of the SAME matrix are byte-identical. The corpus clause, about two runs of a
  * PERMUTED matrix, reads:
  *
  * > Permuting the corpus relabels the embedding WHEN the retained eigenvalues are distinct.
@@ -32,13 +32,13 @@
  * produces eigenvalues and components that agree in exact arithmetic and differ in the last ulp.
  * Every tie rule here therefore compares with a RELATIVE epsilon before falling back to the label
  * ({@link TIE_EPSILON}): an exact `===` never reaches its label branch on float noise, which made
- * the published order follow the noise instead (W4 CAPITAL-3). That repairs the near-tie, not the
+ * the published order follow the noise instead. That repairs the near-tie, not the
  * exact tie, where the arbitrariness is in the mathematics: a corpus with a repeated eigenvalue
  * (three documents each listed twice gives `λ = [9, 9, ~0, ~0, 0, ~0]`) has a two-dimensional
  * eigenspace, and every rotation within it is as valid as every other. Canonicalising that block
  * is deep numerics for a rare and DETECTABLE case, so this module detects and reports it instead.
  *
- * ## What the narrowed contract costs the reader (W4 MINOR-R1)
+ * ## What the narrowed contract costs the reader
  *
  * Four published fields are NOT bit-reproducible under relabelling — `coordinates`,
  * `eigenvalues`, `explainedVariance`, `negativeEigenvalueMass` — since a permuted corpus reruns
@@ -53,7 +53,7 @@ import { pairwise } from '../prelude/index.js';
 
 import { elementAt } from '../prelude/seq.js';
 
-/** A symmetric matrix in §8's layout: `n` rows of `n`, row-major, `m[i*n + j]`. */
+/** A symmetric matrix in the layout: `n` rows of `n`, row-major, `m[i*n + j]`. */
 export interface SquareMatrix {
   readonly n: number;
   readonly values: readonly number[];
@@ -77,7 +77,7 @@ export interface Embedding {
    * The FULL spectrum, descending — not only the retained axes.
    *
    * Like `coordinates`, `explainedVariance` and `negativeEigenvalueMass`, these agree to working
-   * precision and NOT to the bit across a permuted corpus (MINOR-R1). Their ORDER is exact.
+   * precision and NOT to the bit across a permuted corpus. Their ORDER is exact.
    */
   readonly eigenvalues: readonly number[];
   /**
@@ -86,12 +86,12 @@ export interface Embedding {
    * SIGNED. A negative entry is an axis with a negative eigenvalue — an imaginary direction the
    * corpus's non-Euclidean geometry produced — and its `coordinates` are all zero, since only a
    * positive eigenvalue is embedded. Reading `|share|` there would credit an axis that is not
-   * there with variance it does not carry (W4 MAJOR-2).
+   * there with variance it does not carry.
    */
   readonly explainedVariance: readonly (number | null)[];
   /**
    * True when the eigenbasis is NOT unique, so `coordinates` are one arbitrary choice among
-   * infinitely many and permuting the corpus need not relabel them (AD-67.1).
+   * infinitely many and permuting the corpus need not relabel them.
    *
    * Two causes:
    *
@@ -100,7 +100,7 @@ export interface Embedding {
    * - A REPEATED eigenvalue at or across the retained cut, where at least one of the pair
    *   carries material variance. That eigenspace has dimension ≥ 2 and no canonical basis.
    *
-   * The first implies the second, so `DESIGN.md`'s invariant `Σ|λ| = 0 ⇒ degenerate` holds. A
+   * The first implies the second, so the invariant `Σ|λ| = 0 ⇒ degenerate` holds. A
    * consumer plotting `coordinates` should read this as "the axes are real, their orientation is
    * not".
    */
@@ -112,7 +112,7 @@ export interface Embedding {
    * can report a value at the noise floor, because Jacobi's rotations leave a zero eigenvalue at
    * `±1e-16` rather than at 0 and the sign of that residue is arbitrary. Measured on regular
    * simplices, which are exactly Euclidean: `0` at `k = 5, 6, 8, 10` and `6.1e-17`, `2.3e-17`,
-   * `5.8e-17`, `4.7e-17` at `k = 3, 4, 7, 12` (W4 MINOR-11).
+   * `5.8e-17`, `4.7e-17` at `k = 3, 4, 7, 12`.
    *
    * Deliberately NOT clamped: a threshold would have to be chosen and would hide genuine
    * small-but-real non-Euclideanness, which is what this field exists to report. Read the figure
@@ -124,7 +124,7 @@ export interface Embedding {
 
 /**
  * The RELATIVE band inside which two quantities count as tied, so the label rule is reached
- * (AD-67.1) [convention].
+ * [convention].
  *
  * It has to sit above the arithmetic and below anything meaningful, and the gap is wide. Above:
  * `jacobiEigen`'s own residuals are `|VΛVᵀ−A| ≤ 1.18e-11` and `|VᵀV−I| ≤ 3.78e-15`, so `1e-9`
@@ -161,8 +161,8 @@ export function jacobiEigen(matrix: SquareMatrix): {
   for (let i = 0; i < n; ++i) v[i * n + i] = 1;
 
   // Accumulated rather than `Math.hypot(...a)`, which spreads `n²` arguments against V8's
-  // measured limit of 105741 and so throws `RangeError` at `n ≥ 326` (W4 MINOR-13);
-  // `DEFAULT_MAX_ITEMS = 256` needs 65536, only 1.61× headroom under a ceiling C17 may raise.
+  // measured limit of 105741 and so throws `RangeError` at `n ≥ 326`;
+  // `DEFAULT_MAX_ITEMS = 256` needs 65536, only 1.61× headroom under a ceiling that may rise.
   // Same number: `Math.hypot`'s scaling guards overflow in the SQUARES, and these are
   // distance-matrix entries whose squares cannot overflow a double at any `n` this module takes.
   let sumOfSquares = 0;
@@ -272,7 +272,7 @@ export function classicalMds(
 
   // Descending by eigenvalue, ties by the eigenvector's own label key, so the ORDER of two equal
   // eigenvalues is a function of the corpus rather than of Jacobi's rotation history. The tie
-  // test is RELATIVE (AD-67.1): under a permutation two eigenvalues equal in exact arithmetic
+  // test is RELATIVE: under a permutation two eigenvalues equal in exact arithmetic
   // differ in the last ulp, and an exact `||` never reaches the key at all.
   const spectralScale = values.reduce((peak, value) => Math.max(peak, Math.abs(value)), 0);
   const order = Array.from({ length: n }, (_unused, index) => index).sort((x, y) =>
@@ -294,7 +294,7 @@ export function classicalMds(
     // that into an all-zero column rather than a dropped one.
     const column = order[axis] ?? -1;
     const eigenvalue = column < 0 ? 0 : cell(values, column);
-    // `λ_j / Σ|λ|` — SIGNED (W4 MAJOR-2). An `Math.abs` here credits a NEGATIVE axis with
+    // `λ_j / Σ|λ|` — SIGNED. An `Math.abs` here credits a NEGATIVE axis with
     // positive variance: it is an imaginary direction, its `coordinates` are all zero because
     // the retention test is `eigenvalue > 0`, and reporting it at `+1.8 %` says the opposite of
     // what it means. Measured on the vendored corpus at `embeddingAxes: 9 = n−1` (legal): axes 7
@@ -321,7 +321,7 @@ export function classicalMds(
 }
 
 /**
- * Whether a repeated eigenvalue makes the retained basis non-unique (AD-67.1).
+ * Whether a repeated eigenvalue makes the retained basis non-unique.
  *
  * The spectrum arrives descending. A pair counts when it is adjacent, tied within
  * {@link TIE_EPSILON} of the spectral scale, and reaches the retained axes — which means
@@ -347,9 +347,9 @@ function hasRepeatedAxis(descending: readonly number[], width: number): boolean 
 }
 
 /**
- * The sign that puts an eigenvector's largest-magnitude component positive (AD-25.2).
+ * The sign that puts an eigenvector's largest-magnitude component positive.
  *
- * Ties on EQUAL magnitude go to the lowest label, not the lowest index: §8 makes every corpus
+ * Ties on EQUAL magnitude go to the lowest label, not the lowest index: the design makes every corpus
  * tie label-keyed so that permuting `items` permutes the matrices and relabels the dendrogram
  * and changes nothing else. An all-zero vector gets `+1`, which is a choice and not a
  * computation — there is no largest component to point at.
@@ -360,7 +360,7 @@ function signOf(
   column: number,
   labels: readonly string[],
 ): number {
-  // Two passes (W4 CAPITAL-3). Comparing each magnitude against the RUNNING best with `===` left
+  // Two passes. Comparing each magnitude against the RUNNING best with `===` left
   // two components equal in exact arithmetic but one ulp apart under a permuted Jacobi never
   // reaching the label branch, so the sign followed the noise and mirrored whole plots: measured
   // on the vendored corpus, `A-tel` anchored at `+634.1636783061936` under four item orders and
@@ -410,12 +410,12 @@ function compareVectorKeys(
 }
 
 function lower(labels: readonly string[], i: number, j: number): boolean {
-  // Code-unit order, never `localeCompare` — locale dependence would break R2's byte-identity.
+  // Code-unit order, never `localeCompare` — locale dependence would break the byte-identity.
   return (labels[i] ?? '') < (labels[j] ?? '');
 }
 
 /**
- * §8's seriation: order by the first MDS coordinate, ties by label.
+ * the seriation: order by the first MDS coordinate, ties by label.
  *
  * Optimal leaf ordering is `O(N³)` and affordable at `N ≤ 256`, but the first coordinate is
  * deterministic, free once the MDS is computed, and good enough for the distance heatmap the
@@ -429,7 +429,7 @@ export function seriationOrder(embedding: Embedding, labels: readonly string[]):
   const first = (item: number) => cell(embedding.coordinates, item * embedding.axes);
   const scale = order.reduce((peak, item) => Math.max(peak, Math.abs(first(item))), 0);
 
-  // Sorted by LABEL first, then by coordinate, with a RELATIVE comparison (W4 CAPITAL-3). An
+  // Sorted by LABEL first, then by coordinate, with a RELATIVE comparison. An
   // exact `||` never reached the label branch, because a permuted Jacobi puts two equal
   // coordinates one ulp apart and the published order then followed the noise: measured at 7
   // distinct seriations over 20 permutations of one six-item corpus, with `A-tel-1`'s own
@@ -441,7 +441,7 @@ export function seriationOrder(embedding: Embedding, labels: readonly string[]):
   //
   // `byLabel` must be TOTAL at both sorts: `lower(...) ? -1 : 1` answers 1 in both directions for
   // equal labels, which is not a comparator and reintroduces the caller's order through the back
-  // door (MINOR-R5). The index fallback settles genuinely equal labels.
+  // door. The index fallback settles genuinely equal labels.
   const byLabel = (x: number, y: number) =>
     lower(labels, x, y) ? -1 : lower(labels, y, x) ? 1 : x - y;
   order.sort(byLabel);

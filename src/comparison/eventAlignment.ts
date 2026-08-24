@@ -1,7 +1,7 @@
 /**
- * The event alignment DP — DESIGN.md §5.6, as a dimension-neutral module (AD-37.6).
+ * The event alignment DP, as a dimension-neutral module.
  *
- * §5.6 makes the alignment *the semantic distance* for event dimensions, with one functional:
+ * the design makes the alignment *the semantic distance* for event dimensions, with one functional:
  *
  * ```
  * minimize  Σ_matched ( rowCost(a, b) + λ_date·|Δdate| )  +  Σ_unmatched neutralCost(x)
@@ -9,12 +9,12 @@
  * ```
  *
  * Nothing here knows what an articulation or an ornament is. The caller supplies the two costs
- * and `λ_date`; this module supplies the argmin. Articulation (§5.5) is the first consumer,
- * ornamentation (§5.6) the second.
+ * and `λ_date`; this module supplies the argmin. Articulation is the first consumer,
+ * ornamentation the second.
  *
  * ## The date term is INSIDE the minimand
  *
- * Defining the matched-event contribution WITHOUT a date term while §6.2 prices event ops with
+ * Defining the matched-event contribution WITHOUT a date term while the design prices event ops with
  * one is a non-minimal functional evaluated at the argmin of a different one — it has no metric
  * argument and prices a matched ornament displaced by half a bar at zero. The same `λ_date`
  * therefore appears in {@link alignEvents}'s objective and in whatever the caller reports.
@@ -22,7 +22,7 @@
  * ## Id-pinning is opportunistic, and there is no date-pinning
  *
  * `xml:id` / `noteid` equality is an IDENTITY match: transitive whenever all three documents
- * carry ids, so it composes across a triple and is metric-safe (AD-7). An exact-date pre-pass is
+ * carry ids, so it composes across a triple and is metric-safe. An exact-date pre-pass is
  * not — it is transitive only when all three documents happen to share the date, and M5's
  * three-document counterexample survives every value of `λ_date`. An exact-date match is already
  * free of date cost, so the DP selects it whenever it is optimal.
@@ -32,13 +32,13 @@
  * the DP infeasible; that case falls back to the unpinned optimum and is REPORTED
  * ({@link EventAlignment.pinsHonoured}) rather than silently resolved one way.
  *
- * ## The optimum comes apart again (AD-51.2)
+ * ## The optimum comes apart again
  *
- * A scalar optimum cannot say WHERE in the piece a difference sits, and AD-19's table needs
+ * A scalar optimum cannot say WHERE in the piece a difference sits, and the table needs
  * exactly that. {@link EventAlignment.charges} is the optimum decomposed per event, and
- * {@link chargeAtoms} places each charge on the timeline under AD-7's spreading rule.
+ * {@link chargeAtoms} places each charge on the timeline under the spreading rule.
  *
- * ## Determinism, and SYMMETRY (W3 MAJOR-17)
+ * ## Determinism, and SYMMETRY
  *
  * Ties are broken on a key of the two EVENTS — match first, then the drop whose event has the
  * smaller `dateTicks`, then the smaller `id` in code-unit order — so the argmin is a function of
@@ -59,7 +59,7 @@ export interface AlignableEvent {
   readonly id: string | null;
 }
 
-/** What one dimension charges for a match and for a drop (§5.6's two sums). */
+/** What one dimension charges for a match and for a drop (the two sums). */
 export interface AlignmentCost<T> {
   /**
    * `Σ_rows d_row(a, b)` — the row-wise attribute cost of matching, WITHOUT the date term.
@@ -82,9 +82,9 @@ export interface AlignmentCost<T> {
  * The proposed default for `λ_date`: **16 per quarter** [convention], i.e. one JND per
  * `1/16` quarter of displacement.
  *
- * §5.6 states that `λ_date` belongs to the semantic definition but leaves its value open. This is
+ * the design states that `λ_date` belongs to the semantic definition but leaves its value open. This is
  * the calibration the rest of the design already uses for a displacement in score time:
- * `RUBATO_DISPLACEMENT_JND_QUARTERS` is `1/16` quarter (§7.1), and `λ_date = 1 / (1/16)` makes a
+ * `RUBATO_DISPLACEMENT_JND_QUARTERS` is `1/16` quarter, and `λ_date = 1 / (1/16)` makes a
  * displacement of exactly one rubato JND cost exactly one JND here.
  */
 export const DEFAULT_LAMBDA_DATE = 16;
@@ -99,7 +99,7 @@ export interface AlignedPair {
  * One event's — or one matched pair's — share of the minimized objective.
  *
  * The three kinds are the DP's three moves, and `cost` is the term that move contributed —
- * `matched + λ_date·|Δdate|` for a match, the neutral cost for a drop. AD-19's table needs the
+ * `matched + λ_date·|Δdate|` for a match, the neutral cost for a drop. The table needs the
  * optimum taken apart this way: an event's mass has to land in the column of the segment it
  * falls in, which a scalar total cannot say.
  */
@@ -253,9 +253,9 @@ function indexOf(charge: EventCharge): number {
 }
 
 /**
- * One event's contribution to §5.0's atomic measure, placed where AD-7 puts it.
+ * One event's contribution to the atomic measure, placed where the design puts it.
  *
- * `mass` is in JND; `κ` (§7.1) is the caller's to apply, because it is the constant that makes
+ * `mass` is in JND; `κ` is the caller's to apply, because it is the constant that makes
  * an event commensurable with a QUARTER of sustained deviation and therefore belongs where the
  * two are added, not here.
  */
@@ -266,24 +266,24 @@ export interface EventAtomMass {
   readonly kind: EventCharge['kind'];
   /**
    * False where the placement is an admission rather than a date — an id-anchored anchor whose
-   * note the module cannot locate without an MSM (AD-7, AD-39.1).
+   * note the module cannot locate without an MSM.
    */
   readonly datePositionKnown: boolean;
 }
 
 /**
- * AD-7's placement rule: a matched pair at differing dates spreads its mass UNIFORMLY over
+ * the placement rule: a matched pair at differing dates spreads its mass UNIFORMLY over
  * `[min(dA, dB), max(dA, dB)]`, and an unmatched event is a point mass at its own date.
  *
  * Spreading rather than charging one end is what makes `λ_date` visible in the timeline
- * instead of teleporting the difference to whichever document is `a` — M17's option (ii),
+ * instead of teleporting the difference to whichever document is `a` — the option (ii),
  * symmetric by construction, and the reason {@link EventAtomMass} carries an interval at all.
  *
- * An anchor whose date position is unknown spreads over the WHOLE window. That case is §5.5's
- * id-anchored articulation without an MSM: the atom is never dropped (AD-39.1) and its mass is
+ * An anchor whose date position is unknown spreads over the WHOLE window. That case is articulation's
+ * id-anchored articulation without an MSM: the atom is never dropped and its mass is
  * real, but the module knows only THAT the renderer performs it, not WHERE. A uniform spread is
  * the only placement that adds no information — pinning it to the written `@date` would assert a
- * position §5.5 says is not known, and dropping it would forgive a performed difference.
+ * position the design says is not known, and dropping it would forgive a performed difference.
  * `datePositionKnown: false` travels with it so the report can say so.
  */
 export function chargeAtoms<T extends AlignableEvent>(
@@ -329,7 +329,7 @@ type Move = 'match' | 'dropA' | 'dropB' | 'none';
  * the inputs, but at an equal-cost tie it selects the mirror image of what the swapped call
  * selects: on `aller-augen | bach` the shipped `events` block read `[0, 35, 396]` one way and
  * `[18, 378, 17]` the other, with `segments[].peak` differing at identical mass. Those are
- * caller-visible fields and §9.5's P-C2 promise is about the whole report, not only its
+ * caller-visible fields and the symmetry promise is about the whole report, not only its
  * distances.
  *
  * So the tie is broken on the smaller `dateTicks`, then the smaller `id` in code-unit order —

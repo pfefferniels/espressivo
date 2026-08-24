@@ -1,16 +1,16 @@
 /**
- * §8's corpus level: `N` performances in, one matrix and everything read off it.
+ * the corpus level: `N` performances in, one matrix and everything read off it.
  *
- * The whole product rests on one rule: every cell of every matrix is a value of one function
- * (R3). That is what makes a dendrogram or an MDS plot mean anything — one window, one settings
+ * The whole product rests on one rule: every cell of every matrix is a value of one function.
+ * That is what makes a dendrogram or an MDS plot mean anything — one window, one settings
  * record, one weight/JND/invariance vector for the entire run, so a distance in row 3 and a
  * distance in row 40 are comparable. The window is derived once, from the MSM's score end or
  * from the maximum last date across the corpus, and does not vary with the pair, which is why
- * AD-4's guarantee survives even though it is corpus-derived.
+ * the guarantee survives even though it is corpus-derived.
  *
  * ## Labels, and why they are required unique
  *
- * Every tie in §8's products is broken on a label (AD-25.2), and the medoid is the one product
+ * Every tie in the products is broken on a label, and the medoid is the one product
  * whose entire value is naming a real performer. Two documents legitimately labelled
  * `"Welte 1905"` each holding a performance called `"default"` would make "the most typical
  * Hofmann" ambiguous, so a collision is an `InvalidOptionError` naming every colliding label and
@@ -74,16 +74,16 @@ export interface InteriorCorpusOptions extends Omit<
   readonly linkage: Linkage;
   readonly k?: number;
   /**
-   * §8's MDS axes, or null where the caller did not ask.
+   * the MDS axes, or null where the caller did not ask.
    *
-   * §9.4's distinction: an explicit value outside `[1, N−1]` is the knowable branch and errors,
+   * the distinction: an explicit value outside `[1, N−1]` is the knowable branch and errors,
    * while the default must never error — a two-item corpus has one axis, and a caller who never
-   * set the option has made no mistake to be told about. R7's three-state degradation governs a
+   * set the option has made no mistake to be told about. The three-state degradation governs a
    * field the caller did not request.
    */
   readonly embeddingAxes: number | null;
   readonly noiseFloor: boolean;
-  /** AD-27.8; omit or null for none. */
+  /** Omit or null for none. */
   readonly scape?: { readonly bins: number } | null;
 }
 
@@ -97,7 +97,7 @@ interface ExpandedItem {
 }
 
 /**
- * §8's expansion: an item naming no performance in a multi-performance document becomes one
+ * the expansion: an item naming no performance in a multi-performance document becomes one
  * item per performance.
  *
  * A single-performance document expands to itself and keeps the caller's label unchanged, so the
@@ -150,7 +150,7 @@ function expand(items: readonly InteriorCorpusItem[]): readonly ExpandedItem[] {
   return expanded;
 }
 
-/** Every label that appears more than once, with the item indices that produced it (A8). */
+/** Every label that appears more than once, with the item indices that produced it. */
 function collisions(items: readonly ExpandedItem[]): ReadonlyMap<string, readonly number[]> {
   // `groupBy` preserves encounter order inside each bucket, which is what makes the reported
   // index list read in item order.
@@ -165,7 +165,7 @@ function collisions(items: readonly ExpandedItem[]): ReadonlyMap<string, readonl
   return bad;
 }
 
-/** The median of a list, or null for an empty one — §8's `normalizationConstants` (AD-25.5). */
+/** The median of a list, or null for an empty one — the `normalizationConstants`. */
 function median(values: readonly number[]): number | null {
   if (values.length === 0) return null;
   const sorted = values.toSorted((x, y) => x - y);
@@ -201,11 +201,11 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
   const n = items.length;
   if (options.k !== undefined && options.k > n)
     throw new CorpusOptionRangeError('k', options.k, n, n);
-  // No `n > 1` guard on the test (W4 MAJOR-10): `embeddingAxes`' declared domain is `[1, N−1]`,
+  // No `n > 1` guard on the test: `embeddingAxes`' declared domain is `[1, N−1]`,
   // which at `N ≤ 1` is empty, so a guard that skipped small corpora accepted everything where
   // nothing is legal — `compareMpmCorpus({ items: [one], embeddingAxes: 7 })` reported
   // `axes === 7`, and an empty corpus with `embeddingAxes: 5` reported five all-null variance
-  // shares. AD-25.1's first branch: `items.length` sits in the same option bag, so the caller
+  // shares. The first branch: `items.length` sits in the same option bag, so the caller
   // could have known without reading a document.
   if (options.embeddingAxes !== null && options.embeddingAxes > Math.max(0, n - 1))
     throw new CorpusOptionRangeError('embeddingAxes', options.embeddingAxes, Math.max(0, n - 1), n);
@@ -214,21 +214,21 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
   const labels = items.map((item) => item.label);
   const notes: ComparisonNote[] = [];
 
-  /** Per-pair notes, keyed on their content so a document's note is stated once (MAJOR-9). */
+  /** Per-pair notes, keyed on their content so a document's note is stated once. */
   const pairNotes = new Map<
     string,
     {
       readonly entry: ComparisonNote;
       readonly site: ComparisonSiteRef | null;
       readonly itemIndex: number | null;
-      /** A set, so a pair cannot be counted twice (MAJOR-R2). */
+      /** A set, so a pair cannot be counted twice. */
       readonly pairs: Set<string>;
     }
   >();
   /**
    * A pair's identity in a note's `pairs` set — the two labels, canonically ordered.
    *
-   * Keyed on labels rather than on `"i,j"` because the emitted sentence needs the labels: §8
+   * Keyed on labels rather than on `"i,j"` because the emitted sentence needs the labels: the
    * rejects duplicate labels before this runs, so the two keyings are in bijection and
    * `pairs.size` counts the same pairs either way.
    */
@@ -238,14 +238,14 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
     return left < right ? `${left} | ${right}` : `${right} | ${left}`;
   };
 
-  // One window for the whole matrix (R3), derived from the corpus rather than from a pair: the
+  // One window for the whole matrix, derived from the corpus rather than from a pair: the
   // maximum last date across every item, handed to every pairwise call as `corpusEndQuarters` so
   // no cell can pick a different one.
   const corpusEnd = corpusEndOf(options, items);
 
   /**
    * Item indices in label order — the canonical sequence every corpus-level sum accumulates in
-   * (AD-72.1, AD-72.2's sweep).
+   * (the sweep).
    *
    * Floating-point addition is not associative, so a sum over the caller's item order is not the
    * same double under a permutation even though it is the same set of numbers, and every
@@ -254,7 +254,7 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
   const labelOrder = labels
     .map((label, index) => ({ label, index }))
     // The index fallback makes the order total, so two equal labels cannot be ordered by
-    // whatever the sort received (MINOR-R5). Unreachable while §8 rejects duplicate labels.
+    // whatever the sort received. Unreachable while duplicate labels are rejected.
     .sort((x, y) => (x.label < y.label ? -1 : y.label < x.label ? 1 : x.index - y.index))
     .map((entry) => entry.index);
 
@@ -286,7 +286,7 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
       pairwise.set(`${String(i)},${String(j)}`, report);
 
       // Both triangles written from the same number, so `m[i*n+j] === m[j*n+i]` is bit-symmetry
-      // by construction rather than by an appeal to the metric being symmetric (A4).
+      // by construction rather than by an appeal to the metric being symmetric.
       aggregate[i * n + j] = report.aggregate.distance;
       aggregate[j * n + i] = report.aggregate.distance;
       for (const dimension of COMPARISON_DIMENSIONS) {
@@ -300,13 +300,13 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
       );
       signed[i * n + j] = meanSigned;
       // The descriptor is antisymmetric where the distance is symmetric: "A is faster than B"
-      // read the other way round is "B is slower than A" (§7.5).
+      // read the other way round is "B is slower than A".
       signed[j * n + i] = fromEntriesExact(COMPARISON_DIMENSIONS, (dimension) => {
         const value = meanSigned[dimension];
         return value === null ? null : -value;
       });
 
-      // Every kind, not just `length-mismatch` (W4 MAJOR-9): filtering to one kind makes
+      // Every kind, not just `length-mismatch`: filtering to one kind makes
       // `capped`, `plausibility`, `renderer-*`, `grid-truncated`, `invariance-space` and
       // `estimate-degradation` unobservable at the corpus facade, and `plausibleRange` inert
       // here, since notes are its only product.
@@ -321,7 +321,7 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
         // `a` in one comparison and `b` in the next. `itemIndex` is the corpus-level identity.
         const itemIndex = entry.document === 'a' ? i : entry.document === 'b' ? j : null;
 
-        // The same is true of the copy inside `site` (MAJOR-R2). Keying on `entry.site` puts one
+        // The same is true of the copy inside `site`. Keying on `entry.site` puts one
         // document-level fact in one bucket or two depending on whether that document was the
         // `i` or the `j` of the pairs it appeared in — precisely what a permutation changes:
         // measured, 100 notes against 104 for the same three-item corpus under two orders.
@@ -351,7 +351,7 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
     }
   }
 
-  // The collected per-pair notes, one per distinct fact (W4 MAJOR-9).
+  // The collected per-pair notes, one per distinct fact.
   //
   // The label a note carries follows what it is about: a note naming a document gets that item's
   // label, a note about a pair that said something different for each pair gets both labels, and
@@ -360,7 +360,7 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
   // `estimate-degradation` note for the MPM-derived scope rule is that case.
   const totalPairs = (n * (n - 1)) / 2;
   for (const { entry, site, itemIndex, pairs } of pairNotes.values()) {
-    // Every pair the note fired on, canonically ordered — not `pairs[0]` (MAJOR-R2), which makes
+    // Every pair the note fired on, canonically ordered — not `pairs[0]`, which makes
     // the emitted text depend on the enumeration order (`"C | B: …"` under one listing and
     // `"B | C: …"` under another) and silently drops the rest where a note fired on
     // some-but-not-all pairs: measured, `suspectPairs` naming five pairs beside a single
@@ -385,7 +385,7 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
     });
   }
 
-  // AD-25.5's normalization, written out as a formula rather than stamped as a constant.
+  // the normalization, written out as a formula rather than stamped as a constant.
   const normalizationConstants =
     options.normalization === 'corpus'
       ? fromEntriesExact(COMPARISON_DIMENSIONS, (dimension) => {
@@ -421,7 +421,7 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
         null,
         null,
         null,
-        'normalization: "corpus" — ω_k = 1 / median(nonzero d_k) over this matrix (AD-25.5), so ' +
+        'normalization: "corpus" — ω_k = 1 / median(nonzero d_k) over this matrix, so ' +
           'the aggregate compares dimensions on the spread they exhibit HERE rather than on ' +
           'their JND scales. The derived vector is corpus-dependent and carries the same ' +
           'reproducibility caveat the corpus window does; a dimension whose nonzero set is ' +
@@ -461,11 +461,11 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
         null,
         null,
         `silhouette is noisy below ${String(SILHOUETTE_RELIABLE_MINIMUM)} items and this corpus ` +
-          `has ${String(n)}: it should inform a choice of k rather than decide one (A22)`,
+          `has ${String(n)}: it should inform a choice of k rather than decide one`,
       ),
     );
 
-  // The corpus MEDOID — a single one, whatever `k` was asked for — is what §8's profiles are
+  // The corpus MEDOID — a single one, whatever `k` was asked for — is what the profiles are
   // taken against: "who is extreme in what", relative to the one performance that is most
   // typical of the whole corpus.
   const corpusMedoid = pam(matrix, 1, labels)?.medoids[0] ?? null;
@@ -507,7 +507,7 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
     suspectPairs,
     scape,
     // A corpus of fewer than two items ran no comparison, so there is no report to read the
-    // window and the echo off. The values are the ones §9.6 gives a degenerate shape: an empty
+    // window and the echo off. The values are the ones the design gives a degenerate shape: an empty
     // window, stamped as pair-derived because nothing derived it.
     window: first?.window ?? {
       startQuarters: 0,
@@ -521,7 +521,7 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
 }
 
 /**
- * §8's Sapp variant: per (start, size) cell, which item is closest to the corpus medoid.
+ * the Sapp variant: per (start, size) cell, which item is closest to the corpus medoid.
  *
  * Computed after the matrix, from `N − 1` extra comparisons against the medoid alone — a `2/N`
  * overhead on the `N(N−1)/2` the matrix already cost, which is what makes the corpus variant
@@ -529,8 +529,8 @@ export function compareCorpusInterior(options: InteriorCorpusOptions): CorpusRep
  * candidate row comes from the same prefix-summed aggregate density the pairwise product
  * reports; the reduction is an argmin over item indices and introduces no new arithmetic.
  *
- * Ties go to the lowest label (AD-25.2): two performances equally typical over a bar is one of
- * the structural ties §8 expects rather than a measure-zero one.
+ * Ties go to the lowest label: two performances equally typical over a bar is one of
+ * the structural ties expected here rather than a measure-zero one.
  */
 function corpusScape(
   options: InteriorCorpusOptions,
@@ -590,13 +590,13 @@ function corpusScape(
   return { bins: width, kind: 'closest-to-medoid', medoid, cells };
 }
 
-/** Code-unit order on labels — AD-25.2's tie rule, reaching the scape. */
+/** Code-unit order on labels — the tie rule, reaching the scape. */
 function lowerLabel(items: readonly ExpandedItem[], x: number, y: number): boolean {
   return elementAt(items, x, ITEMS).label < elementAt(items, y, ITEMS).label;
 }
 
 /**
- * The echo for a corpus too small to have run a comparison — `N ≤ 1`, which §8 makes legal.
+ * The echo for a corpus too small to have run a comparison — `N ≤ 1`, which the design makes legal.
  *
  * Built from the options rather than from a report, so the field is the settings the run would
  * have used rather than a null a caller has to interpret.
@@ -655,7 +655,7 @@ function profileOf(
   byDimension: Record<ComparisonDimension, readonly number[]>,
   signed: readonly Record<ComparisonDimension, number | null>[],
   aggregate: readonly number[],
-  /** Item indices in label order — one canonical summation sequence (AD-72.1's form). */
+  /** Item indices in label order — one canonical summation sequence (the form). */
   order: readonly number[],
 ): CorpusReport['profiles'][number] {
   const toMedoid = fromEntriesExact(COMPARISON_DIMENSIONS, (dimension) =>
@@ -666,10 +666,10 @@ function profileOf(
       ? null
       : (elementAt(signed, index * n + medoid, MATRIX)[dimension] ?? null),
   );
-  // Summed in label order (AD-72.2's sweep). `toMeanDistance` is a published per-item number and
+  // Summed in label order (the sweep). `toMeanDistance` is a published per-item number and
   // the mean of the same set of distances under any permutation, but accumulated in the caller's
   // item order it is not the same double: measured, it differs bit-wise in 4 of 24 permutation
-  // cases on the six-item vendored corpus. Same disease as `partitionCost`'s (AD-72.1), same
+  // cases on the six-item vendored corpus. Same disease as `partitionCost`'s, same
   // exact repair rather than an epsilon.
   let total = 0;
   for (const other of order)
@@ -678,12 +678,12 @@ function profileOf(
 }
 
 /**
- * AD-26.3's per-piece percentile context — context, never a rescaling.
+ * the per-piece percentile context — context, never a rescaling.
  *
  * survey-lit L10's finding is that a raw number is not portable across pieces: the modal
  * correlation between two random performances is 0.67 for Mazurka 17/4 and 0.87 for 68/3, so
  * "two MPM files alone cannot tell you whether 0.8 is close". This says where a pair sits in this
- * corpus's own distribution. The matrices are untouched, so R3 and every metric guarantee stand
+ * corpus's own distribution. The matrices are untouched, so every metric guarantee stands
  * — the reason it is a separate block rather than a transform.
  */
 function contextOf(aggregate: readonly number[], n: number): CorpusReport['context'] {
@@ -707,7 +707,7 @@ function contextOf(aggregate: readonly number[], n: number): CorpusReport['conte
       // differ in every single cell.
       //
       // They could only part company on a `sorted` that is not really ordered, i.e. one holding
-      // a NaN. §9.6's finiteness discipline forbids that, and P-C11 walks every number of every
+      // a NaN. The finiteness discipline forbids that, and the property suite walks every number of every
       // corpus result to check.
       const below = upperBoundBy(sorted, (x) => x, value);
       percentile[i * n + j] = sorted.length === 0 ? 0 : below / sorted.length;

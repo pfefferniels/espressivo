@@ -1,16 +1,16 @@
 /**
- * The edit path and the corpus matrices against the standing adversarial family (AD-33.5,
- * AD-57.2) — two failure surfaces the metric suite cannot see, because neither is a property
+ * The edit path and the corpus matrices against the standing adversarial family — two failure
+ * surfaces the metric suite cannot see, because neither is a property
  * of `d_k`:
  *
- * - Edit-path orientation. §6.4's traceback precedence is deterministic but not
+ * - Edit-path orientation. The traceback precedence is deterministic but not
  *   transposition-covariant, so `diffMpm(a, b)` and `diffMpm(b, a)` are mirrors only because the
  *   script is computed once in a canonical order and inverted. A family member carrying `⊥`, a
  *   cap, a skip or an unbounded span is where a tie is likely, and so where the inversion earns
  *   its keep.
- * - Matrix determinism. §8's products are permutation-equivariant only because every tie is
- *   broken on a label, and the family is TIE-RICH by construction: R6's never-drop rule makes
- *   `both-neutral` dimensions produce blocks of exactly-equal distances, which AD-25.2 calls
+ * - Matrix determinism. The products are permutation-equivariant only because every tie is
+ *   broken on a label, and the family is TIE-RICH by construction: the never-drop rule makes
+ *   `both-neutral` dimensions produce blocks of exactly-equal distances, which the design calls
  *   structural here rather than measure-zero.
  */
 import { describe, it, expect } from 'vitest';
@@ -27,7 +27,7 @@ import type { DiffReport, EditOp } from '../../src/comparison/report.js';
 
 import { elementAt, numberAt } from '../../src/prelude/index.js';
 
-/** `matrix[i * n + j]`, checked — §8's matrices are flat `n × n` arrays. */
+/** `matrix[i * n + j]`, checked — the matrices are flat `n × n` arrays. */
 const cellOf = (matrix: readonly number[], n: number, i: number, j: number, what: string) =>
   numberAt(matrix, i * n + j, what);
 
@@ -42,7 +42,7 @@ const WINDOW = { start: ADVERSARIAL_WINDOW.start, end: ADVERSARIAL_WINDOW.end };
 const diff = (a: string, b: string): DiffReport =>
   diffMpm({ a: a as XmlText, b: b as XmlText, window: WINDOW }).report;
 
-/** A-Q5's pair inverts with the plain one: one-became-several read backwards is the reverse. */
+/** the pair inverts with the plain one: one-became-several read backwards is the reverse. */
 const INVERSE: Readonly<Record<EditOp['op'], EditOp['op']>> = {
   insert: 'delete',
   delete: 'insert',
@@ -51,7 +51,7 @@ const INVERSE: Readonly<Record<EditOp['op'], EditOp['op']>> = {
   consolidate: 'fragment',
 };
 
-/** The mirror §6.4 promises, written out field by field — `diff.test.ts`'s own map. */
+/** The promised mirror, written out field by field — `diff.test.ts`'s own map. */
 function mirrored(report: DiffReport): unknown {
   const rank: Readonly<Record<EditOp['op'], number>> = {
     substitute: 0,
@@ -126,8 +126,8 @@ function mirrored(report: DiffReport): unknown {
         },
       };
     }),
-    // Swap sides, then re-sort into §9.5's order — both halves matter, and an empty note array
-    // would agree with anything. Re-derived from §9.5 rather than by calling the engine's
+    // Swap sides, then re-sort into the order — both halves matter, and an empty note array
+    // would agree with anything. Re-derived from the report shape rather than by calling the engine's
     // `sortNotes`, which is what keeps the mirror independent of what it checks.
     notes: [
       ...report.notes.map((entry) => ({
@@ -155,7 +155,7 @@ function mirrored(report: DiffReport): unknown {
 /**
  * This file binds `adversarialMembers()`, never the raw `ADVERSARIAL_FAMILY`.
  *
- * AD-57.2's drop-each-member hook answers "which member CATCHES a given defect", and it can only
+ * the drop-each-member hook answers "which member CATCHES a given defect", and it can only
  * answer it for tests that honour the drop: bind the constant instead and a sweep over
  * `COMPARISON_DROP_MEMBER` runs IDENTICAL assertions for every value, so a test whose whole
  * subject was dropped still passes. A test that needs a member BY NAME guards itself with
@@ -179,7 +179,7 @@ function requireMember(name: string): AdversarialMember {
   return found;
 }
 
-describe('§6.4’s orientation, over the family’s hazards', () => {
+describe('the orientation, over the family’s hazards', () => {
   // Every member against the ORDINARY case and against the styled-level pair: the first puts
   // each hazard opposite a document with nothing wrong with it, the second opposite a difference
   // that lives entirely in a header.
@@ -205,7 +205,7 @@ describe('§6.4’s orientation, over the family’s hazards', () => {
     expect(scripted).toBeGreaterThan(pairs);
   });
 
-  it.skipIf(dropped('plain'))('reaches B exactly on every one of them (§6.3)', () => {
+  it.skipIf(dropped('plain'))('reaches B exactly on every one of them', () => {
     const anchor = requireMember('plain');
     for (const member of FAMILY) {
       if (member.name === 'plain') continue;
@@ -232,9 +232,9 @@ describe('§6.4’s orientation, over the family’s hazards', () => {
   );
 });
 
-describe('§8’s determinism, over a tie-RICH corpus', () => {
+describe('the determinism, over a tie-RICH corpus', () => {
   // Ten members, 45 pairs, and a matrix with many exactly-equal cells: most of these documents
-  // carry no map at all for most dimensions, so R6's never-drop rule makes whole blocks
+  // carry no map at all for most dimensions, so the never-drop rule makes whole blocks
   // identical. That is the situation index-keyed tie rules get wrong and label-keyed ones do not.
   const chosen = [
     'plain',
@@ -430,7 +430,7 @@ describe('§8’s determinism, over a tie-RICH corpus', () => {
   });
 });
 
-describe('AD-57.2’s drop-each-member hook', () => {
+describe('the drop-each-member hook', () => {
   it('removes exactly the member it names, and nothing otherwise', () => {
     // Asserted in BOTH modes rather than "the env is unset", because the sweep that uses the
     // hook runs this very suite with the env SET: a guard demanding an empty env would fail once

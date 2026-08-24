@@ -1,10 +1,10 @@
 /**
- * §6's sequential-pricing DP, tested on its OBJECTIVE rather than on an alignment.
+ * the sequential-pricing DP, tested on its OBJECTIVE rather than on an alignment.
  *
  * The load-bearing test enumerates every monotone alignment by brute force and checks the DP
  * found the cheapest one. Asserting "these two instructions match" would pin one optimum out of
  * several equal ones and would pass on an implementation minimizing the wrong functional — the
- * defect §6.2 exists to correct, where a price against A is reported as a sequential one.
+ * defect the design exists to correct, where a price against A is reported as a sequential one.
  *
  * The toy `Φ` is a step function in a log space: an instruction sets a level from its date until
  * the next one, `norm` is `∫|x − y| dt` over a fixed window, and the integral is exact because
@@ -92,7 +92,7 @@ function monotoneAlignments(n: number, m: number): (readonly ('s' | 'd' | 'i')[]
 }
 
 /**
- * The DP-path cost of one alignment, computed the way §6.2 defines it rather than by the DP. The
+ * The DP-path cost of one alignment, computed the way the design defines it rather than by the DP. The
  * moves are read from the end of the sequence, the direction the traceback runs, so a move
  * sequence describes the path from `(n, m)` back to `(0, 0)`.
  */
@@ -199,13 +199,13 @@ describe('the DP minimizes the sequential objective', () => {
   /**
    * `replayResidual` is checked against an independent reconstruction, not taken on trust:
    * hard-coding `const replayResidual = 0` in `editScript` fails nothing unless something
-   * computes `Φ(final)` independently and compares it to `Φ(B)` (§6.3).
+   * computes `Φ(final)` independently and compares it to `Φ(B)`.
    *
    * Rebuilt here from the delivered ops alone: start from `a`, remove every instruction any step
    * consumes, add every one any step produces, sort into the state order, and compare `Φ` of
    * that against `Φ(b)` with the same `norm` the engine used.
    */
-  it('reports a replayResidual that an independent rebuild agrees with (MINOR-7)', () => {
+  it('reports a replayResidual that an independent rebuild agrees with', () => {
     const next = lcg(90210);
     let checked = 0;
     for (let trial = 0; trial < 60; ++trial) {
@@ -247,7 +247,7 @@ describe('the DP minimizes the sequential objective', () => {
    * instruction at the same date. Pinned as a value rather than as an ordering, since the
    * ordering inside `stateFromFlags` is not observable from outside `editScript`.
    */
-  it('prefers the surviving side at a co-dated date in the REPLAY too (MAJOR-8)', () => {
+  it('prefers the surviving side at a co-dated date in the REPLAY too', () => {
     const a = [level(1, 210, 'a0'), level(1, 202, 'a1')];
     const b = [level(1, 108, 'b0')];
     const result = editScript(a, b, pricing());
@@ -265,7 +265,7 @@ describe('the DP minimizes the sequential objective', () => {
   });
 });
 
-describe('AD-5: pricing against A is not an upper bound, and the counterexample is §6.2’s own', () => {
+describe('pricing against A is not an upper bound, and the counterexample is the own', () => {
   // `A = {I@0 bpm=60, J@5 bpm=60}` — a legal no-op restatement — against `B = {I@0 bpm=120}`.
   const a = [level(0, 60, 'I'), level(5, 60, 'J')];
   const b = [level(0, 120, 'I')];
@@ -282,11 +282,11 @@ describe('AD-5: pricing against A is not an upper bound, and the counterexample 
     expect(result.opCounts).toMatchObject({ substitute: 1, delete: 1, insert: 0 });
   });
 
-  it('meets §6.2’s tie: BOTH readings of which instruction is substituted cost 10·ln2', () => {
-    // §6.2's narrative substitutes `I` and deletes `J`. The DP delivers the other assignment —
+  it('meets the tie: BOTH readings of which instruction is substituted cost 10·ln2', () => {
+    // the narrative substitutes `I` and deletes `J`. The DP delivers the other assignment —
     // delete `I`, substitute `J` — because at the last cell the two are exactly equal and
-    // §6.4's precedence keeps the substitute branch, reached from the delete-first predecessor.
-    // A structural tie (survey-algo §2.H), and the ruling's substance is the total, which both
+    // the precedence keeps the substitute branch, reached from the delete-first predecessor.
+    // A structural tie, and the ruling's substance is the total, which both
     // readings agree on:
     //
     //   substitute I, then delete J : 5·ln2                 + 5·ln2                 = 10·ln2
@@ -342,7 +342,7 @@ describe('the theorems, over a family rather than one shape', () => {
       const result = editScript(a, b, pricing());
       const summed = result.steps.reduce((total, step) => total + step.cost, 0);
       expect(summed).toBeCloseTo(result.replayedDelta, 12);
-      // §6.3's verification: the state after the last op IS B, so the residual is an exact 0.
+      // the verification: the state after the last op IS B, so the residual is an exact 0.
       expect(result.replayResidual).toBe(0);
     }
   });
@@ -363,7 +363,7 @@ describe('the theorems, over a family rather than one shape', () => {
   });
 });
 
-describe('free means zero SEQUENTIAL cost (§6.2, A-B2)', () => {
+describe('free means zero SEQUENTIAL cost', () => {
   it('charges nothing for deleting a restatement when nothing else has changed', () => {
     const a = [level(0, 60, 'I'), level(5, 60, 'J')];
     const b = [level(0, 60, 'I')];
@@ -386,7 +386,7 @@ describe('free means zero SEQUENTIAL cost (§6.2, A-B2)', () => {
   });
 });
 
-describe('determinism and the delivered order (§6.1, §6.4, C5)', () => {
+describe('determinism and the delivered order', () => {
   const a = [level(0, 60, 'I'), level(4, 90, 'J'), level(8, 70, 'K')];
   const b = [level(0, 120, 'X'), level(6, 50, 'Y')];
 
@@ -409,7 +409,7 @@ describe('determinism and the delivered order (§6.1, §6.4, C5)', () => {
     expect(divergent).toBeGreaterThan(0);
   });
 
-  it('carries both orders on every op (C5)', () => {
+  it('carries both orders on every op', () => {
     const result = editScript(a, b, pricing());
     expect(result.steps.map((step) => step.applicationIndex)).toEqual(
       result.steps.map((_step, index) => index),
@@ -441,7 +441,7 @@ describe('determinism and the delivered order (§6.1, §6.4, C5)', () => {
   });
 });
 
-describe('the mirror is an inversion, not a second traceback (§6.4, AD-21)', () => {
+describe('the mirror is an inversion, not a second traceback', () => {
   const a = [level(0, 60, 'I'), level(4, 90, 'J'), level(8, 70, 'K')];
   const b = [level(0, 120, 'X'), level(6, 50, 'Y')];
 
@@ -487,7 +487,7 @@ describe('the mirror is an inversion, not a second traceback (§6.4, AD-21)', ()
   });
 });
 
-describe('A-Q5’s moves: fragment and consolidate', () => {
+describe('the moves: fragment and consolidate', () => {
   // One instruction becoming two, where the plain decomposition has to overshoot. `[60@2]`
   // performs 60 from bar 2 onward; `[140@2, 60@3]` performs 140 for one quarter and then 60.
   // Read as one edit that costs the single quarter that differs. Read as substitute-then-insert
@@ -549,7 +549,7 @@ describe('A-Q5’s moves: fragment and consolidate', () => {
     expect(consolidates).toBe(1);
   });
 
-  it('never costs more than the plain script, and keeps §6.2’s theorems', () => {
+  it('never costs more than the plain script, and keeps the theorems', () => {
     const next = lcg(24680);
     let cheaper = 0;
     for (let trial = 0; trial < 40; ++trial) {

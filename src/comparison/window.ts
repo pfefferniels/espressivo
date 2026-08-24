@@ -1,16 +1,16 @@
 /**
  * The comparison window, and the two stamps that say how much the resulting number is worth.
  *
- * DESIGN.md §5.0 (AD-4) fixes both the precedence and the honesty:
+ * the design fixes both the precedence and the honesty:
  *
  * > `end` is, in precedence order: the MSM score end (`windowRule: 'msm'`); an explicit
  * > `options.window` (`'explicit'`); the corpus-shared window (`'corpus'`); otherwise the
  * > max over both documents of the last dated instruction (`'pair-derived'`). The first
  * > three are piece-derived and carry `metricGuarantee: 'unconditional'`; the fourth
  * > carries `'window-restricted'` and the documented prohibition on assembling such numbers
- * > into a matrix (R3).
+ * > into a matrix.
  *
- * The fourth is not metric, and R3 shows why with a three-document counterexample: for
+ * The fourth is not metric, and a three-document counterexample shows why: for
  * `A = {60@0}`, `B = {60@0, 120@100}`, `C = {60@0, 60@200}` the three pairwise windows differ
  * and the triangle inequality reads `100·ln2 ≤ 0`. Hence the stamp, and hence its travelling
  * with the number rather than living in prose.
@@ -18,13 +18,13 @@
  * `start` is 0 unless the caller supplies one, in every rule.
  */
 
-/** Which of §5.0's four rules produced `end`. */
+/** Which of the four rules produced `end`. */
 export type WindowRule = 'msm' | 'explicit' | 'corpus' | 'pair-derived';
 
-/** Whether R3's metric guarantee holds for numbers computed in this window. */
+/** Whether the metric guarantee holds for numbers computed in this window. */
 export type MetricGuarantee = 'unconditional' | 'window-restricted';
 
-/** §9.3's `window` block. Quarters throughout, as every reported date is. */
+/** the `window` block. Quarters throughout, as every reported date is. */
 export interface ComparisonWindow {
   readonly startQuarters: number;
   readonly endQuarters: number;
@@ -43,7 +43,7 @@ export interface WindowInputs {
   readonly msmEndQuarters?: number | null;
   /** `options.window`, already validated (`0 <= start < end`, both finite). */
   readonly explicit?: { readonly start: number; readonly end: number } | null;
-  /** The corpus-shared end, when this pair is one cell of a §8 matrix. */
+  /** The corpus-shared end, when this pair is one cell of a corpus matrix. */
   readonly corpusEndQuarters?: number | null;
   /** Last dated instruction in each document; the floor of the chain. */
   readonly lastDateQuartersA: number;
@@ -55,9 +55,9 @@ function guaranteeOf(rule: WindowRule): MetricGuarantee {
 }
 
 /**
- * §5.0's precedence chain.
+ * the precedence chain.
  *
- * An explicit window outranks the MSM (AD-27.1, which reordered §5.0's list): an explicit
+ * An explicit window outranks the MSM (which reordered the list): an explicit
  * caller choice winning is what every other option in this codebase does, and a silently
  * ignored `window` is the worse surprise. When an MSM is *also* present and its end differs,
  * the facade records the score end as a note rather than dropping it — the value is still

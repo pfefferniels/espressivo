@@ -1,7 +1,7 @@
 /**
- * The standing adversarial fixture family — §10's P-C3/P-C3b family.
+ * The standing adversarial fixture family.
  *
- * Standing test policy (AD-33.5): every integrator-touching change runs against this family,
+ * Standing test policy: every integrator-touching change runs against this family,
  * not against constants. Three pointwise-ordered constants sit at the triangle's equality case,
  * so they can only fail on quadrature error, and they touch none of `⊥`, the cap, a renderer
  * default, a skip, or an unmatched part.
@@ -9,14 +9,14 @@
  * Each member carries a different hazard, stated in its own `hazard` line. Two of them are a
  * pair by construction: `criticalPointTicks` fires only when both sides are transitions, so a
  * single power member would leave that path unreached by every pair in the family.
- * Negative-controlled — reverting AD-33.2's canonical ordering fails this family's P-C2, which
+ * Negative-controlled — reverting the canonical ordering fails this family's symmetry check, which
  * a constants-only test does not.
  *
- * All members share one explicit window, which §10 requires: under a pair-derived window the
- * three windows of a triple differ and R3's triangle inequality is not even claimed (M2).
+ * All members share one explicit window, which the design requires: under a pair-derived window the
+ * three windows of a triple differ and the triangle inequality is not even claimed.
  */
 
-/** The window every member is compared under — explicit, so R3's guarantee is unconditional. */
+/** The window every member is compared under — explicit, so the guarantee is unconditional. */
 export const ADVERSARIAL_WINDOW = { start: 0, end: 4 } as const;
 
 /** Wrap map bodies into a one-performance document. */
@@ -42,7 +42,7 @@ const ARTICULATION_STYLES =
   '</styleDef></articulationStyles>';
 
 /**
- * Two ornament styles that differ only in the spread's time unit — §5.6's one genuinely
+ * Two ornament styles that differ only in the spread's time unit — the one genuinely
  * incomparable pair. A tick frame and a millisecond frame have no common domain without a tempo
  * map, so the two are `⊥` against each other while each is an ordinary law against a document
  * with no ornaments at all.
@@ -65,7 +65,7 @@ export interface AdversarialMember {
 }
 
 /**
- * The family. Members differ in which maps they carry as well as in their values, because R6
+ * The family. Members differ in which maps they carry as well as in their values, because the metric
  * makes an absent map neutral rather than missing and the triangle inequality has to survive
  * that too.
  */
@@ -83,7 +83,7 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
   },
   {
     name: 'renderer-default-level',
-    hazard: 'an unresolvable style name on both tempo and dynamics — R8/AD-1 performs 100.0',
+    hazard: 'an unresolvable style name on both tempo and dynamics — performs 100.0',
     mpm: document(
       '<tempoMap><tempo date="0.0" bpm="Allegrissimo" beatLength="0.25"/>' +
         '<tempo date="2880.0" bpm="Allegrissimo" beatLength="0.25"/></tempoMap>' +
@@ -93,7 +93,7 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
   },
   {
     name: 'bottom-span',
-    hazard: 'a ⊥ asynchrony span from a missing @milliseconds.offset — R24, priced at δ_row',
+    hazard: 'a ⊥ asynchrony span from a missing @milliseconds.offset — priced at δ_row',
     mpm: document(
       '<tempoMap><tempo date="0.0" bpm="72" beatLength="0.25"/>' +
         '<tempo date="2880.0" bpm="72" beatLength="0.25"/></tempoMap>' +
@@ -103,7 +103,7 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
   },
   {
     name: 'bottom-from-foreign-entry',
-    hazard: 'a ⊥ asynchrony span opened by a <style> — CAPITAL-1/AD-33.1, a different route in',
+    hazard: 'a ⊥ asynchrony span opened by a <style> — a different route in',
     mpm: document(
       '<tempoMap><tempo date="0.0" bpm="72" beatLength="0.25"/>' +
         '<tempo date="2880.0" bpm="72" beatLength="0.25"/></tempoMap>' +
@@ -114,7 +114,7 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
   },
   {
     name: 'capped',
-    hazard: 'an asynchrony offset far past 2·δ_row, so §4s cap binds rather than the raw value',
+    hazard: 'an asynchrony offset far past 2·δ_row, so the cap binds rather than the raw value',
     mpm: document(
       '<tempoMap><tempo date="0.0" bpm="60" beatLength="0.25"/>' +
         '<tempo date="2880.0" bpm="60" beatLength="0.25"/></tempoMap>' +
@@ -123,8 +123,7 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
   },
   {
     name: 'skips',
-    hazard:
-      'a skipped <tempo> (no @beatLength) and a skipped <dynamics> (no @volume) — AD-9i/AD-33.4',
+    hazard: 'a skipped <tempo> (no @beatLength) and a skipped <dynamics> (no @volume)',
     mpm: document(
       '<tempoMap><tempo date="0.0" bpm="60" beatLength="0.25"/>' +
         '<tempo date="1440.0" bpm="180"/>' +
@@ -163,7 +162,7 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
   {
     name: 'accentuation-bottom',
     hazard:
-      'a ⊥ accentuation span from an unresolvable pattern name — R21, where the render THROWS ' +
+      'a ⊥ accentuation span from an unresolvable pattern name, where the render THROWS ' +
       'rather than fabricating a level, so this is the ⊥ route no other member carries',
     mpm: document(
       '<metricalAccentuationMap><style date="0.0" name.ref="M"/>' +
@@ -175,7 +174,7 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
   {
     name: 'pedal-resurrected',
     hazard:
-      'AD-35: a trailing <style> puts the last <movement> inside the `size() - 1` guard, so it ' +
+      'a trailing <style> puts the last <movement> inside the `size() - 1` guard, so it ' +
       'renders with an UNBOUNDED span — the only member whose span end is Number.MAX_VALUE',
     mpm: document(
       '<movementMap><movement date="0.0" position="1.0" transition.to="0.0"/>' +
@@ -187,7 +186,7 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
     name: 'pedal-bottom',
     hazard:
       'a ⊥ pedal span from an out-of-domain @curvature — <movement> has no clamps, so x(t) is ' +
-      'non-monotone and there is no date ↦ position function at all (§5.8/§4)',
+      'non-monotone and there is no date ↦ position function at all',
     mpm: document(
       '<movementMap><movement date="0.0" position="0.0" transition.to="1.0" curvature="4"/>' +
         '<movement date="1440.0" position="1.0"/>' +
@@ -210,7 +209,7 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
     hazard:
       'a Gaussian law (the special-function quadrature path) ended by a <style>, which under ' +
       'the any-entry rule opens a δ₀ GAP — the same structural situation asynchronyMap ' +
-      'NaN-poisons, with the opposite disposition (AD-14ii against AD-33.1)',
+      'NaN-poisons, with the opposite disposition',
     mpm: document(
       '<imprecisionMap.timing>' +
         '<distribution.gaussian date="0.0" deviation.standard="11" limit.lower="-20" limit.upper="20" milliseconds.timingBasis="300"/>' +
@@ -222,8 +221,8 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
     name: 'imprecision-bottom',
     hazard:
       'an EMPTY <distribution.list>: getValue reads series[i % 0] = series[NaN] = undefined ' +
-      'and every note in the span vanishes from the MIDI export (R24), so the span is ⊥ — the ' +
-      "member that makes §5.9's capped density load-bearing (AD-36.2)",
+      'and every note in the span vanishes from the MIDI export, so the span is ⊥ — the ' +
+      'member that makes the capped density load-bearing',
     mpm: document(
       '<imprecisionMap.timing><distribution.list date="0.0" milliseconds.timingBasis="300"/></imprecisionMap.timing>',
     ),
@@ -231,7 +230,7 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
   {
     name: 'imprecision-wide',
     hazard:
-      "a law so wide that W₁/jnd exceeds 2·δ_row, so §4's CAP binds — added because " +
+      'a law so wide that W₁/jnd exceeds 2·δ_row, so the CAP binds — added because ' +
       'reverting the cap failed only its dedicated test and no pair in the family, which is ' +
       'the same gap the eighth member was added to close for criticalPointTicks. Against ' +
       "imprecision-bottom it is the triangle's equality case: d(wide, plain) = 2δ exactly " +
@@ -247,7 +246,7 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
     hazard:
       "a brownianNoise whose declared MARGINAL is exactly imprecision-plain's — the middle " +
       'half of ±50 is ±25 — while its process differs, so the pair is zero in the marginal ' +
-      'and non-zero only through processParameters (§5.9, A-B3)',
+      'and non-zero only through processParameters',
     mpm: document(
       '<imprecisionMap.timing>' +
         '<distribution.correlated.brownianNoise date="0.0" stepWidth.max="4" limit.lower="-50" limit.upper="50" milliseconds.timingBasis="300"/>' +
@@ -269,7 +268,7 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
   },
   {
     name: 'rubato-plain',
-    hazard: 'an ordinary rubato warp — the dimension had no non-⊥ member at all (W3 MAJOR-1)',
+    hazard: 'an ordinary rubato warp — the dimension had no non-⊥ member at all',
     mpm: document(
       '<rubatoMap><rubato date="0.0" frameLength="720.0" intensity="1.6" lateStart="0.1" ' +
         'earlyEnd="0.9" loop="true"/><rubato date="2880.0" frameLength="720.0"/></rubatoMap>',
@@ -279,7 +278,7 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
     name: 'rubato-bottom',
     hazard:
       'an unusable @intensity with @loop on: the warp is NaN over the WHOLE span, every note ' +
-      'it touches gets date.perf="NaN" and vanishes from the MIDI export (R24), so the span ' +
+      'it touches gets date.perf="NaN" and vanishes from the MIDI export, so the span ' +
       'is ⊥. Rubato gained its first four ⊥ routes in W3b and the capped integrator with ' +
       'them, and no family member reached any of them',
     mpm: document(
@@ -308,7 +307,7 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
     hazard:
       'the same four families at dates BETWEEN the previous member’s, so no anchor pairs for ' +
       'free: `λ_date` decides every match and the DP reaches its equal-cost ties, which is ' +
-      'where the tie-break has to be symmetric as well as fixed (W3 MAJOR-17)',
+      'where the tie-break has to be symmetric as well as fixed',
     mpm: document(
       '<articulationMap><style date="0.0" name.ref="A"/>' +
         '<articulation date="90.0" relativeDuration="0.8"/>' +
@@ -323,7 +322,7 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
     name: 'articulation-default',
     hazard:
       'a <style>@defaultArticulation and nothing else — d_articulation’s SECOND component ' +
-      '(AD-55.1), which is a step function over the window and reaches the metric by a ' +
+      ', which is a step function over the window and reaches the metric by a ' +
       'different route from the atoms',
     mpm: document(
       '<articulationMap><style date="0.0" name.ref="A" defaultArticulation="stacc"/>' +
@@ -336,7 +335,7 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
     name: 'ornament-plain',
     hazard:
       'a temporalSpread ornament in TICKS — the other event dimension’s ordinary path, whose ' +
-      'metric status §5.6 argues in prose (deviation-from-neutral anchored at neutral) and ' +
+      'metric status argued in prose (deviation-from-neutral anchored at neutral) and ' +
       'which nothing computed',
     mpm: document(
       '<ornamentationMap><style date="0.0" name.ref="O"/>' +
@@ -349,7 +348,7 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
   {
     name: 'ornament-milliseconds',
     hazard:
-      'the same ornaments with the spread declared in MILLISECONDS: §5.6’s one genuinely ' +
+      'the same ornaments with the spread declared in MILLISECONDS: the one genuinely ' +
       'incomparable case, since a tick frame and a millisecond frame have no common domain ' +
       'without a tempo map. It is the ⊥ the ornamentation dimension can actually reach',
     mpm: document(
@@ -363,15 +362,15 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
   {
     name: 'imprecision-other-domains',
     hazard:
-      'laws in the DYNAMICS and TONEDURATION imprecision maps: the P-C5 record and this ' +
+      'laws in the DYNAMICS and TONEDURATION imprecision maps: that record and this ' +
       'family both stopped at timing, so two of the eleven dimensions were compared only ' +
-      'against neutral (W3 MAJOR-1, MINOR-4)',
+      'against neutral',
     mpm: document(
       '<imprecisionMap.dynamics>' +
         '<distribution.uniform date="0.0" limit.lower="-12" limit.upper="12"/>' +
         '</imprecisionMap.dynamics>' +
         // The clips are explicit because absent ones read as 0 and collapse a triangular to δ₀
-        // (AD-49.1's degenerate table): without them this member scores 0 against a document
+        // (the degenerate table): without them this member scores 0 against a document
         // with no toneduration map at all, which is renderer-true and useless here.
         '<imprecisionMap.toneduration>' +
         '<distribution.triangular date="0.0" limit.lower="-40" limit.upper="40" mode="15" ' +
@@ -383,7 +382,7 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
     name: 'imprecision-other-domains-bottom',
     hazard:
       'an EMPTY <distribution.list> in each of those two maps — the ⊥ route in the two ' +
-      'domains the family did not reach, so §4’s cap is load-bearing there too',
+      'domains the family did not reach, so the cap is load-bearing there too',
     mpm: document(
       '<imprecisionMap.dynamics><distribution.list date="0.0"/></imprecisionMap.dynamics>' +
         '<imprecisionMap.toneduration><distribution.list date="0.0"/></imprecisionMap.toneduration>',
@@ -397,7 +396,7 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
     name: 'styled-level-slow',
     hazard:
       'a symbolic @bpm resolved through a tempoDef — the level lives in the header, not in ' +
-      'the map (W4 cut A2: resolution travels with the instruction, AD-40.2)',
+      'the map: resolution travels with the instruction',
     mpm: document(
       '<tempoMap><style date="0.0" name.ref="T"/>' +
         '<tempo date="0.0" bpm="t" beatLength="0.25"/></tempoMap>',
@@ -418,13 +417,13 @@ export const ADVERSARIAL_FAMILY: readonly AdversarialMember[] = [
 ];
 
 /**
- * AD-57.2's drop-each-member coverage check.
+ * the drop-each-member coverage check.
  *
  * Setting `COMPARISON_DROP_MEMBER` to a member's name removes it from the family, so
  *
  *     for m in $(node -e '…names…'); do COMPARISON_DROP_MEMBER=$m npx vitest run …; done
  *
- * answers "which members are load-bearing?" without patching a file. AD-57.2 rules that the
+ * answers "which members are load-bearing?" without patching a file. The design rules that the
  * family must not be pruned on the result: a member no test currently reaches still documents a
  * distinct hazard, and the check says which tests would notice, not which members to drop.
  */

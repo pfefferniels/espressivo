@@ -1,13 +1,13 @@
 /**
- * comparison/DESIGN.md §4's registry as data, and §4's capped local metric.
+ * the registry as data, and the capped local metric.
  *
  * Three of these suites test a table against itself. The key vocabulary is duplicated by design
- * — §4 wants a closed union a misspelled `options.jnd` key fails to compile against, and a union
+ * — the design wants a closed union a misspelled `options.jnd` key fails to compile against, and a union
  * cannot be derived from a runtime array — so "the union and the rows agree" is a real invariant
  * with a real failure mode, asserted in both directions. The same goes for the
  * `${dimension}/${element}@${attribute}` spelling, which a type can constrain but not compute.
  *
- * No RNG (R2): every sweep is a loop over a fixed grid.
+ * No RNG: every sweep is a loop over a fixed grid.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -36,7 +36,7 @@ import { compareMpm, performMsm, type XmlText } from '../../src/api/index.js';
 import { forwardInSpace } from '../../src/expression/transforms.js';
 import { elementAt } from '../../src/prelude/index.js';
 
-/** The §3 dimensions with rows. */
+/** The dimensions with rows. */
 const COVERED_DIMENSIONS: readonly ComparisonDimension[] = [
   'tempo',
   'rubato',
@@ -52,7 +52,7 @@ const COVERED_DIMENSIONS: readonly ComparisonDimension[] = [
 ];
 
 /**
- * The §3 dimensions with no rows — empty, and asserted empty rather than deleted, so a dimension
+ * The dimensions with no rows — empty, and asserted empty rather than deleted, so a dimension
  * added to `COMPARISON_DIMENSIONS` without rows fails here immediately.
  */
 const UNCOVERED_DIMENSIONS: readonly ComparisonDimension[] = [];
@@ -61,8 +61,8 @@ function rowFor(key: (typeof COMPARISON_JND_KEYS)[number]): ComparisonRegistryRo
   return comparisonRowFor(key);
 }
 
-describe('the dimension vocabulary (§3, §9.1, AD-22)', () => {
-  it('is exactly §9.1’s eleven, in §9.1’s order, with no duplicates', () => {
+describe('the dimension vocabulary', () => {
+  it('is exactly the eleven, in the order, with no duplicates', () => {
     expect([...COMPARISON_DIMENSIONS]).toEqual([
       'tempo',
       'rubato',
@@ -86,7 +86,7 @@ describe('the dimension vocabulary (§3, §9.1, AD-22)', () => {
     expect(Object.isFrozen(COMPARISON_REGISTRY_ROWS)).toBe(true);
   });
 
-  it('partitions all fifteen expression dimensions exactly once (§3’s table)', () => {
+  it('partitions all fifteen expression dimensions exactly once (the table)', () => {
     const mapped = COMPARISON_DIMENSIONS.flatMap(
       (dimension) => EXPRESSION_DIMENSION_CORRESPONDENCE[dimension],
     );
@@ -94,7 +94,7 @@ describe('the dimension vocabulary (§3, §9.1, AD-22)', () => {
     expect([...mapped].sort()).toEqual([...EXPRESSION_DIMENSIONS].sort());
   });
 
-  it('states §3’s containments where a comparison curve absorbs two expression knobs', () => {
+  it('states the containments where a comparison curve absorbs two expression knobs', () => {
     expect(EXPRESSION_DIMENSION_CORRESPONDENCE.tempo).toEqual(['tempo', 'tempoShape']);
     expect(EXPRESSION_DIMENSION_CORRESPONDENCE.dynamics).toEqual(['dynamics', 'dynamicsShape']);
     expect(EXPRESSION_DIMENSION_CORRESPONDENCE.ornamentation).toEqual([
@@ -106,7 +106,7 @@ describe('the dimension vocabulary (§3, §9.1, AD-22)', () => {
   });
 });
 
-describe('the row key (§4, A1)', () => {
+describe('the row key', () => {
   it('spells every key `${dimension}/${element}@${attribute}`', () => {
     for (const row of COMPARISON_REGISTRY_ROWS) {
       expect(row.key).toBe(`${row.dimension}/${row.element}@${row.attribute}`);
@@ -153,7 +153,7 @@ describe('the row key (§4, A1)', () => {
     expect(comparisonRowAt('dynamics', 'dynamics', 'transition.to')?.key).toBe(
       'dynamics/dynamics@transition.to',
     );
-    // The right answer for every §4 exclusion — a row is the licence to price something.
+    // The right answer for every the exclusion — a row is the licence to price something.
     expect(comparisonRowAt('tempo', 'tempo', 'date')).toBeNull();
     expect(comparisonRowAt('rubato', 'rubato', 'name.ref')).toBeNull();
     // And the pair is dimension-scoped: `transition.to` is not a tempo attribute of <dynamics>.
@@ -161,21 +161,21 @@ describe('the row key (§4, A1)', () => {
   });
 });
 
-describe('the columns §4 adds to the expression shape', () => {
-  it('gives every row a positive finite jnd — a zero JND divides (§4)', () => {
+describe('the columns the design adds to the expression shape', () => {
+  it('gives every row a positive finite jnd — a zero JND divides', () => {
     for (const row of COMPARISON_REGISTRY_ROWS) {
       expect(Number.isFinite(row.jnd)).toBe(true);
       expect(row.jnd).toBeGreaterThan(0);
     }
   });
 
-  it('gives every row the documented δ_row of 10 JND (§4, AD-25.7)', () => {
+  it('gives every row the documented δ_row of 10 JND', () => {
     for (const row of COMPARISON_REGISTRY_ROWS) {
       expect(row.delta).toBe(DEFAULT_DELTA_JND);
     }
   });
 
-  it('carries a provenance tag in every row’s notes (§7.1, AD-26.2/AD-27.6)', () => {
+  it('carries a provenance tag in every row’s notes', () => {
     for (const row of COMPARISON_REGISTRY_ROWS) {
       expect(`${row.key}: ${/\[literature\]|\[convention\]/.test(row.notes)}`).toBe(
         `${row.key}: true`,
@@ -183,7 +183,7 @@ describe('the columns §4 adds to the expression shape', () => {
     }
   });
 
-  it('applies AD-27.6’s upgraded constants', () => {
+  it('applies the upgraded constants', () => {
     // ln(1.025), Friberg & Sundberg 1995's relative regime.
     expect(TEMPO_JND_NEPERS).toBeCloseTo(0.0246926, 7);
     expect(rowFor('tempo/tempo@bpm').jnd).toBe(TEMPO_JND_NEPERS);
@@ -197,7 +197,7 @@ describe('the columns §4 adds to the expression shape', () => {
     expect(rowFor('dynamics/dynamics@volume').notes).toContain('corpus');
   });
 
-  it('orders every plausible band and states §5.0’s four (C6)', () => {
+  it('orders every plausible band and states the four', () => {
     for (const row of COMPARISON_REGISTRY_ROWS) {
       if (row.plausibleRange == null) continue;
       expect(row.plausibleRange[0]).toBeLessThan(row.plausibleRange[1]);
@@ -221,9 +221,9 @@ describe('the columns §4 adds to the expression shape', () => {
     expect(volume.valueDomain(0)).toBe(false);
   });
 
-  it('marks exactly the tick-valued row ppqSensitive (§5.0)', () => {
+  it('marks exactly the tick-valued row ppqSensitive', () => {
     const sensitive = COMPARISON_REGISTRY_ROWS.filter((row) => row.ppqSensitive).map((r) => r.key);
-    // Every row whose value is a TICK count, and no other: §5.5's articulation levers are
+    // Every row whose value is a TICK count, and no other: the articulation levers are
     // written in ticks at the performance ppq, their millisecond siblings are not, and that is
     // the distinction the column exists to keep.
     expect(sensitive).toEqual([
@@ -236,21 +236,21 @@ describe('the columns §4 adds to the expression shape', () => {
       'ornamentation/temporalSpread@frameLength',
     ]);
     // `*Ms` and whole-note fractions never rescale — beatLength is the one a reader expects
-    // to, and §5.0 says it does not.
+    // to, and the design says it does not.
     expect(rowFor('tempo/tempo@beatLength').ppqSensitive).toBe(false);
     expect(rowFor('asynchrony/asynchrony@milliseconds.offset').ppqSensitive).toBe(false);
   });
 
-  it('states a conditional liveness against the row’s own element (§4, AD-11)', () => {
+  it('states a conditional liveness against the row’s own element', () => {
     for (const row of COMPARISON_REGISTRY_ROWS) {
       if (row.liveness === 'always') continue;
       expect(row.liveness.element).toBe(row.element);
       expect(row.liveness.rule.length).toBeGreaterThan(20);
     }
-    // AD-8's trailing-transition rule reaches both level dimensions; §5.8's ENTRY-index rule
+    // the trailing-transition rule reaches both level dimensions; the ENTRY-index rule
     // is a different mechanism with a different outcome and reaches all four pedal rows.
     const conditional = COMPARISON_REGISTRY_ROWS.filter((row) => row.liveness !== 'always');
-    // EVERY imprecision row is conditional, by rule and not coincidence: §5.9's laws are
+    // EVERY imprecision row is conditional, by rule and not coincidence: the laws are
     // geometries, so what each attribute does depends on which siblings are present — an absent
     // limit is the number 0, an absent clip collapses the law to δ₀, an absent mode is 0, an
     // absent degreeOfCorrelation is ⊥. Counted rather than listed, so the rule stays visible.
@@ -287,20 +287,20 @@ describe('the columns §4 adds to the expression shape', () => {
     ]);
   });
 
-  it('keeps §5.8’s entry-index rule distinct from AD-8’s trailing rule (AD-35)', () => {
+  it('keeps the entry-index rule distinct from the trailing rule', () => {
     const movement = rowFor('pedal/movement@transition.to').liveness;
     const dynamics = rowFor('dynamics/dynamics@transition.to').liveness;
     expect(movement).not.toBe('always');
     expect(dynamics).not.toBe('always');
     if (movement === 'always' || dynamics === 'always') throw new Error('unreachable');
-    // The distinction §5.8's contrast paragraph exists to protect: entries, not instructions.
+    // The distinction the contrast paragraph exists to protect: entries, not instructions.
     expect(movement.rule).toContain('LAST ENTRY');
-    expect(movement.rule).toContain('AD-35');
+    expect(movement.rule).toContain('resurrects it with an unbounded span');
     expect(dynamics.rule).not.toContain('ENTRY');
   });
 
-  it('does NOT share a Bézier default between <dynamics> and <movement> (AD-13)', () => {
-    // The one-line reading error §5.8 exists to prevent: same machinery, different defaults.
+  it('does NOT share a Bézier default between <dynamics> and <movement>', () => {
+    // The one-line reading error the design exists to prevent: same machinery, different defaults.
     const movement = rowFor('pedal/movement@curvature');
     expect(movement.notes).toContain('0.4');
     expect(rowFor('dynamics/dynamics@curvature').notes).toContain('clamped');
@@ -309,15 +309,15 @@ describe('the columns §4 adds to the expression shape', () => {
     expect(movement.liveness.rule).toContain('never clamped');
   });
 
-  it('files @subNoteDynamics as structural — a mechanism switch, never a distance (§5.3)', () => {
+  it('files @subNoteDynamics as structural — a mechanism switch, never a distance', () => {
     expect(rowFor('dynamics/dynamics@subNoteDynamics').role).toBe('structural');
-    // @loop is the opposite ruling: AD-10 keeps it out of the structural bucket, because two
+    // @loop is the opposite ruling: the design keeps it out of the structural bucket, because two
     // documents differing only in it would otherwise score d_rubato = 0.
     expect(rowFor('rubato/rubato@loop').role).not.toBe('structural');
   });
 });
 
-describe('valueDomain — the comparability gate on a RESOLVED value (§4)', () => {
+describe('valueDomain — the comparability gate on a RESOLVED value', () => {
   /**
    * Every imprecision row's domain is `Number.isFinite` — a width in ms or velocity units has no
    * bound to violate — so one sample pair serves them all. `@degreeOfCorrelation` is the one
@@ -381,7 +381,7 @@ describe('valueDomain — the comparability gate on a RESOLVED value (§4)', () 
     'articulation/articulation@detuneCents': [-50, 0, 14],
     'articulation/articulation@detuneHz': [-3.5, 0, 3.5],
     'ornamentation/ornament@scale': [0, 1, 20],
-    // The {0,1} encoding of the two enumerated orderings (AD-41.1).
+    // The {0,1} encoding of the two enumerated orderings.
     'ornamentation/ornament@note.order': [0, 1],
     // A count, plus meico's documented -1 "fill the frame" extension.
     'ornamentation/ornament@repetitions': [-1, 0, 1, 7],
@@ -392,7 +392,7 @@ describe('valueDomain — the comparability gate on a RESOLVED value (§4)', () 
     'ornamentation/temporalSpread@frameLength': [0, 240, 1440],
     'ornamentation/temporalSpread@intensity': [1e-6, 1, 4],
     'asynchrony/asynchrony@milliseconds.offset': [-1e6, -30, 0, 30, 1e6],
-    // 0.0 and 1.0 are the canonical authored pedal positions, which is why §5.8 refuses a logit.
+    // 0.0 and 1.0 are the canonical authored pedal positions, which is why pedal refuses a logit.
     'pedal/movement@position': [0, 0.4, 1],
     'pedal/movement@transition.to': [0, 0.5, 1],
     'pedal/movement@curvature': [0, 0.4, 1],
@@ -401,11 +401,11 @@ describe('valueDomain — the comparability gate on a RESOLVED value (§4)', () 
 
   const illegal: Readonly<Record<string, readonly number[]>> = {
     ...imprecisionIllegal,
-    // ln 0 = −∞ and ln(negative) = NaN — §4's one case the cap cannot rescue.
+    // ln 0 = −∞ and ln(negative) = NaN — the one case the cap cannot rescue.
     'tempo/tempo@bpm': [0, -1, NaN, Infinity, -Infinity],
     'tempo/tempo@beatLength': [0, -0.25, NaN, Infinity],
     'tempo/tempo@transition.to': [0, -90, NaN, Infinity],
-    // The closed bounds are §5.1's degenerate cases: a constant span, not a curve shape.
+    // The closed bounds are the degenerate cases: a constant span, not a curve shape.
     'tempo/tempo@meanTempoAt': [0, 1, -0.5, 1.5, NaN, Infinity],
     'tempo/tempoDef@value': [0, -1, NaN],
     // A resolved 0 divides in τ/frameLength; expression's write-side [0,∞) is wider.
@@ -459,7 +459,7 @@ describe('valueDomain — the comparability gate on a RESOLVED value (§4)', () 
     // these are the unresolvable ones, and NaN is the one the clamp cannot repair.
     'pedal/movement@position': [-0.1, 1.1, NaN, Infinity],
     'pedal/movement@transition.to': [-0.1, 1.1, NaN, Infinity],
-    // Out of range these make x(t) non-monotone, which is the ⊥ §5.8 names.
+    // Out of range these make x(t) non-monotone, which is the ⊥ the design names.
     'pedal/movement@curvature': [-0.1, 1.1, NaN, Infinity],
     'pedal/movement@protraction': [-1.1, 1.1, NaN, Infinity],
   };
@@ -491,7 +491,7 @@ describe('valueDomain — the comparability gate on a RESOLVED value (§4)', () 
     }
   });
 
-  it('keeps T finite on every sampled legal value except §4’s enumerated boundaries', () => {
+  it('keeps T finite on every sampled legal value except the enumerated boundaries', () => {
     const infiniteAtBoundary = new Set([
       'dynamics/dynamics@curvature', // ln(1 − 1) at the authored curvature = 1
       'dynamics/dynamics@protraction', // logit(−1,1) at ±1
@@ -511,7 +511,7 @@ describe('valueDomain — the comparability gate on a RESOLVED value (§4)', () 
   });
 });
 
-describe('§4’s capped local metric', () => {
+describe('the capped local metric', () => {
   const bpm = () => rowFor('tempo/tempo@bpm');
   const offset = () => rowFor('asynchrony/asynchrony@milliseconds.offset');
 
@@ -560,7 +560,7 @@ describe('§4’s capped local metric', () => {
     expect(far.capped).toBe(true);
   });
 
-  it('prices ⊥ at δ_row from a value and 0 from itself (AD-2)', () => {
+  it('prices ⊥ at δ_row from a value and 0 from itself', () => {
     const row = offset();
     const missing = bottom('renderer-error');
     expect(localDistance(row, missing, valued(0))).toEqual({
@@ -586,7 +586,7 @@ describe('§4’s capped local metric', () => {
             const via =
               localDistance(row, valued(x), valued(y)).distance +
               localDistance(row, valued(y), valued(z)).distance;
-            // Truncation of a metric is a metric — §4's first consequence of the one cap.
+            // Truncation of a metric is a metric — the first consequence of the one cap.
             expect(`${key} ${x},${y},${z}: ${direct <= via + 1e-12}`).toBe(
               `${key} ${x},${y},${z}: true`,
             );
@@ -596,7 +596,7 @@ describe('§4’s capped local metric', () => {
     }
   });
 
-  it('is always finite and never negative, which P-C11 needs of every reported number', () => {
+  it('is always finite and never negative, as every reported number must be', () => {
     const grid = [-1e6, -1, 0, 0.5, 1, 1e6];
     for (const key of COMPARISON_JND_KEYS) {
       const row = rowFor(key);
@@ -614,13 +614,13 @@ describe('§4’s capped local metric', () => {
 });
 
 /**
- * The two space substitutions §4's superset property makes, named rather than normalized away:
+ * The two space substitutions the superset property makes, named rather than normalized away:
  *
  * - `level` → `log-around-1`. Expression's level rows carry `log-around-center`, whose center is
  *   one performance's own geometric mean; two documents bring two centers, so a centered `T` is
  *   not symmetric under swapping them. The center cancels in every difference, so the two spaces
- *   induce the same metric — §4's "collapses to the bare logarithm".
- * - `joint-trim` → `gain`. §5.2/A-Q10 prices `(lateStart, earlyEnd)` as L1 on the ENDPOINTS and
+ *   induce the same metric — the "collapses to the bare logarithm".
+ * - `joint-trim` → `gain`. The design prices `(lateStart, earlyEnd)` as L1 on the ENDPOINTS and
  *   not through expression's joint-trim reparametrization, because two windows with equal total
  *   trim but different placement are different performances.
  */
@@ -631,7 +631,7 @@ function comparisonSpaceOfExpressionRow(space: RowSpace): string {
   return tag;
 }
 
-describe('superset of the expression registry (§4, P-C10) — at this wave’s coverage', () => {
+describe('superset of the expression registry — at this wave’s coverage', () => {
   const coveredExpressionDimensions = new Set(
     COVERED_DIMENSIONS.flatMap((dimension) => EXPRESSION_DIMENSION_CORRESPONDENCE[dimension]),
   );
@@ -702,7 +702,7 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
     );
     // Adding rows for one of these fails the assertion until the name is removed from
     // UNCOVERED_DIMENSIONS, which is the gate. The full superset property — every live
-    // expression row, plus §4's whole-inventory partition into rows / inert / exclusions — is
+    // expression row, plus the whole-inventory partition into rows / inert / exclusions — is
     // assertable only while this list is empty.
     expect(empty).toEqual([...UNCOVERED_DIMENSIONS]);
     expect([...COVERED_DIMENSIONS, ...UNCOVERED_DIMENSIONS].sort()).toEqual(
@@ -711,9 +711,9 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
   });
 
   /**
-   * §4's whole-inventory partition (R9): `survey-code.md` §1.2's map table as data — for every
+   * the whole-inventory partition: `survey-code.md` the map table as data — for every
    * map, every attribute the RENDERER reads — with each one landing in exactly one of three
-   * buckets, a registry row, an `inert` row, or a §4 exclusion. A missing attribute is the one
+   * buckets, a registry row, an `inert` row, or a the exclusion. A missing attribute is the one
    * shape of gap no other test can see, because a dimension with nine of its ten attributes
    * looks complete from the inside.
    */
@@ -757,7 +757,7 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
     ['pedal', 'movement', 'curvature'],
     ['pedal', 'movement', 'protraction'],
     ['pedal', 'movement', 'controller'],
-    // §1.2's ornament pool children, which no §5 section gives a row.
+    // the ornament pool children, which no dimension gives a row.
     ['ornamentation', 'note', 'midi.pitch'],
     ['ornamentation', 'note', 'interval.chromatic'],
     ['ornamentation', 'note', 'interval.diatonic'],
@@ -766,7 +766,7 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
     [null, 'style', 'defaultArticulation'],
     // The imprecision maps' own attribute, and per distribution the attributes its own provider
     // CONSUMES — read off the factory calls in `ImprecisionMap.ts`'s `providerFor` (`:98-149`),
-    // not off what the parser accepts: §1.2 admits thirteen attributes on a distribution, and a
+    // not off what the parser accepts: the design admits thirteen attributes on a distribution, and a
     // row for one a family never hands to its provider would price what cannot be performed.
     [null, 'imprecisionMap', 'detuneUnit'],
     ...(['imprecisionTiming', 'imprecisionDynamics', 'imprecisionDuration'] as const).flatMap(
@@ -829,34 +829,34 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
   ];
 
   /**
-   * §4's exclusion walk, as a predicate — every clause with the reason §4 gives it.
+   * the exclusion walk, as a predicate — every clause with the reason the design gives it.
    *
    * `@date` is the axis. `xml:id` and `@noteid` are identity — `@noteid` named explicitly
-   * because it is spelled without `.ref` and the pattern would miss it (AD-15/R16). The
+   * because it is spelled without `.ref` and the pattern would miss it. The
    * name-valued attributes go to the structural finding channel by the `@controller` precedent
-   * (AD-36.3) — naming a thing is an identity claim, not a magnitude — and the pool `<note>`
+   * — naming a thing is an identity claim, not a magnitude — and the pool `<note>`
    * children are the same case one level down: they say WHICH pitches an ornament generates.
    *
-   * `*.ref` is not here: AD-55.1 files the two def-naming attributes under
+   * `*.ref` is not here: the two def-naming attributes are filed under
    * {@link RESOLVED_ATTRIBUTES}.
    *
-   * `@seed` is §4's own exclusion and stays one, but its stated RATIONALE is wrong for two of
+   * `@seed` is the exclusion and stays one, but its stated RATIONALE is wrong for two of
    * the six families: "changes no distribution law" holds for the four i.i.d. ones and fails for
    * `brownianNoise` and `compensatingTriangle`, where `setSeed` clears the series `doHandover`
    * had just seeded and every note in the span vanishes (measured). The reader prices those
    * spans `⊥`; the DESIGN sentence is the conductor's to amend.
    */
   const EXCLUDED_ATTRIBUTES: ReadonlyMap<string, string> = new Map([
-    ['controller', 'name-valued: the structural finding channel, AD-36.3'],
-    ['seed', '§4: not a magnitude — but see the note above on the correlated families'],
-    ['detuneUnit', 'the tuning domain is inert (R9b): nothing reads tuning.offset back'],
-    ['midi.pitch', 'names WHICH note an ornament generates — an identity claim (AD-41.1)'],
+    ['controller', 'name-valued: the structural finding channel'],
+    ['seed', 'not a magnitude — but see the note above on the correlated families'],
+    ['detuneUnit', 'the tuning domain is inert: nothing reads tuning.offset back'],
+    ['midi.pitch', 'names WHICH note an ornament generates — an identity claim'],
     ['interval.chromatic', 'the same, as an interval'],
     ['interval.diatonic', 'the same, as an interval'],
   ]);
 
   /**
-   * The partition's THIRD bucket: live, with no row of its own (AD-55.1).
+   * The partition's THIRD bucket: live, with no row of its own.
    *
    * An attribute that names a def is not an exclusion and not a row either — it is an
    * indirection whose MAGNITUDES are priced on the def's rows, one resolution away. Filing one
@@ -870,12 +870,12 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
     ['name.ref', 'live: the def it names is read and the def’s own rows are priced'],
     [
       'defaultArticulation',
-      'live (AD-55.1): the def it names governs every un-articulated note in the span, and the ' +
+      'live: the def it names governs every un-articulated note in the span, and the ' +
         'step function is priced per cell on the same rows an atom is priced on',
     ],
   ]);
 
-  it('every attribute of the survey-code §1.2 inventory appears exactly once (R9)', () => {
+  it('every attribute of the map inventory appears exactly once', () => {
     for (const [dimension, element, attribute] of READ_ATTRIBUTES) {
       const excluded = EXCLUDED_ATTRIBUTES.has(attribute);
       const resolved = RESOLVED_ATTRIBUTES.has(attribute);
@@ -883,7 +883,7 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
         dimension === null
           ? null
           : (comparisonRowAt(dimension, element, attribute) as ComparisonRegistryRow | null);
-      // Exactly one bucket of THREE (AD-55.1): two means the exclusion walk and the table
+      // Exactly one bucket of THREE: two means the exclusion walk and the table
       // disagree, none means an attribute the renderer reads is neither priced nor reported.
       const buckets = [row !== null, excluded, resolved].filter(Boolean).length;
       expect(
@@ -897,7 +897,7 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
   });
 
   it('the axis and the identity attributes are excluded everywhere, by rule not by omission', () => {
-    // §4's four universal exclusions: none may have a row in any dimension.
+    // the four universal exclusions: none may have a row in any dimension.
     for (const attribute of ['date', 'xml:id', 'name.ref', 'noteid'])
       expect(
         COMPARISON_REGISTRY_ROWS.filter((row) => row.attribute === attribute).map((r) => r.key),
@@ -907,7 +907,7 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
   it('no registry row is missing from the inventory either (the partition closes both ways)', () => {
     // The direction that makes it a partition rather than a coverage check: a row for an
     // attribute no renderer reads prices a difference that is never performed. Def-site rows are
-    // exempt — §1.2 is the MAP inventory, and the defs are §1.3.
+    // exempt — this is the MAP inventory, and the defs are counted separately.
     const inventory = new Set(
       READ_ATTRIBUTES.map(
         ([dimension, element, attribute]) => `${String(dimension)}/${element}@${attribute}`,
@@ -928,7 +928,7 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
   });
 
   // -------------------------------------------------------------------------------------
-  // AD-55.1's standing obligation: the classification call is itself a renderer claim
+  // the standing obligation: the classification call is itself a renderer claim
   // -------------------------------------------------------------------------------------
 
   /**
@@ -938,7 +938,7 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
    *
    * - `'priced'` — the magnitudes are priced one resolution away, or the span reads `⊥`.
    *   A pair differing only in this attribute must move `D`.
-   * - `'reported'` — the difference is real but is not an expressive magnitude, so §3's
+   * - `'reported'` — the difference is real but is not an expressive magnitude, so the
    *   structural channel carries it. `D` must be 0 AND a note must name it: a channel that
    *   fires no note is not a channel.
    * - `'out-of-scope'` — the difference is confined to a quantity outside the eleven
@@ -946,7 +946,7 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
    *
    * Every probe runs an EXPLICIT window: these documents are two instructions long, so a
    * pair-derived window would end at the last date and integrate over nothing — a real property
-   * of §5.0 rather than a defect, but one that would make every probe here vacuously 0.
+   * of the model rather than a defect, but one that would make every probe here vacuously 0.
    */
   const PROBE_WINDOW = { start: 0, end: 4 };
 
@@ -986,7 +986,7 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
     );
 
   // Seeded, because the out-of-scope probe compares two RENDERED documents and an unseeded
-  // uniform draws from Math.random(): without it the probe would measure the RNG (§9.6, R2).
+  // uniform draws from Math.random(): without it the probe would measure the RNG.
   const imprecisionUnit = (unit: string) =>
     mpm(
       '',
@@ -1081,7 +1081,7 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
     },
   ];
 
-  it('every non-row attribute carries a renderer-checked reason (AD-55.1)', () => {
+  it('every non-row attribute carries a renderer-checked reason', () => {
     const owed = [...EXCLUDED_ATTRIBUTES.keys(), ...RESOLVED_ATTRIBUTES.keys()].sort();
     const probed = CLASSIFICATION_PROBES.map((probe) => probe.attribute).sort();
     // The debt itself, before any probe runs: a new exclusion with no probe fails here.
@@ -1122,16 +1122,16 @@ describe('superset of the expression registry (§4, P-C10) — at this wave’s 
 });
 
 /**
- * §7.4's canonicalization inside §4's metric, pinned at the FUNCTION rather than through a
+ * the canonicalization inside the metric, pinned at the FUNCTION rather than through a
  * dimension: no shipped row that reaches this function lives in a log space, so every row routed
  * through it is `gain`, where `T` is the identity and the distinction below is invisible.
  *
  * `canonicalLocalDistance` places the shift and the scale between `forwardInSpace` and the cap,
- * i.e. in T-space, which is the only placement §7.4's table licenses: a log space's level is a
+ * i.e. in T-space, which is the only placement the table licenses: a log space's level is a
  * multiplicative factor, and subtracting a mean from the raw BPM is not the same transform as
  * subtracting it from the logarithm.
  */
-describe('§4’s metric under §7.4’s canonicalization', () => {
+describe('the metric under the canonicalization', () => {
   const bpm = () => rowFor('tempo/tempo@bpm');
   const offset = () => rowFor('asynchrony/asynchrony@milliseconds.offset');
   const identity = { shift: 0, scale: 1 };
@@ -1157,7 +1157,7 @@ describe('§4’s metric under §7.4’s canonicalization', () => {
 
   it('scales in T-space too, and reduces to localDistance under the identity pair', () => {
     const row = bpm();
-    // 120 against 118 is well under §4's cap, so the doubling is visible; 120 against 60 is
+    // 120 against 118 is well under the cap, so the doubling is visible; 120 against 60 is
     // already capped at 2·δ_row and doubling a capped value would say nothing.
     const scaled = canonicalLocalDistance(row, valued(120), valued(118), {
       a: { shift: 0, scale: 2 },

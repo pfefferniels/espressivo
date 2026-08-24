@@ -18,17 +18,15 @@
  * attribute descriptions and the unoverridden `att.time.frameLength` schematron
  * (`att.time.frameLength.xml:21`) make it OPTIONAL, falling back to a `time.unit` attribute
  * that v3 removed from every element. Every real v3 file writes values without a suffix,
- * including the format's own sample encoding and the guidelines' first example
- * (`docs/history/ornamentation/research/github-v3-design.md` §5). So
+ * including the format's own sample encoding and the guidelines' first example. So
  * {@link parseTemporalValueStrict} is the schema-exact reader (also usable as a validator) and
  * {@link parseTemporalValueLenient} is what the document reader uses. What a missing domain
  * *means* — legacy `@time.unit` if present, else ticks — is reader policy, decided with the
- * `TemporalSpread` parse code (DESIGN.md D3), not here.
+ * `TemporalSpread` parse code, not here.
  *
  * PARITY NOTE. The v3 reference implementation's `TemporalValue.java`
- * (LarsEngeln/meico@3deb141c) is deliberately not ported — neither its API nor its behaviour
- * (DESIGN.md §1 non-goals; `docs/history/ornamentation/research/lars-v3-implementation.md`
- * §2.2–§2.4). Its parse regex `^(\d+)(ms|th|%|ticks|\?)$` rejects both the sign and the
+ * (LarsEngeln/meico@3deb141c) is deliberately not ported — neither its API nor its behaviour.
+ * Its parse regex `^(\d+)(ms|th|%|ticks|\?)$` rejects both the sign and the
  * decimals of the spec's own examples, admits two domains no spec release has (`th`, `?`), and
  * its `toString` emits `360.0ticks`, which its own `fromString` cannot read back. Only the
  * concept survives here: value + domain.
@@ -43,7 +41,7 @@
  * onto a domain without translation.
  *
  * An `as const` table rather than a TS enum, per the new-code idiom (architecture brief
- * §1.3/§1.7); `TemporalSpread`'s `FrameDomain` and `NoteOffShift` are grandfathered enums.
+ * `TemporalSpread`'s `FrameDomain` and `NoteOffShift` are grandfathered enums.
  */
 export const TEMPORAL_DOMAIN_SUFFIX = {
   ticks: 'ticks',
@@ -60,8 +58,8 @@ export type TemporalSuffix = (typeof TEMPORAL_DOMAIN_SUFFIX)[TemporalDomain];
 /**
  * A parsed v3 temporal value. `value` is the bare number as written, so a `relative` value
  * carries the literal in front of the `%` — `"80%"` is `{ value: 80, domain: 'relative' }`,
- * not `0.8`. Resolving that against a principal note's duration is the renderer's job
- * (DESIGN.md D4 puts it in the tick domain).
+ * not `0.8`. Resolving that against a principal note's duration is the renderer's job, and it
+ * resolves into the tick domain.
  */
 export interface TemporalValue {
   readonly value: number;
@@ -71,7 +69,7 @@ export interface TemporalValue {
 /**
  * What {@link parseTemporalValueLenient} returns: a well-formed number whose domain the
  * document did not state. `domain: null` is the domain saying "there is nothing here"
- * (RULE N1) and obliges the caller to apply the fallback chain of DESIGN.md D3.
+ * (RULE N1) and obliges the caller to apply the domain fallback chain.
  */
 export interface UnresolvedTemporalValue {
   readonly value: number;
@@ -118,8 +116,8 @@ const DOMAIN_BY_SUFFIX: Readonly<Record<TemporalSuffix, TemporalDomain>> = {
  * with `parseFloat` and with Java's `Double.parseDouble`, both of which round to the nearest
  * double by the same rule. The grammar excludes every form on which they differ (hex, `1e3`,
  * trailing `d`/`f`, `Infinity`), which is why this module does not need `parseJavaDouble` even
- * though DESIGN.md D16 requires it for numeric attributes in general. That exemption is a
- * ruling (PARITY.md §6.8) and a measured one: a Java 17 harness running this same regex plus
+ * though numeric attributes in general do require it. That exemption is recorded (PARITY.md
+ * PARITY.md §6.8) and measured: a Java 17 harness running this same regex plus
  * `Double.parseDouble` over a 481-input corpus agrees with this module on all 443 accepted
  * values bit for bit, with zero acceptance mismatches. The v3 attributes that have *no* grammar
  * — a pool note's pitch, `@repetitions` — do read through `parseJavaDouble`, and there the
@@ -149,7 +147,7 @@ export function parseTemporalValueStrict(text: string): TemporalValue | null {
  * (see the module doc) and tolerating garbage would just hide encoding errors.
  *
  * @returns `domain: null` when the document stated no unit. The caller resolves it —
- *   legacy `@time.unit`, else ticks (DESIGN.md D3) — and logs whatever it decides to log.
+ *   legacy `@time.unit`, else ticks — and logs whatever it decides to log.
  */
 export function parseTemporalValueLenient(text: string): UnresolvedTemporalValue | null {
   const suffixed = parseTemporalValueStrict(text);
@@ -160,13 +158,13 @@ export function parseTemporalValueLenient(text: string): UnresolvedTemporalValue
 
 /**
  * Serialize a value in canonical v3 form: the number, then its unit suffix, and no
- * `time.unit` attribute anywhere (DESIGN.md D12).
+ * `time.unit` attribute anywhere.
  *
  * Template interpolation of a number is `ToString`, i.e. exactly `String(x)`, which is what
  * every serializer in this port uses for attribute values. So this emits `"0ticks"` and `"50%"`
  * where Java's `Double.toString` would give `"0.0ticks"` and `"50.0%"`; both spellings satisfy
- * the schematron, and the port-wide textual divergence is recorded in
- * `docs/history/ornamentation/research/java-ts-v2-ornamentation.md` §5.3 item 5.
+ * the schematron, and the port-wide textual divergence is recorded in PARITY.md, "Numbers are
+ * written `720`, not `720.0`".
  *
  * The round trip preserves value and domain, not the source text: `"0.0ticks"` comes back out
  * as `"0ticks"`. For magnitudes where `ToString` switches to exponent form (≥ 1e21, or a very

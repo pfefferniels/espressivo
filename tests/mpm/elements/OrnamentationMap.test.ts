@@ -1217,7 +1217,7 @@ describe('OrnamentationMap', () => {
   });
 });
 
-// MPM v3 — note pool, repetitions, noteid (DESIGN.md D1, D7, D9, D12). The first suite here
+// MPM v3 — note pool, repetitions, noteid (). The first suite here
 // pins the v2 writer byte for byte, which is the contract the v3 additions fit around.
 
 const MPM_NS = 'http://www.cemfi.de/mpm/ns/1.0';
@@ -1278,7 +1278,7 @@ function captureErrors(run: () => void): string[] {
   }
 }
 
-describe('addOrnament — v2 byte stability (DESIGN.md D6/D12)', () => {
+describe('addOrnament — v2 byte stability ()', () => {
   // Captured from the committed behaviour at `cd140e1`. Whole-string assertions, so attribute
   // order is pinned along with the values.
   const CASES: readonly (readonly [string, () => Element, string])[] = [
@@ -1394,7 +1394,7 @@ describe('OrnamentData — v3 fields', () => {
   });
 
   it('should accept the -1 fill-the-frame extension', () => {
-    // schema-invalid (minInclusive 0) but an established meico extension, DESIGN.md D9
+    // schema-invalid (minInclusive 0) but an established meico extension, PARITY.md §6.2 D9
     const od = ornamentDataOf('date="0.0" name.ref="trill" repetitions="-1"/>');
     expect(od.repetitions).toBe(-1);
   });
@@ -1530,7 +1530,7 @@ describe('OrnamentationMap — reading v3 ornaments', () => {
   });
 
   /**
-   * The DESIGN.md D6 gate diverts an ornament carrying v3 attributes off the v2 path entirely,
+   * The  gate diverts an ornament carrying v3 attributes off the v2 path entirely,
    * so the v2 arpeggio markers are precisely what must not appear.
    *
    * All three claims are asserted, because any two of them can hold while the ornament is
@@ -1605,7 +1605,7 @@ describe('OrnamentationMap — reading v3 ornaments', () => {
 });
 
 /**
- * `RenderOptions.expandOrnaments` (DESIGN.md D15) at its point of use.
+ * `RenderOptions.expandOrnaments` () at its point of use.
  *
  * The default is resolved here, inside `src/mpm/`, and not at the facade
  * (ARCHITECTURE.md §2.4) — which is exactly why it needs a test here: a caller that hands
@@ -1712,7 +1712,7 @@ describe('OrnamentationMap — expandOrnaments (D15)', () => {
   });
 });
 
-describe('addOrnament — the v3 options form (DESIGN.md D12)', () => {
+describe('addOrnament — the v3 options form (PARITY.md §6.2 D12)', () => {
   function firstElement(build: (m: OrnamentationMap) => void): Element {
     const m = OrnamentationMap.createOrnamentationMap();
     build(m);
@@ -1854,7 +1854,7 @@ describe('OrnamentationMap — the duplicated millisecond pass', () => {
    * `Performance` carries a private static copy of
    * {@link OrnamentationMap.renderMillisecondsModifiersToMap}, and that copy is the one the
    * pipeline runs; this class's is Java-parity code no fixture reaches (architecture brief
-   * §2.5, `docs/history/refactor/log.md:2376-2401`). The duplication stays deliberately, and
+   * The duplication stays deliberately, and
    * nothing else keeps the two bodies in step.
    *
    * The guard is two assertions, because either alone can pass while the copies have diverged:

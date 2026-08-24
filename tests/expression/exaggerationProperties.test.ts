@@ -1,14 +1,14 @@
 /**
- * DESIGN.md §1.1's properties, in the forms §1.1 says they can honestly take.
+ * the properties, in the forms the design says they can honestly take.
  *
- * - P1 identity (A2) is a byte claim, made against the canonical baseline
+ * - P1 identity is a byte claim, made against the canonical baseline
  *   `serialize(parse(t))`, never against the input: `Element.wrap` drops `xmlns` at parse, so
  *   strict `input == output` is unreachable for every MPM whatever the applier does.
  * - P2 composition is a numeric claim with an epsilon, made only where nothing clamped. Under
  *   clamping it genuinely breaks — the computed center stops being the image of the input
  *   population — and the remedy is an output rather than a proof: the reported center, passed
  *   back through `options.center`, restores composition by construction.
- * - A4's invariant, that the engine never writes a non-finite value, is asserted by sweeping
+ * - the invariant, that the engine never writes a non-finite value, is asserted by sweeping
  *   deliberately hostile XML, because that is the only place it can fail.
  */
 import { describe, expect, it } from 'vitest';
@@ -60,7 +60,7 @@ const EVERY_DIMENSION = globalDocument(
     '<temporalSpread id="spread" frame.start="-22.0" frameLength="44" intensity="1.60"/>' +
     '<dynamicsGradient id="grad" transition.from="-1" transition.to="1"/>' +
     '</ornamentDef>' +
-    // The v3 reading of the same dimensions (§7.15), in the same performance as its v2 twin:
+    // The v3 reading of the same dimensions, in the same performance as its v2 twin:
     // unit-suffixed values on both bounds, spelled non-canonically for the same reason.
     '<ornamentDef name="trill">' +
     '<temporalSpread id="v3spread" frame.offset="-22.0ms" frameLength="80%" intensity="1.30"/>' +
@@ -132,7 +132,7 @@ function collectAttributes(xml: string): Map<string, string> {
  * not a number at all.
  *
  * Both sweeps below classify every attribute into "a quantity the engine may have computed" and
- * "text it must have left alone". A v3 unit suffix (§7.15) reads as `NaN` under `Number` and
+ * "text it must have left alone". A v3 unit suffix reads as `NaN` under `Number` and
  * would misfile as text, so the split goes through `parseTemporalText`, the engine's own reader;
  * `Number` still handles the spellings the v3 grammar excludes but `parseFloat` accepts.
  */
@@ -143,7 +143,7 @@ function numericPart(text: string): { readonly value: number; readonly suffix: s
   return Number.isFinite(value) ? { value, suffix: '' } : null;
 }
 
-describe('P1 identity (§1.1, A2)', () => {
+describe('P1 identity', () => {
   it('an empty factors record reproduces the canonical baseline byte for byte', () => {
     const { xml, report } = exaggerate(EVERY_DIMENSION, {});
     expect(xml).toBe(canonicalBaseline(EVERY_DIMENSION));
@@ -175,7 +175,7 @@ describe('P1 identity (§1.1, A2)', () => {
   });
 });
 
-describe('R2 determinism', () => {
+describe('determinism', () => {
   it('two runs of the same (document, factors) produce byte-identical output', () => {
     const first = exaggerate(EVERY_DIMENSION, uniformFactors(1.4));
     const second = exaggerate(EVERY_DIMENSION, uniformFactors(1.4));
@@ -191,7 +191,7 @@ describe('R2 determinism', () => {
   });
 });
 
-describe('P2 composition on the clamp-free subdomain (§1.1, A3)', () => {
+describe('P2 composition on the clamp-free subdomain', () => {
   const STEP = 1.3;
   const PRODUCT = STEP * STEP;
 
@@ -215,7 +215,7 @@ describe('P2 composition on the clamp-free subdomain (§1.1, A3)', () => {
     const once = step(EVERY_DIMENSION, PRODUCT);
     const first = step(EVERY_DIMENSION, STEP);
     const twice = step(first.text, STEP);
-    // The precondition §1.1 attaches to the claim: nothing clamped in either arrangement.
+    // The precondition the claim attaches to: nothing clamped in either arrangement.
     expect(once.clamps).toBe(0);
     expect(first.clamps + twice.clamps).toBe(0);
     // …and the guard against a vacuous pass: an engine that wrote nothing would satisfy every
@@ -241,15 +241,15 @@ describe('P2 composition on the clamp-free subdomain (§1.1, A3)', () => {
       const composedValue = numericPart(composedText);
       const directValue = numericPart(directText);
       if (row === null || composedValue === null || directValue === null) {
-        // Either not a live attribute — `@date`, `@beatLength`, every §7.16 exclusion — or a
-        // level attribute holding a def name, which D-C forbids rewriting as a number. Either
+        // Either not a live attribute — `@date`, `@beatLength`, every the exclusion — or a
+        // level attribute holding a def name, which the design forbids rewriting as a number. Either
         // way the two arrangements must agree on the spelling, not just the value.
         expect(composedText).toBe(directText);
         continue;
       }
       comparedNumbers += 1;
       // A v3 unit composes by not moving at all: only the number is scaled, so a drift in the
-      // suffix would be the engine rewriting a unit, which nothing in §7 licenses.
+      // suffix would be the engine rewriting a unit, which nothing licenses.
       expect(composedValue.suffix).toBe(directValue.suffix);
       expect(Math.abs(composedValue.value - directValue.value)).toBeLessThan(
         toleranceFor(row.space, directValue.value),
@@ -283,7 +283,7 @@ function toleranceFor(space: RowSpace, value: number): number {
     : base / Math.max(margin, Number.EPSILON);
 }
 
-describe('P2 under clamping — the center is an output, not a proof (§1.1, A3)', () => {
+describe('P2 under clamping — the center is an output, not a proof', () => {
   // Three named levels whose top one reaches the ceiling partway through — the configuration
   // where the recomputed center stops being the image of the input population.
   const LADDER = globalDocument(
@@ -335,7 +335,7 @@ describe('P2 under clamping — the center is an output, not a proof (§1.1, A3)
   });
 });
 
-describe('A4 — the engine never writes a non-finite value', () => {
+describe('the engine never writes a non-finite value', () => {
   /**
    * Every hostile shape a real document can carry: Java's own `NaN`/`Infinity` literals, which
    * `parseJavaDouble` accepts so that a def lookup can hand back a non-finite value; overflow
@@ -359,7 +359,7 @@ describe('A4 — the engine never writes a non-finite value', () => {
       '<ornamentDef name="live"><temporalSpread frame.start="-22" frameLength="44" ' +
       'intensity="1.5" time.unit="ticks"/><dynamicsGradient transition.from="-1" ' +
       'transition.to="1"/></ornamentDef>' +
-      // The v3 frame's own hostile shapes (§7.15). A 309-digit value is schema-valid and
+      // The v3 frame's own hostile shapes. A 309-digit value is schema-valid and
       // overflows to Infinity, so only the gate stands between it and the document; a v3 spread
       // with no @frameLength has a non-neutral absent bound; the live v3 spread keeps the sweep
       // from proving the invariant by writing nothing.
@@ -377,7 +377,7 @@ describe('A4 — the engine never writes a non-finite value', () => {
       '<tempo date="4.0" bpm="120bpm" beatLength="0"/>' +
       '<tempo date="later" bpm="90" beatLength="0.25" meanTempoAt="0"/>' +
       '<tempo date="6.0" bpm="90" beatLength="0.25" transition.to="" meanTempoAt="1"/>' +
-      // Valid siblings (F7). Without them every hostile site is refused upstream and the sweep
+      // Valid siblings. Without them every hostile site is refused upstream and the sweep
       // proves "nothing was written" rather than "everything written was finite". These two
       // reach the denormalized-tempo write path, which no other fixture here exercises.
       '<tempo date="7.0" bpm="90" beatLength="0.5" meanTempoAt="0.4" transition.to="70"/>' +
@@ -440,17 +440,17 @@ describe('A4 — the engine never writes a non-finite value', () => {
       if (value === before.get(key)) continue;
       changed += 1;
       // Anything the engine CHANGED it also computed, so it must be a finite number — in v3
-      // possibly one wearing a unit, which `Number` alone would read as `NaN` (§7.15).
+      // possibly one wearing a unit, which `Number` alone would read as `NaN`.
       expect(numericPart(value) !== null, `${key} = ${value}`).toBe(true);
       expect(['NaN', 'Infinity', '-Infinity']).not.toContain(value);
     }
-    // F7's anti-vacuity guard: the invariant is "everything written was finite", which a
+    // the anti-vacuity guard: the invariant is "everything written was finite", which a
     // document that refuses everything satisfies by writing nothing.
     expect(report.totalWrites).toBeGreaterThan(0);
     expect(changed).toBeGreaterThan(5);
   });
 
-  it.each(FACTOR_SWEEP)('never touches a @date at s = %s (R5)', (factor) => {
+  it.each(FACTOR_SWEEP)('never touches a @date at s = %s', (factor) => {
     const before = collectAttributes(canonicalBaseline(ADVERSARIAL));
     const { xml } = exaggerate(ADVERSARIAL, uniformFactors(factor));
     for (const [key, value] of collectAttributes(xml)) {

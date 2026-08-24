@@ -1,13 +1,13 @@
 /**
  * The numerical core: compensated summation, fixed-order Gauss–Legendre, and the two
- * tempo-specific devices DESIGN.md §5.0 requires (AD-28, M6, M7).
+ * tempo-specific devices the design requires.
  *
  * Pure functions over plain numbers, so the accuracy claims here are tested against closed
  * forms rather than inferred from a distance that happens to look right.
  *
- * §5.0's three quadrature rules:
+ * the three quadrature rules:
  *
- * 1. Tempo cells run on an equal-mass graded mesh (AD-28.1) rather than through AD-17's
+ * 1. Tempo cells run on an equal-mass graded mesh rather than through the
  *    substitution `u = z^{1/e}`, which was measured here and falsified for `e > 1` — 39 % error
  *    at `meanTempoAt = 0.9`. {@link integrateGradedPower}, {@link integrateSubstitutedPower}.
  * 2. Sign changes are bracketed by structure. `g_A − g_B` can cross twice inside one cell with
@@ -16,7 +16,7 @@
  *    orders past the advertised ε, silently. See {@link powerCriticalPoint}.
  * 3. The defined Bézier is the ideal one: `bezier.ts`'s `tForDate` stops at a one-tick tolerance
  *    in the date domain, so the renderer's `date ↦ volume` is a staircase GL-10 cannot converge
- *    against, and belongs to the §6.3 replay only. That is a statement about which function the
+ *    against, and belongs to the replay only. That is a statement about which function the
  *    evaluators hand this module, not about the quadrature.
  */
 
@@ -26,9 +26,9 @@ import { pairwise, zipWith } from '../prelude/index.js';
  * Neumaier summation — Kahan's compensated sum with the branch that also handles the case
  * where the running total is *smaller* than the addend.
  *
- * R2 requires `compare(a,b)` and `compare(b,a)` to agree to the last bit, which plain
+ * the design requires `compare(a,b)` and `compare(b,a)` to agree to the last bit, which plain
  * left-to-right addition of thousands of cell contributions does not: order dependence shows up
- * as a one-ulp asymmetry. Callers therefore sum in a documented order (date-ordered, §5.0) *and*
+ * as a one-ulp asymmetry. Callers therefore sum in a documented order (date-ordered) *and*
  * compensate; the order rule alone fixes which sum you get, not how much of it survives.
  *
  * Neumaier rather than plain Kahan because plain Kahan loses the correction exactly when one
@@ -116,7 +116,7 @@ const GAUSS_LEGENDRE_10_TABLE: readonly (readonly [node: number, weight: number]
  * one. A degenerate or inverted interval integrates to 0 rather than to a negative number: the
  * caller's cells come from a sorted grid, so `b < a` is a caller bug rather than a signed area.
  * The accumulation is compensated and runs in node order, so two calls with the same arguments
- * give the same bits and a mirrored pair gives mirrored bits (R2).
+ * give the same bits and a mirrored pair gives mirrored bits.
  */
 export function gaussLegendre10(f: (x: number) => number, a: number, b: number): number {
   if (!(b > a)) return 0;
@@ -129,18 +129,18 @@ export function gaussLegendre10(f: (x: number) => number, a: number, b: number):
 }
 
 /**
- * `∫₀¹ f(u^e) du` computed as `∫₀¹ f(z)·(1/e)·z^{1/e−1} dz` — §5.0's rule 1.
+ * `∫₀¹ f(u^e) du` computed as `∫₀¹ f(z)·(1/e)·z^{1/e−1} dz` — the rule 1.
  *
  * `f` is a function of the *already-powered* argument — the caller passes
  * `z ↦ ln(bpm₀ + Δ·z)`, not `u ↦ ln(bpm₀ + Δ·u^e)` — which is the point of the substitution:
  * `u^e` never appears, so neither does its singular derivative at either end. `e = 1` goes
  * through the same formula (the Jacobian is then identically 1); `e ≤ 0` and non-finite `e` are
- * refused, since §5.1's degenerate table collapses `meanTempoAt ≤ 0` and `≥ 1` to a constant
+ * refused, since the degenerate table collapses `meanTempoAt ≤ 0` and `≥ 1` to a constant
  * span before a curve is built.
  *
  * ## Measured limit — not valid for `e > 1`
  *
- * §5.0 rule 1 claims the substitution "makes the integrand smooth for every `e`, killing both
+ * the rule 1 claims the substitution "makes the integrand smooth for every `e`, killing both
  * singular ends at once". Measured against a 2·10⁶-point composite Simpson reference, that
  * holds only for `e < 1`. For `e > 1` the Jacobian exponent `1/e − 1` goes negative and the
  * substitution *creates* a severe singularity at `z = 0` where the original integrand had none:
@@ -165,7 +165,7 @@ export function integrateSubstitutedPower(f: (z: number) => number, e: number): 
 }
 
 /**
- * The number of panels the graded mesh uses for exponent `e` — AD-28.1's `⌈log₂ e⌉ + 2`,
+ * The number of panels the graded mesh uses for exponent `e` — the `⌈log₂ e⌉ + 2`,
  * floored at 2.
  *
  * The floor is not in the ruling's formula and is required by it: for `e < 1` the logarithm is
@@ -182,7 +182,7 @@ export function gradedPanelCount(e: number): number {
 }
 
 /**
- * `∫₀¹ f(u^e) du` on an equal-mass graded mesh — AD-28.1, the ruled scheme.
+ * `∫₀¹ f(u^e) du` on an equal-mass graded mesh — the ruled scheme.
  *
  * Panels are placed at `u = (k/K)^{1/e}`, so each carries the same amount of `z = u^e` and the
  * mesh concentrates where the integrand moves: bunched near `u = 1` for a large `e` (the
@@ -193,10 +193,10 @@ export function gradedPanelCount(e: number): number {
  * {@link integrateSubstitutedPower} wants. The mesh does not transform the integrand at all,
  * only chooses where to look at it, so it has no Jacobian and no singularity to create.
  *
- * One scheme for the whole legal range, no regime branching (AD-28.1). Measured against a
+ * One scheme for the whole legal range, no regime branching. Measured against a
  * 2·10⁶-point composite Simpson reference on `ln(60 + 60·u^e)`: worst relative error 3.3·10⁻⁶
  * over `meanTempoAt ∈ [0.02, 0.99]`, 2.9·10⁻⁵ out at 0.999, against naive GL-10's 4.4·10⁻⁵ and
- * 2.9·10⁻⁴. In JND terms, the actual requirement (AD-28.2): the tempo JND is
+ * 2.9·10⁻⁴. In JND terms, the actual requirement: the tempo JND is
  * `ln(1.025) ≈ 0.0247` nepers, so the worst error is 5.4·10⁻⁴ JND over the practical range —
  * numerical hygiene above a metric requirement naive GL-10 already met.
  */
@@ -210,7 +210,7 @@ export function integrateGradedPower(f: (u: number) => number, e: number): numbe
 /**
  * The graded mesh's panel boundaries on the unit interval, `0 … 1` inclusive.
  *
- * Factored out so that {@link integrateGradedPower} — the function AD-28.1's 3.3·10⁻⁶ figure
+ * Factored out so that {@link integrateGradedPower} — the function the 3.3·10⁻⁶ figure
  * was measured on — and `tempoDistance`'s shipped path place their panels through the *same*
  * code. MINOR-3: agreement by inspection is not a property, and an edit to one would not be
  * caught by the other's test.
@@ -224,19 +224,19 @@ export function gradedPanelBounds(e: number): readonly number[] {
 }
 
 /**
- * §5.0 rule 2's interior critical point of a power-versus-power tempo cell, or null when
+ * the rule 2's interior critical point of a power-versus-power tempo cell, or null when
  * there is none in `(0, 1)`.
  *
  * For two spans `Δ_a·u^p` and `Δ_b·u^q` with `p ≠ q`, the difference of the *pre-logarithm*
  * offsets is stationary where `p·Δ_a·u^{p−1} = q·Δ_b·u^{q−1}`, i.e. at
- * `u* = (q·Δ_b / (p·Δ_a))^{1/(p−q)}` — the formula §5.0 states. Splitting the cell there
+ * `u* = (q·Δ_b / (p·Δ_a))^{1/(p−q)}` — the formula the design states. Splitting the cell there
  * leaves two branches on which the difference is monotone, so the bisection below has a
  * bracket whenever a crossing exists and rule 2's silent 1.48·10⁻² error cannot occur.
  *
  * A splitting device, not a root: the stationary point of the difference of the offsets, not of
  * the difference of their logarithms, so it does not in general sit at the extremum of
  * `g_A − g_B`. Any split that separates the crossings makes the branches bracketable, and this
- * one provably does for the power-vs-power family — which is why §5.0 calls it a bracket. A
+ * one provably does for the power-vs-power family — which is why the design calls it a bracket. A
  * split point outside `(0, 1)`, or one the arithmetic cannot produce, yields null and the caller
  * integrates the cell whole, correctly: there the difference is already monotone.
  */
@@ -260,9 +260,9 @@ export function powerCriticalPoint(
 /**
  * The sign of `x` as a comparable token, with `-0` and `+0` agreeing.
  *
- * A token rather than `x > 0` because R2's symmetry is mechanical: `f ↦ −f` is exact in IEEE754,
+ * A token rather than `x > 0` because the symmetry is mechanical: `f ↦ −f` is exact in IEEE754,
  * so a bracket update phrased as a *sign comparison* inverts consistently under mirroring while
- * one phrased as `f(m) > 0` does not (M16). Every comparison below goes through this.
+ * one phrased as `f(m) > 0` does not. Every comparison below goes through this.
  */
 function signOf(x: number): -1 | 0 | 1 {
   if (x > 0) return 1;
@@ -288,7 +288,7 @@ function leftLimitOf(high: number, low: number): number {
 /**
  * The crossing of `f` in `[a, b]` by bisection, or null when the endpoints do not bracket one.
  *
- * Fixed 50 iterations rather than a tolerance loop, per §5.0/R2: a fixed count is deterministic
+ * Fixed 50 iterations rather than a tolerance loop: a fixed count is deterministic
  * across inputs and platforms, and 50 halvings take any starting interval below `2⁻⁵⁰` of its
  * width. A tolerance loop would make the iteration count data-dependent and the result
  * order-dependent under mirroring. The bracket update compares signs ({@link signOf}).
@@ -297,7 +297,7 @@ export function bisectSignChange(f: (x: number) => number, a: number, b: number)
   let low = a;
   let high = b;
   const signLow = signOf(f(low));
-  // HALF-OPEN PROBE (AD-33.3a). Every curve in this module is right-continuous (A-B1), so
+  // HALF-OPEN PROBE. Every curve in this module is right-continuous, so
   // `f(b)` at a cell's right edge is the NEXT cell's value across a discontinuity, and
   // bracketing on it searches this interval with a sign that does not belong to it. Probing
   // the right endpoint at its left limit fixes that. The GL-10 nodes are untouched — they are
@@ -320,17 +320,17 @@ export function bisectSignChange(f: (x: number) => number, a: number, b: number)
 }
 
 /**
- * `∫ₐᵇ min(|f|, cap)` — {@link integrateAbsolute} under §4's cap, for the dimensions whose
+ * `∫ₐᵇ min(|f|, cap)` — {@link integrateAbsolute} under the cap, for the dimensions whose
  * pointwise density has to be capped rather than merely accumulated.
  *
  * Tempo and dynamics integrate `|g_A − g_B|/jnd` uncapped and are metric doing so, because
- * neither can produce `⊥`: an unresolvable level is performed at 100.0 (R8). Accentuation and
- * pedal *can* — an unresolvable `accentuationPatternDef` aborts the render (R21), and an
+ * neither can produce `⊥`: an unresolvable level is performed at 100.0. Accentuation and
+ * pedal *can* — an unresolvable `accentuationPatternDef` aborts the render, and an
  * out-of-domain `@curvature` makes the date component non-monotone, so there is no
- * `date ↦ position` function at all (§5.8/§4). §4 prices `⊥` at `δ_row` from every value, so a
+ * `date ↦ position` function at all. The design prices `⊥` at `δ_row` from every value, so a
  * value-value pair priced uncapped breaks the triangle inequality the moment a `⊥` document is
  * the middle term: `d(x, ⊥) + d(⊥, y) = 2δ` while `d(x, y)` grows without bound. Capping the
- * pointwise density at `2·δ_row` is what §4 requires of `localDistance`, applied under the
+ * pointwise density at `2·δ_row` is what the design requires of `localDistance`, applied under the
  * integral because here the quantity is a curve rather than an attribute.
  *
  * The cap introduces a corner wherever `|f|` crosses it, which GL-10 cannot represent — the same
@@ -380,7 +380,7 @@ export function integrateCappedAbsolute(
   return { mass: total.total, capped: bound };
 }
 
-/** {@link integrateCappedAbsolute}'s result: the mass, and whether §4's cap bound anywhere. */
+/** {@link integrateCappedAbsolute}'s result: the mass, and whether the cap bound anywhere. */
 export interface CappedIntegral {
   readonly mass: number;
   /** True where the cap replaced the raw difference on at least one piece of `[a, b]`. */
@@ -423,7 +423,7 @@ function signConstantPieces(
 /**
  * `∫ₐᵇ |f|` with the absolute value resolved at the crossings rather than under the integral.
  *
- * Integrating `|f|` directly with a smooth rule is the error §5.0 rule 2 describes: `|f|` has a
+ * Integrating `|f|` directly with a smooth rule is the error the rule 2 describes: `|f|` has a
  * corner at every root, and GL-10 sees a kink it cannot represent. So the interval is split at
  * the crossings the caller's `splitPoints` isolate, each sub-interval is integrated with its
  * sign known and constant, and the magnitudes are added.
