@@ -1105,13 +1105,32 @@ describe('MovementMap', () => {
       expect(rendered.size()).toBeGreaterThan(0);
     });
 
-    // The off-by-one that is NOT a repair: the scan runs `j > 0`, so entry 0 is never
-    // examined and a movement inheriting from the very first entry gets 0 rather than that
-    // entry's transition.to. Faithful to MovementMap.java:200 and deliberately kept — see
-    // PARITY.md, "Bug-for-bug preservations".
-    it('still never examines entry 0, so inheriting from it yields 0', () => {
+    // Entry 0 is a predecessor like any other. The scan bound used to stop one entry short,
+    // which yielded 0 here — GH issue #2, PARITY.md §1.
+    it('examines entry 0, so a movement inheriting from it gets its transition.to', () => {
       const map = MovementMap.createMovementMap()!;
       map.addElement(movement({ date: '0.0', position: '0.1', 'transition.to': '0.4' }));
+      map.addElement(movement({ date: '480.0' }));
+
+      expect(map.getMovementDataOf(1)!.position).toBe(0.4);
+    });
+
+    // Reaching entry 0 also means reaching the P2 skip there: this movement used to get 0.
+    it('skips a movement whose entry-0 predecessor has no transition.to', () => {
+      const map = MovementMap.createMovementMap()!;
+      map.addElement(movement({ date: '0.0', position: '0.1' }));
+      map.addElement(movement({ date: '480.0' }));
+
+      expect(quiet(() => map.getMovementDataOf(1))).toBeNull();
+    });
+
+    // Nothing to inherit from at all, which is the `return 0` at the end of the scan.
+    it('yields 0 where no <movement> precedes the one that needs a position', () => {
+      const map = MovementMap.createMovementMap()!;
+      const style = new Element('style');
+      style.addAttribute(new Attribute('date', '0.0'));
+      style.addAttribute(new Attribute('name.ref', 'irrelevant'));
+      map.addElement(style);
       map.addElement(movement({ date: '480.0' }));
 
       expect(map.getMovementDataOf(1)!.position).toBe(0);

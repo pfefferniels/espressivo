@@ -26,8 +26,8 @@
  *   movement at 360 and a transition at 720 emit events at 0 and then not again until 720.
  *
  * §5.8 states none of the above; it is this module's reading. What §5.8 does state — the flat
- * span structure, the last movement's exclusion, curvature's 0.4 default, the `j > 0`
- * inheritance — is implemented verbatim below with its citations.
+ * span structure, the last movement's exclusion, curvature's 0.4 default, the inheritance of a
+ * missing `@position` — is implemented verbatim below with its citations.
  *
  * ## The exclusion is by ENTRY INDEX, and a trailing `<style>` resurrects a movement (AD-35)
  *
@@ -196,24 +196,19 @@ interface RawMovement {
 }
 
 /**
- * `MovementMap.getPreviousPosition:143-151`, transliterated — including the `j > 0` bound.
+ * `MovementMap.getPreviousPosition:163-172`, transliterated.
  *
- * The loop starts at `index − 1` and stops before entry 0, so a movement inheriting from the
- * very first entry of the map gets 0 instead of that entry's `@transition.to`. The port keeps
- * this deliberately (PARITY.md P2) and it is observable: with `1.0 → 0.25` at entry 0 and a
- * position-less movement at 360, the pedal drops to 0 at 360; put any `<style>` in front so the
- * same movement sits at entry 1, and it starts from 0.25 instead. Both executed. A second
- * instance of AD-35.4's hazard class — a rule stated over ENTRIES that reads as if it were about
- * movements — and the reason the reader below walks entry indices, not a filtered movement list.
+ * The scan is over ENTRY indices and takes the nearest entry named `movement`, so a `<style>`
+ * sitting between two movements is stepped over rather than inherited from — which is why the
+ * reader below walks entry indices and not a filtered movement list.
  *
- * @returns the inherited position, or null where the predecessor carries no `@transition.to`,
- *   which makes `getMovementDataOf` log and return null and drops the movement entirely.
+ * @returns the inherited position, 0 where no `<movement>` precedes this one, or null where the
+ *   predecessor carries no `@transition.to`, which makes `getMovementDataOf` log and return null
+ *   and drops the movement entirely.
  */
 function inheritedPosition(entries: OrderedMapView['entries'], index: number): number | null {
-  // Entries `1 … index-1`, latest first. The `j > 0` bound is the rule's own: entry 0 has no
-  // predecessor to inherit from.
   const previous = findLast(
-    entries.slice(1, index),
+    entries.slice(0, index),
     (entry) => entry.element.getLocalName() === 'movement',
   );
   if (previous === null) return 0;
@@ -316,7 +311,7 @@ export function readMovementSegments(view: OrderedMapView | null, scaleFactor: n
           detail:
             'no @position and the preceding movement has no @transition.to to inherit one ' +
             'from: getMovementDataOf logs and returns null, and the movement is dropped ' +
-            '(MovementMap.ts:100-107). Java throws a NullPointerException here instead and ' +
+            '(MovementMap.ts:124-133). Java throws a NullPointerException here instead and ' +
             'aborts the whole render — see PARITY.md P2.',
         });
         continue;
@@ -327,7 +322,7 @@ export function readMovementSegments(view: OrderedMapView | null, scaleFactor: n
         dateTicks,
         detail:
           `no @position: inherited ${String(fallback)} from the nearest preceding <movement>, ` +
-          'whose scan is `j > 0` and therefore never examines entry 0 (MovementMap.ts:144)',
+          'the scan stepping over any entry that is not one (MovementMap.ts:163-172)',
       });
     } else {
       position = parseFloat(positionText);

@@ -302,9 +302,9 @@ describe('the reading rules §5.8 states', () => {
     expect(at(unshaped, 180)).not.toBe(at(flat, 180));
   });
 
-  it('inherits a missing @position from the previous @transition.to — and skips entry 0', () => {
-    // PARITY P2: the inheritance scan is `j > 0`, so the movement at 360 inherits 0 rather
-    // than the 0.25 that entry 0 ends at. Put ANY entry in front and it inherits 0.25.
+  it('inherits a missing @position from the previous @transition.to, entry 0 included', () => {
+    // The scan reaches entry 0 (GH issue #2), so what the movement at 360 inherits no longer
+    // depends on whether anything happens to sit in front of it.
     const body =
       '<movement date="0.0" position="1.0" transition.to="0.25"/>' +
       '<movement date="360.0" transition.to="0.9"/>' +
@@ -314,15 +314,15 @@ describe('the reading rules §5.8 states', () => {
       if (isBottom(value)) throw new Error('unreachable');
       return value.value;
     };
-    expect(at(body, 360)).toBe(0);
+    expect(at(body, 360)).toBe(0.25);
     expect(at(`<style date="0.0" name.ref="S"/>${body}`, 360)).toBe(0.25);
 
-    // And the renderer agrees, which is the only reason this deliberate defect is kept.
+    // And the renderer agrees, which is what makes this the renderer's curve and not a model.
     const withoutStyle = rendererEvents(body).filter(([date]) => date === 360);
     const withStyle = rendererEvents(`<style date="0.0" name.ref="S"/>${body}`).filter(
       ([date]) => date === 360,
     );
-    expect(Math.min(...withoutStyle.map(([, position]) => position))).toBe(0);
+    expect(Math.min(...withoutStyle.map(([, position]) => position))).toBeCloseTo(0.25, 12);
     expect(Math.min(...withStyle.map(([, position]) => position))).toBeCloseTo(0.25, 12);
   });
 

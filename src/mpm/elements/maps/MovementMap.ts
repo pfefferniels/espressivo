@@ -154,20 +154,14 @@ export class MovementMap extends GenericMap {
    * The end position of the nearest preceding `<movement>`; 0 if there is none, and null if
    * the one found cannot supply a position.
    *
-   * PARITY NOTE — the loop condition is `j > 0`, not `j >= 0`, so ENTRY 0 IS NEVER EXAMINED:
-   * a movement that inherits its position from the very first entry in the map gets 0 instead
-   * of that entry's `transition.to`. Faithful to the Java reference (MovementMap.java:200) and
-   * deliberately kept.
-   *
-   * The null return is a deliberate divergence. Java throws a NullPointerException at
-   * `MovementMap.java:200` (`getAttribute("transition.to").getValue()`) for a preceding
-   * `<movement>` with no `transition.to` and aborts the whole render; leaving the position at
-   * 0 instead would silently place the movement at "fully released". So this reports "no
-   * position available" and {@link getMovementDataOf} logs and skips just that movement
-   * (ARCHITECTURE.md RULE E1, logs-and-returns-null). See PARITY.md, "Fixed bugs", P2.
+   * The null return is a deliberate divergence: for a preceding `<movement>` with no
+   * `transition.to` Java dereferences null and aborts the whole render, and leaving the
+   * position at 0 instead would silently place the movement at "fully released". So this
+   * reports "no position available" and {@link getMovementDataOf} logs and skips just that
+   * movement (ARCHITECTURE.md RULE E1, logs-and-returns-null). PARITY.md §1, P2.
    */
   private getPreviousPosition(index: number): number | null {
-    for (let j = index - 1; j > 0; --j) {
+    for (let j = index - 1; j >= 0; --j) {
       const previous = this.entryAt(j).value;
       if (previous.getLocalName() === 'movement') {
         const ttAtt = previous.getAttribute('transition.to');

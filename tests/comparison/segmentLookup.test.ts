@@ -97,10 +97,7 @@ const pedalCurve = () => {
     readComparisonPair({
       a: doc(
         'movementMap',
-        // The leading <style> makes the movement at 0 entry ONE, so that
-        // `getPreviousPosition`'s `j > 0` bound can reach it.
-        '<style date="0.0" name.ref="x"/>' +
-          '<movement date="0.0" position="1.0"/>' +
+        '<movement date="0.0" position="1.0"/>' +
           // A SKIPPED movement: no @position, and its predecessor carries no @transition.to to
           // inherit one from, so `getMovementDataOf` returns null and it renders nothing. But
           // `getEndDate` still finds it, so the span above ends at 720 while nothing new is

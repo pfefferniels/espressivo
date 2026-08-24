@@ -250,7 +250,10 @@ map renders. This is the interior's house policy for malformed input (ARCHITECTU
 logs-and-returns-null) and the same shape the def factories use, which is why it was preferred
 over a typed throw: an aborted render is Java's behaviour and is worse than a skipped movement.
 
-Note what did **not** change: the `j > 0` scan still never examines entry 0 (§3).
+Note what did **not** change here: which entries the scan examines. That bound was off by one
+too, and is fixed separately — the last entry in this section. The two meet in one place: a
+`<movement>` at entry 0 with no `transition.to` now takes this skip, where before the bound
+alone kept it out of reach.
 
 ### P4 — `RandomNumberProvider` rejects an index it cannot serve
 
@@ -770,6 +773,45 @@ modifier being non-neutral, and no fixture articulation has one. Add one and it 
 Reverting the read reds three guard tests — one of them the pre-existing round-trip test, which
 asserted date and def name but not the id, and so stayed green over a round-trip that lost it.
 
+### The position-inheritance scan stopped one entry short
+
+|                           |                                                                  |
+| ------------------------- | ---------------------------------------------------------------- |
+| Item                      | GH issue #2, fixed 2026-08-25                                    |
+| Java                      | `MovementMap.java:200`, fixed in the fork at `meico@c13e7ae4`    |
+| TypeScript                | `src/mpm/elements/maps/MovementMap.ts`, `getPreviousPosition`    |
+| Guard tests               | `tests/mpm/elements/MovementMap.test.ts`, "position inheritance" |
+| Reachable from a fixture? | No — every fixture `<movement>` carries an explicit `@position`  |
+
+`for (int j = index - 1; j > 0; --j)` where the loop means `j >= 0`, so **entry 0 was never
+examined**. A `<movement>` with no `@position` whose nearest preceding `<movement>` was the map's
+first entry inherited the initial 0 rather than that entry's `@transition.to` — a pedal silently
+at "fully released" where the author wrote a position. What makes it a defect rather than a
+reading is that it is positional: put any `<style>` in front and the same predecessor, now at
+entry 1, is inherited from after all.
+
+    probe: position="1.0" transition.to="0.25" at 0, a position-less <movement> at 360
+      unpatched   inherit from entry 0      position=0.0
+      patched     inherit from entry 0      position=0.25
+      both        leading-<style> control   position=0.25
+
+**This is not P2, and the two are pinned by separate tests.** P2 changes what happens when the
+entry that _is_ examined carries no `@transition.to`; this changes which entries are examined.
+They meet in one case — a `<movement>` at entry 0 with no `@transition.to`, which now takes P2's
+skip here and reaches the NullPointerException P2 describes in Java — and that case has its own
+test.
+
+**Evidence — zero moved bytes.** All 120 reference files regenerated from clean builds of
+`c13e7ae4` and its parent `c1f3fffd`; after UUID canonicalization the only two that differ are
+`imprecision_timing_augmented.msm` and `imprecision_timing_expressive.mid`, which two runs of the
+_same_ build also differ in (§4). The corpus does not reach the change at all: every `<movement>`
+in `movement.mpm` and `all_maps.mpm` carries an explicit `@position`, so `getPreviousPosition` is
+never called. Hence no regeneration.
+
+The comparison module transliterates this scan and moved with it — `inheritedPosition` in
+`src/comparison/pedalCurve.ts` now slices from 0, and `tests/comparison/pedal.test.ts` pins the
+renderer's own `<position>` events at the inheriting date against it.
+
 ## 2. Frozen divergences
 
 Known, journaled, and deliberately **not** repaired. Two are reachable on input a caller can
@@ -1017,14 +1059,6 @@ to sit at the call site said so. The two `!`s that spelled it are gone; the thro
 `MissingNodeError` naming the missing collection, and `tests/mpm/elements/Header.test.ts`
 builds such a header and pins both aborts, so neither half can be "tidied" into agreement with
 the other by accident.
-
-### An off-by-one loop bound, kept
-
-`MovementMap.getPreviousPosition` runs `j > 0`, not `j >= 0`, so **entry 0 is never
-examined**: a movement inheriting its position from the very first entry in the map gets 0
-instead of that entry's `transition.to` (`MovementMap.java:200`). Untouched by §1's P2 fix,
-which changes only what happens when the entry that _is_ examined has no `transition.to`, and
-pinned by its own test so the two cannot be confused.
 
 ### `attribute()` matched qualified names — and the divergence was Java's bug, not ours
 

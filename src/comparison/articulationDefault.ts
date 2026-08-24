@@ -30,8 +30,7 @@
  * entire pre-switch region, most of the piece where the only switch is late.
  *
  * A third instance of AD-35.4's hazard class, in a new shape: "index 0 is used before its date
- * has arrived", after `renderMovementToMap`'s `size() - 1` guard and `getPreviousPosition`'s
- * `j > 0`.
+ * has arrived", after `renderMovementToMap`'s `size() - 1` guard.
  *
  * ## Three dispositions, two of which cancel (AD-37.2)
  *

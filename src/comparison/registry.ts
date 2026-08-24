@@ -1823,10 +1823,9 @@ const PEDAL_ROWS: readonly ComparisonRegistryRow[] = [
       'logit, because 0.0 and 1.0 are the canonical authored values and a logit sends them to ' +
       '±∞ (§5.8). Out-of-range values are CLAMPED by the MIDI export rather than refused ' +
       '(EventMaker.ts:536), so the span performs at the bound and compares as performed. A ' +
-      '<movement> with no @position inherits the previous one’s @transition.to, and that scan ' +
-      'is `j > 0` so entry 0 is never examined and the inherited value is 0 — deliberate, ' +
-      'PARITY-noted, and observable: a leading <style> changes the inherited position. A ' +
-      'movement whose predecessor carries no @transition.to is skipped entirely and the ' +
+      '<movement> with no @position inherits the previous one’s @transition.to, that scan ' +
+      'stepping over any entry that is not a <movement> and yielding 0 where none precedes it. ' +
+      'A movement whose predecessor carries no @transition.to is skipped entirely and the ' +
       'previous value holds. 0.1 of full travel [convention] — see the constant.',
   },
   {
