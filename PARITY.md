@@ -772,11 +772,12 @@ asserted date and def name but not the id, and so stayed green over a round-trip
 
 ## 2. Frozen divergences
 
-Known, journaled, and deliberately **not** repaired. Three are reachable on input a caller can
+Known, journaled, and deliberately **not** repaired. Two are reachable on input a caller can
 supply: `IMP1`, from defective imprecision input, where both sides destroy the performance by
-different means; `TS1`, from a well-formed MEI with a directional work-level tempo, which is
-the one plain defect here; and `XB1`, from any source text that is not well-formed XML, where
-this port throws and Java hands back an empty document. The first
+different means, and `XB1`, from any source text that is not well-formed XML, where this port
+throws and Java hands back an empty document. `TS1` was the third, and the only plain defect
+among them; §9 removed the code that produced it, so its entry below is a record of the ruling
+rather than a live divergence. The first
 three bullets come from capability gaps in the XML layer rather than from choices; the fourth is
 a choice, and is the one place where this port returns something Java's own code computes and
 then throws away.
@@ -853,12 +854,14 @@ the charter that found this.
 
 ### `TS1` — the work-level tempo's style switch is written even with no style to point at
 
+**Retired by §9**, which removed the branch. Kept as the record of the ruling.
+
 | Item                      | `TS1` (functional-core campaign, `src/mei` sweep)                                                                                                        |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Java                      | `Mei2MsmMpmConverter.convert`'s per-`mdiv` epilogue: `if (…getAllStyleTypes().get(Mpm.TEMPO_STYLE) != null) tempoMap.addStyleSwitch(0.0, "MEI export");` |
-| TypeScript                | `src/mei/Mei2MsmMpmConverter.ts`, `finishMdiv`'s "finalize the tempoMap" block                                                                           |
-| Guard tests               | `tests/mei/Mei2MsmMpmConverter.test.ts` — "the work-level tempo style switch (Java divergence)"                                                          |
-| Reachable from a fixture? | No. Reachable from any MEI whose only tempo is a **directional** `meiHead/workList/work/tempo`                                                           |
+| TypeScript                | `src/mei/Mei2MsmMpmConverter.ts`, `finishMdiv`'s "finalize the tempoMap" block — removed in §9                                                           |
+| Guard tests               | were in `tests/mei/Mei2MsmMpmConverter.test.ts`; deleted with the branch, see §9.4                                                                       |
+| Reachable from a fixture? | No, and no longer reachable at all — the converter emits no MPM                                                                                          |
 
 **A transcription slip, found by lint and pinned rather than repaired.** Java's guard means
 "switch to the MEI-export tempo style only if one was actually defined". The port kept the
@@ -876,13 +879,20 @@ named tempo (`Allegro`) takes the other arm, defines the style, and the two spel
 
 Measured, both directions: instrumenting the branch shows it is entered **exactly once** in the
 whole 6208-test suite, and on that one input the style is present — so aligning the condition
-with Java leaves every test green. Four tests now pin the behaviour, three of them on the
-directional descriptors; aligning the condition reds all three.
+with Java left every test green. Four tests pinned the behaviour, three of them on the
+directional descriptors; aligning the condition redded all three.
 
-Frozen rather than fixed because the repair changes output bytes on a path no Java-generated
-reference in this repo covers, so nothing here can adjudicate it. It is the one entry in this
-section that is a **defect** rather than a capability gap or a choice: if a reference MEI with a
-directional work-level tempo is ever generated, this should move to §1.
+Frozen rather than fixed because the repair changed output bytes on a path no Java-generated
+reference in this repo covered, so nothing here could adjudicate it — and it was the one entry in
+this section that was a **defect** rather than a capability gap or a choice. The question is moot
+now: §9 removed the branch, and §9.4 records the loss of its regression test.
+
+The general hazard it exposed outlives it — a Java `!= null` transcribed onto a `Map.get` that
+answers `undefined`, so that a guard silently stops guarding. That class is held at zero by
+`@typescript-eslint/no-unnecessary-condition`, an error over `src/**` (eslint.config.js) and gated
+by the lint ratchet in `npm run verify`. `src/` reports zero findings for it; the negative control
+is a `Map.get(…) !== null` in a throwaway `src/` file, which the rule flags as "types have no
+overlap". The typed block is `src/**`-only by RULE N6, so `tests/**` is not swept.
 
 ### `IMP1` — an imprecision map the reference CRASHES on renders NaN-poisoned output here
 
@@ -1738,7 +1748,7 @@ Three losses are worth naming, because nothing replaces them:
    their subject through MPM output and had no MSM-visible equivalent. The `endids` and
    work-level `<meter>` controls were saved by re-pointing them at `<pedal>`, which parks on
    the same deferred list and reaches the same `tstampToTicks`.
-3. **The work-level tempo style switch** (§3, the transcription slip that wrote
+3. **The work-level tempo style switch** (§2, the transcription slip that wrote
    `name.ref="MEI export"` into a document with no `<tempoStyles>`) is no longer reachable,
    and its regression test is gone. The ruling is kept above as a record, not as a live
    divergence.

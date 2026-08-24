@@ -34,9 +34,6 @@ import type { Element } from '../../src/xml/XomTypes.js';
  * The fifth is the plainest: no MEI fixture contains a `<choice>` element, so the whole
  * editorial-variant selector `processChoice` is never executed by the byte gate. See
  * "processChoice picks one editorial reading".
- *
- * The last section of this file is not a blind spot but a divergence from Java, pinned so
- * that repairing it cannot happen silently. See "the work-level tempo style switch".
  */
 
 /** the MEI everything below is a variation of: one staff, `sectionInner` inside `section` */
@@ -564,23 +561,3 @@ describe('Mei2MsmConverter – processChoice picks one editorial reading', () =>
     expect(noteIds(msm)).toEqual(['AFTER']);
   });
 });
-
-/**
- * `finishMdiv`'s last act is to seed the global tempoMap from `meiHead/workList/work/tempo`
- * when the score itself produced no tempo. Java guards the accompanying style switch with
- * `getAllStyleTypes().get(Mpm.TEMPO_STYLE) != null` — write it only if an MEI-export tempo
- * style was actually defined. This port transcribed the `!= null` literally onto a `Map.get`
- * that answers `undefined` for an absent key, so the guard was true whatever the header held.
- *
- * The result is a dangling reference. A work-level tempo that is a purely directional
- * descriptor — "ritardando", "accelerando", "calando" — takes the arm of `parseTempo` that
- * sets `transitionTo` and defines **no** style, so the MPM ends up with
- * `<style name.ref="MEI export"/>` in a document that has no `<tempoStyles>` element for it
- * to refer to. A named tempo ("Allegro") takes the other arm, defines the style, and the two
- * spellings agree — which is why the one place in the whole corpus that reaches this branch
- * cannot see the difference, and why aligning the condition with Java left the suite green
- * when that was measured.
- *
- * These tests pin the behaviour as it is, so that correcting it is a deliberate act with a
- * red test attached rather than a silent byte change. See PARITY.md, "Known divergences".
- */

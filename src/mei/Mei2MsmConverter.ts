@@ -746,25 +746,16 @@ export class Mei2MsmConverter {
   }
 
   /**
-   * Start a new movement: build the MSM and the MPM for one `mdiv`, install them as the
-   * current output, convert the mdiv's content, then finish the two things that could not be
-   * done during the walk.
+   * Start a new movement: build the MSM for one `mdiv`, install it as the current output, and
+   * convert the mdiv's content.
    *
    * The title is the work title plus the mdiv's `n` and `label`, appended in that order. The
    * movement id is the mdiv's own id, or a fresh `meico_<uuid>` which is written back onto the
    * mdiv so the MSM and the MEI agree.
    *
-   * Then it locates this mdiv's `work` element in `meiHead`, which is where a global tempo may
-   * live: by `decls` reference if the mdiv has one, else by matching `n`, and trivially if
-   * there is exactly one `work`. That lookup only matters for the last step.
-   *
-   * After the walk, two postponed jobs run:
-   * - arpeggios parked on {@link arpeggiosToSort} are ordered by the pitches that are only now
-   *   known, ascending or descending per the stored flag, and written back as a
-   *   space-separated `#id` list;
-   * - the tempo map gets a fallback: if no tempo was found anywhere in the movement, the
-   *   `work`'s `tempo` element is used as an initial tempo at date 0. This is why the `work`
-   *   lookup above exists.
+   * Then it locates this mdiv's `work` element in `meiHead`: by `decls` reference if the mdiv
+   * has one, else by matching `n`, and trivially if there is exactly one `work`. The movement
+   * carries it so that {@link getCurrentTimeSignature} can fall back to the `work`'s `<meter>`.
    */
   private makeMovement(mdiv: Element): void {
     let titleString = this.requireMei().getTitle();
