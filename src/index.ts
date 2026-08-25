@@ -200,6 +200,19 @@ export { Mei2MsmConverter } from './mei/Mei2MsmConverter.js';
 export { AbstractMsm } from './msm/AbstractMsm.js';
 export { Msm } from './msm/Msm.js';
 export { Goto } from './msm/Goto.js';
+// The vocabulary the writing surface's signatures are typed in. The functions themselves stay
+// where `Msm` publishes them, so there is one name per element factory and not two.
+export type {
+  AddNoteOptions,
+  AddPartOptions,
+  AddPedalOptions,
+  AddProgramChangeOptions,
+  AddRestOptions,
+  AddSectionOptions,
+  AddTimeSignatureOptions,
+  MsmMapName,
+  PedalState,
+} from './msm/write.js';
 
 // MPM
 export { Mpm } from './mpm/Mpm.js';
@@ -317,10 +330,7 @@ export {
   type OrnamentAlignment,
   type MpmSourceFormat,
 } from './mpm/elements/styles/defs/TemporalSpread.js';
-export type {
-  TemporalValue,
-  TemporalDomain,
-} from './mpm/elements/styles/defs/TemporalValue.js';
+export type { TemporalValue, TemporalDomain } from './mpm/elements/styles/defs/TemporalValue.js';
 export { DynamicsGradient } from './mpm/elements/styles/defs/DynamicsGradient.js';
 export { matchDef } from './mpm/elements/styles/defs/def.js';
 export type { Def, DefKind } from './mpm/elements/styles/defs/def.js';
