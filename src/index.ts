@@ -306,7 +306,21 @@ export {
   type AccentuationTuple,
 } from './mpm/elements/styles/defs/AccentuationPatternDef.js';
 export { OrnamentDef } from './mpm/elements/styles/defs/OrnamentDef.js';
-export { TemporalSpread } from './mpm/elements/styles/defs/TemporalSpread.js';
+// `TemporalSpread` and the four vocabularies its own public signatures are typed in —
+// `setTemporalSpreadValues(frameStart, frameLength, frameDomain, intensity, noteOffShift)` is
+// on the exported `OrnamentDef` and takes two of them, so leaving them unexported made that
+// method as uncallable from outside as `addMetadata` was.
+export {
+  TemporalSpread,
+  FrameDomain,
+  NoteOffShift,
+  type OrnamentAlignment,
+  type MpmSourceFormat,
+} from './mpm/elements/styles/defs/TemporalSpread.js';
+export type {
+  TemporalValue,
+  TemporalDomain,
+} from './mpm/elements/styles/defs/TemporalValue.js';
 export { DynamicsGradient } from './mpm/elements/styles/defs/DynamicsGradient.js';
 export { matchDef } from './mpm/elements/styles/defs/def.js';
 export type { Def, DefKind } from './mpm/elements/styles/defs/def.js';
@@ -396,6 +410,13 @@ export { InstrumentsDictionary } from './midi/InstrumentsDictionary.js';
 
 // Supplementary
 export type { KeyValue } from './supplementary/KeyValue.js';
+
+// The result type every `*Def` factory, `Performance.fromName`, `Part.fromValues` and
+// `Style.parse` answers with. Exported because a consumer that calls one of them has to be
+// able to name what it got back — and, with `OkOf`, to write the "or give up" reading once
+// instead of at every call site.
+export type { Result, AnyResult, Ok, Err, OkOf, ErrOf } from './prelude/result.js';
+export { ok, err, isOk, isErr, unwrapOr } from './prelude/result.js';
 export { RandomNumberProvider } from './supplementary/RandomNumberProvider.js';
 
 // Version. RULE the design makes `VERSION` the API; the `Meico` object keeps `Meico.version`
