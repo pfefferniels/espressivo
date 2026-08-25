@@ -10,7 +10,7 @@ import {
   RUBATO_STYLE,
   TEMPO_STYLE,
 } from '../../names.js';
-import { err, isErr, matchKind, ok, type Result } from '../../../prelude/index.js';
+import { err, filterMap, matchKind, ok, unwrapOr, type Result } from '../../../prelude/index.js';
 import { type MpmParseError } from '../parseError.js';
 import type { Def } from './defs/def.js';
 import { AccentuationPatternDef } from './defs/AccentuationPatternDef.js';
@@ -267,13 +267,10 @@ export class Style<K extends StyleKind = StyleKind> extends AbstractXmlSubtree {
   private indexDefs(xml: Element): void {
     const { defChildName, parseDef } = STYLE_SHAPE[this.kind];
     if (defChildName === null) return;
-    for (const child of allChildElements(xml, defChildName)) {
-      const def = parseDef(child);
-      // The reason is dropped rather than printed: a `Style` has nowhere to keep it and no
-      // caller asking for it.
-      if (isErr(def)) continue;
-      this.defs.set(def.value.getName(), def.value);
-    }
+    // the reason is dropped rather than printed: a `Style` has nowhere to keep it and no
+    // caller asking for it.
+    const defs = filterMap(allChildElements(xml, defChildName), (c) => unwrapOr(parseDef(c), null));
+    for (const def of defs) this.defs.set(def.getName(), def);
   }
 
   /**

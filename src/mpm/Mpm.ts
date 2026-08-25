@@ -1,6 +1,6 @@
 import { Element, Document } from '../xml/XomTypes.js';
 import { allChildElements, firstChildElement } from '../xml/tree.js';
-import { elementAt, isErr, unwrapOr } from '../prelude/index.js';
+import { elementAt, filterMap, unwrapOr } from '../prelude/index.js';
 import { AbstractMsm } from '../msm/AbstractMsm.js';
 import * as names from './names.js';
 import { Performance } from './elements/Performance.js';
@@ -103,11 +103,7 @@ export class Mpm extends AbstractMsm {
 
     const perfs: Element[] = allChildElements(root, 'performance');
 
-    for (const perf of perfs) {
-      const p = Performance.fromXml(perf);
-      if (isErr(p)) continue;
-      this.performances.push(p.value);
-    }
+    this.performances.push(...filterMap(perfs, (p) => unwrapOr(Performance.fromXml(p), null)));
   }
 
   /** Build the initial mpm document with a root element, for the no-argument constructor. */

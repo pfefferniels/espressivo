@@ -3,6 +3,7 @@ import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
 import {
   elementAt,
   err,
+  filterMap,
   isErr,
   isOk,
   ok,
@@ -292,11 +293,9 @@ export class Performance extends AbstractXmlSubtree {
     }
 
     const parts = allChildElements(this.getXml(), 'part');
-    for (const element of parts) {
-      const part = Part.fromXml(element);
-      if (isErr(part)) continue;
-      part.value.setGlobal(this.global);
-      this.parts.push(part.value);
+    for (const part of filterMap(parts, (e) => unwrapOr(Part.fromXml(e), null))) {
+      part.setGlobal(this.global);
+      this.parts.push(part);
     }
     return ok(this);
   }
