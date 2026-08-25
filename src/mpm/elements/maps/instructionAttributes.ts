@@ -65,9 +65,21 @@ export function readNumberOrString(element: Element, name: string): number | str
   return Number.isFinite(value) && String(value) === text ? value : text;
 }
 
-/** `@xml:id`. Its local name is `id`, which is the name {@link attribute} matches on. */
+/**
+ * The name {@link attribute} has to be given to find `attributeName`.
+ *
+ * `attribute` matches LOCAL names, so the one attribute whose qualified name differs from its
+ * local one has to be asked for by the local half: `xml:id` is found as `id`, and asking for
+ * `'xml:id'` finds nothing at all. That is deliberate over there and byte-visible — see the
+ * comment on `tree.ts`'s `attribute` — so the adjustment belongs here.
+ */
+function lookupName(attributeName: string): string {
+  return attributeName === 'xml:id' ? 'id' : attributeName;
+}
+
+/** `@xml:id`. */
 export function readId(element: Element): string | undefined {
-  return attribute('id', element)?.getValue();
+  return attribute(lookupName('xml:id'), element)?.getValue();
 }
 
 /**
@@ -83,7 +95,9 @@ export function readId(element: Element): string | undefined {
  * documented as remove-then-append, so re-setting one would move it to the end of the
  * serialized order and an edited document would differ from its source by attribute order alone,
  * on every attribute anything touched. A newly added attribute does land at the end; there is no
- * position for it to keep.
+ * position for it to keep. Finding the existing one goes through {@link lookupName}, without
+ * which `xml:id` is never found: removing it is then a silent no-op, and re-setting it takes the
+ * append arm — which no writer's output shows only because every one of them puts `xml:id` last.
  *
  * An attribute no options type names — MPM's own `corresp` on nothing, a consumer's foreign
  * annotation — is never seen by this function and so survives every patch.
@@ -102,7 +116,7 @@ export function patchAttribute<T extends object>(
   if (!(key in patch)) return;
 
   const value: unknown = patch[key];
-  const existing = attribute(attributeName, element);
+  const existing = attribute(lookupName(attributeName), element);
 
   if (value === undefined) {
     if (existing !== null) element.removeAttribute(existing);

@@ -6,6 +6,40 @@ import { GenericMap } from './GenericMap.js';
 import { type Result } from '../../../prelude/index.js';
 import { type MpmParseError } from '../parseError.js';
 import type { MetricalAccentuation } from './data/metricalAccentuation.js';
+import {
+  patchAttribute,
+  readBoolean,
+  readId,
+  readNumber,
+  readString,
+} from './instructionAttributes.js';
+
+/**
+ * Everything an `<accentuationPattern>` element can say, for
+ * {@link MetricalAccentuationMap.addAccentuationPattern} (RULE F5's named-parameter shape,
+ * applied inside the library).
+ *
+ * Optional properties are `?:` and never `null` (RULE N1): an attribute nobody supplied is an
+ * attribute that is not written.
+ */
+export interface AddAccentuationPatternOptions {
+  /** `@date`, in ticks. Always written. */
+  readonly date: number;
+  /**
+   * `@name.ref` — the `accentuationPatternDef` holding the per-beat values. Always written,
+   * and required, because {@link MetricalAccentuationMap.getMetricalAccentuationDataOf}
+   * rejects an `<accentuationPattern>` that lacks it.
+   */
+  readonly accentuationPatternDefName: string;
+  /** `@scale`, the factor the def's accentuations are multiplied by. Always written. */
+  readonly scale: number;
+  /** `@loop`; absent means the pattern stops after one length of it. */
+  readonly loop?: boolean;
+  /** `@stickToMeasures`; absent is the reader's `true`, re-aligning the pattern at each barline. */
+  readonly stickToMeasures?: boolean;
+  /** `xml:id` of the accentuationPattern element. */
+  readonly id?: string;
+}
 
 /**
  * An MPM `metricalAccentuationMap`: the emphasis pattern of the metre — the reason a
@@ -43,21 +77,57 @@ export class MetricalAccentuationMap extends GenericMap {
         );
   }
 
+  /**
+   * Add an `<accentuationPattern>`.
+   *
+   * Attribute order is `date`, `name.ref`, `scale`, `loop`, `stickToMeasures`, `xml:id`, the
+   * last three omitted where the caller supplied nothing. `loop="false"` and
+   * `stickToMeasures="false"` are written where they are supplied as `false`, which is not the
+   * same document as leaving them out even though it renders the same.
+   *
+   * The positional form is the older one and writes exactly what the options form writes; only
+   * the options form can carry an `xml:id`.
+   */
+  addAccentuationPattern(options: AddAccentuationPatternOptions): number;
   addAccentuationPattern(
     date: number,
     accentuationPatternDefName: string,
     scale: number,
     loop?: boolean,
     stickToMeasures?: boolean,
+  ): number;
+  addAccentuationPattern(
+    ...args:
+      | [options: AddAccentuationPatternOptions]
+      | [
+          date: number,
+          accentuationPatternDefName: string,
+          scale: number,
+          loop?: boolean,
+          stickToMeasures?: boolean,
+        ]
   ): number {
+    const options: AddAccentuationPatternOptions =
+      args.length === 1
+        ? args[0]
+        : {
+            date: args[0],
+            accentuationPatternDefName: args[1],
+            scale: args[2],
+            loop: args[3],
+            stickToMeasures: args[4],
+          };
+
     const e = new Element('accentuationPattern', MPM_NAMESPACE);
-    e.addAttribute(new Attribute('date', String(date)));
-    e.addAttribute(new Attribute('name.ref', accentuationPatternDefName));
-    e.addAttribute(new Attribute('scale', String(scale)));
-    if (loop !== undefined) e.addAttribute(new Attribute('loop', String(loop)));
-    if (stickToMeasures !== undefined)
-      e.addAttribute(new Attribute('stickToMeasures', String(stickToMeasures)));
-    return this.insertElement({ key: date, value: e }, false);
+    e.addAttribute(new Attribute('date', String(options.date)));
+    e.addAttribute(new Attribute('name.ref', options.accentuationPatternDefName));
+    e.addAttribute(new Attribute('scale', String(options.scale)));
+    if (options.loop !== undefined) e.addAttribute(new Attribute('loop', String(options.loop)));
+    if (options.stickToMeasures !== undefined)
+      e.addAttribute(new Attribute('stickToMeasures', String(options.stickToMeasures)));
+    if (options.id !== undefined)
+      e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', options.id));
+    return this.insertElement({ key: options.date, value: e }, false);
   }
 
   /**
@@ -96,6 +166,67 @@ export class MetricalAccentuationMap extends GenericMap {
       loop: loopAtt !== null && loopAtt.getValue() === 'true',
       stickToMeasures: stmAtt === null || stmAtt.getValue() === 'true',
     };
+  }
+
+  /**
+   * The accentuation instruction at `index` as the options that would write it — the document
+   * as it stands, with nothing defaulted. Null if the entry is not an `<accentuationPattern>`,
+   * or carries neither `@name.ref` nor `@scale`.
+   *
+   * The complement of {@link getMetricalAccentuationDataOf}, not a variant of it: that one
+   * answers what the renderer will do, this one what the document says. An absent
+   * `@stickToMeasures` and `stickToMeasures="true"` render identically and are not the same
+   * instruction to rewrite. It also asks for no style — an instruction naming a def nothing
+   * defines is still an instruction, and is readable and patchable as one.
+   */
+  getAccentuationPatternOptionsOf(index: number): AddAccentuationPatternOptions | null {
+    const i = this.resolveEntryIndex(index, 'accentuationPattern');
+    if (i < 0) return null;
+
+    const entry = this.entryAt(i);
+    const e = entry.value;
+    const accentuationPatternDefName = readString(e, 'name.ref');
+    const scale = readNumber(e, 'scale');
+    if (accentuationPatternDefName === undefined || scale === undefined) return null;
+
+    return {
+      date: readNumber(e, 'date') ?? entry.key,
+      accentuationPatternDefName,
+      scale,
+      loop: readBoolean(e, 'loop'),
+      stickToMeasures: readBoolean(e, 'stickToMeasures'),
+      id: readId(e),
+    };
+  }
+
+  /**
+   * Patch the `<accentuationPattern>` at `index` in place: a field the patch omits is left
+   * alone, one it carries as `undefined` has its attribute removed, anything else is written.
+   *
+   * Patching `@date` re-keys and re-sorts the map, which is the one thing writing the attribute
+   * alone would not do — {@link GenericMap.elements} keys on the date read when the element was
+   * added, and a stale key makes every later lookup answer from the wrong position.
+   *
+   * @returns false if the entry is not an `<accentuationPattern>`, in which case nothing was
+   *   written.
+   */
+  updateAccentuationPatternAt(
+    index: number,
+    patch: Partial<AddAccentuationPatternOptions>,
+  ): boolean {
+    const i = this.resolveEntryIndex(index, 'accentuationPattern');
+    if (i < 0) return false;
+
+    const e = this.entryAt(i).value;
+    patchAttribute(e, patch, 'date');
+    patchAttribute(e, patch, 'accentuationPatternDefName', 'name.ref');
+    patchAttribute(e, patch, 'scale');
+    patchAttribute(e, patch, 'loop');
+    patchAttribute(e, patch, 'stickToMeasures');
+    patchAttribute(e, patch, 'id', 'xml:id');
+
+    if ('date' in patch) this.sort();
+    return true;
   }
 
   /**

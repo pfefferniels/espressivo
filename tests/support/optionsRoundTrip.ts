@@ -16,6 +16,10 @@ import type { GenericMap } from '../../src/mpm/elements/maps/GenericMap.js';
  * Attribute order comes out of `add<X>` both times, so this does not pin the order the writer
  * chose — the writer's own docstring does that. What it pins is that reading and re-writing
  * does not disturb it.
+ *
+ * **Name both type arguments** — `expectOptionsRoundTrip<TempoMap, AddTempoOptions>({…})`.
+ * `O` appears in a parameter position on `add` and so cannot be inferred; left to itself it
+ * lands on `unknown` and every sample typechecks against nothing.
  */
 export function expectOptionsRoundTrip<M extends GenericMap, O>(spec: {
   /** A fresh, empty map. Called once per sample, so no sample can see another's elements. */
@@ -25,8 +29,13 @@ export function expectOptionsRoundTrip<M extends GenericMap, O>(spec: {
   /**
    * The options to try. Cover every optional field at least once, present and absent — an
    * attribute nothing exercises is an attribute this law says nothing about.
+   *
+   * `NoInfer`, so a caller who forgets the type arguments gets an error naming `unknown`
+   * rather than one about a sample: without it `O` widens to the union of these literals, each
+   * with its absent fields typed exactly `undefined`, and `read`'s honest `number | undefined`
+   * then fails to assign to an `undefined` some *other* sample happened to pin.
    */
-  readonly samples: readonly O[];
+  readonly samples: readonly NoInfer<O>[];
 }): void {
   for (const options of spec.samples) {
     const written = spec.makeMap();

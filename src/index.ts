@@ -235,7 +235,14 @@ export { Global } from './mpm/elements/Global.js';
 export { Part } from './mpm/elements/Part.js';
 export { Header } from './mpm/elements/Header.js';
 export { Dated } from './mpm/elements/Dated.js';
+// `<metadata>` and the three children the ODD gives it: `author*`, `comment*`,
+// `relatedResources?`. All four together — every method `Metadata` exposes takes or answers
+// one of the three, and `Mpm.addMetadata` takes all three, so exporting the container alone
+// left it uncallable from outside the package.
 export { Metadata } from './mpm/elements/metadata/Metadata.js';
+export { Author } from './mpm/elements/metadata/Author.js';
+export { Comment } from './mpm/elements/metadata/Comment.js';
+export { RelatedResource } from './mpm/elements/metadata/RelatedResource.js';
 
 // The instruction maps. `GenericMap` carries the whole read surface a viewer needs —
 // `getAllElements()`, `getElementByID(id)`, `getElementBeforeAt(date)`, `getStyleAt(date,
@@ -251,8 +258,11 @@ export {
 export { MovementMap, type AddMovementOptions } from './mpm/elements/maps/MovementMap.js';
 export { RubatoMap, type AddRubatoOptions } from './mpm/elements/maps/RubatoMap.js';
 export { OrnamentationMap, type AddOrnamentOptions } from './mpm/elements/maps/OrnamentationMap.js';
-export { MetricalAccentuationMap } from './mpm/elements/maps/MetricalAccentuationMap.js';
-export { AsynchronyMap } from './mpm/elements/maps/AsynchronyMap.js';
+export {
+  MetricalAccentuationMap,
+  type AddAccentuationPatternOptions,
+} from './mpm/elements/maps/MetricalAccentuationMap.js';
+export { AsynchronyMap, type AddAsynchronyOptions } from './mpm/elements/maps/AsynchronyMap.js';
 export { ImprecisionMap, type DistributionSpan } from './mpm/elements/maps/ImprecisionMap.js';
 
 // `Dated.getMapOfKind(kind)` is typed through `MapOfKind`, so a caller needs the key type to

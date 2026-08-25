@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { okValue } from '../../support/result.js';
 import { expectOptionsRoundTrip } from '../../support/optionsRoundTrip.js';
-import { TempoMap } from '../../../src/mpm/elements/maps/TempoMap.js';
+import { TempoMap, type AddTempoOptions } from '../../../src/mpm/elements/maps/TempoMap.js';
 import {
   resolveTempo,
   type ConstantTempo,
@@ -942,7 +942,7 @@ describe('getTempoOptionsOf / updateTempoAt', () => {
   const makeMap = () => TempoMap.createTempoMap();
 
   it('round-trips every shape addTempo can write', () => {
-    expectOptionsRoundTrip({
+    expectOptionsRoundTrip<TempoMap, AddTempoOptions>({
       makeMap,
       add: (map, o) => map.addTempo(o),
       read: (map, i) => map.getTempoOptionsOf(i),
@@ -998,6 +998,25 @@ describe('getTempoOptionsOf / updateTempoAt', () => {
 
     map.updateTempoAt(0, { bpm: 90, id: 't1' });
     expect(map.getElement(0)?.getAttributeValue('corresp')).toBe('arg1');
+  });
+
+  // `xml:id` is the one attribute whose qualified name differs from its local one, and
+  // `tree.ts`'s `attribute` matches local names. Both halves of the patch went wrong before
+  // `lookupName` existed: removal silently did nothing, and re-setting took the append arm,
+  // which is remove-then-append. Neither shows in a writer's output, because every writer puts
+  // `xml:id` last — so the reorder needs an attribute after it to be visible at all.
+  it('patches the namespaced xml:id, in both directions', () => {
+    const map = makeMap();
+    map.addTempo({ date: 0, bpm: 120, beatLength: 0.25, id: 't1' });
+    map.getElement(0)?.addAttribute(new Attribute('corresp', 'arg1'));
+
+    map.updateTempoAt(0, { id: 't2' });
+    expect(map.getElement(0)?.toXML()).toContain('xml:id="t2" corresp="arg1"');
+    expect(map.getTempoOptionsOf(0)?.id).toBe('t2');
+
+    map.updateTempoAt(0, { id: undefined });
+    expect(map.getElement(0)?.getAttributeValue('xml:id')).toBeNull();
+    expect(map.getTempoOptionsOf(0)?.id).toBeUndefined();
   });
 
   it('re-keys and re-sorts the map when @date is patched', () => {

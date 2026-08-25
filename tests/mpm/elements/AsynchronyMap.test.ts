@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { okValue } from '../../support/result.js';
-import { AsynchronyMap } from '../../../src/mpm/elements/maps/AsynchronyMap.js';
+import { expectOptionsRoundTrip } from '../../support/optionsRoundTrip.js';
+import { AsynchronyMap, type AddAsynchronyOptions } from '../../../src/mpm/elements/maps/AsynchronyMap.js';
 import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
 import { Element, Attribute } from '../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
@@ -389,5 +390,101 @@ describe('AsynchronyMap', () => {
       expect(elem).not.toBeNull();
       expect(elem!.getAttributeValue('milliseconds.offset')).toBe('20');
     });
+  });
+});
+
+describe('getAsynchronyOptionsOf / updateAsynchronyAt', () => {
+  const makeMap = () => AsynchronyMap.createAsynchronyMap();
+
+  it('round-trips every shape addAsynchrony can write', () => {
+    expectOptionsRoundTrip<AsynchronyMap, AddAsynchronyOptions>({
+      makeMap,
+      add: (map, o) => map.addAsynchrony(o),
+      read: (map, i) => map.getAsynchronyOptionsOf(i),
+      samples: [
+        { date: 0, millisecondsOffset: 50 },
+        { date: 720, millisecondsOffset: -25.5, id: 'asyn1' },
+        { date: 1440, millisecondsOffset: 0, id: 'has-a-dash' },
+      ],
+    });
+  });
+
+  it('writes what the positional form writes', () => {
+    const positional = makeMap();
+    positional.addAsynchrony(100, -25.5);
+
+    const options = makeMap();
+    options.addAsynchrony({ date: 100, millisecondsOffset: -25.5 });
+
+    expect(options.getElement(0)?.toXML()).toBe(positional.getElement(0)?.toXML());
+  });
+
+  it('reads one element, where getAsynchronyAt reads the offset in force', () => {
+    const map = makeMap();
+    map.addAsynchrony(480, 20);
+
+    // Before the only instruction there is no element to read, and an offset of 0 all the same.
+    expect(map.getAsynchronyAt(0)).toBe(0);
+    expect(map.getAsynchronyOptionsOf(0)).toMatchObject({ date: 480, millisecondsOffset: 20 });
+  });
+
+  it('leaves an omitted field alone, removes one patched to undefined', () => {
+    const map = makeMap();
+    map.addAsynchrony({ date: 0, millisecondsOffset: 50, id: 'asyn1' });
+
+    expect(map.updateAsynchronyAt(0, { millisecondsOffset: -10 })).toBe(true);
+    expect(map.getAsynchronyOptionsOf(0)).toMatchObject({
+      date: 0,
+      millisecondsOffset: -10,
+      id: 'asyn1',
+    });
+
+    // `id` is this map's only optional field, so it is the only one that can pin the removal —
+    // and `xml:id` is the one attribute name the lookup has to adjust to find at all.
+    map.updateAsynchronyAt(0, { id: undefined });
+    expect(map.getAsynchronyOptionsOf(0)?.id).toBeUndefined();
+    expect(map.getElement(0)?.getAttributeValue('xml:id')).toBeNull();
+    expect(map.getAsynchronyOptionsOf(0)?.millisecondsOffset).toBe(-10);
+  });
+
+  it('writes through an existing attribute rather than moving it to the end', () => {
+    const map = makeMap();
+    map.addAsynchrony({ date: 0, millisecondsOffset: 50, id: 'asyn1' });
+    // Behind `xml:id`, which is otherwise last: without something after it, an `xml:id` that
+    // got appended rather than written through would land back where it started.
+    map.getElement(0)?.addAttribute(new Attribute('corresp', 'arg1'));
+    const before = map.getElement(0)?.toXML();
+
+    map.updateAsynchronyAt(0, { date: 0, millisecondsOffset: 50, id: 'asyn1' });
+    expect(map.getElement(0)?.toXML()).toBe(before);
+  });
+
+  it('never touches an attribute no option names', () => {
+    const map = makeMap();
+    map.addAsynchrony(0, 50);
+    map.getElement(0)?.addAttribute(new Attribute('corresp', 'arg1'));
+
+    map.updateAsynchronyAt(0, { millisecondsOffset: 10, id: 'asyn1' });
+    expect(map.getElement(0)?.getAttributeValue('corresp')).toBe('arg1');
+  });
+
+  it('re-keys and re-sorts the map when @date is patched', () => {
+    const map = makeMap();
+    map.addAsynchrony({ date: 0, millisecondsOffset: 10, id: 'first' });
+    map.addAsynchrony({ date: 1000, millisecondsOffset: 20, id: 'second' });
+
+    map.updateAsynchronyAt(0, { date: 2000 });
+
+    expect(map.getAllElements().map((e) => e.key)).toEqual([1000, 2000]);
+    expect(map.getElement(0)?.getAttributeValue('xml:id')).toBe('second');
+    // The lookup index moved with it, which is the half that writing the attribute alone misses.
+    expect(map.getAsynchronyAt(2500)).toBe(10);
+  });
+
+  it('refuses an entry that is not an <asynchrony>', () => {
+    const map = makeMap();
+    map.addStyleSwitch(0, 'someStyle');
+    expect(map.getAsynchronyOptionsOf(0)).toBeNull();
+    expect(map.updateAsynchronyAt(0, { millisecondsOffset: 10 })).toBe(false);
   });
 });

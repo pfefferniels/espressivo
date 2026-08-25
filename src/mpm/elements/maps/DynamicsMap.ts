@@ -12,6 +12,13 @@ import {
 } from './data/dynamics.js';
 import { numericDynamicsValue } from '../styles/style.js';
 import { elementAt, mapPresent, unwrapOr } from '../../../prelude/index.js';
+import {
+  patchAttribute,
+  readBoolean,
+  readId,
+  readNumber,
+  readNumberOrString,
+} from './instructionAttributes.js';
 
 /**
  * Everything a `<dynamics>` element can say, for {@link DynamicsMap.addDynamics} (RULE F5's
@@ -196,6 +203,81 @@ export class DynamicsMap extends GenericMap {
             ),
       subNoteDynamics: sndAtt !== null && sndAtt.getValue() === 'true',
     });
+  }
+
+  /**
+   * The dynamics instruction at `index` as the options that would write it — the document as it
+   * stands, with nothing resolved and nothing defaulted. Null if the entry is not a
+   * `<dynamics>`, or carries no `@volume`, which is the one {@link addDynamics} requires.
+   *
+   * The complement of {@link getDynamicsDataOf}, not a variant of it: that one answers what the
+   * renderer will do, this one what the document says. An absent `@curvature` and
+   * `curvature="0"` render identically and are not the same instruction to rewrite.
+   *
+   * The curve parameters are reported as written, out-of-range values included, where
+   * {@link getDynamicsDataOf} clamps them — a document saying `curvature="5"` is a document
+   * that has to be told so. {@link addDynamics} and {@link updateDynamicsAt} still refuse to
+   * write one, so the clamp holds on every path out.
+   */
+  getDynamicsOptionsOf(index: number): AddDynamicsOptions | null {
+    const i = this.resolveEntryIndex(index, 'dynamics');
+    if (i < 0) return null;
+
+    const entry = this.entryAt(i);
+    const e = entry.value;
+    const volume = readNumberOrString(e, 'volume');
+    if (volume === undefined) return null;
+
+    return {
+      date: readNumber(e, 'date') ?? entry.key,
+      volume,
+      transitionTo: readNumberOrString(e, 'transition.to'),
+      curvature: readNumber(e, 'curvature'),
+      protraction: readNumber(e, 'protraction'),
+      subNoteDynamics: readBoolean(e, 'subNoteDynamics'),
+      id: readId(e),
+    };
+  }
+
+  /**
+   * Patch the `<dynamics>` at `index` in place: a field the patch omits is left alone, one it
+   * carries as `undefined` has its attribute removed, anything else is written.
+   *
+   * `curvature` and `protraction` are clamped exactly as {@link addDynamics} clamps them, so
+   * this is not a way past {@link clampCurvature}'s invariant.
+   *
+   * `subNoteDynamics: false` writes `subNoteDynamics="false"`, which {@link addDynamics} would
+   * spell by omitting the attribute. The two render alike; pass `undefined` to get the bytes.
+   *
+   * Patching `@date` re-keys and re-sorts the map, which is the one thing writing the attribute
+   * alone would not do — {@link GenericMap.elements} keys on the date read when the element was
+   * added, and a stale key makes every later lookup answer from the wrong position.
+   *
+   * @returns false if the entry is not a `<dynamics>`, in which case nothing was written.
+   */
+  updateDynamicsAt(index: number, patch: Partial<AddDynamicsOptions>): boolean {
+    const i = this.resolveEntryIndex(index, 'dynamics');
+    if (i < 0) return false;
+
+    const clamped: { -readonly [K in keyof AddDynamicsOptions]?: AddDynamicsOptions[K] } = {
+      ...patch,
+    };
+    if (clamped.curvature !== undefined)
+      clamped.curvature = DynamicsMap.clampCurvature(clamped.curvature);
+    if (clamped.protraction !== undefined)
+      clamped.protraction = DynamicsMap.clampProtraction(clamped.protraction);
+
+    const e = this.entryAt(i).value;
+    patchAttribute(e, clamped, 'date');
+    patchAttribute(e, clamped, 'volume');
+    patchAttribute(e, clamped, 'transitionTo', 'transition.to');
+    patchAttribute(e, clamped, 'curvature');
+    patchAttribute(e, clamped, 'protraction');
+    patchAttribute(e, clamped, 'subNoteDynamics');
+    patchAttribute(e, clamped, 'id', 'xml:id');
+
+    if ('date' in clamped) this.sort();
+    return true;
   }
 
   /**

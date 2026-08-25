@@ -7,6 +7,26 @@ import type { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { type Result } from '../../../prelude/index.js';
 import { type MpmParseError } from '../parseError.js';
+import { patchAttribute, readId, readNumber } from './instructionAttributes.js';
+
+/**
+ * Everything an `<asynchrony>` element can say, for {@link AsynchronyMap.addAsynchrony}
+ * (RULE F5's named-parameter shape, applied inside the library).
+ *
+ * Optional properties are `?:` and never `null` (RULE N1): an attribute nobody supplied is an
+ * attribute that is not written.
+ */
+export interface AddAsynchronyOptions {
+  /** `@date`, in ticks. Always written. */
+  readonly date: number;
+  /**
+   * `@milliseconds.offset`: negative plays ahead of the beat, positive behind it. Always
+   * written, and required — an `<asynchrony>` without it reads as NaN wherever it applies.
+   */
+  readonly millisecondsOffset: number;
+  /** `xml:id` of the asynchrony element. It is what the render appends to a note's `@modified`. */
+  readonly id?: string;
+}
 
 /**
  * An MPM `asynchronyMap`: how far ahead of or behind the beat a part plays, in
@@ -36,11 +56,77 @@ export class AsynchronyMap extends GenericMap {
       : GenericMap.makeMap(xml, 'AsynchronyMap', (elt) => new AsynchronyMap(elt));
   }
 
-  addAsynchrony(date: number, millisecondsOffset: number): number {
+  /**
+   * Add an `<asynchrony>`.
+   *
+   * Attribute order is `date`, `milliseconds.offset`, `xml:id`, the last omitted where the
+   * caller supplied nothing.
+   *
+   * The positional form is the older one and writes exactly what the options form writes; only
+   * the options form can carry an `xml:id`.
+   */
+  addAsynchrony(options: AddAsynchronyOptions): number;
+  addAsynchrony(date: number, millisecondsOffset: number): number;
+  addAsynchrony(
+    ...args: [options: AddAsynchronyOptions] | [date: number, millisecondsOffset: number]
+  ): number {
+    const options: AddAsynchronyOptions =
+      args.length === 1 ? args[0] : { date: args[0], millisecondsOffset: args[1] };
+
     const e = new Element('asynchrony', MPM_NAMESPACE);
-    e.addAttribute(new Attribute('date', String(date)));
-    e.addAttribute(new Attribute('milliseconds.offset', String(millisecondsOffset)));
-    return this.insertElement({ key: date, value: e }, false);
+    e.addAttribute(new Attribute('date', String(options.date)));
+    e.addAttribute(new Attribute('milliseconds.offset', String(options.millisecondsOffset)));
+    if (options.id !== undefined)
+      e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', options.id));
+    return this.insertElement({ key: options.date, value: e }, false);
+  }
+
+  /**
+   * The asynchrony instruction at `index` as the options that would write it — the document as
+   * it stands. Null if the entry is not an `<asynchrony>`, or carries no
+   * `@milliseconds.offset`.
+   *
+   * Keyed by entry index, where {@link getAsynchronyAt} is keyed by date and answers the
+   * rendered offset in force there, 0 included. This one answers what one element says, and
+   * says nothing where there is no element.
+   */
+  getAsynchronyOptionsOf(index: number): AddAsynchronyOptions | null {
+    const i = this.resolveEntryIndex(index, 'asynchrony');
+    if (i < 0) return null;
+
+    const entry = this.entryAt(i);
+    const e = entry.value;
+    const millisecondsOffset = readNumber(e, 'milliseconds.offset');
+    if (millisecondsOffset === undefined) return null;
+
+    return {
+      date: readNumber(e, 'date') ?? entry.key,
+      millisecondsOffset,
+      id: readId(e),
+    };
+  }
+
+  /**
+   * Patch the `<asynchrony>` at `index` in place: a field the patch omits is left alone, one it
+   * carries as `undefined` has its attribute removed, anything else is written.
+   *
+   * Patching `@date` re-keys and re-sorts the map, which is the one thing writing the attribute
+   * alone would not do — {@link GenericMap.elements} keys on the date read when the element was
+   * added, and a stale key makes every later lookup answer from the wrong position.
+   *
+   * @returns false if the entry is not an `<asynchrony>`, in which case nothing was written.
+   */
+  updateAsynchronyAt(index: number, patch: Partial<AddAsynchronyOptions>): boolean {
+    const i = this.resolveEntryIndex(index, 'asynchrony');
+    if (i < 0) return false;
+
+    const e = this.entryAt(i).value;
+    patchAttribute(e, patch, 'date');
+    patchAttribute(e, patch, 'millisecondsOffset', 'milliseconds.offset');
+    patchAttribute(e, patch, 'id', 'xml:id');
+
+    if ('date' in patch) this.sort();
+    return true;
   }
 
   getAsynchronyAt(date: number): number {
