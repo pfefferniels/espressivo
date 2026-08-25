@@ -99,8 +99,8 @@ const RULES: ReadonlyMap<string, SpanEndRule> = new Map<string, SpanEndRule>([
  * The rule for a map, or null for a map name the MPM model does not define.
  *
  * Null rather than a default: real documents carry map names nothing in this port knows — the
- * surveyed `Daten` corpus contains a `gestureMap`, which `Dated.parseData:63` indexes because
- * its predicate is `localName.includes('Map')`. Such a map has no span law because it has no
+ * surveyed `Daten` corpus contains a `gestureMap`, which `Dated.parseData` indexes because
+ * `isMapName` matches by name shape. Such a map has no span law because it has no
  * renderer, and guessing one would price a difference in something that is never performed.
  */
 export function spanEndRuleOf(mapLocalName: string): SpanEndRule | null {

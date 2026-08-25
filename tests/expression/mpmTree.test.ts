@@ -102,8 +102,8 @@ describe('mpmTree', () => {
     });
 
     it('discovers a collection by name shape, not by an allow-list', () => {
-      // Header.parseData matches `contains(local-name(), 'Styles')` (Header.ts:75), which is
-      // how a vendor-specific collection survives the parse.
+      // `isStyleCollectionName` matches by name shape, which is how a vendor-specific
+      // collection survives the parse.
       const text = performanceDocument(
         globalEnvironment('<vendorStyles><styleDef name="V"/></vendorStyles>', ''),
       );

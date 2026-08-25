@@ -38,3 +38,21 @@ export const IMPRECISION_MAP_TIMING = 'imprecisionMap.timing';
 export const IMPRECISION_MAP_DYNAMICS = 'imprecisionMap.dynamics';
 export const IMPRECISION_MAP_TONEDURATION = 'imprecisionMap.toneduration';
 export const IMPRECISION_MAP_TUNING = 'imprecisionMap.tuning';
+
+/**
+ * Membership by name shape rather than by the lists above: a `<dated>` holds any element whose
+ * local name contains `Map`, plus `score`; a `<header>` any that contains `Styles`. That shape
+ * is what carries a vendor's `gestureMap` through a round trip instead of dropping it as
+ * unknown.
+ *
+ * Four readers ask this question — `Dated.parseData`, `Header.parseData`,
+ * `GenericMap.sourceElement`'s validation and the expression tree's environment reader — and
+ * they have to agree, so the rule lives with the vocabulary rather than at each site.
+ */
+export function isMapName(localName: string): boolean {
+  return localName.includes('Map') || localName === 'score';
+}
+
+export function isStyleCollectionName(localName: string): boolean {
+  return localName.includes('Styles');
+}

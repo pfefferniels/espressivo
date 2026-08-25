@@ -2,7 +2,7 @@ import { Element } from '../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
 import { allChildElements, descendantElements } from '../../xml/tree.js';
 import { MissingNodeError } from '../../xml/errors.js';
-import { MPM_NAMESPACE } from '../names.js';
+import { isStyleCollectionName, MPM_NAMESPACE } from '../names.js';
 import { err, isErr, type Result } from '../../prelude/index.js';
 import { attemptParse, type MpmParseError } from './parseError.js';
 import {
@@ -71,12 +71,10 @@ export class Header extends AbstractXmlSubtree {
   protected parseData(xml: Element): void {
     this.setXml(xml);
 
-    const styles = descendantElements(this.getXml(), (element) =>
-      element.getLocalName().includes('Styles'),
+    const styles = descendantElements(this.getXml(), (e) =>
+      isStyleCollectionName(e.getLocalName()),
     );
-    for (const style of styles) {
-      this.adoptStyleType(style);
-    }
+    for (const style of styles) this.adoptStyleType(style);
   }
 
   /**

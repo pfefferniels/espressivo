@@ -3,7 +3,7 @@ import { AbstractXmlSubtree } from '../../xml/AbstractXmlSubtree.js';
 import { descendantElements } from '../../xml/tree.js';
 import { err, isErr, unwrapOr, type Result } from '../../prelude/index.js';
 import { attemptParse, type MpmParseError } from './parseError.js';
-import { MPM_NAMESPACE } from '../names.js';
+import { isMapName, MPM_NAMESPACE } from '../names.js';
 import { GenericMap } from './maps/GenericMap.js';
 import { mapOfKind, parseTypedMap, type MapKind, type MapOfKind } from './maps/map.js';
 import type { Global } from './Global.js';
@@ -60,13 +60,8 @@ export class Dated extends AbstractXmlSubtree {
   protected parseData(xml: Element): void {
     this.setXml(xml);
 
-    const maps = descendantElements(this.getXml(), (element) => {
-      const localName = element.getLocalName();
-      return localName.includes('Map') || localName === 'score';
-    });
-    for (const map of maps) {
-      this.addMapFromXml(map);
-    }
+    const maps = descendantElements(this.getXml(), (e) => isMapName(e.getLocalName()));
+    for (const map of maps) this.addMapFromXml(map);
   }
 
   /**

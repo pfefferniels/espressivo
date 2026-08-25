@@ -12,15 +12,13 @@
  * ## Faithfulness notes
  *
  * - Discovery is by name shape, over descendants, last-one-wins — not by an allow-list over
- *   children. `Header.parseData` (Header.ts:75) collects
- *   `descendant::*[contains(local-name(),'Styles')]` and `Dated.parseData` (Dated.ts:63)
- *   collects `descendant::*[contains(local-name(),'Map') or local-name()='score']`, both
- *   feeding a map keyed by local name where a later entry replaces an earlier one. The
- *   pre-order child walk here visits the same elements in the same order. `Element.query` is
- *   banned because it serializes the subtree with `toXML()`, re-parses it and maps
- *   hits back by child-index path — O(document) per call; `xml/tree.js`'s `allChildElements`
- *   and its two-argument `firstChildElement` are `query` in a wrapper (tree.ts:94,
- *   tree.ts:150) and banned for the same reason.
+ *   children. `Header.parseData` and `Dated.parseData` select with the same
+ *   `isStyleCollectionName` and `isMapName` this module uses, both feeding a map keyed by
+ *   local name where a later entry replaces an earlier one. The pre-order child walk here
+ *   visits the same elements in the same order. `Element.query` is banned because it
+ *   serializes the subtree with `toXML()`, re-parses it and maps hits back by child-index
+ *   path — O(document) per call; `xml/tree.js`'s `allChildElements` and its two-argument
+ *   `firstChildElement` are `query` in a wrapper and banned for the same reason.
  * - The tree is never repaired — `mpmDocument.ts` lists what the MPM classes fix up at parse.
  *   Here a missing `<dated>` yields an environment with no maps, and both duplicates of a map
  *   or a style collection stay in the document, only the last one visible to the index.
@@ -30,6 +28,7 @@
  */
 import type { Element } from '../xml/XomTypes.js';
 import { attribute } from '../xml/tree.js';
+import { isMapName, isStyleCollectionName } from '../mpm/names.js';
 
 export type EnvironmentScope = 'global' | 'part';
 
@@ -79,16 +78,6 @@ function indexDescendantsByLocalName(
   };
   visit(root);
   return found;
-}
-
-/** `Dated.parseData`'s predicate (Dated.ts:63), verbatim. */
-function isMapName(localName: string): boolean {
-  return localName.includes('Map') || localName === 'score';
-}
-
-/** `Header.parseData`'s predicate (Header.ts:75), verbatim. */
-function isStyleCollectionName(localName: string): boolean {
-  return localName.includes('Styles');
 }
 
 function readEnvironment(

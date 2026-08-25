@@ -1,6 +1,7 @@
 import { Attribute, Element } from '../../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
 import { attribute, getAttributeValue } from '../../../xml/tree.js';
+import { isMapName } from '../../names.js';
 import { Header } from '../Header.js';
 import type { KeyValue } from '../../../supplementary/KeyValue.js';
 import {
@@ -102,7 +103,7 @@ export class GenericMap extends AbstractXmlSubtree {
   ): Result<Element, MpmParseError> {
     if (typeOrXml === null) return err({ kind: 'noElement', what });
     const localName = typeof typeOrXml === 'string' ? typeOrXml : typeOrXml.getLocalName();
-    if (!localName.includes('Map') && localName !== 'score')
+    if (!isMapName(localName))
       return err({
         kind: 'wrongLocalName',
         what,
