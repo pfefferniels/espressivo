@@ -150,13 +150,15 @@ export function allChildElements(parent: Element, name?: string): Element[] {
  * which serialises the subtree, re-parses it and then pays XPath's node-set ordering pass.
  *
  * Semantics that must be preserved by anything replacing this, because callers depend on
- * all three:
+ * all four:
  *
  * - `ofThis` itself is never returned — `descendant::`, not `descendant-or-self::`;
  * - pre-order: an element is emitted before its own descendants, which is document order and
  *   is what XPath returns;
  * - the whole subtree is searched, including below a matching element, so a `…Map` nested
- *   inside another one is reported.
+ *   inside another one is reported;
+ * - the result is a finished array, not a lazy walk: `Dated.parseData` and `Header.parseData`
+ *   re-parent matched elements and can remove siblings while consuming it.
  *
  * The walk is iterative rather than recursive so that a pathologically deep document
  * cannot overflow the stack; the explicit stack is pushed in reverse so children come off
