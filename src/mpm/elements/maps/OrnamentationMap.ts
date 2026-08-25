@@ -3,7 +3,7 @@ import { attribute, firstChildElement, getAttributeValue } from '../../../xml/tr
 import { MPM_NAMESPACE, ORNAMENTATION_STYLE } from '../../names.js';
 import { DEFAULT_EXPAND_ORNAMENTS } from '../../RenderOptions.js';
 import type { RenderContext } from '../../RenderOptions.js';
-import { elementAt, isOk } from '../../../prelude/index.js';
+import { elementAt, filterMap, unwrapOr } from '../../../prelude/index.js';
 import { GenericMap } from './GenericMap.js';
 import { type Result } from '../../../prelude/index.js';
 import { type MpmParseError } from '../parseError.js';
@@ -338,21 +338,14 @@ export class OrnamentationMap extends GenericMap {
     ctx?: RenderContext,
   ): void {
     if (ornamentationMap === null || ornamentationMap.isEmpty()) return;
-    const mapsToOrnament: GenericMap[] = [];
-    for (const part of parts) {
-      const s = firstChildElement('dated', part);
-      if (s !== null) {
-        const score = firstChildElement('score', s);
-        if (score !== null) {
-          const m = GenericMap.createGenericMap(score);
-          if (isOk(m)) mapsToOrnament.push(m.value);
-        }
-      }
-    }
+    const mapsToOrnament = filterMap(parts, (part) => {
+      const score = firstChildElement('score', firstChildElement('dated', part));
+      return score === null ? null : unwrapOr(GenericMap.createGenericMap(score), null);
+    });
     ornamentationMap.renderGlobalOrnamentationMap(mapsToOrnament, ctx);
   }
 
-  renderGlobalOrnamentationMap(maps: GenericMap[], ctx?: RenderContext): void {
+  renderGlobalOrnamentationMap(maps: readonly GenericMap[], ctx?: RenderContext): void {
     if (maps.length === 0) return;
     this.apply(maps, ctx);
   }
@@ -403,7 +396,7 @@ export class OrnamentationMap extends GenericMap {
    * prepared. The read sits inside this method because the default belongs to `src/mpm/`
    * (ARCHITECTURE.md §2.4).
    */
-  private apply(maps: GenericMap[], ctx?: RenderContext): void {
+  private apply(maps: readonly GenericMap[], ctx?: RenderContext): void {
     if (maps.length === 0) return;
 
     const expandOrnaments = ctx?.options.expandOrnaments ?? DEFAULT_EXPAND_ORNAMENTS;

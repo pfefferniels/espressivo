@@ -2,7 +2,15 @@ import { Element } from '../../../xml/XomTypes.js';
 import { AbstractXmlSubtree } from '../../../xml/AbstractXmlSubtree.js';
 import { allChildElements, firstChildElement } from '../../../xml/tree.js';
 import { MPM_NAMESPACE } from '../../names.js';
-import { elementAt, err, isOk, ok, type Result } from '../../../prelude/index.js';
+import {
+  elementAt,
+  err,
+  filterMap,
+  isOk,
+  ok,
+  unwrapOr,
+  type Result,
+} from '../../../prelude/index.js';
 import { type MpmParseError } from '../parseError.js';
 import { Author } from './Author.js';
 import { Comment } from './Comment.js';
@@ -124,11 +132,11 @@ export class Metadata extends AbstractXmlSubtree {
           break;
         }
         case 'relatedResources': {
-          const resources = allChildElements(child, 'resource');
-          for (const resource of resources) {
-            const r = RelatedResource.fromXml(resource);
-            if (isOk(r)) this.relatedResources.push(r.value);
-          }
+          this.relatedResources.push(
+            ...filterMap(allChildElements(child, 'resource'), (r) =>
+              unwrapOr(RelatedResource.fromXml(r), null),
+            ),
+          );
           break;
         }
       }

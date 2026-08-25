@@ -685,17 +685,10 @@ export class Performance extends AbstractXmlSubtree {
   ): S {
     if (ornamentationMap !== null) {
       const affectedParts = this.getAllMsmPartsAffectedByGlobalMap(clone, ORNAMENTATION_MAP);
-      const mapsToOrnament: GenericMap[] = [];
-      for (const part of affectedParts) {
-        const s = firstChildElement('dated', part);
-        if (s !== null) {
-          const scoreElt = firstChildElement('score', s);
-          if (scoreElt !== null) {
-            const m = GenericMap.createGenericMap(scoreElt);
-            if (isOk(m)) mapsToOrnament.push(m.value);
-          }
-        }
-      }
+      const mapsToOrnament = filterMap(affectedParts, (part) => {
+        const score = firstChildElement('score', firstChildElement('dated', part));
+        return score === null ? null : unwrapOr(GenericMap.createGenericMap(score), null);
+      });
       ornamentationMap.renderGlobalOrnamentationMap(mapsToOrnament, ctx);
     }
     return collected;
