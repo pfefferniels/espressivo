@@ -13,7 +13,7 @@ import {
   readId,
   readNumber,
   readString,
-} from './instructionAttributes.js';
+} from '../../../xml/attributes.js';
 
 /**
  * Everything a `<rubato>` element can say, for {@link RubatoMap.addRubato} (RULE F5's

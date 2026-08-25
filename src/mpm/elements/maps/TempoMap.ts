@@ -18,7 +18,7 @@ import {
   readId,
   readNumber,
   readNumberOrString,
-} from './instructionAttributes.js';
+} from '../../../xml/attributes.js';
 
 /**
  * Everything a `<tempo>` element can say, for {@link TempoMap.addTempo} (RULE F5's

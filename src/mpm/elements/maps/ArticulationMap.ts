@@ -13,7 +13,7 @@ import {
 } from './data/articulation.js';
 import { ArticulationDef } from '../styles/defs/ArticulationDef.js';
 import type { ArticulationStyle } from '../styles/style.js';
-import { patchAttribute, readId, readNumber, readString } from './instructionAttributes.js';
+import { patchAttribute, readId, readNumber, readString } from '../../../xml/attributes.js';
 
 /**
  * Everything {@link ArticulationMap.addArticulation} can write into an `<articulation>`

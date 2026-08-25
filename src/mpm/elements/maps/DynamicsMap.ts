@@ -18,7 +18,7 @@ import {
   readId,
   readNumber,
   readNumberOrString,
-} from './instructionAttributes.js';
+} from '../../../xml/attributes.js';
 
 /**
  * Everything a `<dynamics>` element can say, for {@link DynamicsMap.addDynamics} (RULE F5's

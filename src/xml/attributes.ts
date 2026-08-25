@@ -1,27 +1,23 @@
-import { Attribute, Element } from '../../../xml/XomTypes.js';
-import { attribute } from '../../../xml/tree.js';
+import { Attribute, Element } from './XomTypes.js';
+import { attribute } from './tree.js';
 
 /**
- * Reading an instruction element back as the `Add<X>Options` that would have written it, and
- * patching one in place.
+ * Reading an attribute back as the value that would have written it, and patching one in place.
  *
- * Each map has had two halves for a while: `add<X>(Add<X>Options)` writes a document, and
- * `get<X>DataOf(index)` reads one *as the renderer sees it* — style-relative names resolved to
- * numbers, absent attributes replaced by their defaults, the open end of a span spelled
- * `Number.MAX_VALUE`. That reading is the right one for rendering and the wrong one for anything
- * that has to know what the document actually says: it cannot tell `meanTempoAt="0.5"` from an
- * absent `@meanTempoAt`, and it has no inverse.
+ * These are the primitives the `Add<X>Options` writing surfaces are built on — the MPM maps'
+ * `get<X>OptionsOf` / `update<X>At`, and the MSM element readers. Every `add<X>` turns an
+ * options object into attributes with `String(value)`; these read that spelling back. The law
+ * they hold, asserted in `tests/mpm/elements/maps/options-roundtrip.test.ts` and
+ * `tests/msm/writingSurface.test.ts`:
  *
- * These are the primitives of the third half — `get<X>OptionsOf` and `update<X>At` — which read
- * and write the document as written. The law they hold, asserted per map in
- * `tests/mpm/elements/maps/options-roundtrip.test.ts`:
- *
- * > for any element `add<X>` produced, `add<X>(get<X>OptionsOf(i))` produces the same element,
+ * > for any element `add<X>` produced, `add<X>(get<X>OptionsOf(…))` produces the same element,
  * > attribute for attribute and byte for byte.
  *
- * Nothing here adds vocabulary. Every attribute reached is one the MPM ODD defines for the
- * element it sits on; an attribute the options type does not name is not read, and — see
- * {@link patchAttribute} — not disturbed either.
+ * What they read is the document **as written**, not as a renderer resolves it: an absent
+ * attribute reads as `undefined` and stays distinguishable from one that spells out its own
+ * default, which is what makes the round trip an inverse at all. Nothing here adds vocabulary
+ * — an attribute the options type does not name is not read, and — see {@link patchAttribute} —
+ * not disturbed either.
  */
 
 const XML_NAMESPACE = 'http://www.w3.org/XML/1998/namespace';
@@ -104,7 +100,7 @@ export function readId(element: Element): string | undefined {
  *
  * @param key the options field. Checked against `T`, so a renamed field fails to compile here
  *   rather than silently stopping being written.
- * @param attributeName the MPM attribute it stands for, where the two differ (`transitionTo` →
+ * @param attributeName the attribute it stands for, where the two differ (`transitionTo` →
  *   `transition.to`, `id` → `xml:id`).
  */
 export function patchAttribute<T extends object>(
