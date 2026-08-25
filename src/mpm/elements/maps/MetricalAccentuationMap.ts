@@ -12,7 +12,7 @@ import {
   readId,
   readNumber,
   readString,
-} from './instructionAttributes.js';
+} from '../../../xml/attributes.js';
 
 /**
  * Everything an `<accentuationPattern>` element can say, for

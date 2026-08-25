@@ -26,7 +26,7 @@ import {
   readId,
   readNumber,
   readString,
-} from './instructionAttributes.js';
+} from '../../../xml/attributes.js';
 import type { OrnamentNote } from './data/OrnamentNote.js';
 import type { PreparedOrnament } from './ornamentInstantiation.js';
 

@@ -7,7 +7,7 @@ import type { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { type Result } from '../../../prelude/index.js';
 import { type MpmParseError } from '../parseError.js';
-import { patchAttribute, readId, readNumber } from './instructionAttributes.js';
+import { patchAttribute, readId, readNumber } from '../../../xml/attributes.js';
 
 /**
  * Everything an `<asynchrony>` element can say, for {@link AsynchronyMap.addAsynchrony}

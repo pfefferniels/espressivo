@@ -19,6 +19,28 @@ import {
 } from '../xml/tree.js';
 import { MeicoError, MissingNodeError } from '../xml/errors.js';
 import { addUUID } from '../xml/ids.js';
+import { addToMap } from './dateMap.js';
+import {
+  datedMap,
+  makeNote,
+  makePedal,
+  makeProgramChange,
+  makeRest,
+  makeSection,
+  makeTimeSignature,
+  noteOptionsOf,
+  pedalOptionsOf,
+} from './write.js';
+import type {
+  AddNoteOptions,
+  AddPartOptions,
+  AddPedalOptions,
+  AddProgramChangeOptions,
+  AddRestOptions,
+  AddSectionOptions,
+  AddTimeSignatureOptions,
+  MsmMapName,
+} from './write.js';
 
 import { Midi } from '../midi/Midi.js';
 import { Sequence, Track } from '../midi/MidiTypes.js';
@@ -362,14 +384,27 @@ export class Msm extends AbstractMsm {
 
   /**
    * {@link Msm.makePartFromString} with a numeric part number.
+   *
+   * The options form writes exactly what the positional one writes; it exists so that four
+   * values the type system cannot tell apart cannot be swapped (RULE F5).
    */
+  static override makePart(part: AddPartOptions): Element;
   static override makePart(
     name: string,
     number: number,
     midiChannel: number,
     midiPort: number,
+  ): Element;
+  static override makePart(
+    ...args:
+      [part: AddPartOptions] | [name: string, number: number, midiChannel: number, midiPort: number]
   ): Element {
-    return Msm.makePartFromString(name, String(number), midiChannel, midiPort);
+    const part: AddPartOptions =
+      args.length === 1
+        ? args[0]
+        : { name: args[0], number: args[1], midiChannel: args[2], midiPort: args[3] };
+
+    return Msm.makePartFromString(part.name, String(part.number), part.midiChannel, part.midiPort);
   }
 
   /** Append a part to the root element. */
@@ -425,25 +460,129 @@ export class Msm extends AbstractMsm {
   }
 
   /**
-   * A `<timeSignature>` entry. `date` is in MSM ticks; a null `id` leaves the element without an
-   * `xml:id`.
+   * A `<timeSignature>` entry. `date` is in MSM ticks; in the positional form a null `id`
+   * leaves the element without an `xml:id`.
    */
+  static makeTimeSignature(timeSignature: AddTimeSignatureOptions): Element;
   static makeTimeSignature(
     date: number,
     numerator: number,
     denominator: number,
     id: string | null,
+  ): Element;
+  static makeTimeSignature(
+    ...args:
+      | [timeSignature: AddTimeSignatureOptions]
+      | [date: number, numerator: number, denominator: number, id: string | null]
   ): Element {
-    const e = new Element('timeSignature');
+    if (args.length === 1) return makeTimeSignature(args[0]);
 
-    e.addAttribute(new Attribute('date', String(date)));
-    e.addAttribute(new Attribute('numerator', String(numerator)));
-    e.addAttribute(new Attribute('denominator', String(denominator)));
+    const [date, numerator, denominator, id] = args;
+    return makeTimeSignature(
+      id === null ? { date, numerator, denominator } : { date, numerator, denominator, id },
+    );
+  }
 
-    if (id !== null)
-      e.addAttribute(new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', id));
+  // -------------------------------------------------------------------------
+  // The writing surface: build the elements MSM is made of, and put them where
+  // the format keeps them. Element shapes and attribute orders live in
+  // `write.ts`, one docstring per factory.
+  // -------------------------------------------------------------------------
 
-    return e;
+  /**
+   * The map named `name` in `scope`'s `<dated>`, created there if absent — in the position the
+   * scope's own child order gives it. `scope` is a `<global>` or a `<part>`, and the two orders
+   * differ.
+   *
+   * This is what keeps a map inside `<dated>`, where every date lookup in this library looks
+   * for it. A map appended to the `<global>` or `<part>` element itself is silently invisible.
+   */
+  static datedMap(scope: Element, name: MsmMapName): Element {
+    return datedMap(scope, name);
+  }
+
+  /** A `<note>`. Attribute order and units: {@link AddNoteOptions}. */
+  static makeNote(note: AddNoteOptions): Element {
+    return makeNote(note);
+  }
+
+  /** A `<rest>`. */
+  static makeRest(rest: AddRestOptions): Element {
+    return makeRest(rest);
+  }
+
+  /** A `<pedal>`. */
+  static makePedal(pedal: AddPedalOptions): Element {
+    return makePedal(pedal);
+  }
+
+  /** A `<section>`. */
+  static makeSection(section: AddSectionOptions): Element {
+    return makeSection(section);
+  }
+
+  /** A `<programChange>`. */
+  static makeProgramChange(programChange: AddProgramChangeOptions): Element {
+    return makeProgramChange(programChange);
+  }
+
+  /**
+   * A `<note>` read back as the options that would write it, or null where it carries no
+   * `@date`, `@duration` or `@midi.pitch`.
+   *
+   * Addressed by element rather than by index: an MSM map is a raw `Element`, so there is no
+   * entry array to index into the way an MPM map's `get<X>OptionsOf` does.
+   */
+  static noteOptionsOf(note: Element): AddNoteOptions | null {
+    return noteOptionsOf(note);
+  }
+
+  /** {@link noteOptionsOf} for a `<pedal>`. */
+  static pedalOptionsOf(pedal: Element): AddPedalOptions | null {
+    return pedalOptionsOf(pedal);
+  }
+
+  /**
+   * Add a `<note>` to `part`'s `<score>`.
+   *
+   * @returns the index the note landed at in the score, or -1 if it could not be placed
+   */
+  addNote(part: Element, note: AddNoteOptions): number {
+    return addToMap(makeNote(note), datedMap(part, 'score'));
+  }
+
+  /** Add a `<rest>` to `part`'s `<score>`. */
+  addRest(part: Element, rest: AddRestOptions): number {
+    return addToMap(makeRest(rest), datedMap(part, 'score'));
+  }
+
+  /** Add a `<pedal>` to `scope`'s `<pedalMap>`. Both a `<global>` and a `<part>` may hold one. */
+  addPedal(scope: Element, pedal: AddPedalOptions): number {
+    return addToMap(makePedal(pedal), datedMap(scope, 'pedalMap'));
+  }
+
+  /**
+   * Add a `<timeSignature>` to `scope`'s `<timeSignatureMap>`. A part's own map wins over the
+   * global one wherever both exist.
+   */
+  addTimeSignature(scope: Element, timeSignature: AddTimeSignatureOptions): number {
+    return addToMap(makeTimeSignature(timeSignature), datedMap(scope, 'timeSignatureMap'));
+  }
+
+  /** Add a `<programChange>` to `part`'s `<programChangeMap>`. Parts only. */
+  addProgramChange(part: Element, programChange: AddProgramChangeOptions): number {
+    return addToMap(makeProgramChange(programChange), datedMap(part, 'programChangeMap'));
+  }
+
+  /**
+   * Add a `<section>` to the global `<sectionMap>`. Sections are global; a part has no
+   * `<sectionMap>`.
+   *
+   * @throws {MissingNodeError} when the document has no `<global>`
+   */
+  addSection(section: AddSectionOptions): number {
+    const global = requireFirstChildElement(this.requireRootElement(), 'global');
+    return addToMap(makeSection(section), datedMap(global, 'sectionMap'));
   }
 
   /**

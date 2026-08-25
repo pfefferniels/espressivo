@@ -14,7 +14,7 @@ import { mapPresent, unwrapOr } from '../../../prelude/index.js';
 import { DEFAULT_MOVEMENT_SAMPLE_MAX_STEP } from '../../RenderOptions.js';
 import type { RenderContext } from '../../RenderOptions.js';
 import type { Normalized } from '../../../units.js';
-import { patchAttribute, readId, readNumber, readString } from './instructionAttributes.js';
+import { patchAttribute, readId, readNumber, readString } from '../../../xml/attributes.js';
 
 /**
  * Everything a `<movement>` element can say, for {@link MovementMap.addMovement} (RULE F5's
