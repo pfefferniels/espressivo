@@ -359,6 +359,10 @@ npm run build         # tsc; always preceded by a dist wipe, so no stale output 
 
 ## License
 
-meico is published under the **GNU GPL v3**. This port is a derivative work of it, so the same
-terms apply; the `license` field and `LICENSE` file are pending an explicit decision by the
-repository owner and this package is not published to npm until they are in place.
+Copyright (C) 2026 Niels Pfeffer.
+
+espressivo is a derivative work of [meico](https://github.com/cemfi/meico) by Axel Berndt and
+others, which is published under the **GNU GPL v3**, so the same terms apply here. espressivo is
+published under **GPL-3.0-only**: meico's grant names version 3.0 and does not carry the "or any
+later version" clause, so this port does not extend it either. The full text is in
+[LICENSE](LICENSE).
