@@ -13,6 +13,12 @@ import {
   type Tempo,
   type TransitioningTempo,
 } from './data/tempo.js';
+import {
+  patchAttribute,
+  readId,
+  readNumber,
+  readNumberOrString,
+} from './instructionAttributes.js';
 
 /**
  * Everything a `<tempo>` element can say, for {@link TempoMap.addTempo} (RULE F5's
@@ -135,6 +141,61 @@ export class TempoMap extends GenericMap {
       meanTempoAtAtt === null ? null : meanTempoAtAtt.getValue(),
       this.getStyle('tempo', this.findStyleNameAt(i)),
     );
+  }
+
+  /**
+   * The tempo instruction at `index` as the options that would write it — the document as it
+   * stands, with nothing resolved and nothing defaulted. Null if the entry is not a `<tempo>`,
+   * or carries neither `@bpm` nor `@beatLength`, which are the two {@link addTempo} requires.
+   *
+   * The complement of {@link getTempoDataOf}, not a variant of it: that one answers what the
+   * renderer will do, this one what the document says. A fitter revising a tempo needs the
+   * second — `meanTempoAt="0.5"` and an absent `@meanTempoAt` render identically and are not
+   * the same instruction to rewrite.
+   */
+  getTempoOptionsOf(index: number): AddTempoOptions | null {
+    const i = this.resolveEntryIndex(index, 'tempo');
+    if (i < 0) return null;
+
+    const e = this.entryAt(i).value;
+    const bpm = readNumberOrString(e, 'bpm');
+    const beatLength = readNumber(e, 'beatLength');
+    if (bpm === undefined || beatLength === undefined) return null;
+
+    return {
+      date: readNumber(e, 'date') ?? this.entryAt(i).key,
+      bpm,
+      transitionTo: readNumberOrString(e, 'transition.to'),
+      meanTempoAt: readNumber(e, 'meanTempoAt'),
+      beatLength,
+      id: readId(e),
+    };
+  }
+
+  /**
+   * Patch the `<tempo>` at `index` in place: a field the patch omits is left alone, one it
+   * carries as `undefined` has its attribute removed, anything else is written.
+   *
+   * Patching `@date` re-keys and re-sorts the map, which is the one thing writing the attribute
+   * alone would not do — {@link GenericMap.elements} keys on the date read when the element was
+   * added, and a stale key makes every later lookup answer from the wrong position.
+   *
+   * @returns false if the entry is not a `<tempo>`, in which case nothing was written.
+   */
+  updateTempoAt(index: number, patch: Partial<AddTempoOptions>): boolean {
+    const i = this.resolveEntryIndex(index, 'tempo');
+    if (i < 0) return false;
+
+    const e = this.entryAt(i).value;
+    patchAttribute(e, patch, 'date');
+    patchAttribute(e, patch, 'bpm');
+    patchAttribute(e, patch, 'transitionTo', 'transition.to');
+    patchAttribute(e, patch, 'meanTempoAt');
+    patchAttribute(e, patch, 'beatLength');
+    patchAttribute(e, patch, 'id', 'xml:id');
+
+    if ('date' in patch) this.sort();
+    return true;
   }
 
   getTempoAt(date: number): number {
