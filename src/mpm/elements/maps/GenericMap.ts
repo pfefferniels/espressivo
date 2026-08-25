@@ -215,9 +215,7 @@ export class GenericMap extends AbstractXmlSubtree {
    * {@link indexElements} describes.
    */
   private sortXml(): void {
-    const order: Element[] = [];
-    for (const e of this.elements) order.push(e.value);
-    this.getXml().reorderChildren(order);
+    this.getXml().reorderChildren(this.elements.map((e) => e.value));
   }
 
   /**

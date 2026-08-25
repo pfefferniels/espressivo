@@ -322,9 +322,9 @@ export function compareInterior(options: InteriorCompareOptions): ComparisonRepo
       sides.map(([a, b]) => evaluateDimension(dimension, a, b, settings)),
     );
 
-  const densities: DimensionDensity[] = [];
-  for (const dimension of COMPARISON_DIMENSIONS)
-    densities.push(densityOf(dimension, evaluations.get(dimension) ?? [], ticksPerQuarter));
+  const densities = COMPARISON_DIMENSIONS.map((dimension) =>
+    densityOf(dimension, evaluations.get(dimension) ?? [], ticksPerQuarter),
+  );
 
   const thresholds = defaultThresholds();
   const pass = segmentPass(

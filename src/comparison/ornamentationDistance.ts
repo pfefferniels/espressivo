@@ -447,11 +447,9 @@ export function ornamentationDistance(
     ticksPerQuarter,
   );
 
-  const findings: OrnamentFinding[] = [];
-  for (const pair of alignment.pairs)
-    findings.push(
-      ...findingsFor(elementAt(atomsA, pair.a, ATOMS_A), elementAt(atomsB, pair.b, ATOMS_B)),
-    );
+  const findings = alignment.pairs.flatMap((pair) =>
+    findingsFor(elementAt(atomsA, pair.a, ATOMS_A), elementAt(atomsB, pair.b, ATOMS_B)),
+  );
 
   return {
     distance: alignment.cost,

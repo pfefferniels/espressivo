@@ -733,11 +733,7 @@ export class Midi {
     const format = numTracks <= 1 ? 0 : 1;
     const resolution = this.sequence.getResolution();
 
-    const trackChunks: Uint8Array[] = [];
-    for (const track of tracks) {
-      const trackData = Midi.buildTrackChunk(track);
-      trackChunks.push(trackData);
-    }
+    const trackChunks = tracks.map((track) => Midi.buildTrackChunk(track));
 
     let totalSize = 14; // MThd header: 4 (tag) + 4 (length) + 6 (data)
     for (const chunk of trackChunks) {
