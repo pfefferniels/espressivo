@@ -493,7 +493,7 @@ export class ImprecisionMap extends GenericMap {
       distribution,
       // The span ends at the next entry of ANY name, or at the end of time when there is
       // none — which is what `at(i + 1)` returning undefined says.
-      endDate: this.elements.at(i + 1)?.key ?? Number.MAX_VALUE,
+      endDate: this.getAllElements().at(i + 1)?.key ?? Number.MAX_VALUE,
     }));
   }
 
@@ -534,7 +534,7 @@ export class ImprecisionMap extends GenericMap {
     // call order is fixed, so the derived seeds reproduce.
     const ordinal = ctx !== undefined ? ctx.streamOrdinal++ : 0;
 
-    if (map === null || this.elements.length === 0) return;
+    if (map === null || this.size() === 0) return;
 
     let domain: number;
     switch (this.getDomain()) {
@@ -598,7 +598,7 @@ export class ImprecisionMap extends GenericMap {
       for (; mapIndex < map.size(); ++mapIndex) {
         // `mapIndex` is a cursor that survives the distribution loop around this one, and the
         // `break` below leaves the entry that ended this span for the next distribution.
-        const mapEntry = elementAt(map.elements, mapIndex, 'imprecision target');
+        const mapEntry = elementAt(map.getAllElements(), mapIndex, 'imprecision target');
 
         if (mapEntry.key < distribution.startDate) continue;
 

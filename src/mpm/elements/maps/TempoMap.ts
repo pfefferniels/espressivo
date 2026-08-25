@@ -260,9 +260,9 @@ export class TempoMap extends GenericMap {
 
     let mapIndex = 0;
 
-    if (this.elements.length === 0) {
+    if (this.size() === 0) {
       for (; mapIndex < map.size(); ++mapIndex) {
-        const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
+        const mapEntry = elementAt(map.getAllElements(), mapIndex, 'target entry');
         const date = parseFloat(getAttributeValue('date.perf', mapEntry.value));
         const ms = TempoMap.computeMillisecondsForNoTempo(date, ppq);
         mapEntry.value.addAttribute(new Attribute('milliseconds.date', String(ms)));
@@ -297,7 +297,7 @@ export class TempoMap extends GenericMap {
 
       let milliseconds: number;
       for (; mapIndex < map.size(); ++mapIndex) {
-        const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
+        const mapEntry = elementAt(map.getAllElements(), mapIndex, 'target entry');
         if (mapEntry.key > td.endDate) break;
 
         const date = parseFloat(getAttributeValue('date.perf', mapEntry.value));
@@ -334,7 +334,7 @@ export class TempoMap extends GenericMap {
         }
         if (endDate <= td.startDate) milliseconds = TempoMap.computeDiffTiming(endDate, ppq, null);
         else milliseconds = TempoMap.computeDiffTiming(endDate, ppq, td) + startDateMilliseconds;
-        elementAt(map.elements, pd.value, 'target entry').value.addAttribute(
+        elementAt(map.getAllElements(), pd.value, 'target entry').value.addAttribute(
           new Attribute('milliseconds.date.end', String(milliseconds)),
         );
       }
