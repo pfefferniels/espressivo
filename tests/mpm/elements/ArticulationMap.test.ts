@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { okValue } from '../../support/result.js';
 import { expectOptionsRoundTrip } from '../../support/optionsRoundTrip.js';
-import { ArticulationMap, type AddArticulationOptions } from '../../../src/mpm/elements/maps/ArticulationMap.js';
+import {
+  ArticulationMap,
+  type AddArticulationOptions,
+} from '../../../src/mpm/elements/maps/ArticulationMap.js';
 import {
   articulateNote,
   NEUTRAL_ARTICULATION_MODIFIERS,

@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { okValue } from '../../support/result.js';
 import { expectOptionsRoundTrip } from '../../support/optionsRoundTrip.js';
-import { AsynchronyMap, type AddAsynchronyOptions } from '../../../src/mpm/elements/maps/AsynchronyMap.js';
+import {
+  AsynchronyMap,
+  type AddAsynchronyOptions,
+} from '../../../src/mpm/elements/maps/AsynchronyMap.js';
 import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
 import { Element, Attribute } from '../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';

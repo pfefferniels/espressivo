@@ -958,7 +958,14 @@ describe('getRubatoOptionsOf / updateRubatoAt', () => {
 
   it('writes through an existing attribute rather than moving it to the end', () => {
     const map = makeMap();
-    map.addRubato({ date: 0, nameRef: 'd', frameLength: 720, intensity: 2.0, loop: true, id: 'r1' });
+    map.addRubato({
+      date: 0,
+      nameRef: 'd',
+      frameLength: 720,
+      intensity: 2.0,
+      loop: true,
+      id: 'r1',
+    });
     const before = map.getElement(0)?.toXML();
 
     map.updateRubatoAt(0, { frameLength: 720 });

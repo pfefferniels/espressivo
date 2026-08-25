@@ -13,12 +13,7 @@ import {
   type Tempo,
   type TransitioningTempo,
 } from './data/tempo.js';
-import {
-  patchAttribute,
-  readId,
-  readNumber,
-  readNumberOrString,
-} from '../../../xml/attributes.js';
+import { patchAttribute, readId, readNumber, readNumberOrString } from '../../../xml/attributes.js';
 
 /**
  * Everything a `<tempo>` element can say, for {@link TempoMap.addTempo} (RULE F5's

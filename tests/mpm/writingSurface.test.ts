@@ -142,7 +142,11 @@ describe('the writing surface', () => {
       map: 'accentuationPattern',
       write: () => {
         const m = MetricalAccentuationMap.createMetricalAccentuationMap();
-        const i = m.addAccentuationPattern({ date: 0, accentuationPatternDefName: 'metre', scale: 1 });
+        const i = m.addAccentuationPattern({
+          date: 0,
+          accentuationPatternDefName: 'metre',
+          scale: 1,
+        });
         m.updateAccentuationPatternAt(i, { scale: 2 });
         return m.getAccentuationPatternOptionsOf(i)?.scale;
       },
