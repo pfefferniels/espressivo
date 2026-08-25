@@ -56,8 +56,9 @@ writeFileSync('sonata.mid', renderExpressiveMidi({ msm: movement.msm, mpm }));
 ```
 
 `convertMeiToMsm` returns **one MSM per `mdiv`** — one per movement — so a multi-movement MEI
-gives you an array to iterate. `renderExpressiveMidi` can also be called with `{ msm }` alone,
-which performs the score with no expression at all.
+gives you an array to iterate. To hear the score as written instead, with no performance applied,
+use `renderMidi({ msm })`. `renderExpressiveMidi` needs either an MPM or an MSM that has already
+been performed.
 
 ### Per-note performance data
 
