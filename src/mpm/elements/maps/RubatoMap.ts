@@ -7,6 +7,13 @@ import { type Result } from '../../../prelude/index.js';
 import { type MpmParseError } from '../parseError.js';
 import { resolveRubato, type Rubato, type RubatoDeclaration } from './data/rubato.js';
 import { elementAt, mapPresent, optional } from '../../../prelude/index.js';
+import {
+  patchAttribute,
+  readBoolean,
+  readId,
+  readNumber,
+  readString,
+} from './instructionAttributes.js';
 
 /**
  * Everything a `<rubato>` element can say, for {@link RubatoMap.addRubato} (RULE F5's
@@ -126,6 +133,72 @@ export class RubatoMap extends GenericMap {
       declared,
       def,
     );
+  }
+
+  /**
+   * The rubato instruction at `index` as the options that would write it — the document as it
+   * stands, with nothing inherited and nothing defaulted. Null only if the entry is not a
+   * `<rubato>`; unlike {@link getRubatoDataOf} a missing `frameLength` is no reason to refuse,
+   * because a `<rubato name.ref="…">` that leaves every number to its def is a document
+   * {@link addRubato} can write and this method has to be able to hand back.
+   *
+   * The complement of {@link getRubatoDataOf}, not a variant of it: that one answers what the
+   * renderer will do, this one what the document says. The difference is the whole of the
+   * def-inheritance rule — an `intensity` inherited from the `rubatoDef` and one spelled out on
+   * the element render the same and are not the same instruction to rewrite, and only this
+   * method can tell them apart.
+   *
+   * `loop` comes back as `false` where the caller supplied nothing, since {@link addRubato}
+   * writes the attribute unconditionally.
+   */
+  getRubatoOptionsOf(index: number): AddRubatoOptions | null {
+    const i = this.resolveEntryIndex(index, 'rubato');
+    if (i < 0) return null;
+
+    const entry = this.entryAt(i);
+    const e = entry.value;
+
+    return {
+      date: readNumber(e, 'date') ?? entry.key,
+      nameRef: readString(e, 'name.ref'),
+      frameLength: readNumber(e, 'frameLength'),
+      intensity: readNumber(e, 'intensity'),
+      lateStart: readNumber(e, 'lateStart'),
+      earlyEnd: readNumber(e, 'earlyEnd'),
+      loop: readBoolean(e, 'loop'),
+      id: readId(e),
+    };
+  }
+
+  /**
+   * Patch the `<rubato>` at `index` in place: a field the patch omits is left alone, one it
+   * carries as `undefined` has its attribute removed, anything else is written.
+   *
+   * Patching `@date` re-keys and re-sorts the map, which is the one thing writing the attribute
+   * alone would not do — {@link GenericMap.elements} keys on the date read when the element was
+   * added, and a stale key makes every later lookup answer from the wrong position.
+   *
+   * `loop: undefined` removes an attribute {@link addRubato} always writes. The meaning is
+   * unchanged — {@link resolveRubato} reads an absent `loop` as false — but the bytes are not.
+   *
+   * @returns false if the entry is not a `<rubato>`, in which case nothing was written.
+   */
+  updateRubatoAt(index: number, patch: Partial<AddRubatoOptions>): boolean {
+    const i = this.resolveEntryIndex(index, 'rubato');
+    if (i < 0) return false;
+
+    const e = this.entryAt(i).value;
+    patchAttribute(e, patch, 'date');
+    patchAttribute(e, patch, 'nameRef', 'name.ref');
+    patchAttribute(e, patch, 'frameLength');
+    patchAttribute(e, patch, 'intensity');
+    patchAttribute(e, patch, 'lateStart');
+    patchAttribute(e, patch, 'earlyEnd');
+    patchAttribute(e, patch, 'loop');
+    patchAttribute(e, patch, 'id', 'xml:id');
+
+    if ('date' in patch) this.sort();
+    return true;
   }
 
   /**

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { okValue } from '../../support/result.js';
-import { RubatoMap } from '../../../src/mpm/elements/maps/RubatoMap.js';
+import { expectOptionsRoundTrip } from '../../support/optionsRoundTrip.js';
+import { RubatoMap, type AddRubatoOptions } from '../../../src/mpm/elements/maps/RubatoMap.js';
 import {
   resolveRubato,
   type RubatoDeclaration,
@@ -9,6 +10,8 @@ import { RubatoDef } from '../../../src/mpm/elements/styles/defs/RubatoDef.js';
 import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
 import { Element, Attribute } from '../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
+import { Header } from '../../../src/mpm/elements/Header.js';
+import { createStyle } from '../../../src/mpm/elements/styles/style.js';
 
 describe('RubatoMap', () => {
   describe('createRubatoMap', () => {
@@ -848,5 +851,146 @@ describe('RubatoMap', () => {
       expect(elem.getLocalName()).toBe('style');
       expect(elem.getAttributeValue('name.ref')).toBe('myRubatoStyle');
     });
+  });
+});
+
+describe('getRubatoOptionsOf / updateRubatoAt', () => {
+  const makeMap = () => RubatoMap.createRubatoMap();
+
+  /** A map with a `rubatoDef` named `d` in scope from date 0. */
+  function mapWithDef(): RubatoMap {
+    const header = okValue(Header.createHeader());
+    const style = createStyle('rubato', 'rub style');
+    style.addDef(
+      okValue(RubatoDef.fromName('d', 360, { intensity: 2.0, lateStart: 0.2, earlyEnd: 0.8 })),
+    );
+    header.addStyleDef(Mpm.RUBATO_STYLE, style);
+
+    const map = makeMap();
+    map.setHeaders(null, header);
+    map.addStyleSwitch(0, 'rub style');
+    return map;
+  }
+
+  it('round-trips every shape addRubato can write', () => {
+    expectOptionsRoundTrip<RubatoMap, AddRubatoOptions>({
+      makeMap,
+      add: (map, o) => map.addRubato(o),
+      read: (map, i) => map.getRubatoOptionsOf(i),
+      samples: [
+        { date: 0 },
+        {
+          date: 720,
+          nameRef: 'myRubatoDef',
+          frameLength: 360,
+          intensity: 2.5,
+          lateStart: 0.1,
+          earlyEnd: 0.9,
+          loop: true,
+          id: 'r1',
+        },
+        { date: 1440, nameRef: 'myRubatoDef' },
+        { date: 2160, frameLength: 720, loop: true },
+      ],
+    });
+  });
+
+  /**
+   * The def-inheritance case, which is the reason this reading exists at all: an `intensity`
+   * inherited from the `rubatoDef` and one spelled out on the element render identically, and
+   * `getRubatoDataOf` — which has already consulted the def — cannot tell them apart.
+   */
+  it('reads what the document says, where getRubatoDataOf reads what it renders as', () => {
+    const inherited = mapWithDef();
+    const i = inherited.addRubato({ date: 0, nameRef: 'd' });
+
+    expect(inherited.getRubatoOptionsOf(i)).toMatchObject({ date: 0, nameRef: 'd', loop: false });
+    expect(inherited.getRubatoOptionsOf(i)?.frameLength).toBeUndefined();
+    expect(inherited.getRubatoOptionsOf(i)?.intensity).toBeUndefined();
+    expect(inherited.getRubatoOptionsOf(i)?.lateStart).toBeUndefined();
+    expect(inherited.getRubatoOptionsOf(i)?.earlyEnd).toBeUndefined();
+
+    const rendered = inherited.getRubatoDataOf(i)!;
+    expect(rendered.frameLength).toBe(360);
+    expect(rendered.intensity).toBe(2.0);
+    expect(rendered.lateStart).toBe(0.2);
+    expect(rendered.earlyEnd).toBe(0.8);
+
+    // An identity warp stated on the element is a different instruction that renders to a
+    // different number — and both halves say so, which is what makes the pair above the point.
+    const stated = mapWithDef();
+    const j = stated.addRubato({ date: 0, nameRef: 'd', intensity: 1.0 });
+    expect(stated.getRubatoOptionsOf(j)?.intensity).toBe(1.0);
+    expect(stated.getRubatoDataOf(j)?.intensity).toBe(1.0);
+  });
+
+  it('leaves an omitted field alone, removes one patched to undefined', () => {
+    const map = makeMap();
+    map.addRubato({ date: 0, frameLength: 720, intensity: 2.0, lateStart: 0.1, earlyEnd: 0.9 });
+
+    expect(map.updateRubatoAt(0, { intensity: 3.0 })).toBe(true);
+    expect(map.getRubatoOptionsOf(0)).toMatchObject({
+      frameLength: 720,
+      intensity: 3.0,
+      lateStart: 0.1,
+      earlyEnd: 0.9,
+    });
+
+    map.updateRubatoAt(0, { lateStart: undefined });
+    expect(map.getRubatoOptionsOf(0)?.lateStart).toBeUndefined();
+    expect(map.getElement(0)?.getAttribute('lateStart')).toBeNull();
+  });
+
+  /**
+   * `loop` is the one attribute `addRubato` writes unconditionally, so patching it away
+   * produces a document `addRubato` cannot. The meaning survives — an absent `loop` resolves
+   * to false — and the round-trip law above is about elements `addRubato` produced, so this is
+   * outside it rather than a counterexample to it.
+   */
+  it('removes @loop when it is patched to undefined', () => {
+    const map = makeMap();
+    map.addRubato({ date: 0, frameLength: 720, loop: true });
+
+    map.updateRubatoAt(0, { loop: undefined });
+    expect(map.getElement(0)?.getAttribute('loop')).toBeNull();
+    expect(map.getRubatoDataOf(0)?.loop).toBe(false);
+  });
+
+  it('writes through an existing attribute rather than moving it to the end', () => {
+    const map = makeMap();
+    map.addRubato({ date: 0, nameRef: 'd', frameLength: 720, intensity: 2.0, loop: true, id: 'r1' });
+    const before = map.getElement(0)?.toXML();
+
+    map.updateRubatoAt(0, { frameLength: 720 });
+    expect(map.getElement(0)?.toXML()).toBe(before);
+  });
+
+  it('never touches an attribute no option names', () => {
+    const map = makeMap();
+    map.addRubato({ date: 0, frameLength: 720 });
+    map.getElement(0)?.addAttribute(new Attribute('corresp', 'arg1'));
+
+    map.updateRubatoAt(0, { intensity: 2.0, id: 'r1' });
+    expect(map.getElement(0)?.getAttributeValue('corresp')).toBe('arg1');
+  });
+
+  it('re-keys and re-sorts the map when @date is patched', () => {
+    const map = makeMap();
+    map.addRubato({ date: 0, frameLength: 720, id: 'first' });
+    map.addRubato({ date: 1000, frameLength: 360, id: 'second' });
+
+    map.updateRubatoAt(0, { date: 2000 });
+
+    expect(map.getAllElements().map((e) => e.key)).toEqual([1000, 2000]);
+    expect(map.getElement(0)?.getAttributeValue('xml:id')).toBe('second');
+    // The lookup index moved with it, which is the half that writing the attribute alone misses.
+    expect(map.getElementBeforeAt(2500)?.getAttributeValue('xml:id')).toBe('first');
+  });
+
+  it('refuses an entry that is not a <rubato>', () => {
+    const map = makeMap();
+    map.addStyleSwitch(0, 'someStyle');
+    expect(map.getRubatoOptionsOf(0)).toBeNull();
+    expect(map.updateRubatoAt(0, { intensity: 2.0 })).toBe(false);
   });
 });

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { okValue } from '../../support/result.js';
-import { DynamicsMap } from '../../../src/mpm/elements/maps/DynamicsMap.js';
+import { expectOptionsRoundTrip } from '../../support/optionsRoundTrip.js';
+import { DynamicsMap, type AddDynamicsOptions } from '../../../src/mpm/elements/maps/DynamicsMap.js';
 import {
   dynamicsAt,
   isConstantDynamics,
@@ -1118,5 +1119,134 @@ describe('DynamicsMap', () => {
         ['note', '100.0'],
       ]);
     });
+  });
+});
+
+describe('getDynamicsOptionsOf / updateDynamicsAt', () => {
+  const makeMap = () => DynamicsMap.createDynamicsMap();
+
+  it('round-trips every shape addDynamics can write', () => {
+    expectOptionsRoundTrip<DynamicsMap, AddDynamicsOptions>({
+      makeMap,
+      add: (map, o) => map.addDynamics(o),
+      read: (map, i) => map.getDynamicsOptionsOf(i),
+      samples: [
+        { date: 0, volume: 60 },
+        {
+          date: 720,
+          volume: 60,
+          transitionTo: 100,
+          curvature: 0.4,
+          protraction: -0.25,
+          subNoteDynamics: true,
+          id: 'd1',
+        },
+        { date: 1440, volume: 'forte', transitionTo: 'pianissimo' },
+        // Curve parameters with no `@transition.to` for them to shape: `addDynamics` writes
+        // them anyway, so the law has to carry them anyway.
+        { date: 2160, volume: 92.5, curvature: 0.125, protraction: 0.75, id: 'has-a-dash' },
+      ],
+    });
+  });
+
+  it('reads what the document says, where getDynamicsDataOf reads what it renders as', () => {
+    const map = makeMap();
+    map.addDynamics({ date: 0, volume: 60, transitionTo: 100 });
+
+    // No `@curvature`. The renderer substitutes 0.0; the document says nothing.
+    expect(map.getDynamicsOptionsOf(0)?.curvature).toBeUndefined();
+    expect(map.getDynamicsDataOf(0)?.curvature).toBe(0.0);
+    expect(map.getDynamicsOptionsOf(0)?.subNoteDynamics).toBeUndefined();
+    expect(map.getDynamicsDataOf(0)?.subNoteDynamics).toBe(false);
+
+    // An unresolvable name is a name here and the hardcoded 100.0 there.
+    const named = makeMap();
+    named.addDynamics({ date: 0, volume: 'forte' });
+    expect(named.getDynamicsOptionsOf(0)?.volume).toBe('forte');
+    expect(named.getDynamicsDataOf(0)?.volume).toBe(100.0);
+  });
+
+  it('leaves an omitted field alone, removes one patched to undefined', () => {
+    const map = makeMap();
+    map.addDynamics({ date: 0, volume: 60, transitionTo: 100, curvature: 0.4 });
+
+    expect(map.updateDynamicsAt(0, { volume: 90 })).toBe(true);
+    expect(map.getDynamicsOptionsOf(0)).toMatchObject({
+      volume: 90,
+      transitionTo: 100,
+      curvature: 0.4,
+    });
+
+    map.updateDynamicsAt(0, { curvature: undefined });
+    expect(map.getDynamicsOptionsOf(0)?.curvature).toBeUndefined();
+    expect(map.getElement(0)?.getAttribute('curvature')).toBeNull();
+  });
+
+  it('writes through an existing attribute rather than moving it to the end', () => {
+    const map = makeMap();
+    map.addDynamics({ date: 0, volume: 60, transitionTo: 100, curvature: 0.4, id: 'd1' });
+    const before = map.getElement(0)?.toXML();
+
+    map.updateDynamicsAt(0, { volume: 60 });
+    expect(map.getElement(0)?.toXML()).toBe(before);
+  });
+
+  it('never touches an attribute no option names', () => {
+    const map = makeMap();
+    map.addDynamics({ date: 0, volume: 60 });
+    map.getElement(0)?.addAttribute(new Attribute('corresp', 'arg1'));
+
+    map.updateDynamicsAt(0, { volume: 90, id: 'd1' });
+    expect(map.getElement(0)?.getAttributeValue('corresp')).toBe('arg1');
+  });
+
+  it('re-keys and re-sorts the map when @date is patched', () => {
+    const map = makeMap();
+    map.addDynamics({ date: 0, volume: 60, id: 'first' });
+    map.addDynamics({ date: 1000, volume: 90, id: 'second' });
+
+    map.updateDynamicsAt(0, { date: 2000 });
+
+    expect(map.getAllElements().map((e) => e.key)).toEqual([1000, 2000]);
+    expect(map.getElement(0)?.getAttributeValue('xml:id')).toBe('second');
+    // The lookup index moved with it, which is the half that writing the attribute alone misses.
+    expect(map.getElementBeforeAt(2500)?.getAttributeValue('xml:id')).toBe('first');
+  });
+
+  /**
+   * `clampCurvature` claims an out-of-range value "can neither be written to a document nor
+   * read back out of one". A patcher that skipped the clamps would be the hole in that.
+   */
+  it('clamps the curve parameters a patch tries to write', () => {
+    const map = makeMap();
+    map.addDynamics({ date: 0, volume: 60, transitionTo: 100, curvature: 0.4, protraction: 0.2 });
+
+    map.updateDynamicsAt(0, { curvature: 5, protraction: -3 });
+    expect(map.getElement(0)?.getAttributeValue('curvature')).toBe('1');
+    expect(map.getElement(0)?.getAttributeValue('protraction')).toBe('-1');
+
+    map.updateDynamicsAt(0, { curvature: -0.5, protraction: 4 });
+    expect(map.getElement(0)?.getAttributeValue('curvature')).toBe('0');
+    expect(map.getElement(0)?.getAttributeValue('protraction')).toBe('1');
+  });
+
+  it('spells subNoteDynamics="false" where addDynamics would omit the attribute', () => {
+    const map = makeMap();
+    map.addDynamics({ date: 0, volume: 60, subNoteDynamics: true });
+
+    map.updateDynamicsAt(0, { subNoteDynamics: false });
+    expect(map.getElement(0)?.getAttributeValue('subNoteDynamics')).toBe('false');
+    // Same meaning to the renderer, so re-adding what is read drops it again.
+    expect(map.getDynamicsDataOf(0)?.subNoteDynamics).toBe(false);
+
+    map.updateDynamicsAt(0, { subNoteDynamics: undefined });
+    expect(map.getElement(0)?.getAttribute('subNoteDynamics')).toBeNull();
+  });
+
+  it('refuses an entry that is not a <dynamics>', () => {
+    const map = makeMap();
+    map.addStyleSwitch(0, 'someStyle');
+    expect(map.getDynamicsOptionsOf(0)).toBeNull();
+    expect(map.updateDynamicsAt(0, { volume: 90 })).toBe(false);
   });
 });

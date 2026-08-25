@@ -21,6 +21,12 @@ import {
   noteOwners,
   prepareOrnament,
 } from './ornamentInstantiation.js';
+import {
+  patchAttribute,
+  readId,
+  readNumber,
+  readString,
+} from './instructionAttributes.js';
 import type { OrnamentNote } from './data/OrnamentNote.js';
 import type { PreparedOrnament } from './ornamentInstantiation.js';
 
@@ -61,6 +67,13 @@ export interface AddOrnamentOptions {
 }
 
 /**
+ * What {@link OrnamentationMap.updateOrnamentAt} accepts: every field of
+ * {@link AddOrnamentOptions} except the note pool, which is `<note>` children rather than an
+ * attribute and so is not patchable — see that method.
+ */
+export type OrnamentPatch = Partial<Omit<AddOrnamentOptions, 'notes'>>;
+
+/**
  * The `scale` default (`ornament.xml:36-44`). It is `0.0`, not `1.0`: an `<ornament>` without
  * a `scale` is specified to produce no dynamics effect at all, which reads as a bug and is
  * not one — the MEI importer writes `scale="0.0"` explicitly for exactly this reason.
@@ -85,6 +98,20 @@ function noteOrderAttributeValue(noteOrder: readonly string[]): string {
     } else noteIdsString += ` #${nid.trim().replace('#', '')}`;
   }
   return noteIdsString.trim();
+}
+
+/**
+ * What `note.order` holds for either spelling {@link AddOrnamentOptions} accepts, or undefined
+ * where the attribute is not written at all.
+ *
+ * Shared by {@link OrnamentationMap.addOrnamentV3} and
+ * {@link OrnamentationMap.updateOrnamentAt} so that the two cannot come to spell an array
+ * differently.
+ */
+function noteOrderValue(noteOrder: string | readonly string[] | undefined): string | undefined {
+  if (noteOrder === undefined) return undefined;
+  const value = typeof noteOrder === 'string' ? noteOrder : noteOrderAttributeValue(noteOrder);
+  return value === '' ? undefined : value;
 }
 
 /**
@@ -187,11 +214,8 @@ export class OrnamentationMap extends GenericMap {
       ornament.addAttribute(new Attribute('noteid', options.noteid));
     ornament.addAttribute(new Attribute('scale', String(options.scale ?? DEFAULT_ORNAMENT_SCALE)));
 
-    const noteOrder = options.noteOrder;
-    if (noteOrder !== undefined) {
-      const value = typeof noteOrder === 'string' ? noteOrder : noteOrderAttributeValue(noteOrder);
-      if (value !== '') ornament.addAttribute(new Attribute('note.order', value));
-    }
+    const noteOrder = noteOrderValue(options.noteOrder);
+    if (noteOrder !== undefined) ornament.addAttribute(new Attribute('note.order', noteOrder));
 
     const repetitions = options.repetitions ?? 0;
     if (repetitions !== 0) ornament.addAttribute(new Attribute('repetitions', String(repetitions)));
@@ -320,6 +344,96 @@ export class OrnamentationMap extends GenericMap {
           : parseOrnamentRepetitions(repetitionsAtt.getValue()),
       notes: parseOrnamentNotePool(xml),
     };
+  }
+
+  /**
+   * The ornament at `index` as the options that would write it — the document as it stands,
+   * with nothing resolved and nothing defaulted. Null if the entry is not an `<ornament>` or
+   * carries no `@name.ref`, the one attribute {@link addOrnamentV3} requires.
+   *
+   * The complement of {@link getOrnamentDataOf}, not a variant of it: that one answers what the
+   * renderer will do and needs a style and a def in scope to answer at all, where this one only
+   * reads. Three fields need saying:
+   *
+   * - `noteOrder` comes back as the attribute's text, never as the v2 list, because that is the
+   *   only spelling that survives a rewrite — the flat list cannot carry the v3 grammar (see
+   *   {@link Ornament.noteOrderText}), and the text an array spelling produces is its own fixed
+   *   point, so both forms round-trip through it.
+   * - `scale` is always answered, at the spec default where the attribute is absent, because
+   *   {@link addOrnamentV3} always writes one and there is no absence for it to preserve.
+   * - the note pool is read with {@link parseOrnamentNotePool}, the renderer's own reader, which
+   *   is the one place this is not literal about the document: a `<note>` that reader cannot use
+   *   is dropped with a log, so a hand-written pool can come back shorter than it went in. Every
+   *   pool {@link addOrnamentV3} wrote survives it.
+   */
+  getOrnamentOptionsOf(index: number): AddOrnamentOptions | null {
+    const i = this.resolveEntryIndex(index, 'ornament');
+    if (i < 0) return null;
+
+    const entry = this.entryAt(i);
+    const e = entry.value;
+    const nameRef = readString(e, 'name.ref');
+    if (nameRef === undefined) return null;
+
+    const notes = parseOrnamentNotePool(e);
+    return {
+      date: readNumber(e, 'date') ?? entry.key,
+      nameRef,
+      scale: readNumber(e, 'scale') ?? DEFAULT_ORNAMENT_SCALE,
+      noteOrder: readString(e, 'note.order'),
+      noteid: readString(e, 'noteid'),
+      repetitions: readNumber(e, 'repetitions'),
+      notes: notes.length === 0 ? undefined : notes,
+      id: readId(e),
+    };
+  }
+
+  /**
+   * Patch the `<ornament>` at `index` in place: a field the patch omits is left alone, and a
+   * field it carries is written exactly as {@link addOrnamentV3} would write it. That second
+   * half is what keeps a patched element one {@link getOrnamentOptionsOf} can round-trip, and it
+   * has three consequences the plain "undefined removes the attribute" rule does not cover:
+   *
+   * - an array `noteOrder` is written in the v2 spelling, not as `String(array)`;
+   * - a value that writer omits — `repetitions` at 0, an empty `noteOrder`, `noteid` or `id` —
+   *   removes the attribute rather than spelling the omission out;
+   * - `scale` is the one attribute that writer always writes, so patching it to `undefined`
+   *   restores the `0.0` default instead of dropping it.
+   *
+   * The note pool is not patchable and is not in {@link OrnamentPatch}: `<note>` children are
+   * not attributes, and swapping a whole pool is a different operation from patching one value.
+   * Naming it is a compile error rather than a silent no-op; re-add the ornament to change it.
+   *
+   * Patching `@date` re-keys and re-sorts the map, which is the one thing writing the attribute
+   * alone would not do — {@link GenericMap.elements} keys on the date read when the element was
+   * added, and a stale key makes every later lookup answer from the wrong position.
+   *
+   * @returns false if the entry is not an `<ornament>`, in which case nothing was written.
+   */
+  updateOrnamentAt(index: number, patch: OrnamentPatch): boolean {
+    const i = this.resolveEntryIndex(index, 'ornament');
+    if (i < 0) return false;
+
+    const written: OrnamentPatch = {
+      ...patch,
+      ...('noteOrder' in patch ? { noteOrder: noteOrderValue(patch.noteOrder) } : {}),
+      ...('scale' in patch ? { scale: patch.scale ?? DEFAULT_ORNAMENT_SCALE } : {}),
+      ...(patch.repetitions === 0 ? { repetitions: undefined } : {}),
+      ...(patch.noteid === '' ? { noteid: undefined } : {}),
+      ...(patch.id === '' ? { id: undefined } : {}),
+    };
+
+    const e = this.entryAt(i).value;
+    patchAttribute(e, written, 'date');
+    patchAttribute(e, written, 'nameRef', 'name.ref');
+    patchAttribute(e, written, 'noteid');
+    patchAttribute(e, written, 'scale');
+    patchAttribute(e, written, 'noteOrder', 'note.order');
+    patchAttribute(e, written, 'repetitions');
+    patchAttribute(e, written, 'id', 'xml:id');
+
+    if ('date' in patch) this.sort();
+    return true;
   }
 
   /**

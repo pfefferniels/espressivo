@@ -14,6 +14,7 @@ import { mapPresent, unwrapOr } from '../../../prelude/index.js';
 import { DEFAULT_MOVEMENT_SAMPLE_MAX_STEP } from '../../RenderOptions.js';
 import type { RenderContext } from '../../RenderOptions.js';
 import type { Normalized } from '../../../units.js';
+import { patchAttribute, readId, readNumber, readString } from './instructionAttributes.js';
 
 /**
  * Everything a `<movement>` element can say, for {@link MovementMap.addMovement} (RULE F5's
@@ -40,6 +41,17 @@ export interface AddMovementOptions {
   readonly controller?: string;
   /** `xml:id` of the movement element. */
   readonly id?: string;
+}
+
+/**
+ * `@name` as a {@link Normalized}, for the two attributes RULE U3(b) brands.
+ *
+ * The reader is here rather than beside `readNumber` because it is where the cast belongs: a
+ * raw number becomes a branded one by an `as` at a parse boundary, RULE U2 having ruled out
+ * an `asNormalized(n)` converter. One site, so neither caller below carries one.
+ */
+function readNormalized(element: Element, name: string): Normalized | undefined {
+  return readNumber(element, name) as Normalized | undefined;
 }
 
 /**
@@ -169,6 +181,63 @@ export class MovementMap extends GenericMap {
       }
     }
     return 0;
+  }
+
+  /**
+   * The movement at `index` as the options that would write it — the document as it stands,
+   * with nothing inherited and nothing defaulted. Null if the entry is not a `<movement>`.
+   *
+   * The complement of {@link getMovementDataOf}, not a variant of it: that one answers what
+   * the renderer will do, this one what the document says. `@position` is where the two are
+   * furthest apart — the renderer inherits an absent one from the preceding movement's
+   * `transition.to`, where absent here means the attribute is not on the element.
+   *
+   * `controller` comes back as written, and {@link addMovement} writes it unconditionally, so
+   * every `<movement>` this library produced reports one.
+   */
+  getMovementOptionsOf(index: number): AddMovementOptions | null {
+    const i = this.resolveEntryIndex(index, 'movement');
+    if (i < 0) return null;
+
+    const entry = this.entryAt(i);
+    const e = entry.value;
+
+    return {
+      date: readNumber(e, 'date') ?? entry.key,
+      position: readNormalized(e, 'position'),
+      transitionTo: readNormalized(e, 'transition.to'),
+      curvature: readNumber(e, 'curvature'),
+      protraction: readNumber(e, 'protraction'),
+      controller: readString(e, 'controller'),
+      id: readId(e),
+    };
+  }
+
+  /**
+   * Patch the `<movement>` at `index` in place: a field the patch omits is left alone, one it
+   * carries as `undefined` has its attribute removed, anything else is written.
+   *
+   * Patching `@date` re-keys and re-sorts the map, which is the one thing writing the attribute
+   * alone would not do — {@link GenericMap.elements} keys on the date read when the element was
+   * added, and a stale key makes every later lookup answer from the wrong position.
+   *
+   * @returns false if the entry is not a `<movement>`, in which case nothing was written.
+   */
+  updateMovementAt(index: number, patch: Partial<AddMovementOptions>): boolean {
+    const i = this.resolveEntryIndex(index, 'movement');
+    if (i < 0) return false;
+
+    const e = this.entryAt(i).value;
+    patchAttribute(e, patch, 'date');
+    patchAttribute(e, patch, 'position');
+    patchAttribute(e, patch, 'transitionTo', 'transition.to');
+    patchAttribute(e, patch, 'curvature');
+    patchAttribute(e, patch, 'protraction');
+    patchAttribute(e, patch, 'controller');
+    patchAttribute(e, patch, 'id', 'xml:id');
+
+    if ('date' in patch) this.sort();
+    return true;
   }
 
   /**

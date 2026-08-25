@@ -13,6 +13,7 @@ import {
 } from './data/articulation.js';
 import { ArticulationDef } from '../styles/defs/ArticulationDef.js';
 import type { ArticulationStyle } from '../styles/style.js';
+import { patchAttribute, readId, readNumber, readString } from './instructionAttributes.js';
 
 /**
  * Everything {@link ArticulationMap.addArticulation} can write into an `<articulation>`
@@ -21,9 +22,9 @@ import type { ArticulationStyle } from '../styles/style.js';
  * Optional properties are `?:` and never `null` (RULE N1): an attribute nobody supplied is an
  * attribute that is not written.
  *
- * Three of the twelve modifiers {@link Articulation} reads are writable here, which is the
- * three the map has ever written. The other nine are read-only for now; the type says so
- * rather than accepting them and dropping them.
+ * All twelve modifiers {@link Articulation} reads are writable. Absence is not neutrality: an
+ * unmentioned modifier writes no attribute, which is not the same document as one spelling out
+ * the neutral value, even though the two render alike.
  */
 export interface AddArticulationOptions {
   /** `@date`, in ticks. Always written. */
@@ -41,6 +42,24 @@ export interface AddArticulationOptions {
   readonly absoluteDurationChange?: number;
   /** `@relativeDuration`, a factor. */
   readonly relativeDuration?: number;
+  /** `@absoluteDurationMs`, in milliseconds. */
+  readonly absoluteDurationMs?: number;
+  /** `@absoluteDurationChangeMs`, in milliseconds. */
+  readonly absoluteDurationChangeMs?: number;
+  /** `@absoluteDelay`, in ticks. */
+  readonly absoluteDelay?: number;
+  /** `@absoluteDelayMs`, in milliseconds. */
+  readonly absoluteDelayMs?: number;
+  /** `@absoluteVelocity`, a MIDI velocity. */
+  readonly absoluteVelocity?: number;
+  /** `@absoluteVelocityChange`, in velocity units. */
+  readonly absoluteVelocityChange?: number;
+  /** `@relativeVelocity`, a factor. */
+  readonly relativeVelocity?: number;
+  /** `@detuneCents`, in cents. */
+  readonly detuneCents?: number;
+  /** `@detuneHz`, in hertz. */
+  readonly detuneHz?: number;
   /** `xml:id` of the articulation element. */
   readonly id?: string;
 }
@@ -84,12 +103,15 @@ export class ArticulationMap extends GenericMap {
   }
 
   /**
-   * Add an `<articulation>`.
+   * Add an `<articulation>`, with any of the twelve modifiers {@link Articulation} reads.
    *
-   * Attribute order is `date`, `name.ref`, `noteid`, `absoluteDuration`,
-   * `absoluteDurationChange`, `relativeDuration`, `xml:id`, each omitted where the caller
-   * supplied nothing. The `addArticulationFromData` arm this replaces wrote `xml:id` second
-   * instead of last; nothing in `src/` called it, so no fixture carries that order.
+   * Attribute order is `date`, `name.ref`, `noteid`, then the modifiers — `absoluteDuration`,
+   * `absoluteDurationChange`, `relativeDuration`, `absoluteDurationMs`,
+   * `absoluteDurationChangeMs`, `absoluteDelay`, `absoluteDelayMs`, `absoluteVelocity`,
+   * `absoluteVelocityChange`, `relativeVelocity`, `detuneCents`, `detuneHz` — and `xml:id`
+   * last, each omitted where the caller supplied nothing. Order is byte-visible: the first
+   * three modifiers keep the positions they had before the other nine became writable, so a
+   * call site that names only those produces the bytes it always did.
    */
   addArticulation(articulation: AddArticulationOptions): number {
     const e = new Element('articulation', MPM_NAMESPACE);
@@ -105,6 +127,28 @@ export class ArticulationMap extends GenericMap {
       );
     if (articulation.relativeDuration !== undefined)
       e.addAttribute(new Attribute('relativeDuration', String(articulation.relativeDuration)));
+    if (articulation.absoluteDurationMs !== undefined)
+      e.addAttribute(new Attribute('absoluteDurationMs', String(articulation.absoluteDurationMs)));
+    if (articulation.absoluteDurationChangeMs !== undefined)
+      e.addAttribute(
+        new Attribute('absoluteDurationChangeMs', String(articulation.absoluteDurationChangeMs)),
+      );
+    if (articulation.absoluteDelay !== undefined)
+      e.addAttribute(new Attribute('absoluteDelay', String(articulation.absoluteDelay)));
+    if (articulation.absoluteDelayMs !== undefined)
+      e.addAttribute(new Attribute('absoluteDelayMs', String(articulation.absoluteDelayMs)));
+    if (articulation.absoluteVelocity !== undefined)
+      e.addAttribute(new Attribute('absoluteVelocity', String(articulation.absoluteVelocity)));
+    if (articulation.absoluteVelocityChange !== undefined)
+      e.addAttribute(
+        new Attribute('absoluteVelocityChange', String(articulation.absoluteVelocityChange)),
+      );
+    if (articulation.relativeVelocity !== undefined)
+      e.addAttribute(new Attribute('relativeVelocity', String(articulation.relativeVelocity)));
+    if (articulation.detuneCents !== undefined)
+      e.addAttribute(new Attribute('detuneCents', String(articulation.detuneCents)));
+    if (articulation.detuneHz !== undefined)
+      e.addAttribute(new Attribute('detuneHz', String(articulation.detuneHz)));
     if (articulation.id !== undefined)
       e.addAttribute(
         new Attribute('xml:id', 'http://www.w3.org/XML/1998/namespace', articulation.id),
@@ -192,6 +236,83 @@ export class ArticulationMap extends GenericMap {
       detuneCents: numeric('detuneCents') ?? neutral.detuneCents,
       detuneHz: numeric('detuneHz') ?? neutral.detuneHz,
     };
+  }
+
+  /**
+   * The articulation at `index` as the options that would write it — the document as it stands,
+   * with no def resolved and no modifier defaulted. Null if the entry is not an
+   * `<articulation>`, or carries no `@name.ref`, which {@link addArticulation} requires.
+   *
+   * The complement of {@link getArticulationDataOf}, not a variant of it: that one answers what
+   * the renderer will do, this one what the document says. Two differences follow from that.
+   * An absent modifier is `undefined` here and its neutral there, so a caller revising an
+   * articulation can tell `relativeDuration="1"` from an articulation that leaves the def alone.
+   * And `@noteid` comes back verbatim, `#` and all — the reader for the renderer strips it
+   * because the map is keyed by bare ids, but the attribute is what `addArticulation` was given
+   * and what it has to be handed back.
+   */
+  getArticulationOptionsOf(index: number): AddArticulationOptions | null {
+    const i = this.resolveEntryIndex(index, 'articulation');
+    if (i < 0) return null;
+
+    const e = this.entryAt(i).value;
+    const nameRef = readString(e, 'name.ref');
+    if (nameRef === undefined) return null;
+
+    return {
+      date: readNumber(e, 'date') ?? this.entryAt(i).key,
+      nameRef,
+      noteid: readString(e, 'noteid'),
+      absoluteDuration: readNumber(e, 'absoluteDuration'),
+      absoluteDurationChange: readNumber(e, 'absoluteDurationChange'),
+      relativeDuration: readNumber(e, 'relativeDuration'),
+      absoluteDurationMs: readNumber(e, 'absoluteDurationMs'),
+      absoluteDurationChangeMs: readNumber(e, 'absoluteDurationChangeMs'),
+      absoluteDelay: readNumber(e, 'absoluteDelay'),
+      absoluteDelayMs: readNumber(e, 'absoluteDelayMs'),
+      absoluteVelocity: readNumber(e, 'absoluteVelocity'),
+      absoluteVelocityChange: readNumber(e, 'absoluteVelocityChange'),
+      relativeVelocity: readNumber(e, 'relativeVelocity'),
+      detuneCents: readNumber(e, 'detuneCents'),
+      detuneHz: readNumber(e, 'detuneHz'),
+      id: readId(e),
+    };
+  }
+
+  /**
+   * Patch the `<articulation>` at `index` in place: a field the patch omits is left alone, one
+   * it carries as `undefined` has its attribute removed, anything else is written.
+   *
+   * Patching `@date` re-keys and re-sorts the map, which is the one thing writing the attribute
+   * alone would not do — {@link GenericMap.elements} keys on the date read when the element was
+   * added, and a stale key makes every later lookup answer from the wrong position.
+   *
+   * @returns false if the entry is not an `<articulation>`, in which case nothing was written.
+   */
+  updateArticulationAt(index: number, patch: Partial<AddArticulationOptions>): boolean {
+    const i = this.resolveEntryIndex(index, 'articulation');
+    if (i < 0) return false;
+
+    const e = this.entryAt(i).value;
+    patchAttribute(e, patch, 'date');
+    patchAttribute(e, patch, 'nameRef', 'name.ref');
+    patchAttribute(e, patch, 'noteid');
+    patchAttribute(e, patch, 'absoluteDuration');
+    patchAttribute(e, patch, 'absoluteDurationChange');
+    patchAttribute(e, patch, 'relativeDuration');
+    patchAttribute(e, patch, 'absoluteDurationMs');
+    patchAttribute(e, patch, 'absoluteDurationChangeMs');
+    patchAttribute(e, patch, 'absoluteDelay');
+    patchAttribute(e, patch, 'absoluteDelayMs');
+    patchAttribute(e, patch, 'absoluteVelocity');
+    patchAttribute(e, patch, 'absoluteVelocityChange');
+    patchAttribute(e, patch, 'relativeVelocity');
+    patchAttribute(e, patch, 'detuneCents');
+    patchAttribute(e, patch, 'detuneHz');
+    patchAttribute(e, patch, 'id', 'xml:id');
+
+    if ('date' in patch) this.sort();
+    return true;
   }
 
   /** The articulation style in force at `index`, or null where no switch precedes it. */

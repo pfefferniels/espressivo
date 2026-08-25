@@ -235,7 +235,14 @@ export { Global } from './mpm/elements/Global.js';
 export { Part } from './mpm/elements/Part.js';
 export { Header } from './mpm/elements/Header.js';
 export { Dated } from './mpm/elements/Dated.js';
+// `<metadata>` and the three children the ODD gives it: `author*`, `comment*`,
+// `relatedResources?`. All four together — every method `Metadata` exposes takes or answers
+// one of the three, and `Mpm.addMetadata` takes all three, so exporting the container alone
+// left it uncallable from outside the package.
 export { Metadata } from './mpm/elements/metadata/Metadata.js';
+export { Author } from './mpm/elements/metadata/Author.js';
+export { Comment } from './mpm/elements/metadata/Comment.js';
+export { RelatedResource } from './mpm/elements/metadata/RelatedResource.js';
 
 // The instruction maps. `GenericMap` carries the whole read surface a viewer needs —
 // `getAllElements()`, `getElementByID(id)`, `getElementBeforeAt(date)`, `getStyleAt(date,
@@ -251,8 +258,11 @@ export {
 export { MovementMap, type AddMovementOptions } from './mpm/elements/maps/MovementMap.js';
 export { RubatoMap, type AddRubatoOptions } from './mpm/elements/maps/RubatoMap.js';
 export { OrnamentationMap, type AddOrnamentOptions } from './mpm/elements/maps/OrnamentationMap.js';
-export { MetricalAccentuationMap } from './mpm/elements/maps/MetricalAccentuationMap.js';
-export { AsynchronyMap } from './mpm/elements/maps/AsynchronyMap.js';
+export {
+  MetricalAccentuationMap,
+  type AddAccentuationPatternOptions,
+} from './mpm/elements/maps/MetricalAccentuationMap.js';
+export { AsynchronyMap, type AddAsynchronyOptions } from './mpm/elements/maps/AsynchronyMap.js';
 export { ImprecisionMap, type DistributionSpan } from './mpm/elements/maps/ImprecisionMap.js';
 
 // `Dated.getMapOfKind(kind)` is typed through `MapOfKind`, so a caller needs the key type to
@@ -296,7 +306,21 @@ export {
   type AccentuationTuple,
 } from './mpm/elements/styles/defs/AccentuationPatternDef.js';
 export { OrnamentDef } from './mpm/elements/styles/defs/OrnamentDef.js';
-export { TemporalSpread } from './mpm/elements/styles/defs/TemporalSpread.js';
+// `TemporalSpread` and the four vocabularies its own public signatures are typed in —
+// `setTemporalSpreadValues(frameStart, frameLength, frameDomain, intensity, noteOffShift)` is
+// on the exported `OrnamentDef` and takes two of them, so leaving them unexported made that
+// method as uncallable from outside as `addMetadata` was.
+export {
+  TemporalSpread,
+  FrameDomain,
+  NoteOffShift,
+  type OrnamentAlignment,
+  type MpmSourceFormat,
+} from './mpm/elements/styles/defs/TemporalSpread.js';
+export type {
+  TemporalValue,
+  TemporalDomain,
+} from './mpm/elements/styles/defs/TemporalValue.js';
 export { DynamicsGradient } from './mpm/elements/styles/defs/DynamicsGradient.js';
 export { matchDef } from './mpm/elements/styles/defs/def.js';
 export type { Def, DefKind } from './mpm/elements/styles/defs/def.js';
@@ -386,6 +410,13 @@ export { InstrumentsDictionary } from './midi/InstrumentsDictionary.js';
 
 // Supplementary
 export type { KeyValue } from './supplementary/KeyValue.js';
+
+// The result type every `*Def` factory, `Performance.fromName`, `Part.fromValues` and
+// `Style.parse` answers with. Exported because a consumer that calls one of them has to be
+// able to name what it got back — and, with `OkOf`, to write the "or give up" reading once
+// instead of at every call site.
+export type { Result, AnyResult, Ok, Err, OkOf, ErrOf } from './prelude/result.js';
+export { ok, err, isOk, isErr, unwrapOr } from './prelude/result.js';
 export { RandomNumberProvider } from './supplementary/RandomNumberProvider.js';
 
 // Version. RULE the design makes `VERSION` the API; the `Meico` object keeps `Meico.version`

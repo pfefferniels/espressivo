@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { okValue } from '../../support/result.js';
-import { TempoMap } from '../../../src/mpm/elements/maps/TempoMap.js';
+import { expectOptionsRoundTrip } from '../../support/optionsRoundTrip.js';
+import { TempoMap, type AddTempoOptions } from '../../../src/mpm/elements/maps/TempoMap.js';
 import {
   resolveTempo,
   type ConstantTempo,
@@ -934,5 +935,107 @@ describe('TempoMap', () => {
       expect(e.getAttributeValue('milliseconds.date.end')).toBe('77');
       expect(e.getAttributeValue('date.end.perf')).toBe('77');
     });
+  });
+});
+
+describe('getTempoOptionsOf / updateTempoAt', () => {
+  const makeMap = () => TempoMap.createTempoMap();
+
+  it('round-trips every shape addTempo can write', () => {
+    expectOptionsRoundTrip<TempoMap, AddTempoOptions>({
+      makeMap,
+      add: (map, o) => map.addTempo(o),
+      read: (map, i) => map.getTempoOptionsOf(i),
+      samples: [
+        { date: 0, bpm: 120, beatLength: 0.25 },
+        { date: 720, bpm: 100, transitionTo: 60, meanTempoAt: 0.3, beatLength: 0.25, id: 't1' },
+        { date: 1440, bpm: 'Allegro', transitionTo: 'Presto', beatLength: 0.5 },
+        { date: 2160, bpm: 92.5, beatLength: 0.125, id: 'has-a-dash' },
+      ],
+    });
+  });
+
+  it('reads what the document says, where getTempoDataOf reads what it renders as', () => {
+    const map = makeMap();
+    map.addTempo({ date: 0, bpm: 120, transitionTo: 60, beatLength: 0.25 });
+
+    // No `@meanTempoAt`. The renderer substitutes the linear ramp; the document says nothing.
+    expect(map.getTempoOptionsOf(0)?.meanTempoAt).toBeUndefined();
+    expect(expectTransitioning(map.getTempoDataOf(0)).exponent).toBe(1.0);
+
+    // An unresolvable name is a name here and the hardcoded 100.0 there.
+    const named = makeMap();
+    named.addTempo({ date: 0, bpm: 'Allegro', beatLength: 0.25 });
+    expect(named.getTempoOptionsOf(0)?.bpm).toBe('Allegro');
+    expect(expectConstant(named.getTempoDataOf(0)).bpm).toBe(100.0);
+  });
+
+  it('leaves an omitted field alone, removes one patched to undefined', () => {
+    const map = makeMap();
+    map.addTempo({ date: 0, bpm: 120, transitionTo: 60, meanTempoAt: 0.4, beatLength: 0.25 });
+
+    expect(map.updateTempoAt(0, { bpm: 90 })).toBe(true);
+    expect(map.getTempoOptionsOf(0)).toMatchObject({ bpm: 90, meanTempoAt: 0.4, transitionTo: 60 });
+
+    map.updateTempoAt(0, { meanTempoAt: undefined });
+    expect(map.getTempoOptionsOf(0)?.meanTempoAt).toBeUndefined();
+    expect(map.getElement(0)?.getAttribute('meanTempoAt')).toBeNull();
+  });
+
+  it('writes through an existing attribute rather than moving it to the end', () => {
+    const map = makeMap();
+    map.addTempo({ date: 0, bpm: 120, transitionTo: 60, beatLength: 0.25, id: 't1' });
+    const before = map.getElement(0)?.toXML();
+
+    map.updateTempoAt(0, { bpm: 120 });
+    expect(map.getElement(0)?.toXML()).toBe(before);
+  });
+
+  it('never touches an attribute no option names', () => {
+    const map = makeMap();
+    map.addTempo({ date: 0, bpm: 120, beatLength: 0.25 });
+    map.getElement(0)?.addAttribute(new Attribute('corresp', 'arg1'));
+
+    map.updateTempoAt(0, { bpm: 90, id: 't1' });
+    expect(map.getElement(0)?.getAttributeValue('corresp')).toBe('arg1');
+  });
+
+  // `xml:id` is the one attribute whose qualified name differs from its local one, and
+  // `tree.ts`'s `attribute` matches local names. Both halves of the patch went wrong before
+  // `lookupName` existed: removal silently did nothing, and re-setting took the append arm,
+  // which is remove-then-append. Neither shows in a writer's output, because every writer puts
+  // `xml:id` last — so the reorder needs an attribute after it to be visible at all.
+  it('patches the namespaced xml:id, in both directions', () => {
+    const map = makeMap();
+    map.addTempo({ date: 0, bpm: 120, beatLength: 0.25, id: 't1' });
+    map.getElement(0)?.addAttribute(new Attribute('corresp', 'arg1'));
+
+    map.updateTempoAt(0, { id: 't2' });
+    expect(map.getElement(0)?.toXML()).toContain('xml:id="t2" corresp="arg1"');
+    expect(map.getTempoOptionsOf(0)?.id).toBe('t2');
+
+    map.updateTempoAt(0, { id: undefined });
+    expect(map.getElement(0)?.getAttributeValue('xml:id')).toBeNull();
+    expect(map.getTempoOptionsOf(0)?.id).toBeUndefined();
+  });
+
+  it('re-keys and re-sorts the map when @date is patched', () => {
+    const map = makeMap();
+    map.addTempo({ date: 0, bpm: 120, beatLength: 0.25, id: 'first' });
+    map.addTempo({ date: 1000, bpm: 90, beatLength: 0.25, id: 'second' });
+
+    map.updateTempoAt(0, { date: 2000 });
+
+    expect(map.getAllElements().map((e) => e.key)).toEqual([1000, 2000]);
+    expect(map.getElement(0)?.getAttributeValue('xml:id')).toBe('second');
+    // The lookup index moved with it, which is the half that writing the attribute alone misses.
+    expect(map.getElementBeforeAt(2500)?.getAttributeValue('xml:id')).toBe('first');
+  });
+
+  it('refuses an entry that is not a <tempo>', () => {
+    const map = makeMap();
+    map.addStyleSwitch(0, 'someStyle');
+    expect(map.getTempoOptionsOf(0)).toBeNull();
+    expect(map.updateTempoAt(0, { bpm: 90 })).toBe(false);
   });
 });

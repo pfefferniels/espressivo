@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { okValue } from '../../support/result.js';
-import { MetricalAccentuationMap } from '../../../src/mpm/elements/maps/MetricalAccentuationMap.js';
+import { expectOptionsRoundTrip } from '../../support/optionsRoundTrip.js';
+import { MetricalAccentuationMap, type AddAccentuationPatternOptions } from '../../../src/mpm/elements/maps/MetricalAccentuationMap.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
 import { Element, Attribute } from '../../../src/xml/XomTypes.js';
@@ -455,5 +456,178 @@ describe('MetricalAccentuationMap', () => {
       expect(elem).not.toBeNull();
       expect(elem!.getAttributeValue('name.ref')).toBe('p2');
     });
+  });
+});
+
+describe('getAccentuationPatternOptionsOf / updateAccentuationPatternAt', () => {
+  const makeMap = () => MetricalAccentuationMap.createMetricalAccentuationMap();
+
+  it('round-trips every shape addAccentuationPattern can write', () => {
+    expectOptionsRoundTrip<MetricalAccentuationMap, AddAccentuationPatternOptions>({
+      makeMap,
+      add: (map, o) => map.addAccentuationPattern(o),
+      read: (map, i) => map.getAccentuationPatternOptionsOf(i),
+      samples: [
+        { date: 0, accentuationPatternDefName: 'p1', scale: 1.0 },
+        {
+          date: 720,
+          accentuationPatternDefName: 'p2',
+          scale: 1.5,
+          loop: true,
+          stickToMeasures: false,
+          id: 'a1',
+        },
+        {
+          date: 1440,
+          accentuationPatternDefName: 'p3',
+          scale: -0.25,
+          loop: false,
+          stickToMeasures: true,
+        },
+        { date: 2160, accentuationPatternDefName: 'p4', scale: 2, id: 'has-a-dash' },
+      ],
+    });
+  });
+
+  it('writes what the positional form writes', () => {
+    const positional = makeMap();
+    positional.addAccentuationPattern(480, 'myPattern', 1.5, true, false);
+
+    const options = makeMap();
+    options.addAccentuationPattern({
+      date: 480,
+      accentuationPatternDefName: 'myPattern',
+      scale: 1.5,
+      loop: true,
+      stickToMeasures: false,
+    });
+
+    expect(options.getElement(0)?.toXML()).toBe(positional.getElement(0)?.toXML());
+  });
+
+  it('writes what the positional form writes when the optional flags are left out', () => {
+    const positional = makeMap();
+    positional.addAccentuationPattern(0, 'myPattern', 1.0);
+
+    const options = makeMap();
+    options.addAccentuationPattern({ date: 0, accentuationPatternDefName: 'myPattern', scale: 1.0 });
+
+    expect(options.getElement(0)?.toXML()).toBe(positional.getElement(0)?.toXML());
+  });
+
+  it('reads what the document says, where getMetricalAccentuationDataOf reads what it renders as', () => {
+    const mpm = new Mpm(
+      `<mpm xmlns="${Mpm.MPM_NAMESPACE}"><performance name="p" pulsesPerQuarter="720">` +
+        '<global><header><metricalAccentuationStyles><styleDef name="s">' +
+        '<accentuationPatternDef name="pattern" length="4.0">' +
+        '<accentuation beat="1.0" value="1.0" transitionTo="1.0" />' +
+        '</accentuationPatternDef>' +
+        '</styleDef></metricalAccentuationStyles></header><dated>' +
+        '<metricalAccentuationMap><style date="0.0" name.ref="s" />' +
+        '<accentuationPattern date="0.0" name.ref="pattern" scale="1.0" />' +
+        '</metricalAccentuationMap></dated></global></performance></mpm>',
+    );
+    const map = mpm
+      .getPerformance(0)!
+      .getGlobal()!
+      .getDated()!
+      .getMap('metricalAccentuationMap') as MetricalAccentuationMap;
+
+    // Entry 0 is the <style> switch. Neither flag is written, so the renderer substitutes
+    // `loop=false` and `stickToMeasures=true` where the document says nothing at all.
+    expect(map.getAccentuationPatternOptionsOf(1)?.loop).toBeUndefined();
+    expect(map.getAccentuationPatternOptionsOf(1)?.stickToMeasures).toBeUndefined();
+    expect(map.getMetricalAccentuationDataOf(1)?.loop).toBe(false);
+    expect(map.getMetricalAccentuationDataOf(1)?.stickToMeasures).toBe(true);
+  });
+
+  it('reads an instruction no style is in scope for', () => {
+    // `getMetricalAccentuationDataOf` needs a style to resolve the def against; this reader
+    // reads the element and asks for none.
+    const map = makeMap();
+    map.addAccentuationPattern(0, 'nothingDefinesThis', 1.0);
+
+    expect(map.getMetricalAccentuationDataOf(0)).toBeNull();
+    expect(map.getAccentuationPatternOptionsOf(0)).toMatchObject({
+      accentuationPatternDefName: 'nothingDefinesThis',
+      scale: 1.0,
+    });
+  });
+
+  it('leaves an omitted field alone, removes one patched to undefined', () => {
+    const map = makeMap();
+    map.addAccentuationPattern(0, 'myPattern', 1.0, true, false);
+
+    expect(map.updateAccentuationPatternAt(0, { scale: 2.5 })).toBe(true);
+    expect(map.getAccentuationPatternOptionsOf(0)).toMatchObject({
+      accentuationPatternDefName: 'myPattern',
+      scale: 2.5,
+      loop: true,
+      stickToMeasures: false,
+    });
+
+    map.updateAccentuationPatternAt(0, { loop: undefined });
+    expect(map.getAccentuationPatternOptionsOf(0)?.loop).toBeUndefined();
+    expect(map.getElement(0)?.getAttribute('loop')).toBeNull();
+  });
+
+  it('writes through an existing attribute rather than moving it to the end', () => {
+    const map = makeMap();
+    map.addAccentuationPattern({
+      date: 0,
+      accentuationPatternDefName: 'myPattern',
+      scale: 1.0,
+      loop: true,
+      stickToMeasures: false,
+      id: 'a1',
+    });
+    // Behind `xml:id`, which is otherwise last: without something after it, an `xml:id` that
+    // got appended rather than written through would land back where it started.
+    map.getElement(0)?.addAttribute(new Attribute('corresp', 'arg1'));
+    const before = map.getElement(0)?.toXML();
+
+    map.updateAccentuationPatternAt(0, {
+      date: 0,
+      accentuationPatternDefName: 'myPattern',
+      scale: 1,
+      loop: true,
+      stickToMeasures: false,
+      id: 'a1',
+    });
+    expect(map.getElement(0)?.toXML()).toBe(before);
+  });
+
+  it('never touches an attribute no option names', () => {
+    const map = makeMap();
+    map.addAccentuationPattern(0, 'myPattern', 1.0);
+    map.getElement(0)?.addAttribute(new Attribute('corresp', 'arg1'));
+
+    map.updateAccentuationPatternAt(0, { scale: 2, id: 'a1' });
+    expect(map.getElement(0)?.getAttributeValue('corresp')).toBe('arg1');
+  });
+
+  it('re-keys and re-sorts the map when @date is patched', () => {
+    const map = makeMap();
+    map.addAccentuationPattern({ date: 0, accentuationPatternDefName: 'p1', scale: 1, id: 'first' });
+    map.addAccentuationPattern({
+      date: 1000,
+      accentuationPatternDefName: 'p2',
+      scale: 1,
+      id: 'second',
+    });
+
+    map.updateAccentuationPatternAt(0, { date: 2000 });
+
+    expect(map.getAllElements().map((e) => e.key)).toEqual([1000, 2000]);
+    expect(map.getElement(0)?.getAttributeValue('xml:id')).toBe('second');
+    // The lookup index moved with it, which is the half that writing the attribute alone misses.
+    expect(map.getElementBeforeAt(2500)?.getAttributeValue('xml:id')).toBe('first');
+  });
+
+  it('refuses an entry that is not an <accentuationPattern>', () => {
+    const map = makeMap();
+    map.addStyleSwitch(0, 'someStyle');
+    expect(map.getAccentuationPatternOptionsOf(0)).toBeNull();
+    expect(map.updateAccentuationPatternAt(0, { scale: 2 })).toBe(false);
   });
 });

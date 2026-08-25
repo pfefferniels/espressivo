@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { okValue } from '../../support/result.js';
-import { ArticulationMap } from '../../../src/mpm/elements/maps/ArticulationMap.js';
+import { expectOptionsRoundTrip } from '../../support/optionsRoundTrip.js';
+import { ArticulationMap, type AddArticulationOptions } from '../../../src/mpm/elements/maps/ArticulationMap.js';
 import {
   articulateNote,
   NEUTRAL_ARTICULATION_MODIFIERS,
@@ -872,5 +873,146 @@ describe('ArticulationMap', () => {
       expect(elem).not.toBeNull();
       expect(elem!.getAttributeValue('name.ref')).toBe('legato');
     });
+  });
+});
+
+describe('getArticulationOptionsOf / updateArticulationAt', () => {
+  const makeMap = () => ArticulationMap.createArticulationMap();
+
+  /** Every modifier set, each to a value distinct from its neutral and from the others. */
+  const allTwelve: AddArticulationOptions = {
+    date: 720,
+    nameRef: 'staccato',
+    noteid: '#note42',
+    absoluteDuration: 240,
+    absoluteDurationChange: -30,
+    relativeDuration: 0.5,
+    absoluteDurationMs: 125,
+    absoluteDurationChangeMs: -12.5,
+    absoluteDelay: 15,
+    absoluteDelayMs: 7.5,
+    absoluteVelocity: 96,
+    absoluteVelocityChange: -8,
+    relativeVelocity: 1.2,
+    detuneCents: -25,
+    detuneHz: 3.5,
+    id: 'art-all',
+  };
+
+  it('round-trips every shape addArticulation can write', () => {
+    expectOptionsRoundTrip<ArticulationMap, AddArticulationOptions>({
+      makeMap,
+      add: (map, o) => map.addArticulation(o),
+      read: (map, i) => map.getArticulationOptionsOf(i),
+      samples: [
+        { date: 0, nameRef: 'staccato' },
+        { date: 240, nameRef: 'legato', noteid: '#note5' },
+        allTwelve,
+        { date: 480, nameRef: 'accent', relativeVelocity: 1.5, detuneHz: -2, id: 'art-mix' },
+      ],
+    });
+  });
+
+  it('reads back each of the twelve modifiers addArticulation wrote', () => {
+    const map = makeMap();
+    map.addArticulation(allTwelve);
+
+    expect(map.getArticulationOptionsOf(0)).toEqual(allTwelve);
+  });
+
+  it('returns @noteid verbatim, where getArticulationDataOf strips the leading #', () => {
+    const map = makeMap();
+    map.addArticulation({ date: 0, nameRef: 'staccato', noteid: '#note1' });
+
+    expect(map.getArticulationOptionsOf(0)?.noteid).toBe('#note1');
+    expect(map.getArticulationDataOf(0)?.noteid).toBe('note1');
+  });
+
+  it('reads an absent modifier as undefined, where getArticulationDataOf reads its neutral', () => {
+    const map = makeMap();
+    map.addArticulation({ date: 0, nameRef: 'staccato' });
+
+    const options = map.getArticulationOptionsOf(0)!;
+    const data = map.getArticulationDataOf(0)!;
+    for (const name of Object.keys(
+      NEUTRAL_ARTICULATION_MODIFIERS,
+    ) as (keyof typeof NEUTRAL_ARTICULATION_MODIFIERS)[]) {
+      expect(options[name], name).toBeUndefined();
+      expect(data[name], name).toBe(NEUTRAL_ARTICULATION_MODIFIERS[name]);
+    }
+  });
+
+  it('leaves an omitted field alone, removes one patched to undefined', () => {
+    const map = makeMap();
+    map.addArticulation({ date: 0, nameRef: 'staccato', relativeDuration: 0.5, detuneCents: 12 });
+
+    expect(map.updateArticulationAt(0, { relativeDuration: 0.75 })).toBe(true);
+    expect(map.getArticulationOptionsOf(0)).toMatchObject({
+      relativeDuration: 0.75,
+      detuneCents: 12,
+      nameRef: 'staccato',
+    });
+
+    map.updateArticulationAt(0, { detuneCents: undefined });
+    expect(map.getArticulationOptionsOf(0)?.detuneCents).toBeUndefined();
+    expect(map.getElement(0)?.getAttribute('detuneCents')).toBeNull();
+  });
+
+  it('writes through an existing attribute rather than moving it to the end', () => {
+    const map = makeMap();
+    map.addArticulation(allTwelve);
+    const before = map.getElement(0)?.toXML();
+
+    map.updateArticulationAt(0, { absoluteDuration: 240, detuneHz: 3.5 });
+    expect(map.getElement(0)?.toXML()).toBe(before);
+  });
+
+  it('never touches an attribute no option names', () => {
+    const map = makeMap();
+    map.addArticulation({ date: 0, nameRef: 'staccato' });
+    map.getElement(0)?.addAttribute(new Attribute('corresp', 'arg1'));
+
+    map.updateArticulationAt(0, { relativeDuration: 0.5, id: 'art-1' });
+    expect(map.getElement(0)?.getAttributeValue('corresp')).toBe('arg1');
+  });
+
+  it('re-keys and re-sorts the map when @date is patched', () => {
+    const map = makeMap();
+    map.addArticulation({ date: 0, nameRef: 'staccato', id: 'first' });
+    map.addArticulation({ date: 1000, nameRef: 'legato', id: 'second' });
+
+    map.updateArticulationAt(0, { date: 2000 });
+
+    expect(map.getAllElements().map((e) => e.key)).toEqual([1000, 2000]);
+    expect(map.getElement(0)?.getAttributeValue('xml:id')).toBe('second');
+    // The lookup index moved with it, which is the half that writing the attribute alone misses.
+    expect(map.getElementBeforeAt(2500)?.getAttributeValue('xml:id')).toBe('first');
+  });
+
+  it('refuses an entry that is not an <articulation>', () => {
+    const map = makeMap();
+    map.addArticulationStyleSwitch(0, 'someStyle');
+
+    expect(map.getArticulationOptionsOf(0)).toBeNull();
+    expect(map.updateArticulationAt(0, { relativeDuration: 0.5 })).toBe(false);
+  });
+
+  // The spec marks @name.ref optional and gives an example without one; addArticulation
+  // requires it, so such a document has no options that would write it.
+  it('refuses an articulation carrying no @name.ref', () => {
+    const map = okValue(
+      ArticulationMap.createArticulationMap(
+        new Builder()
+          .build(
+            `<articulationMap xmlns="${Mpm.MPM_NAMESPACE}">` +
+              '<articulation date="5670.0" noteid="#note05821" relativeDuration="0.4" />' +
+              '</articulationMap>',
+          )
+          .getRootElement(),
+      ),
+    );
+
+    expect(map.getArticulationOptionsOf(0)).toBeNull();
+    expect(map.getArticulationDataOf(0)).not.toBeNull();
   });
 });

@@ -1,12 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { silenceConsoleError } from '../../support/console.js';
 import { okValue } from '../../support/result.js';
+import { expectOptionsRoundTrip } from '../../support/optionsRoundTrip.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 import { Msm } from '../../../src/msm/Msm.js';
 import { Performance } from '../../../src/mpm/elements/Performance.js';
 import { Part } from '../../../src/mpm/elements/Part.js';
 import { TempoMap } from '../../../src/mpm/elements/maps/TempoMap.js';
-import { MovementMap } from '../../../src/mpm/elements/maps/MovementMap.js';
+import {
+  MovementMap,
+  type AddMovementOptions,
+} from '../../../src/mpm/elements/maps/MovementMap.js';
 import {
   movementSegment,
   positionAt,
@@ -1135,5 +1139,122 @@ describe('MovementMap', () => {
 
       expect(map.getMovementDataOf(1)!.position).toBe(0);
     });
+  });
+});
+
+describe('getMovementOptionsOf / updateMovementAt', () => {
+  const makeMap = () => MovementMap.createMovementMap();
+
+  // The type arguments are spelled out because inference reads `O` off the sample literals,
+  // and a union of four literal shapes is not something `getMovementOptionsOf` can return.
+  it('round-trips every shape addMovement can write', () => {
+    expectOptionsRoundTrip<MovementMap, AddMovementOptions>({
+      makeMap,
+      add: (map, o) => map.addMovement(o),
+      read: (map, i) => map.getMovementOptionsOf(i),
+      samples: [
+        { date: 0 },
+        {
+          date: 480,
+          position: norm(0.1),
+          transitionTo: norm(0.9),
+          curvature: 0.25,
+          protraction: -0.5,
+          controller: 'soft',
+          id: 'mov-1',
+        },
+        { date: 960, position: norm(0.75) },
+        { date: 1440, position: norm(0), transitionTo: norm(1), controller: 'sustain' },
+      ],
+    });
+  });
+
+  it('reports the controller addMovement writes for a caller that named none', () => {
+    const map = makeMap();
+    map.addMovement({ date: 0, position: norm(0.2) });
+    expect(map.getMovementOptionsOf(0)?.controller).toBe('sustain');
+  });
+
+  it('reads what the document says, where getMovementDataOf reads what it renders as', () => {
+    const map = makeMap();
+    map.addMovement({ date: 0, position: norm(0.2), transitionTo: norm(0.8) });
+
+    // no `@curvature` and no `@protraction`. the renderer substitutes 0.4 and 0; the
+    // document says nothing.
+    const options = map.getMovementOptionsOf(0);
+    expect(options?.curvature).toBeUndefined();
+    expect(options?.protraction).toBeUndefined();
+    expect(map.getMovementDataOf(0)?.curvature).toBe(0.4);
+    expect(map.getMovementDataOf(0)?.protraction).toBe(0.0);
+  });
+
+  it('reports an absent @position as absent, where the renderer inherits one', () => {
+    const map = makeMap();
+    map.addMovement({ date: 0, position: norm(0.1), transitionTo: norm(0.4) });
+    map.addMovement({ date: 480 });
+
+    expect(map.getMovementOptionsOf(1)?.position).toBeUndefined();
+    expect(map.getMovementDataOf(1)?.position).toBe(0.4);
+  });
+
+  it('leaves an omitted field alone, removes one patched to undefined', () => {
+    const map = makeMap();
+    map.addMovement({ date: 0, position: norm(0.2), transitionTo: norm(0.8), curvature: 0.3 });
+
+    expect(map.updateMovementAt(0, { transitionTo: norm(0.5) })).toBe(true);
+    expect(map.getMovementOptionsOf(0)).toMatchObject({
+      position: 0.2,
+      transitionTo: 0.5,
+      curvature: 0.3,
+      controller: 'sustain',
+    });
+
+    map.updateMovementAt(0, { curvature: undefined });
+    expect(map.getMovementOptionsOf(0)?.curvature).toBeUndefined();
+    expect(map.getElement(0)?.getAttribute('curvature')).toBeNull();
+  });
+
+  it('writes through an existing attribute rather than moving it to the end', () => {
+    const map = makeMap();
+    map.addMovement({
+      date: 0,
+      position: norm(0.2),
+      transitionTo: norm(0.8),
+      protraction: 0.1,
+      id: 'mov-1',
+    });
+    const before = map.getElement(0)?.toXML();
+
+    map.updateMovementAt(0, { position: norm(0.2) });
+    expect(map.getElement(0)?.toXML()).toBe(before);
+  });
+
+  it('never touches an attribute no option names', () => {
+    const map = makeMap();
+    map.addMovement({ date: 0, position: norm(0.2) });
+    map.getElement(0)?.addAttribute(new Attribute('corresp', 'arg1'));
+
+    map.updateMovementAt(0, { position: norm(0.5), id: 'mov-1' });
+    expect(map.getElement(0)?.getAttributeValue('corresp')).toBe('arg1');
+  });
+
+  it('re-keys and re-sorts the map when @date is patched', () => {
+    const map = makeMap();
+    map.addMovement({ date: 0, position: norm(0.1), id: 'first' });
+    map.addMovement({ date: 1000, position: norm(0.9), id: 'second' });
+
+    map.updateMovementAt(0, { date: 2000 });
+
+    expect(map.getAllElements().map((e) => e.key)).toEqual([1000, 2000]);
+    expect(map.getElement(0)?.getAttributeValue('xml:id')).toBe('second');
+    // The lookup index moved with it, which is the half that writing the attribute alone misses.
+    expect(map.getElementBeforeAt(2500)?.getAttributeValue('xml:id')).toBe('first');
+  });
+
+  it('refuses an entry that is not a <movement>', () => {
+    const map = makeMap();
+    map.addStyleSwitch(0, 'someStyle');
+    expect(map.getMovementOptionsOf(0)).toBeNull();
+    expect(map.updateMovementAt(0, { position: norm(0.5) })).toBe(false);
   });
 });

@@ -1,9 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { okValue } from '../../support/result.js';
+import { expectOptionsRoundTrip } from '../../support/optionsRoundTrip.js';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { OrnamentationMap } from '../../../src/mpm/elements/maps/OrnamentationMap.js';
+import { OrnamentationMap, type AddOrnamentOptions } from '../../../src/mpm/elements/maps/OrnamentationMap.js';
 import { Performance } from '../../../src/mpm/elements/Performance.js';
 import {
   applyOrnament,
@@ -1984,5 +1985,174 @@ describe('OrnamentationMap — the duplicated millisecond pass', () => {
         'fromEndAbsolute:1910/2160',
       ]);
     });
+  });
+});
+
+describe('getOrnamentOptionsOf / updateOrnamentAt', () => {
+  const makeMap = () => OrnamentationMap.createOrnamentationMap();
+
+  it('round-trips every shape addOrnamentV3 can write', () => {
+    expectOptionsRoundTrip<OrnamentationMap, AddOrnamentOptions>({
+      makeMap,
+      add: (map, o) => map.addOrnamentV3(o),
+      read: (map, i) => map.getOrnamentOptionsOf(i),
+      samples: [
+        { date: 0, nameRef: 'arpeggio' },
+        { date: 720, nameRef: 'trill', scale: 0.75, noteid: '#n1' },
+        { date: 1440, nameRef: 'trill', noteOrder: '|: [#n1 #n2] #n3 :|', repetitions: 3 },
+        { date: 2160, nameRef: 'mordent', scale: 1.0, id: 'orn-1' },
+        // the array spelling round-trips too, although the reader answers a string: the text
+        // `noteOrderAttributeValue` produces is its own fixed point under verbatim writing
+        { date: 2880, nameRef: 'arpeggio', noteOrder: ['n1', 'n2'] },
+        { date: 3600, nameRef: 'arpeggio', noteOrder: ['descending pitch'] },
+      ],
+    });
+  });
+
+  it('round-trips a note pool', () => {
+    // the same law, by hand: `expectOptionsRoundTrip` stringifies its sample for the failure
+    // message, and a pool note holds the live element `addOrnamentV3` cached on it, which JSON
+    // cannot walk (`Element.attributes` points back at its owner).
+    const written = makeMap();
+    const index = written.addOrnamentV3({
+      date: 0,
+      nameRef: 'turn',
+      noteOrder: '|: #p1 #p2 :|',
+      notes: [
+        new OrnamentNote('p1', { kind: 'chromatic', value: 1 }),
+        new OrnamentNote('p2', { kind: 'midi', value: 62 }),
+      ],
+    });
+
+    const rewritten = makeMap();
+    const reindex = rewritten.addOrnamentV3(written.getOrnamentOptionsOf(index)!);
+
+    expect(rewritten.getElement(reindex)?.toXML()).toBe(written.getElement(index)?.toXML());
+  });
+
+  it('reads the <note> pool back', () => {
+    const map = makeMap();
+    map.addOrnamentV3({
+      date: 0,
+      nameRef: 'turn',
+      notes: [
+        new OrnamentNote('p1', { kind: 'chromatic', value: 1 }),
+        new OrnamentNote('p2', { kind: 'midi', value: 62 }),
+        new OrnamentNote('p3', { kind: 'diatonic', value: -1 }),
+      ],
+    });
+    map.addOrnamentV3({ date: 720, nameRef: 'turn' });
+
+    const notes = map.getOrnamentOptionsOf(0)?.notes ?? [];
+    expect(notes.map((n) => n.id)).toEqual(['p1', 'p2', 'p3']);
+    expect(notes.map((n) => n.pitchSpec)).toEqual([
+      { kind: 'chromatic', value: 1 },
+      { kind: 'midi', value: 62 },
+      { kind: 'diatonic', value: -1 },
+    ]);
+    // no children is no pool, answered as an absent attribute is
+    expect(map.getOrnamentOptionsOf(1)?.notes).toBeUndefined();
+  });
+
+  it('reads what the document says, where getOrnamentDataOf reads what it renders as', () => {
+    const map = makeMap();
+    map.setHeaders(null, makeHeader([arpeggioDef()]));
+    map.addStyleSwitch(0, 'orn style');
+    map.addOrnamentV3({ date: 0, nameRef: 'arpeggio', noteOrder: '|: [#n1 #n2] #n3 :|' });
+    const i = map.size() - 1;
+
+    // the v3 grammar as written, against the flat v2 list the renderer reads it as, which
+    // cannot tell an id from a repeat mark
+    expect(map.getOrnamentOptionsOf(i)?.noteOrder).toBe('|: [#n1 #n2] #n3 :|');
+    expect(map.getOrnamentDataOf(i)!.noteOrder).toEqual(['|:', '[n1', 'n2]', 'n3', ':|']);
+
+    // and a def no style knows is a name here and nothing at all there
+    const unknown = makeMap();
+    unknown.addOrnamentV3({ date: 0, nameRef: 'nosuchdef' });
+    expect(unknown.getOrnamentOptionsOf(0)?.nameRef).toBe('nosuchdef');
+    expect(unknown.getOrnamentDataOf(0)).toBeNull();
+  });
+
+  it('leaves an omitted field alone, removes one patched to undefined', () => {
+    const map = makeMap();
+    map.addOrnamentV3({ date: 0, nameRef: 'trill', noteid: '#n1', repetitions: 2 });
+
+    expect(map.updateOrnamentAt(0, { nameRef: 'mordent' })).toBe(true);
+    expect(map.getOrnamentOptionsOf(0)).toMatchObject({
+      nameRef: 'mordent',
+      noteid: '#n1',
+      repetitions: 2,
+    });
+
+    map.updateOrnamentAt(0, { noteid: undefined });
+    expect(map.getOrnamentOptionsOf(0)?.noteid).toBeUndefined();
+    expect(map.getElement(0)?.getAttribute('noteid')).toBeNull();
+  });
+
+  it('writes each field as addOrnamentV3 would write it', () => {
+    const map = makeMap();
+    map.addOrnamentV3({ date: 0, nameRef: 'arpeggio', scale: 0.5, repetitions: 2, noteOrder: 'x' });
+
+    // an array takes the v2 spelling, not `String(array)`
+    map.updateOrnamentAt(0, { noteOrder: ['n1', 'n2'] });
+    expect(map.getElement(0)?.getAttributeValue('note.order')).toBe('#n1 #n2');
+
+    // the writer omits repetitions at 0 and an empty note.order, so patching those removes them
+    map.updateOrnamentAt(0, { repetitions: 0, noteOrder: [] });
+    expect(map.getElement(0)?.getAttribute('repetitions')).toBeNull();
+    expect(map.getElement(0)?.getAttribute('note.order')).toBeNull();
+
+    // scale is the one it always writes, so patching it away restores the default
+    map.updateOrnamentAt(0, { scale: undefined });
+    expect(map.getElement(0)?.getAttributeValue('scale')).toBe('0');
+    expect(map.getOrnamentOptionsOf(0)?.scale).toBe(0);
+  });
+
+  it('writes through an existing attribute rather than moving it to the end', () => {
+    const map = makeMap();
+    map.addOrnamentV3({ date: 0, nameRef: 'trill', noteid: '#n1', scale: 0.5, id: 'orn1' });
+    const before = map.getElement(0)?.toXML();
+
+    map.updateOrnamentAt(0, { nameRef: 'trill', scale: 0.5 });
+    expect(map.getElement(0)?.toXML()).toBe(before);
+  });
+
+  it('never touches an attribute no option names', () => {
+    const map = makeMap();
+    map.addOrnamentV3({ date: 0, nameRef: 'trill' });
+    map.getElement(0)?.addAttribute(new Attribute('corresp', 'arg1'));
+
+    map.updateOrnamentAt(0, { nameRef: 'mordent', id: 'orn1' });
+    expect(map.getElement(0)?.getAttributeValue('corresp')).toBe('arg1');
+  });
+
+  it('re-keys and re-sorts the map when @date is patched', () => {
+    const map = makeMap();
+    map.addOrnamentV3({ date: 0, nameRef: 'trill', id: 'first' });
+    map.addOrnamentV3({ date: 1000, nameRef: 'trill', id: 'second' });
+
+    map.updateOrnamentAt(0, { date: 2000 });
+
+    expect(map.getAllElements().map((e) => e.key)).toEqual([1000, 2000]);
+    expect(map.getElement(0)?.getAttributeValue('xml:id')).toBe('second');
+    // the lookup index moved with it, which is the half that writing the attribute alone misses
+    expect(map.getElementBeforeAt(2500)?.getAttributeValue('xml:id')).toBe('first');
+  });
+
+  it('returns null for an <ornament> with no name.ref', () => {
+    const map = makeMap();
+    map.addOrnamentV3({ date: 0, nameRef: 'trill' });
+    const e = map.getElement(0)!;
+    e.removeAttribute(e.getAttribute('name.ref')!);
+
+    expect(map.getOrnamentOptionsOf(0)).toBeNull();
+  });
+
+  it('refuses an entry that is not an <ornament>', () => {
+    const map = makeMap();
+    map.addStyleSwitch(0, 'orn style');
+
+    expect(map.getOrnamentOptionsOf(0)).toBeNull();
+    expect(map.updateOrnamentAt(0, { nameRef: 'trill' })).toBe(false);
   });
 });
