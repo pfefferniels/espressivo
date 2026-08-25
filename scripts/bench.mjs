@@ -93,10 +93,30 @@ function syntheticMei(notes) {
 </score></mdiv></body></music></mei>`;
 }
 
+/**
+ * The MPM every fixture is performed with. Conversion mints none, and `renderExpressiveMidi`
+ * throws on an MSM that was never performed, so the bench brings its own. It sits in `<global>`,
+ * so it reaches every part of every fixture, and it is flat, so the render column measures the
+ * pipeline rather than map lookup. `pulsesPerQuarter` is the converter's default ppq.
+ */
+const BENCH_MPM = `<?xml version="1.0" encoding="UTF-8"?>
+<mpm xmlns="http://www.cemfi.de/mpm/ns/1.0">
+  <performance name="bench" pulsesPerQuarter="720">
+    <global>
+      <header/>
+      <dated>
+        <tempoMap>
+          <tempo date="0.0" bpm="120.0" beatLength="0.25"/>
+        </tempoMap>
+      </dated>
+    </global>
+  </performance>
+</mpm>`;
+
 function renderAll(meiText) {
   let bytes = 0;
-  for (const movement of api.convertMeiToMsmMpm(meiText)) {
-    bytes += api.renderExpressiveMidi({ msm: movement.msm, mpm: movement.mpm }).length;
+  for (const movement of api.convertMeiToMsm(meiText)) {
+    bytes += api.renderExpressiveMidi({ msm: movement.msm, mpm: BENCH_MPM }).length;
   }
   return bytes;
 }
@@ -108,9 +128,9 @@ function renderAll(meiText) {
  */
 function timeStages(meiText) {
   let movements = [];
-  const convertMs = timeMs(() => (movements = api.convertMeiToMsmMpm(meiText)));
+  const convertMs = timeMs(() => (movements = api.convertMeiToMsm(meiText)));
   const renderMs = timeMs(() => {
-    for (const m of movements) api.renderExpressiveMidi({ msm: m.msm, mpm: m.mpm });
+    for (const m of movements) api.renderExpressiveMidi({ msm: m.msm, mpm: BENCH_MPM });
   });
   return { convertMs, renderMs };
 }

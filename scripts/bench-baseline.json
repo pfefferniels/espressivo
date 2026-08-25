@@ -1,95 +1,95 @@
 {
   "fixtures": {
     "articulations.mei": {
-      "ms": 4.07,
-      "midiBytes": 263
+      "ms": 2.78,
+      "midiBytes": 259
     },
     "composite_advanced.mei": {
-      "ms": 6.76,
-      "midiBytes": 652
+      "ms": 5.57,
+      "midiBytes": 542
     },
     "comprehensive.mei": {
-      "ms": 3.64,
-      "midiBytes": 412
+      "ms": 2.24,
+      "midiBytes": 411
     },
     "dynamics.mei": {
-      "ms": 1.22,
+      "ms": 0.93,
       "midiBytes": 227
     },
     "instruments.mei": {
-      "ms": 4.11,
-      "midiBytes": 431
+      "ms": 2.91,
+      "midiBytes": 427
     },
     "keys_accidentals.mei": {
-      "ms": 1.43,
+      "ms": 1.23,
       "midiBytes": 345
     },
     "layers_beams.mei": {
-      "ms": 1.54,
+      "ms": 1.35,
       "midiBytes": 357
     },
     "multi_part.mei": {
-      "ms": 2.24,
-      "midiBytes": 290
+      "ms": 1.54,
+      "midiBytes": 289
     },
     "repeats_endings.mei": {
-      "ms": 2.5,
+      "ms": 2,
       "midiBytes": 268
     },
     "rests_meters.mei": {
-      "ms": 1.69,
+      "ms": 1.6,
       "midiBytes": 328
     },
     "simple_notes.mei": {
-      "ms": 0.71,
+      "ms": 0.78,
       "midiBytes": 197
     },
     "tempo.mei": {
-      "ms": 0.98,
+      "ms": 0.8,
       "midiBytes": 227
     },
     "tempo_dynamics_spans.mei": {
-      "ms": 1.68,
+      "ms": 1.31,
       "midiBytes": 301
     },
     "ties_dots.mei": {
-      "ms": 1.39,
-      "midiBytes": 255
+      "ms": 1.13,
+      "midiBytes": 252
     },
     "transposing_octave.mei": {
-      "ms": 2.09,
+      "ms": 2.6,
       "midiBytes": 345
     },
     "tuplets.mei": {
-      "ms": 1.38,
-      "midiBytes": 397
+      "ms": 1.32,
+      "midiBytes": 392
     }
   },
-  "fixtureTotalMs": 37.4,
+  "fixtureTotalMs": 30.1,
   "synthetic": {
     "250": {
-      "convertMs": 6.9,
-      "renderMs": 2.9,
-      "convertUsPerNote": 27,
-      "renderUsPerNote": 12
+      "convertMs": 6.2,
+      "renderMs": 2.6,
+      "convertUsPerNote": 25,
+      "renderUsPerNote": 10
     },
     "500": {
-      "convertMs": 14.5,
-      "renderMs": 5.8,
-      "convertUsPerNote": 29,
-      "renderUsPerNote": 12
+      "convertMs": 10.8,
+      "renderMs": 4.6,
+      "convertUsPerNote": 22,
+      "renderUsPerNote": 9
     },
     "1000": {
-      "convertMs": 27.8,
-      "renderMs": 13.3,
-      "convertUsPerNote": 28,
-      "renderUsPerNote": 13
+      "convertMs": 25,
+      "renderMs": 9.6,
+      "convertUsPerNote": 25,
+      "renderUsPerNote": 10
     },
     "2000": {
-      "convertMs": 75.4,
-      "renderMs": 28.4,
-      "convertUsPerNote": 38,
-      "renderUsPerNote": 14
+      "convertMs": 56.8,
+      "renderMs": 20.4,
+      "convertUsPerNote": 28,
+      "renderUsPerNote": 10
     }
   }
 }
