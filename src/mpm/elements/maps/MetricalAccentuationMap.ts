@@ -119,7 +119,7 @@ export class MetricalAccentuationMap extends GenericMap {
     timeSignatureMap: GenericMap | null,
     ppq: number,
   ): void {
-    if (map === null || this.elements.length === 0) return;
+    if (map === null || this.size() === 0) return;
     const ppq4 = 4.0 * ppq;
     let timeSignIndex = -1,
       tsDate = 0.0,
@@ -142,7 +142,7 @@ export class MetricalAccentuationMap extends GenericMap {
       if (def === null) throw new TypeError("Cannot read properties of null (reading 'getLength')");
       let patternLengthTicks = (def.getLength() * ppq4) / tsDenominator;
       for (; mapIndex < map.size(); ++mapIndex) {
-        const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
+        const mapEntry = elementAt(map.getAllElements(), mapIndex, 'target entry');
         if (mapEntry.key < md.startDate) continue;
         const velocityAtt = attribute('velocity', mapEntry.value);
         if (velocityAtt === null) continue;

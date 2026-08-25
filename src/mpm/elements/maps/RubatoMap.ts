@@ -166,14 +166,14 @@ export class RubatoMap extends GenericMap {
    * first one out of range means all the rest are too.
    */
   renderRubatoToMap(map: GenericMap | null): void {
-    if (map === null || this.elements.length === 0) return;
+    if (map === null || this.size() === 0) return;
     const pendingDurations: KeyValue<number, Attribute>[] = [];
     let mapIndex = 0;
     for (let rubIndex = 0; rubIndex < this.size(); ++rubIndex) {
       const rd = this.getRubatoDataOf(rubIndex);
       if (rd === null) continue;
       for (; mapIndex < map.size(); ++mapIndex) {
-        const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
+        const mapEntry = elementAt(map.getAllElements(), mapIndex, 'target entry');
         if (mapEntry.key < rd.startDate) continue;
         if (
           mapEntry.key >= rd.endDate ||

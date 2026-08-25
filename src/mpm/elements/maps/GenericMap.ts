@@ -58,12 +58,20 @@ const MPM_NAMES = new Set([
  * Base class for every MPM map: a date-ordered sequence of instruction elements living
  * under a `<dated>`, plus the lookup and rendering machinery its subclasses share.
  *
- * A map keeps the same data twice, and keeping the two in step is this class's whole
- * job. {@link elements} is a sorted array of `(date, element)` pairs used for all
- * lookups; the XML element returned by `getXml()` is the serialized form. Every mutator
- * here — {@link addElement}, {@link insertElement}, {@link removeElement},
- * {@link sort} — updates both, in that order. Writing to one alone corrupts the map:
- * lookups would disagree with the document that gets serialized.
+ * The index behind every lookup is a date-sorted array of `(date, element)` pairs. It is not
+ * a second copy of the map: each pair holds the same `Element` object that is the child of
+ * `getXml()`. What it does duplicate is the **order** — index order is date order, document
+ * order is whatever the source had until `sortXml` rewrites it — and the **date**, parsed
+ * once into the pair's key.
+ *
+ * Both duplicates can go stale, and they go stale differently:
+ *
+ * - order, whenever an entry is added or removed. The four mutators — {@link addElement},
+ *   {@link insertElement}, {@link removeElement}, {@link sort} — update index and document
+ *   together, and the index is private so that they are the only way in.
+ * - the key, whenever someone edits `@date` on an element already in the map. Nothing here
+ *   can intercept that; {@link sort} re-reads every `@date` and is how such a caller puts
+ *   the index back in step. `ArticulationMap` is the one that does it.
  *
  * Which class a given `<dated>` child is read into is decided by the exhaustive table in
  * `maps/map.ts`, which this class does not — and must not — know about: the nine subclasses
@@ -72,7 +80,7 @@ const MPM_NAMES = new Set([
  * Port of meico.mpm.elements.maps.GenericMap
  */
 export class GenericMap extends AbstractXmlSubtree {
-  elements: KeyValue<number, Element>[] = [];
+  private elements: KeyValue<number, Element>[] = [];
   private globalHeader: Header | null = null;
   private localHeader: Header | null = null;
 

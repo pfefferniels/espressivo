@@ -74,7 +74,7 @@ export class AsynchronyMap extends GenericMap {
    * one millisecond, since zero-length notes vanish from the MIDI output.
    */
   renderAsynchronyToMap(map: GenericMap | null): void {
-    if (map === null || this.elements.length === 0) return;
+    if (map === null || this.size() === 0) return;
     let mapEntries = [...map.getAllElements()];
     const done: KeyValue<number, Element>[] = [];
     // Every asynchrony with the one that ends its span, and `null` for the last, whose span

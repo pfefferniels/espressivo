@@ -327,7 +327,7 @@ export class ArticulationMap extends GenericMap {
    */
   renderArticulationToMap_millisecondModifiers(map: GenericMap | null): void {
     if (map === null) return;
-    for (const entry of map.elements) {
+    for (const entry of map.getAllElements()) {
       const dateAtt = attribute('milliseconds.date', entry.value);
       if (dateAtt === null) continue;
       const date = parseFloat(dateAtt.getValue());

@@ -218,7 +218,7 @@ export class DynamicsMap extends GenericMap {
    * skips them instead — its notes are handled by the volume curve, not by velocity.
    */
   renderDynamicsToMap(map: GenericMap | null): GenericMap | null {
-    if (map === null || this.elements.length === 0) return null;
+    if (map === null || this.size() === 0) return null;
     // `'channelVolumeMap'` contains "Map", so this cannot fail.
     const chanVolMap = unwrapOr(GenericMap.createGenericMap('channelVolumeMap'), null);
     let mapIndex = 0;
@@ -230,7 +230,7 @@ export class DynamicsMap extends GenericMap {
         if (dd.subNoteDynamics && dynamicsIndex < this.size() - 1) {
           DynamicsMap.generateSubNoteDynamics(dd, chanVolMap);
           for (; mapIndex < map.size(); ++mapIndex) {
-            const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
+            const mapEntry = elementAt(map.getAllElements(), mapIndex, 'target entry');
             if (mapEntry.key < dd.startDate || mapEntry.value.getLocalName() !== 'note') continue;
             if (mapEntry.key >= dd.endDate) break;
             mapEntry.value.addAttribute(new Attribute('velocity', '100.0'));
@@ -250,7 +250,7 @@ export class DynamicsMap extends GenericMap {
       }
 
       for (; mapIndex < map.size(); ++mapIndex) {
-        const mapEntry = elementAt(map.elements, mapIndex, 'target entry');
+        const mapEntry = elementAt(map.getAllElements(), mapIndex, 'target entry');
         if (mapEntry.value.getLocalName() !== 'note') continue;
         if (mapEntry.key < dd.startDate) {
           mapEntry.value.addAttribute(new Attribute('velocity', '100.0'));
