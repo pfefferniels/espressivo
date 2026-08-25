@@ -139,6 +139,18 @@ export function numberAt(
 }
 
 /**
+ * The first element satisfying the predicate, or `null`.
+ *
+ * The `?? null` carries the same convention {@link findLast} explains.
+ */
+export function find<T extends NonNullable<unknown>>(
+  xs: readonly T[],
+  predicate: (x: T) => boolean,
+): T | null {
+  return xs.find(predicate) ?? null;
+}
+
+/**
  * The last element satisfying the predicate, or `null`. A backwards scan, named.
  *
  * The `?? null` is deliberate: the platform reports a miss as `undefined` and this module

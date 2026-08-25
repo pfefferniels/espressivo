@@ -4,6 +4,7 @@ import {
   elementAt,
   err,
   filterMap,
+  find,
   isErr,
   isOk,
   ok,
@@ -317,19 +318,18 @@ export class Performance extends AbstractXmlSubtree {
    * other two lookups; each likewise returns the first match.
    */
   getPart(number: number): Part | null {
-    for (const p of this.parts) if (p.getNumber() === number) return p;
-    return null;
+    return find(this.parts, (p) => p.getNumber() === number);
   }
 
   getPartByName(name: string): Part | null {
-    for (const p of this.parts) if (p.getName() === name) return p;
-    return null;
+    return find(this.parts, (p) => p.getName() === name);
   }
 
   getPartByMidi(midiChannel: number, midiPort: number): Part | null {
-    for (const p of this.parts)
-      if (p.getMidiChannel() === midiChannel && p.getMidiPort() === midiPort) return p;
-    return null;
+    return find(
+      this.parts,
+      (p) => p.getMidiChannel() === midiChannel && p.getMidiPort() === midiPort,
+    );
   }
 
   /** Null is accepted and refused, as `Performance.java`'s `part == null` does. */

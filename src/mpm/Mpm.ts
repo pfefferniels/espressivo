@@ -1,6 +1,6 @@
 import { Element, Document } from '../xml/XomTypes.js';
 import { allChildElements, firstChildElement } from '../xml/tree.js';
-import { elementAt, filterMap, unwrapOr } from '../prelude/index.js';
+import { elementAt, filterMap, find, unwrapOr } from '../prelude/index.js';
 import { AbstractMsm } from '../msm/AbstractMsm.js';
 import * as names from './names.js';
 import { Performance } from './elements/Performance.js';
@@ -244,10 +244,7 @@ export class Mpm extends AbstractMsm {
    * may share a name.
    */
   getPerformanceByName(name: string): Performance | null {
-    for (const p of this.performances) {
-      if (p.getName() === name) return p;
-    }
-    return null;
+    return find(this.performances, (p) => p.getName() === name);
   }
 
   /**

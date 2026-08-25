@@ -45,9 +45,9 @@
  * cancelling cases. One canceller and one continuer are named; the third row is the one a
  * reader guesses wrong, because an unknown *def* name looks like an unknown *style* name.
  */
-import { head, isNonEmpty, withNext } from '../prelude/index.js';
+import { findLast, head, isNonEmpty, withNext } from '../prelude/index.js';
 import type { Element } from '../xml/XomTypes.js';
-import { attribute } from '../xml/tree.js';
+import { allChildElements, attribute } from '../xml/tree.js';
 import { ARTICULATION_STYLE } from '../mpm/names.js';
 import { readAttributeValue } from '../expression/attributes.js';
 import { findStyleDef } from '../expression/styleScope.js';
@@ -158,9 +158,11 @@ export function readDefaultArticulation(
       continue;
     }
 
-    let def: Element | null = null;
-    for (const candidate of style.styleDef.getChildElements('articulationDef'))
-      if (attribute('name', candidate)?.getValue() === name) def = candidate;
+    // last wins where two defs share a name, as in `Style.indexDefs`
+    const def = findLast(
+      allChildElements(style.styleDef, 'articulationDef'),
+      (candidate) => attribute('name', candidate)?.getValue() === name,
+    );
 
     // Disposition 3: the def name does not resolve — also a null, with a warning.
     if (def === null) {

@@ -4,6 +4,7 @@ import {
   elementAtOrNull,
   optionAt,
   numberAt,
+  find,
   findLast,
   removeAt,
 } from '../../src/prelude/seq.js';
@@ -86,6 +87,17 @@ describe('numberAt', () => {
 
   it('returns a stored 0 rather than reading it as absent', () => {
     expect(numberAt(new Int32Array([0, 1]), 0, 'row')).toBe(0);
+  });
+});
+
+describe('find', () => {
+  it('returns the FIRST match, not the last', () => {
+    expect(find([1, 2, 3, 4], (n) => n % 2 === 0)).toBe(2);
+  });
+
+  it('returns null when nothing matches, and on an empty sequence', () => {
+    expect(find([1, 3], (n) => n % 2 === 0)).toBeNull();
+    expect(find([], () => true)).toBeNull();
   });
 });
 

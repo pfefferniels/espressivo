@@ -60,6 +60,7 @@ export {
   elementAtOrNull,
   optionAt,
   numberAt,
+  find,
   findLast,
   removeAt,
   filterMap,
