@@ -92,5 +92,5 @@
   // which includes `src/**/*` and turns that one flag off. Delete this entry — not the flag —
   // when the count reaches zero.
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "src/fitting/**"]
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }
