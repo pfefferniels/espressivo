@@ -24,6 +24,7 @@ import {
 } from '../Transformer.js';
 import { clamp } from '../../utils.js';
 import { beatLengthInTicks } from '../../ppq.js';
+import { elementAt, numberAt } from '../../../prelude/seq.js';
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -1350,17 +1351,18 @@ function jointGaussNewtonStep(
   const pinned = turningPairShapes(tau, nSeg);
 
   const band: Band = [new Float64Array(m), new Float64Array(m), new Float64Array(m)];
+  const [band0, band1, band2] = band;
   const gradient = new Float64Array(m);
 
   for (let k = 0; k < nSeg; k++) {
-    const seg = segments[k];
+    const seg = elementAt(segments, k, 'the fitted segments');
     const onsets = seg.onsets;
     if (onsets.length === 0) continue;
 
     const span = seg.spanTicks;
-    const t0 = tau[k],
-      t1 = tau[k + 1],
-      im = shapes[k];
+    const t0 = numberAt(tau, k, 'the boundary tempos'),
+      t1 = numberAt(tau, k + 1, 'the boundary tempos'),
+      im = numberAt(shapes, k, 'the segment shapes');
     const epsTau0 = Math.max(JACOBIAN_EPS_BPM, Math.abs(t0) * 1e-3);
     const epsTau1 = Math.max(JACOBIAN_EPS_BPM, Math.abs(t1) * 1e-3);
     const imUp = Math.min(SHAPE_MAX, im + JACOBIAN_EPS_SHAPE);
@@ -1368,49 +1370,62 @@ function jointGaussNewtonStep(
 
     const here = segmentElapsed(onsets, t0, t1, im, span, beatLength);
     const empty = new Float64Array(onsets.length);
-    const partials: [Float64Array, Float64Array, number][] = [
-      [
-        segmentElapsed(onsets, t0 + epsTau0, t1, im, span, beatLength),
-        segmentElapsed(onsets, t0 - epsTau0, t1, im, span, beatLength),
-        2 * epsTau0,
-      ],
-      // A shape the rounding prior owns has no column: the step must not spend itself on a
-      // move that `projectState` is about to undo.
-      pinned[k]
-        ? [empty, empty, 0]
-        : [
-            segmentElapsed(onsets, t0, t1, imUp, span, beatLength),
-            segmentElapsed(onsets, t0, t1, imDown, span, beatLength),
-            imUp - imDown,
-          ],
-      [
-        segmentElapsed(onsets, t0, t1 + epsTau1, im, span, beatLength),
-        segmentElapsed(onsets, t0, t1 - epsTau1, im, span, beatLength),
-        2 * epsTau1,
-      ],
-    ];
+    const upTau0 = segmentElapsed(onsets, t0 + epsTau0, t1, im, span, beatLength);
+    const downTau0 = segmentElapsed(onsets, t0 - epsTau0, t1, im, span, beatLength);
+    const denomTau0 = 2 * epsTau0;
+    // A shape the rounding prior owns has no column: the step must not spend itself on a
+    // move that `projectState` is about to undo.
+    const shapePinned = elementAt(pinned, k, 'the pinned shapes');
+    const upShape = shapePinned ? empty : segmentElapsed(onsets, t0, t1, imUp, span, beatLength);
+    const downShape = shapePinned
+      ? empty
+      : segmentElapsed(onsets, t0, t1, imDown, span, beatLength);
+    const denomShape = shapePinned ? 0 : imUp - imDown;
+    const upTau1 = segmentElapsed(onsets, t0, t1 + epsTau1, im, span, beatLength);
+    const downTau1 = segmentElapsed(onsets, t0, t1 - epsTau1, im, span, beatLength);
+    const denomTau1 = 2 * epsTau1;
 
-    const jacobian = new Float64Array(3);
-    for (let i = 0; i < onsets.length; i++) {
-      const w = onsets[i].weight;
+    // τ_k, im_k and τ_{k+1} sit at 2k, 2k+1 and 2k+2 — three consecutive unknowns.
+    const c0 = 2 * k,
+      c1 = 2 * k + 1,
+      c2 = 2 * k + 2;
+    for (const [i, onset] of onsets.entries()) {
+      const w = onset.weight;
       if (w <= 0) continue;
-      const residual = here[i] - onsets[i].elapsedMs;
-      for (let a = 0; a < 3; a++) {
-        const [up, down, denom] = partials[a];
-        jacobian[a] = denom > 0 ? (up[i] - down[i]) / denom : 0;
-      }
-      // τ_k, im_k and τ_{k+1} sit at 2k, 2k+1 and 2k+2 — three consecutive unknowns.
-      for (let a = 0; a < 3; a++) {
-        gradient[2 * k + a] -= w * jacobian[a] * residual;
-        for (let b = a; b < 3; b++) {
-          band[b - a][2 * k + a] += w * jacobian[a] * jacobian[b];
-        }
-      }
+      const residual = numberAt(here, i, 'the modelled elapsed times') - onset.elapsedMs;
+      const j0 =
+        denomTau0 > 0
+          ? (numberAt(upTau0, i, 'a Jacobian probe') - numberAt(downTau0, i, 'a Jacobian probe')) /
+            denomTau0
+          : 0;
+      const j1 =
+        denomShape > 0
+          ? (numberAt(upShape, i, 'a Jacobian probe') -
+              numberAt(downShape, i, 'a Jacobian probe')) /
+            denomShape
+          : 0;
+      const j2 =
+        denomTau1 > 0
+          ? (numberAt(upTau1, i, 'a Jacobian probe') - numberAt(downTau1, i, 'a Jacobian probe')) /
+            denomTau1
+          : 0;
+
+      // JᵀJ is symmetric and only the upper triangle is stored, so the three columns get three
+      // arms, two and one — not three each. the order of these accumulations is load-bearing.
+      gradient[c0] = numberAt(gradient, c0, 'the gradient') - w * j0 * residual;
+      band0[c0] = numberAt(band0, c0, 'the band diagonal') + w * j0 * j0;
+      band1[c0] = numberAt(band1, c0, 'the first band arm') + w * j0 * j1;
+      band2[c0] = numberAt(band2, c0, 'the second band arm') + w * j0 * j2;
+      gradient[c1] = numberAt(gradient, c1, 'the gradient') - w * j1 * residual;
+      band0[c1] = numberAt(band0, c1, 'the band diagonal') + w * j1 * j1;
+      band1[c1] = numberAt(band1, c1, 'the first band arm') + w * j1 * j2;
+      gradient[c2] = numberAt(gradient, c2, 'the gradient') - w * j2 * residual;
+      band0[c2] = numberAt(band0, c2, 'the band diagonal') + w * j2 * j2;
     }
   }
 
   let scale = 0;
-  for (let i = 0; i < m; i++) scale = Math.max(scale, band[0][i]);
+  for (let i = 0; i < m; i++) scale = Math.max(scale, numberAt(band0, i, 'the band diagonal'));
   if (!(scale > 0)) return { tau: 0, shape: 0 };
 
   // Column scaling — Marquardt's, and not optional here. BPM and a shape parameter in [0,1] are
@@ -1422,22 +1437,38 @@ function jointGaussNewtonStep(
   // each row and column by its own norm first puts every unknown the data constrains at unit
   // curvature, and a floor of 1e-8 then means 1e-8 to all of them alike.
   const norm = new Float64Array(m);
-  for (let i = 0; i < m; i++) norm[i] = Math.sqrt(Math.max(band[0][i], COLUMN_FLOOR * scale));
+  for (let i = 0; i < m; i++)
+    norm[i] = Math.sqrt(Math.max(numberAt(band0, i, 'the band diagonal'), COLUMN_FLOOR * scale));
 
   for (let d = 0; d < band.length; d++) {
-    for (let i = 0; i + d < m; i++) band[d][i] /= norm[i] * norm[i + d];
+    const arm = d === 0 ? band0 : d === 1 ? band1 : band2;
+    for (let i = 0; i + d < m; i++)
+      arm[i] =
+        numberAt(arm, i, 'the band arm at this offset') /
+        (numberAt(norm, i, 'the column norms') * numberAt(norm, i + d, 'the column norms'));
   }
   for (let i = 0; i < m; i++) {
     const segment = (i - 1) / 2;
-    const current = i % 2 === 0 ? tau[i / 2] : shapes[segment];
+    const current =
+      i % 2 === 0
+        ? numberAt(tau, i / 2, 'the boundary tempos')
+        : numberAt(shapes, segment, 'the segment shapes');
     // A shape the rounding prior owns is its own reference, so the floor leaves it alone
     // rather than dragging it back to linear through a column the data no longer fills.
-    const reference = i % 2 === 0 ? tauInit[i / 2] : pinned[segment] ? current : 0.5;
-    gradient[i] = gradient[i] / norm[i] - RANK_FLOOR * norm[i] * (current - reference);
+    const reference =
+      i % 2 === 0
+        ? numberAt(tauInit, i / 2, 'the initial boundary tempos')
+        : elementAt(pinned, segment, 'the pinned shapes')
+          ? current
+          : 0.5;
+    const normI = numberAt(norm, i, 'the column norms');
+    gradient[i] =
+      numberAt(gradient, i, 'the gradient') / normI - RANK_FLOOR * normI * (current - reference);
   }
 
-  const scaledDiagonal = Float64Array.from(band[0]);
-  for (let i = 0; i < m; i++) scaledDiagonal[i] += RANK_FLOOR;
+  const scaledDiagonal = Float64Array.from(band0);
+  for (let i = 0; i < m; i++)
+    scaledDiagonal[i] = numberAt(scaledDiagonal, i, 'the scaled band diagonal') + RANK_FLOOR;
 
   const before = objective(state);
   const candidateTau = new Array<number>(tau.length);
@@ -1445,26 +1476,37 @@ function jointGaussNewtonStep(
   const candidate: SolverState = { tau: candidateTau, shapes: candidateShapes };
 
   for (let damping = GN_DAMPING_MIN; damping <= GN_DAMPING_MAX; damping *= GN_DAMPING_ESCALATION) {
-    for (let i = 0; i < m; i++) band[0][i] = scaledDiagonal[i] + damping;
+    for (let i = 0; i < m; i++)
+      band0[i] = numberAt(scaledDiagonal, i, 'the scaled band diagonal') + damping;
     const scaledDelta = solveBanded(band, gradient);
     if (!scaledDelta) continue;
-    const delta = scaledDelta.map((v, i) => v / norm[i]);
+    const delta = scaledDelta.map((v, i) => v / numberAt(norm, i, 'the column norms'));
 
     for (let trial = 0, stepSize = 1; trial <= LINE_SEARCH_HALVINGS; trial++, stepSize /= 2) {
-      for (let i = 0; i < tau.length; i++) candidateTau[i] = tau[i] + stepSize * delta[2 * i];
-      for (let k = 0; k < nSeg; k++) candidateShapes[k] = shapes[k] + stepSize * delta[2 * k + 1];
+      for (let i = 0; i < tau.length; i++)
+        candidateTau[i] =
+          numberAt(tau, i, 'the boundary tempos') + stepSize * numberAt(delta, 2 * i, 'the step');
+      for (let k = 0; k < nSeg; k++)
+        candidateShapes[k] =
+          numberAt(shapes, k, 'the segment shapes') +
+          stepSize * numberAt(delta, 2 * k + 1, 'the step');
       const projected = projectState(candidate, segments, directions);
 
       if (objective(projected) < before) {
         let tauMoved = 0,
           shapeMoved = 0;
         for (let i = 0; i < tau.length; i++) {
-          tauMoved = Math.max(tauMoved, Math.abs(projected.tau[i] - tau[i]));
-          tau[i] = projected.tau[i];
+          const moved = numberAt(projected.tau, i, 'the boundary tempos');
+          tauMoved = Math.max(tauMoved, Math.abs(moved - numberAt(tau, i, 'the boundary tempos')));
+          tau[i] = moved;
         }
         for (let k = 0; k < nSeg; k++) {
-          shapeMoved = Math.max(shapeMoved, Math.abs(projected.shapes[k] - shapes[k]));
-          shapes[k] = projected.shapes[k];
+          const moved = numberAt(projected.shapes, k, 'the segment shapes');
+          shapeMoved = Math.max(
+            shapeMoved,
+            Math.abs(moved - numberAt(shapes, k, 'the segment shapes')),
+          );
+          shapes[k] = moved;
         }
         return { tau: tauMoved, shape: shapeMoved };
       }
@@ -1494,14 +1536,21 @@ function refreshShapes(
   const candidateShapes = shapes.slice();
 
   for (let k = 0; k < shapes.length; k++) {
-    candidateShapes[k] = optimizeShape(segments[k], tau[k], tau[k + 1], beatLength, shapes[k]);
+    candidateShapes[k] = optimizeShape(
+      elementAt(segments, k, 'the fitted segments'),
+      numberAt(tau, k, 'the boundary tempos'),
+      numberAt(tau, k + 1, 'the boundary tempos'),
+      beatLength,
+      numberAt(shapes, k, 'the segment shapes'),
+    );
   }
   const projected = projectState({ tau, shapes: candidateShapes }, segments, directions);
 
   if (!(objective(projected) < before - SHAPE_REFRESH_GAIN)) return false;
 
-  for (let i = 0; i < tau.length; i++) tau[i] = projected.tau[i];
-  for (let k = 0; k < shapes.length; k++) shapes[k] = projected.shapes[k];
+  for (let i = 0; i < tau.length; i++) tau[i] = numberAt(projected.tau, i, 'the boundary tempos');
+  for (let k = 0; k < shapes.length; k++)
+    shapes[k] = numberAt(projected.shapes, k, 'the segment shapes');
   return true;
 }
 
@@ -1517,20 +1566,31 @@ function refreshShapes(
 function solveBanded(band: Band, rhs: Float64Array): Float64Array | null {
   const n = rhs.length;
   const p = band.length - 1;
+  const [a0, a1, a2] = band;
   // R is upper triangular with RᵀR = A, in the same band storage.
-  const r: Band = [new Float64Array(n), new Float64Array(n), new Float64Array(n)];
+  const [r0, r1, r2]: Band = [new Float64Array(n), new Float64Array(n), new Float64Array(n)];
+
+  // every arm below is picked by a two-way test rather than by the offset it names, and that is
+  // only sound because `p` is 2: the loop bounds hold `i - k` and, past the guard, `j - k` to
+  // {1, 2}. widen the band and these have to become real lookups.
 
   for (let i = 0; i < n; i++) {
     for (let j = i; j <= Math.min(i + p, n - 1); j++) {
-      let sum = band[j - i][i];
+      const d = j - i;
+      let sum = numberAt(d === 0 ? a0 : d === 1 ? a1 : a2, i, 'the band arm at this offset');
       for (let k = Math.max(0, i - p); k < i; k++) {
-        if (j - k <= p) sum -= r[i - k][k] * r[j - k][k];
+        if (j - k <= p) {
+          const ri = i - k === 1 ? r1 : r2;
+          const rj = j - k === 1 ? r1 : r2;
+          sum -= numberAt(ri, k, 'the Cholesky factor') * numberAt(rj, k, 'the Cholesky factor');
+        }
       }
       if (j === i) {
         if (!(sum > 0)) return null;
-        r[0][i] = Math.sqrt(sum);
+        r0[i] = Math.sqrt(sum);
       } else {
-        r[j - i][i] = sum / r[0][i];
+        const rd = d === 1 ? r1 : r2;
+        rd[i] = sum / numberAt(r0, i, "the Cholesky factor's diagonal");
       }
     }
   }
@@ -1538,17 +1598,23 @@ function solveBanded(band: Band, rhs: Float64Array): Float64Array | null {
   // Rᵀ y = rhs
   const y = new Float64Array(n);
   for (let i = 0; i < n; i++) {
-    let sum = rhs[i];
-    for (let k = Math.max(0, i - p); k < i; k++) sum -= r[i - k][k] * y[k];
-    y[i] = sum / r[0][i];
+    let sum = numberAt(rhs, i, 'the right-hand side');
+    for (let k = Math.max(0, i - p); k < i; k++) {
+      const ri = i - k === 1 ? r1 : r2;
+      sum -= numberAt(ri, k, 'the Cholesky factor') * numberAt(y, k, 'the forward substitution');
+    }
+    y[i] = sum / numberAt(r0, i, "the Cholesky factor's diagonal");
   }
 
   // R x = y
   const x = new Float64Array(n);
   for (let i = n - 1; i >= 0; i--) {
-    let sum = y[i];
-    for (let j = i + 1; j <= Math.min(i + p, n - 1); j++) sum -= r[j - i][i] * x[j];
-    x[i] = sum / r[0][i];
+    let sum = numberAt(y, i, 'the forward substitution');
+    for (let j = i + 1; j <= Math.min(i + p, n - 1); j++) {
+      const rd = j - i === 1 ? r1 : r2;
+      sum -= numberAt(rd, i, 'the Cholesky factor') * numberAt(x, j, 'the solution');
+    }
+    x[i] = sum / numberAt(r0, i, "the Cholesky factor's diagonal");
   }
   return x;
 }
