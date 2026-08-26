@@ -1,0 +1,16 @@
+export * from './asynchrony/InsertAsynchrony.js';
+export * from './accentuation/index.js';
+export * from './articulation/index.js';
+export * from './dynamics/index.js';
+export * from './ornamentation/index.js';
+export * from './tempo/index.js';
+export * from './rubato/InsertRubato.js';
+export * from './rubato/CombineAdjacentRubatos.js';
+export type { TransformationOptions } from './Transformer.js';
+export * from './tempo/tempoCalculations.js';
+export * from './pedal/InsertPedalInstructions.js';
+export * from './Order.js';
+export * from './choice/MakeChoice.js';
+export * from './modification/Modify.js';
+export * from './metadata/index.js';
+export * from './TransformerRegistry.js';

@@ -1,0 +1,23 @@
+{
+  // The project the fitting tree is typechecked and typed-linted under. It exists because the
+  // root project cannot express a per-directory compiler option and this directory needs one:
+  // `noUncheckedIndexedAccess` costs 282 errors here and zero everywhere else in `src/`, so the
+  // root `tsconfig.json` excludes `src/fitting/**` rather than turn the flag off for the whole
+  // package. Without a project of its own the files would be invisible to
+  // `projectService: true`, and every typed lint rule in `eslint.config.js` would report a
+  // parse error instead of a finding.
+  //
+  // Every other flag the root sets still applies. Delete this file, and the root's exclude,
+  // when the count reaches zero.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": false,
+    "rootDir": "../..",
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
