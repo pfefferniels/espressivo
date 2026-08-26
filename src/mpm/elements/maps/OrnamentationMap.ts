@@ -21,12 +21,7 @@ import {
   noteOwners,
   prepareOrnament,
 } from './ornamentInstantiation.js';
-import {
-  patchAttribute,
-  readId,
-  readNumber,
-  readString,
-} from '../../../xml/attributes.js';
+import { patchAttribute, readId, readNumber, readString } from '../../../xml/attributes.js';
 import type { OrnamentNote } from './data/OrnamentNote.js';
 import type { PreparedOrnament } from './ornamentInstantiation.js';
 

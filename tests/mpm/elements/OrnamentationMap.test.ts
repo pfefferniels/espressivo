@@ -4,7 +4,10 @@ import { expectOptionsRoundTrip } from '../../support/optionsRoundTrip.js';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { OrnamentationMap, type AddOrnamentOptions } from '../../../src/mpm/elements/maps/OrnamentationMap.js';
+import {
+  OrnamentationMap,
+  type AddOrnamentOptions,
+} from '../../../src/mpm/elements/maps/OrnamentationMap.js';
 import { Performance } from '../../../src/mpm/elements/Performance.js';
 import {
   applyOrnament,

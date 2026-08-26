@@ -351,6 +351,34 @@ export type {
   ConstantTempo,
   TransitioningTempo,
 } from './mpm/elements/maps/data/tempo.js';
+
+// The tick ⇄ millisecond algebra under one `<tempo>`, both ways round, without a map to ask.
+//
+// Forwards it is the renderer's own: `millisecondsAt` is `TempoMap.computeDiffTiming`, Simpson's
+// rule and all, extended only to be *total* — outside a span it continues at the boundary tempo,
+// which `renderTempoToMap` never needs because the neighbouring instruction takes over there.
+//
+// Backwards is the direction a renderer does not have, because rendering never asks it: which
+// tick is this millisecond. An analysis or an editing tool asks constantly — where a recorded
+// onset falls on the symbolic grid, which tick an ornament's frame reaches back to — and gets it
+// wrong in ways that look like answers, which is what `dateAtMilliseconds`'s doc is a record of.
+// It is `rtsafe` over the forward direction, so it inverts whatever the renderer actually draws
+// rather than a closed form of the curve someone believed was there.
+//
+// Every crossing takes the document's `@pulsesPerQuarter` as an argument, as
+// `computeDiffTiming` does; `./mpm/ppq.js` says why there is a default and no constant.
+export {
+  resolveSpan,
+  millisecondsAt,
+  computeMillisecondsAt,
+  computeElapsedMs,
+  ticksForConstantTempo,
+  dateAtMilliseconds,
+  getTempoAt,
+} from './mpm/timing.js';
+export type { WithEndDate, TempoWithEndDate } from './mpm/timing.js';
+export { DEFAULT_PULSES_PER_QUARTER, pulsesPerWhole, beatLengthInTicks } from './mpm/ppq.js';
+
 export {
   resolveDynamics,
   dynamicsAt,
@@ -427,6 +455,45 @@ export type { KeyValue } from './supplementary/KeyValue.js';
 // instead of at every call site.
 export type { Result, AnyResult, Ok, Err, OkOf, ErrOf } from './prelude/result.js';
 export { ok, err, isOk, isErr, unwrapOr } from './prelude/result.js';
+
+// The sequence vocabulary, on the same reasoning as `result.js` above and a sharper version of
+// it: a consumer holding one of this package's arrays has the same indexed reads to do that the
+// package does, under the same `noUncheckedIndexedAccess`. `elementAt` and `numberAt` in
+// particular are the ones that say *what was being looked for* when a lookup comes back empty,
+// which is the difference between a diagnosable failure and an `undefined` propagating into
+// arithmetic until it surfaces as a `NaN` somewhere else entirely.
+//
+// Exported whole rather than by the members that happen to have a caller today. The module's
+// own header records that admission is by call site — there is no `gather`, no `slide`, no
+// transducer, and four more shapes were searched for and deliberately left out — so the set is
+// already only what this codebase contains. Publishing a subset of it would invite a consumer
+// to write a second, worse copy of the two or three it was not given.
+export type { NonEmptyArray } from './prelude/seq.js';
+export {
+  isNonEmpty,
+  head,
+  last,
+  elementAt,
+  elementAtOrNull,
+  optionAt,
+  numberAt,
+  find,
+  findLast,
+  removeAt,
+  filterMap,
+  partitionWith,
+  groupBy,
+  foldl,
+  scanl,
+  zipWith,
+  pairwise,
+  withNext,
+  partitionPoint,
+  lowerBoundBy,
+  upperBoundBy,
+  insertionIndexBy,
+} from './prelude/seq.js';
+
 export { RandomNumberProvider } from './supplementary/RandomNumberProvider.js';
 
 // Version. RULE the design makes `VERSION` the API; the `Meico` object keeps `Meico.version`

@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { okValue } from '../../support/result.js';
 import { expectOptionsRoundTrip } from '../../support/optionsRoundTrip.js';
-import { DynamicsMap, type AddDynamicsOptions } from '../../../src/mpm/elements/maps/DynamicsMap.js';
+import {
+  DynamicsMap,
+  type AddDynamicsOptions,
+} from '../../../src/mpm/elements/maps/DynamicsMap.js';
 import {
   dynamicsAt,
   isConstantDynamics,

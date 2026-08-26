@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { okValue } from '../../support/result.js';
 import { expectOptionsRoundTrip } from '../../support/optionsRoundTrip.js';
-import { MetricalAccentuationMap, type AddAccentuationPatternOptions } from '../../../src/mpm/elements/maps/MetricalAccentuationMap.js';
+import {
+  MetricalAccentuationMap,
+  type AddAccentuationPatternOptions,
+} from '../../../src/mpm/elements/maps/MetricalAccentuationMap.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
 import { Element, Attribute } from '../../../src/xml/XomTypes.js';
@@ -510,7 +513,11 @@ describe('getAccentuationPatternOptionsOf / updateAccentuationPatternAt', () => 
     positional.addAccentuationPattern(0, 'myPattern', 1.0);
 
     const options = makeMap();
-    options.addAccentuationPattern({ date: 0, accentuationPatternDefName: 'myPattern', scale: 1.0 });
+    options.addAccentuationPattern({
+      date: 0,
+      accentuationPatternDefName: 'myPattern',
+      scale: 1.0,
+    });
 
     expect(options.getElement(0)?.toXML()).toBe(positional.getElement(0)?.toXML());
   });
@@ -608,7 +615,12 @@ describe('getAccentuationPatternOptionsOf / updateAccentuationPatternAt', () => 
 
   it('re-keys and re-sorts the map when @date is patched', () => {
     const map = makeMap();
-    map.addAccentuationPattern({ date: 0, accentuationPatternDefName: 'p1', scale: 1, id: 'first' });
+    map.addAccentuationPattern({
+      date: 0,
+      accentuationPatternDefName: 'p1',
+      scale: 1,
+      id: 'first',
+    });
     map.addAccentuationPattern({
       date: 1000,
       accentuationPatternDefName: 'p2',

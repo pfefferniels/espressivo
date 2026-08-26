@@ -1795,5 +1795,5 @@ git show mei-to-mpm-converter-final:src/mei/Mei2MsmMpmConverter.ts
 git worktree add ../espressivo-converter mei-to-mpm-converter-final
 ```
 
-espressivo is not published to npm, so a downstream consumer that needs an MEI-derived MPM
-pins that tag or a commit, rather than a released version.
+A downstream consumer that needs an MEI-derived MPM pins that tag or a commit; the released
+versions on npm do not carry the half.
