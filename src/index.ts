@@ -408,6 +408,25 @@ export type {
 // an editing tool asks constantly. Unlike the tempo inverse it is closed form rather than a
 // search, so it is exact rather than converged.
 export { resolveRubato, rubatoAt, dateBeforeRubato } from './mpm/elements/maps/data/rubato.js';
+
+// Fitting a transition to observed values — the statistical counterpart of `dynamicsAt` and
+// `positionAt` above, and the last direction this package did not answer. Those say what value
+// an instruction calls for at a date; `fitTransitionCurve` says which instruction best explains
+// a series of values. A renderer never asks it, so nothing here has a meico counterpart and it
+// makes no parity claim; anything producing MPM from measurements asks it constantly.
+//
+// `transitionValueAt` is the evaluator it scores candidates with, exported for the same reason:
+// it takes the Bézier's control points rather than a resolved instruction, so a caller drawing
+// or fitting one curve over many dates converts once instead of per sample — and it is where the
+// rule that `tForDate` cannot reach its own endpoints is written down.
+export { fitTransitionCurve, transitionValueAt } from './mpm/curveFit.js';
+export type {
+  CurveSample,
+  FitTransitionOptions,
+  FittedTransition,
+  TransitionShape,
+  TransitionSpan,
+} from './mpm/curveFit.js';
 export type { Rubato, RubatoSpan, RubatoDeclaration } from './mpm/elements/maps/data/rubato.js';
 export {
   articulateNote,
