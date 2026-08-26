@@ -22,5 +22,6 @@
 export * from './comparison.js';
 export * from './errors.js';
 export * from './expression.js';
+export * from './fitting.js';
 export * from './pipeline.js';
 export type * from './types.js';

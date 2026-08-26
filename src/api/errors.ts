@@ -74,6 +74,21 @@ export class SelectionNotFoundError extends MeicoError {}
 export class EngineInvariantError extends MeicoError {}
 
 /**
+ * A fitter failed while the chain was running, or the measurement taken after it did.
+ *
+ * Distinct from the two above for the reason they are distinct from each other: all three can
+ * run inside one expression — a fit, then a render of what it produced — and a caught error has
+ * to say which of them broke without anyone parsing a message.
+ *
+ * Not a caller error, and the boundary is sharp: everything a caller can get wrong about a
+ * chain — an unknown fitter, an unsatisfied `requires`, a malformed option — is an
+ * {@link InvalidOptionError} raised before a single fitter runs. What is left here is a fitter
+ * refusing to give an instruction an `xml:id`, an MPM attribute that computed to `NaN`, or a
+ * render the residual could not take.
+ */
+export class FittingEngineError extends MeicoError {}
+
+/**
  * The comparison engine broke one of its own invariants — the attribution table failed to close,
  * a scope had no global environment, a dimension returned something the aggregation cannot use.
  *
