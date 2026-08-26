@@ -36,7 +36,10 @@ function walk(directory: string): readonly string[] {
     // `fixtures*` holds byte-comparison targets — MIDI, and whatever a future parity check
     // needs. Matched by prefix: `fixtures-v3` and `fixtures-layers-to-staffs` are the same
     // kind of directory and an exact match misses both.
-    if (entry.startsWith('fixtures') || entry === 'node_modules') continue;
+    // A dotfile here is never source. `.DS_Store` is the one that actually turns up — Finder
+    // writes it into any directory it displays, it is full of NULs, and it is gitignored, so
+    // without this the suite fails on a file git cannot even see.
+    if (entry.startsWith('fixtures') || entry === 'node_modules' || entry.startsWith('.')) continue;
     const path = join(directory, entry);
     if (statSync(path).isDirectory()) found.push(...walk(path));
     else found.push(path);
