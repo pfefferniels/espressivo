@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { Alignment, type AlignedNote, type AlignedPedal } from '../../../src/fitting/alignment.js';
+import { at } from '../../support/at.js';
 
 /**
  * An `Alignment` is a score, and a score handed to two callers has to behave as two scores.
@@ -46,8 +47,8 @@ describe('an Alignment copy is independent of its original', () => {
 
     expect(copy.allNotes).not.toBe(original.allNotes);
 
-    copy.allNotes[0].velocity = 1;
-    expect(original.allNotes[0].velocity).toBe(100);
+    at(copy.allNotes, 0, 'note').velocity = 1;
+    expect(at(original.allNotes, 0, 'note').velocity).toBe(100);
   });
 
   test('clone shares neither the pedals array nor the pedal objects', () => {
@@ -57,8 +58,8 @@ describe('an Alignment copy is independent of its original', () => {
 
     expect(copy.pedals).not.toBe(original.pedals);
 
-    copy.pedals[0]['milliseconds.date.end'] = 99;
-    expect(original.pedals[0]['milliseconds.date.end']).toBe(1000);
+    at(copy.pedals, 0, 'pedal')['milliseconds.date.end'] = 99;
+    expect(at(original.pedals, 0, 'pedal')['milliseconds.date.end']).toBe(1000);
   });
 
   test('constructing an Alignment does not reorder the array it was handed', () => {

@@ -11,6 +11,7 @@ import {
   type TransformationOptions,
 } from '../../src/fitting/transformers/Transformer.js';
 import { exportWork, importWork } from '../../src/fitting/work.js';
+import { only } from '../support/at.js';
 
 // Importing Order also registers every built-in transformer, which is what the first describe
 // below reads.
@@ -99,9 +100,9 @@ describe('TransformerRegistry', () => {
       const result = importWork(json);
 
       expect(result.transformers).toHaveLength(1);
-      expect(result.transformers[0].id).toBe(transformer.id);
-      expect(result.transformers[0].name).toBe('ApproximateLogarithmicTempo');
-      expect(result.transformers[0].options).toEqual(transformer.options);
+      expect(only(result.transformers, 'transformer').id).toBe(transformer.id);
+      expect(only(result.transformers, 'transformer').name).toBe('ApproximateLogarithmicTempo');
+      expect(only(result.transformers, 'transformer').options).toEqual(transformer.options);
     });
   });
 
@@ -288,8 +289,8 @@ describe('TransformerRegistry', () => {
       // saying anything. That silence is what `validate` breaks.
       const messages = validate([new Alpha(), new Stranger()]);
       expect(messages).toHaveLength(1);
-      expect(messages[0].index).toBe(1);
-      expect(messages[0].message).toContain('Stranger');
+      expect(only(messages, 'message').index).toBe(1);
+      expect(only(messages, 'message').message).toContain('Stranger');
     });
 
     test('a requirement is reported only when the chain does not already satisfy it', () => {

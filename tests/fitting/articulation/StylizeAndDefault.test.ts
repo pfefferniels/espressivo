@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
 import { Alignment, type AlignedNote } from '../../../src/fitting/alignment.js';
+import { at, only } from '../../support/at.js';
 import {
   Mpm,
   createMpm,
@@ -146,7 +147,9 @@ test('StylizeArticulation tells the notes of a chord apart', () => {
   // The upper one joined the cluster that became the default, and the style now says so on
   // its behalf — which is why its instruction is gone from the map.
   expect(byNote('#n1')).toBeUndefined();
-  expect(getStyles(mpm, 'articulation', 'global')[0].defaultArticulation).toBeDefined();
+  expect(
+    at(getStyles(mpm, 'articulation', 'global'), 0, 'style switch').defaultArticulation,
+  ).toBeDefined();
 });
 
 test('a chain running both transformers leaves exactly one <style> in the articulationMap', () => {
@@ -192,9 +195,9 @@ test('a chain running both transformers leaves exactly one <style> in the articu
 
   const styles = getStyles(mpm, 'articulation', 'global');
   expect(styles).toHaveLength(1);
-  expect(styles[0].date).toBe(0);
+  expect(only(styles, 'style switch').date).toBe(0);
   // And it is the switch the later transformer amended, not a shadowing duplicate.
-  expect(styles[0].defaultArticulation).toBe('default articulation');
+  expect(only(styles, 'style switch').defaultArticulation).toBe('default articulation');
 });
 
 test('MakeDefaultArticulation measures the part it was scoped to, not the whole score', () => {

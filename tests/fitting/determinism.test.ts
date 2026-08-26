@@ -4,6 +4,7 @@ import { createMpm, exportMPM, getInstructions } from '../../src/fitting/instruc
 import { ApproximateLogarithmicTempo } from '../../src/fitting/transformers/tempo/ApproximateLogarithmicTempo.js';
 import { InsertDynamicsInstructions } from '../../src/fitting/transformers/dynamics/InsertDynamicsInstructions.js';
 import type { Transformer } from '../../src/fitting/transformers/Transformer.js';
+import { at } from '../support/at.js';
 
 /**
  * The pipeline re-folds the *entire* chain over a fresh MPM on every edit, so the fold has to be
@@ -83,7 +84,7 @@ describe('the pipeline fold is a function of its inputs', () => {
     const bpms = () => {
       const msm = buildMsm().deepClone();
       const mpm = createMpm();
-      chain()[0].run(msm, mpm);
+      at(chain(), 0, 'transformer').run(msm, mpm);
       return getInstructions(mpm, 'tempo', 'global').map((t) => [
         t.bpm,
         t.transitionTo,
@@ -100,7 +101,7 @@ describe('the pipeline fold is a function of its inputs', () => {
     const curves = () => {
       const msm = buildMsm().deepClone();
       const mpm = createMpm();
-      chain()[1].run(msm, mpm);
+      at(chain(), 1, 'transformer').run(msm, mpm);
       return getInstructions(mpm, 'dynamics', 'global').map((d) => [
         d.volume,
         d.transitionTo,

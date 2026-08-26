@@ -26,6 +26,7 @@ import {
   InsertMetricalAccentuation,
   MergeMetricalAccentuations,
 } from '../../../src/fitting/transformers/accentuation/index.js';
+import { at } from '../../support/at.js';
 import { buildScore, PPQ, type ScoreSpec } from './score.js';
 import { type Truth, truthMpm } from './truth.js';
 
@@ -432,7 +433,7 @@ const articulationCalls = (spec: Case, msm: Alignment): Transformer[] => {
 
   const groups = new Map<string, string[]>();
   noteIds.forEach((id, index) => {
-    const name = pattern[index % pattern.length];
+    const name = at(pattern, index % pattern.length, 'articulation pattern entry');
     const group = groups.get(name) ?? [];
     group.push(id);
     groups.set(name, group);
@@ -464,8 +465,8 @@ export const statistics = (values: number[]): AspectError => {
   const sorted = [...values].sort((a, b) => a - b);
   return {
     mean: values.reduce((sum, value) => sum + value, 0) / values.length,
-    median: sorted[Math.floor(sorted.length / 2)],
-    max: sorted[sorted.length - 1],
+    median: at(sorted, Math.floor(sorted.length / 2), 'median'),
+    max: at(sorted, sorted.length - 1, 'max'),
   };
 };
 

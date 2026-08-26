@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
 import { Alignment, type AlignedNote } from '../../../src/fitting/alignment.js';
+import { at } from '../../support/at.js';
 import {
   Mpm,
   createMpm,
@@ -105,7 +106,7 @@ test('two articulation units are kept apart, and the larger one becomes the defa
   // default; the smaller keeps an instruction each, now naming the def the cluster was given.
   const played = [360, 360, 360, 360, 360, 1008, 1008, 1008];
   const msm = new Alignment(
-    PITCHES.map((pitch, i) => note(`n${i}`, i * 720, pitch, played[i])),
+    PITCHES.map((pitch, i) => note(`n${i}`, i * 720, pitch, at(played, i, 'played duration'))),
     { numerator: 4, denominator: 4 },
   );
 
@@ -124,7 +125,7 @@ test('two articulation units are kept apart, and the larger one becomes the defa
   // That each of these names *some* def is no longer worth an assertion: an `<articulation>`
   // without `@name.ref` is not an `AddArticulationOptions` at all, so `getInstructions` would
   // not have returned it. What still has to be checked is which def it names.
-  const longName = left[0].nameRef;
+  const longName = at(left, 0, 'articulation').nameRef;
   expect(longName).not.toBe(def!.getName());
   expect(new Set(left.map((a) => a.nameRef))).toEqual(new Set([longName]));
 

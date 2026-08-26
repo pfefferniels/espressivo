@@ -9,6 +9,7 @@ import {
 } from '../../../src/fitting/instructions/index.js';
 import { InsertMetricalAccentuation } from '../../../src/fitting/transformers/accentuation/index.js';
 import { PULSES_PER_QUARTER } from '../../../src/fitting/ppq.js';
+import { at } from '../../support/at.js';
 
 /**
  * The loop in `InsertMetricalAccentuation` is driven entirely by the *residual* velocity — what
@@ -67,7 +68,9 @@ const fixture = (scales: number[], { closingDownbeat = true } = {}) => {
   const notes: AlignedNote[] = [];
   for (let bar = 0; bar < scales.length; bar++) {
     for (let beat = 0; beat < 4; beat++) {
-      notes.push(note(bar * 4 + beat, VOLUME + SHAPE[beat] * scales[bar]));
+      notes.push(
+        note(bar * 4 + beat, VOLUME + at(SHAPE, beat, 'beat shape') * at(scales, bar, 'bar scale')),
+      );
     }
   }
   if (closingDownbeat) notes.push(note(scales.length * 4, VOLUME));

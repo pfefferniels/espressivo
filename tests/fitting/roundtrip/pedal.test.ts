@@ -7,6 +7,7 @@ import {
   TranslatePhysicalTimeToTicks,
 } from '../../../src/fitting/transformers/tempo/index.js';
 import { InsertPedal } from '../../../src/fitting/transformers/pedal/InsertPedalInstructions.js';
+import { at } from '../../support/at.js';
 import { buildScore, QUARTER } from './score.js';
 import { assertWellFormed } from './invariants.js';
 
@@ -88,15 +89,15 @@ describe('pedalling reaches the renderer', () => {
 
     // Two pedal marks, each a start and the point it arrives at full depth.
     expect(movements).toHaveLength(4);
-    expect(movements[0].date).toBeCloseTo(0, 6);
-    expect(movements[0].position).toBe(0);
-    expect(movements[0].transitionTo).toBe(SUSTAIN_DEPTH);
-    expect(movements[1].date).toBeCloseTo(RAMP_TICKS, 6);
-    expect(movements[1].position).toBe(SUSTAIN_DEPTH);
+    expect(at(movements, 0, 'movement').date).toBeCloseTo(0, 6);
+    expect(at(movements, 0, 'movement').position).toBe(0);
+    expect(at(movements, 0, 'movement').transitionTo).toBe(SUSTAIN_DEPTH);
+    expect(at(movements, 1, 'movement').date).toBeCloseTo(RAMP_TICKS, 6);
+    expect(at(movements, 1, 'movement').position).toBe(SUSTAIN_DEPTH);
 
     // Beat 5 of a 4/4 bar of quarters: 2 s in, which is 2880 ticks at 120 bpm.
-    expect(movements[2].date).toBeCloseTo(4 * QUARTER, 3);
-    expect(movements[3].date).toBeCloseTo(4 * QUARTER + RAMP_TICKS, 3);
+    expect(at(movements, 2, 'movement').date).toBeCloseTo(4 * QUARTER, 3);
+    expect(at(movements, 3, 'movement').date).toBeCloseTo(4 * QUARTER + RAMP_TICKS, 3);
 
     for (const movement of movements) {
       expect(movement.controller).toBe('sustain');
@@ -123,7 +124,7 @@ describe('pedalling reaches the renderer', () => {
     expect(stream!.points.length).toBeGreaterThan(1);
 
     // 0 to 127: the ramp starts released and arrives fully down.
-    expect(stream!.points[0].value).toBe(0);
+    expect(at(stream!.points, 0, 'sustain point').value).toBe(0);
     expect(Math.max(...stream!.points.map((point) => point.value))).toBe(127);
   });
 
@@ -137,8 +138,8 @@ describe('pedalling reaches the renderer', () => {
       (a, b) => a.date - b.date,
     );
 
-    expect(movements[0].transitionTo).toBe(0);
-    expect(movements[1].position).toBe(0);
+    expect(at(movements, 0, 'movement').transitionTo).toBe(0);
+    expect(at(movements, 1, 'movement').position).toBe(0);
   });
 
   test('and the pedal comes from the MPM, not from the score alone', () => {

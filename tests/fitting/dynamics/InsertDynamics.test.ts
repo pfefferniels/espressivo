@@ -8,6 +8,7 @@ import {
 } from '../../../src/fitting/instructions/index.js';
 import { InsertDynamicsInstructions } from '../../../src/fitting/transformers/index.js';
 import { deriveResidual } from '../../../src/fitting/residual.js';
+import { at } from '../../support/at.js';
 
 /**
  * Quickly generates a simple aligned note
@@ -76,9 +77,9 @@ test('it fits one <dynamics> across the range, from the first velocity to the la
   run(msm, mpm);
 
   const dynamics = getInstructions(mpm, 'dynamics', 'global');
-  expect(dynamics[0].date).toBe(0);
-  expect(dynamics[0].volume).toBe(50);
-  expect(dynamics[0].transitionTo).toBe(100);
+  expect(at(dynamics, 0, 'dynamics').date).toBe(0);
+  expect(at(dynamics, 0, 'dynamics').volume).toBe(50);
+  expect(at(dynamics, 0, 'dynamics').transitionTo).toBe(100);
 });
 
 // The closing instruction (issue #24) is now checked structurally on *every* fitted MPM the
@@ -99,8 +100,11 @@ test('the fitted curve explains the notes at both ends of its span exactly', () 
   // explained. What the curve misses in between is exactly what survives. The tail no longer
   // does: closing the transition makes the span the residual is measured over the same span
   // the curve was fitted over (see old-bugs.md §1, and issue #24).
-  expect(residual.of(msm.allNotes[0])!.velocity).toBeCloseTo(0, 5);
-  expect(residual.of(msm.allNotes[msm.allNotes.length - 1])!.velocity).toBeCloseTo(0, 5);
+  expect(residual.of(at(msm.allNotes, 0, 'note'))!.velocity).toBeCloseTo(0, 5);
+  expect(residual.of(at(msm.allNotes, msm.allNotes.length - 1, 'note'))!.velocity).toBeCloseTo(
+    0,
+    5,
+  );
 });
 
 test('the fitting window is not written into the document', () => {
@@ -138,7 +142,7 @@ test('a phantom velocity of 0 is used, not read as an absent one', () => {
     mpm,
   );
 
-  expect(getInstructions(mpm, 'dynamics', 'global')[0].transitionTo).toBe(0);
+  expect(at(getInstructions(mpm, 'dynamics', 'global'), 0, 'dynamics').transitionTo).toBe(0);
 });
 
 /**

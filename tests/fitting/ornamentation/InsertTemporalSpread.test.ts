@@ -8,6 +8,7 @@ import {
   ornamentDraftOf,
 } from '../../../src/fitting/instructions/index.js';
 import { InsertTemporalSpread } from '../../../src/fitting/transformers/index.js';
+import { at, only } from '../../support/at.js';
 
 /**
  * Quickly generates a simple aligned note
@@ -72,12 +73,12 @@ test('it describes the roll as an <ornament> in milliseconds around the estimate
 
   const arpeggios = getInstructions(mpm, 'ornament', 'global');
   expect(arpeggios).toHaveLength(1);
-  expect(arpeggios[0].noteOrder).toEqual('ascending pitch');
+  expect(only(arpeggios, 'ornament').noteOrder).toEqual('ascending pitch');
 
   // The frame belongs on the `<temporalSpread>` of a def that does not exist yet, so it is
   // parked on the element rather than said by the instruction. `StylizeOrnamentation` is what
   // eventually moves it.
-  const frame = ornamentDraftOf(arpeggios[0].element);
+  const frame = ornamentDraftOf(only(arpeggios, 'ornament').element);
   expect(frame.frameStart).toEqual(-500);
   expect(frame.frameLength).toEqual(1000);
   expect(frame.frameDomain).toEqual(FrameDomain.Milliseconds);
@@ -97,8 +98,8 @@ test('it collapses the rolled chord onto one onset, so a tempo can be read off i
 test('a roll shorter than the threshold is left alone', () => {
   const msm = msmFixture();
   // the same note, struck 10 ms after the first rather than a second after it
-  msm.allNotes[1]['milliseconds.date'] = 510;
-  msm.allNotes[1]['milliseconds.date.end'] = 1510;
+  at(msm.allNotes, 1, 'note')['milliseconds.date'] = 510;
+  at(msm.allNotes, 1, 'note')['milliseconds.date.end'] = 1510;
   const mpm = createMpm();
 
   run(msm, mpm);

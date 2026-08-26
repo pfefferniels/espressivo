@@ -8,6 +8,7 @@ import {
   requireMap,
 } from '../../../src/fitting/instructions/index.js';
 import { CombineAdjacentRubatos } from '../../../src/fitting/transformers/rubato/CombineAdjacentRubatos.js';
+import { at } from '../../support/at.js';
 
 const note = (date: number): AlignedNote => ({
   'xml:id': `n${date}`,
@@ -85,6 +86,6 @@ test('it folds a run of similar rubatos into one looping instruction', () => {
 
   const rubatos = getInstructions(mpm, 'rubato', 'global');
   expect(rubatos.map((r) => r.date)).toEqual([0, 2160]);
-  expect(rubatos[0].loop).toBe(true);
-  expect(rubatos[0].intensity).toBeCloseTo((1.4 + 1.45 + 1.5) / 3, 10);
+  expect(at(rubatos, 0, 'rubato').loop).toBe(true);
+  expect(at(rubatos, 0, 'rubato').intensity).toBeCloseTo((1.4 + 1.45 + 1.5) / 3, 10);
 });

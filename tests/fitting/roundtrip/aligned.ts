@@ -6,6 +6,7 @@ import { Alignment } from '../../../src/fitting/alignment.js';
 import { createMpm } from '../../../src/fitting/instructions/index.js';
 import { importWork } from '../../../src/fitting/work.js';
 import { runChain } from '../../../src/fitting/runChain.js';
+import { at } from '../../support/at.js';
 import { deserializeAlignment, parseAlignmentFixture } from './alignmentFixture.js';
 import { type AspectError, type Errors, EMPTY_MPM, statistics } from './harness.js';
 
@@ -70,7 +71,7 @@ export const runAligned = (): AlignedRun => {
 
   const movements = convertMeiToMsm(fixture('traeumerei.mei'));
   if (!movements.length) throw new Error('MEI holds no convertible movement');
-  const scoreMsm = movements[0].msm;
+  const scoreMsm = at(movements, 0, 'movement').msm;
 
   // Its own alignment, not the one `recording` returns: the chain writes through what it is
   // given, and the recording has to survive the run unedited to be a target.

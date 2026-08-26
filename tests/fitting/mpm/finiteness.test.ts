@@ -8,6 +8,7 @@ import {
   requireMap,
 } from '../../../src/fitting/instructions/index.js';
 import { Alignment } from '../../../src/fitting/alignment.js';
+import { at } from '../../support/at.js';
 import {
   AbstractTransformer,
   type TransformationOptions,
@@ -98,7 +99,7 @@ describe('a non-finite number already in a document', () => {
     // What a file written by an earlier version looks like once parsed.
     map.getElement(0)?.getAttribute('meanTempoAt')?.setValue('NaN');
 
-    expect(getInstructions(mpm, 'tempo', 'global')[0].meanTempoAt).toBeNaN();
+    expect(at(getInstructions(mpm, 'tempo', 'global'), 0, 'tempo').meanTempoAt).toBeNaN();
     expect(auditInstructions(mpm).nonFinite).toEqual(['<tempo @meanTempoAt>="NaN"']);
   });
 
@@ -113,7 +114,7 @@ describe('a non-finite number already in a document', () => {
     // a test on the value sees an ordinary string and passes.
     map.getElement(0)?.getAttribute('bpm')?.setValue('NaN');
 
-    expect(getInstructions(mpm, 'tempo', 'global')[0].bpm).toBe('NaN');
+    expect(at(getInstructions(mpm, 'tempo', 'global'), 0, 'tempo').bpm).toBe('NaN');
     expect(auditInstructions(mpm).nonFinite).toEqual(['<tempo @bpm>="NaN"']);
   });
 });

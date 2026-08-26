@@ -13,6 +13,7 @@ import {
 } from '../../../src/fitting/transformers/tempo/index.js';
 import { InsertDynamicsInstructions } from '../../../src/fitting/transformers/dynamics/index.js';
 import { InsertArticulation } from '../../../src/fitting/transformers/articulation/InsertArticulation.js';
+import { at, only } from '../../support/at.js';
 import { buildScore, QUARTER } from './score.js';
 import { truthMpm } from './truth.js';
 import { roundTrip, notesOf } from './harness.js';
@@ -39,9 +40,9 @@ describe('the tempo fitter recovers its own curve', () => {
     const tempos = getInstructions(fitted, 'tempo', 'global');
 
     expect(tempos).toHaveLength(1);
-    expect(tempos[0].date).toBe(0);
-    expect(tempos[0].bpm).toBeCloseTo(100, 4);
-    expect(tempos[0].transitionTo).toBeUndefined();
+    expect(only(tempos, 'tempo').date).toBe(0);
+    expect(only(tempos, 'tempo').bpm).toBeCloseTo(100, 4);
+    expect(only(tempos, 'tempo').transitionTo).toBeUndefined();
   });
 
   test('a ritardando comes back with both boundary tempos', () => {
@@ -54,10 +55,10 @@ describe('the tempo fitter recovers its own curve', () => {
     // tempo at x=0 is not observable from beat-level IOI data — the first interval's mean
     // already sits above the instantaneous tempo at the segment start — so the fitter
     // recovers it to about a bpm, not to the digit.
-    expect(Math.abs((tempos[0].bpm as number) - 120)).toBeLessThan(1);
-    expect(Math.abs((tempos[0].transitionTo as number) - 60)).toBeLessThan(1);
+    expect(Math.abs((at(tempos, 0, 'tempo').bpm as number) - 120)).toBeLessThan(1);
+    expect(Math.abs((at(tempos, 0, 'tempo').transitionTo as number) - 60)).toBeLessThan(1);
     // Closing the span is what makes the transition render at all — see issue #24.
-    expect(tempos[tempos.length - 1].date).toBeGreaterThan(0);
+    expect(at(tempos, tempos.length - 1, 'tempo').date).toBeGreaterThan(0);
   });
 });
 
@@ -67,16 +68,16 @@ describe('the dynamics fitter recovers its own curve', () => {
     const dynamics = getInstructions(fitted, 'dynamics', 'global').sort((a, b) => a.date - b.date);
 
     expect(dynamics.length).toBeGreaterThanOrEqual(2);
-    expect(dynamics[0].volume as number).toBeCloseTo(40, 0);
-    expect(dynamics[0].transitionTo as number).toBeCloseTo(100, 0);
+    expect(at(dynamics, 0, 'dynamics').volume as number).toBeCloseTo(40, 0);
+    expect(at(dynamics, 0, 'dynamics').transitionTo as number).toBeCloseTo(100, 0);
   });
 
   test('a constant dynamic comes back flat, with no transition at all', () => {
     const { fitted } = roundTrip(caseNamed('dynamics: constant'));
     const dynamics = getInstructions(fitted, 'dynamics', 'global');
 
-    expect(dynamics[0].volume as number).toBeCloseTo(70, 4);
-    expect(dynamics[0].transitionTo).toBeUndefined();
+    expect(at(dynamics, 0, 'dynamics').volume as number).toBeCloseTo(70, 4);
+    expect(at(dynamics, 0, 'dynamics').transitionTo).toBeUndefined();
   });
 });
 
@@ -86,7 +87,7 @@ describe('the articulation fitter recovers its own ratios', () => {
     const defs = getDefinitions(fitted, 'articulationDef', 'global');
 
     expect(defs).toHaveLength(1);
-    expect(defs[0].getRelativeDuration()).toBeCloseTo(1.3, 2);
+    expect(only(defs, 'articulationDef').getRelativeDuration()).toBeCloseTo(1.3, 2);
   });
 
   /**
@@ -165,7 +166,7 @@ describe('the articulation fitter recovers its own ratios', () => {
 
     expect(truthVelocities).toEqual([89.6, 44.8, 89.6, 44.8, 89.6, 44.8, 89.6, 44.8]);
     refitVelocities.forEach((velocity, index) => {
-      expect(velocity).toBeCloseTo(truthVelocities[index], 6);
+      expect(velocity).toBeCloseTo(at(truthVelocities, index, 'truth velocity'), 6);
     });
   });
 });

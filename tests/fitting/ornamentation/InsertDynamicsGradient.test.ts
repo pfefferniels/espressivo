@@ -7,6 +7,7 @@ import {
   ornamentDraftOf,
 } from '../../../src/fitting/instructions/index.js';
 import { InsertDynamicsGradient } from '../../../src/fitting/transformers/index.js';
+import { at, only } from '../../support/at.js';
 
 /**
  * Quickly generates a simple MSM note
@@ -58,7 +59,7 @@ const callTransform = (transformer: InsertDynamicsGradient, msm: Alignment, mpm:
  * of the instruction and are read through the draft rather than off the options record.
  */
 const gradientOf = (mpm: Mpm, index: number) =>
-  ornamentDraftOf(getInstructions(mpm, 'ornament', 'global')[index].element);
+  ornamentDraftOf(at(getInstructions(mpm, 'ornament', 'global'), index, 'ornament').element);
 
 test('it fits a rising chord to the crescendo gradient and flattens the velocities', () => {
   const msm = msmFixture();
@@ -79,7 +80,7 @@ test('it fits a rising chord to the crescendo gradient and flattens the velociti
   expect(ornaments).toHaveLength(1);
   expect(gradientOf(mpm, 0).transitionFrom).toBe(-1);
   expect(gradientOf(mpm, 0).transitionTo).toBe(0);
-  expect(ornaments[0].scale).toBe(50);
+  expect(only(ornaments, 'ornament').scale).toBe(50);
 
   // The gradient having explained the spread, every note carries the same velocity.
   expect(msm.allNotes.map((n) => n.velocity)).toEqual([100, 100]);
@@ -101,7 +102,7 @@ test('it works with the constructor defaults, which do not sort velocities', () 
 
 test('a chord whose notes are equally loud gets no gradient', () => {
   const msm = msmFixture();
-  msm.allNotes[1].velocity = 50;
+  at(msm.allNotes, 1, 'note').velocity = 50;
   const mpm = createMpm();
 
   callTransform(new InsertDynamicsGradient(), msm, mpm);
@@ -128,8 +129,8 @@ test('a single explicit gradient is fitted to the chord on its date', () => {
 
   const ornaments = getInstructions(mpm, 'ornament', 'global');
   expect(ornaments).toHaveLength(1);
-  expect(ornaments[0].date).toBe(0);
-  expect(ornaments[0].scale).toBe(50);
+  expect(only(ornaments, 'ornament').date).toBe(0);
+  expect(only(ornaments, 'ornament').scale).toBe(50);
 });
 
 test('a single gradient on a date with no chord does nothing', () => {

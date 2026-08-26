@@ -3,6 +3,7 @@ import { Alignment, type AlignedNote } from '../../../src/fitting/alignment.js';
 import { createMpm, requireMap } from '../../../src/fitting/instructions/index.js';
 import { deriveResidual } from '../../../src/fitting/residual.js';
 import { computeTickTimes } from '../../../src/fitting/transformers/tempo/tickTimes.js';
+import { at } from '../../support/at.js';
 
 const note = (position: number, onset: number, velocity = 100, duration = 1000): AlignedNote =>
   ({
@@ -100,6 +101,6 @@ describe('deriveResidual lookups', () => {
     const msm = fixture();
     const derived = deriveResidual(msm, withTempo());
 
-    expect(derived.of(msm.allNotes[2])?.velocity).toBe(-20);
+    expect(derived.of(at(msm.allNotes, 2, 'note'))?.velocity).toBe(-20);
   });
 });

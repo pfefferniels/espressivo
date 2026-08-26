@@ -2,6 +2,7 @@ import { expect, test } from 'vitest';
 import { Mpm, createMpm } from '../../../src/fitting/instructions/index.js';
 import { Alignment, type AlignedNote, type AlignedPedal } from '../../../src/fitting/alignment.js';
 import { MakeChoice } from '../../../src/fitting/transformers/choice/MakeChoice.js';
+import { only } from '../../support/at.js';
 
 /**
  * `MakeChoice` collapses the several readings of a passage down to one.
@@ -50,8 +51,8 @@ test('the notes of the rejected reading are gone, the chosen one kept once', () 
   callTransform(new MakeChoice({ scope: 'global', prefer: 'take2' }), msm, createMpm());
 
   expect(msm.allNotes).toHaveLength(1);
-  expect(msm.allNotes[0].source).toBe('take2');
-  expect(msm.allNotes[0].velocity).toBe(90);
+  expect(only(msm.allNotes, 'note').source).toBe('take2');
+  expect(only(msm.allNotes, 'note').velocity).toBe(90);
 });
 
 test('a split preference takes the velocity from one reading and the timing from the other', () => {
@@ -69,8 +70,8 @@ test('a split preference takes the velocity from one reading and the timing from
   );
 
   expect(msm.allNotes).toHaveLength(1);
-  expect(msm.allNotes[0].source).toBe('take2');
-  expect(msm.allNotes[0].velocity).toBe(40);
+  expect(only(msm.allNotes, 'note').source).toBe('take2');
+  expect(only(msm.allNotes, 'note').velocity).toBe(40);
 });
 
 test('adjacent pedals from the rejected reading are both dropped', () => {

@@ -9,6 +9,7 @@ import {
   unwrap,
 } from '../../../src/fitting/instructions/index.js';
 import { PULSES_PER_WHOLE } from '../../../src/fitting/ppq.js';
+import { only } from '../../support/at.js';
 
 const withTempo = (...tempos: InstructionOptions<'tempo'>[]) => {
   const mpm = createMpm();
@@ -77,7 +78,7 @@ describe('instructionsEffectiveAtDate', () => {
 
     const effective = instructionsEffectiveAtDate(mpm, 1440, 'tempo', 'global');
     expect(effective).toHaveLength(1);
-    expect(effective[0].bpm).toBe(60);
+    expect(only(effective, 'tempo').bpm).toBe(60);
   });
 });
 

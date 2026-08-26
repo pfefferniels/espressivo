@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { Alignment, type AlignedNote, type AlignedPedal } from '../../../src/fitting/alignment.js';
+import { at } from '../../support/at.js';
 
 /**
  * The three places an `Alignment` reports a bound — `lastDate`, `end` and the minimum
@@ -66,8 +67,8 @@ describe('shifting a score to its first onset', () => {
     msm.shiftToFirstOnset();
 
     expect(msm.allNotes.map((n) => n['milliseconds.date'])).toEqual([0, 1000]);
-    expect(msm.pedals[0]['milliseconds.date']).toBe(500);
-    expect(msm.pedals[0]['milliseconds.date.end']).toBe(1500);
+    expect(at(msm.pedals, 0, 'pedal')['milliseconds.date']).toBe(500);
+    expect(at(msm.pedals, 0, 'pedal')['milliseconds.date.end']).toBe(1500);
   });
 
   test('a pedal pressed before the first note keeps its release', () => {
@@ -77,8 +78,8 @@ describe('shifting a score to its first onset', () => {
     msm.shiftToFirstOnset();
 
     // Half the press is cut away with the silence, so the release stays where it was.
-    expect(msm.pedals[0]['milliseconds.date']).toBe(0);
-    expect(msm.pedals[0]['milliseconds.date.end']).toBe(1500);
+    expect(at(msm.pedals, 0, 'pedal')['milliseconds.date']).toBe(0);
+    expect(at(msm.pedals, 0, 'pedal')['milliseconds.date.end']).toBe(1500);
   });
 
   test('a score with no recorded onset is left alone', () => {
@@ -88,7 +89,7 @@ describe('shifting a score to its first onset', () => {
 
     msm.shiftToFirstOnset();
 
-    expect(msm.pedals[0]['milliseconds.date']).toBe(4000);
-    expect(msm.pedals[0]['milliseconds.date.end']).toBe(5000);
+    expect(at(msm.pedals, 0, 'pedal')['milliseconds.date']).toBe(4000);
+    expect(at(msm.pedals, 0, 'pedal')['milliseconds.date.end']).toBe(5000);
   });
 });

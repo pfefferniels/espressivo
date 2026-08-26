@@ -16,6 +16,7 @@ import {
   setOrnamentDraft,
 } from '../../../src/fitting/instructions/index.js';
 import { StylizeOrnamentation } from '../../../src/fitting/transformers/index.js';
+import { at, only } from '../../support/at.js';
 
 /**
  * `StylizeOrnamentation` moves the def fields an ornament was fitted with into an
@@ -123,8 +124,8 @@ describe('an ornament and its definition do not come apart (#28)', () => {
     // be read. Stripping those while writing no definition is what left the real corpus
     // with three unresolvable @name.ref in one run.
     expect(defNames(mpm)).toHaveLength(0);
-    expect(ornamentDraftOf(ornaments(mpm)[0].element).transitionFrom).toBe(-1);
-    expect(ornamentDraftOf(ornaments(mpm)[0].element).transitionTo).toBe(0);
+    expect(ornamentDraftOf(at(ornaments(mpm), 0, 'ornament').element).transitionFrom).toBe(-1);
+    expect(ornamentDraftOf(at(ornaments(mpm), 0, 'ornament').element).transitionTo).toBe(0);
   });
 
   test('an ornament with a ramp and no roll still gets a definition', () => {
@@ -144,13 +145,13 @@ describe('an ornament and its definition do not come apart (#28)', () => {
     // definition carries.
     const defs = getDefinitions(mpm, 'ornamentDef', 'global');
     expect(defs).toHaveLength(1);
-    expect(defs[0].getDynamicsGradient()).not.toBeNull();
-    expect(defs[0].getDynamicsGradient()!.transitionFrom).toBeCloseTo(-1, 10);
-    expect(defs[0].getDynamicsGradient()!.transitionTo).toBeCloseTo(0, 10);
-    expect(defs[0].getTemporalSpread()).toBeNull();
+    expect(only(defs, 'ornamentDef').getDynamicsGradient()).not.toBeNull();
+    expect(only(defs, 'ornamentDef').getDynamicsGradient()!.transitionFrom).toBeCloseTo(-1, 10);
+    expect(only(defs, 'ornamentDef').getDynamicsGradient()!.transitionTo).toBeCloseTo(0, 10);
+    expect(only(defs, 'ornamentDef').getTemporalSpread()).toBeNull();
 
     for (const ornament of ornaments(mpm)) {
-      expect(ornament.nameRef).toBe(defs[0].getName());
+      expect(ornament.nameRef).toBe(only(defs, 'ornamentDef').getName());
     }
   });
 
@@ -219,7 +220,7 @@ describe('an ornament and its definition do not come apart (#28)', () => {
 
     const defs = getDefinitions(mpm, 'ornamentDef', 'global');
     expect(defs).toHaveLength(1);
-    expect(defs[0].getDynamicsGradient()).not.toBeNull();
-    expect(defs[0].getDynamicsGradient()!.transitionTo).toBe(0);
+    expect(only(defs, 'ornamentDef').getDynamicsGradient()).not.toBeNull();
+    expect(only(defs, 'ornamentDef').getDynamicsGradient()!.transitionTo).toBe(0);
   });
 });

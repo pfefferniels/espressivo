@@ -16,6 +16,7 @@ import {
   type AlignedPedal,
   type TimeSignature,
 } from '../../../src/fitting/alignment.js';
+import { at } from '../../support/at.js';
 
 /** A recorded pedal: onset and release in milliseconds, and no symbolic date. */
 export interface FixturePedal {
@@ -81,7 +82,9 @@ export const deserializeAlignment = (fixture: AlignmentFixture): Alignment => {
   }
 
   const alignment = new Alignment(
-    inScore.map(({ element, part }, index) => readNote(element, part, fixture.sources[index])),
+    inScore.map(({ element, part }, index) =>
+      readNote(element, part, at(fixture.sources, index, 'source')),
+    ),
     timeSignatureOf(root),
   );
   alignment.pedals = fixture.pedals.map((pedal): AlignedPedal => ({

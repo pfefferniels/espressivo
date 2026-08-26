@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { exportWork, importWork, sourcesOf, type WorkFile } from '../../src/fitting/work.js';
 import { InsertRubato, MakeChoice } from '../../src/fitting/transformers/index.js';
 import '../../src/fitting/transformers/Order.js';
+import { at } from '../support/at.js';
 
 const work = { name: 'Träumerei', mei: 'roll.mei', mpm: 'performance.mpm' };
 
@@ -19,8 +20,8 @@ describe('the work file', () => {
     const file = JSON.parse(exportWork(work, [choice, rubato])) as WorkFile;
 
     expect(file.provenance.map((call) => call.name)).toEqual(['MakeChoice', 'InsertRubato']);
-    expect(file.provenance[1].options).toMatchObject({ date: 0, length: 2880 });
-    expect(file.provenance[1].id).toBe(rubato.id);
+    expect(at(file.provenance, 1, 'call').options).toMatchObject({ date: 0, length: 2880 });
+    expect(at(file.provenance, 1, 'call').id).toBe(rubato.id);
   });
 
   test('fills a segment in with the elements its calls produced', () => {
@@ -50,10 +51,10 @@ describe('the work file', () => {
     const imported = importWork(json);
 
     expect(imported.transformers.map((t) => t.name)).toEqual(['MakeChoice', 'InsertRubato']);
-    expect(imported.transformers[1].id).toBe(rubato.id);
-    expect(imported.transformers[1].options).toEqual(rubato.options);
-    expect(imported.segments[0].calls).toEqual([rubato.id]);
-    expect(imported.segments[0].elements).toEqual(['rubato_0', 'rubato_720']);
+    expect(at(imported.transformers, 1, 'transformer').id).toBe(rubato.id);
+    expect(at(imported.transformers, 1, 'transformer').options).toEqual(rubato.options);
+    expect(at(imported.segments, 0, 'segment').calls).toEqual([rubato.id]);
+    expect(at(imported.segments, 0, 'segment').elements).toEqual(['rubato_0', 'rubato_720']);
   });
 
   test('names the recordings the chain chose between', () => {

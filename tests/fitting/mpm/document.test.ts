@@ -29,6 +29,7 @@ import {
   setOrnamentDraft,
   unwrap,
 } from '../../../src/fitting/instructions/index.js';
+import { at, only } from '../../support/at.js';
 
 const tempo = (date: number, bpm: number, id = `tempo_${date}`): InstructionOptions<'tempo'> => ({
   id,
@@ -71,14 +72,14 @@ describe('instructions', () => {
 
     expect(exportMPM(mpm)).toContain('bpm="72"');
     expect(exportMPM(mpm)).toContain('transition.to="90"');
-    expect(getInstructions(mpm, 'tempo', 'global')[0].bpm).toBe(72);
+    expect(at(getInstructions(mpm, 'tempo', 'global'), 0, 'tempo').bpm).toBe(72);
   });
 
   test('carry the element they stand for, and their scope', () => {
     const mpm = createMpm();
     requireMap(mpm, 'tempo', 'global').addTempo(tempo(0, 60));
 
-    const [inserted] = getInstructions(mpm, 'tempo', 'global');
+    const inserted = at(getInstructions(mpm, 'tempo', 'global'), 0, 'tempo');
     expect(inserted.element.getLocalName()).toBe('tempo');
     expect(inserted.scope).toBe('global');
     expect(inserted.type).toBe('tempo');
@@ -90,7 +91,7 @@ describe('instructions', () => {
     map.addTempo(tempo(0, 60));
     map.addTempo(tempo(720, 90));
 
-    removeInstruction(mpm, getInstructions(mpm, 'tempo', 'global')[0]);
+    removeInstruction(mpm, at(getInstructions(mpm, 'tempo', 'global'), 0, 'tempo'));
 
     expect(getInstructions(mpm, 'tempo', 'global').map((t) => t.date)).toEqual([720]);
     expect(exportMPM(mpm)).not.toContain('bpm="60"');
@@ -119,8 +120,8 @@ describe('filling in at a date', () => {
 
     const written = getInstructions(mpm, 'dynamics', 'global');
     expect(written).toHaveLength(1);
-    expect(written[0].volume).toBe(30);
-    expect(written[0].transitionTo).toBe(90);
+    expect(only(written, 'dynamics instruction').volume).toBe(30);
+    expect(only(written, 'dynamics instruction').transitionTo).toBe(90);
   });
 
   test('a value already there wins even when it is 0', () => {
@@ -135,8 +136,8 @@ describe('filling in at a date', () => {
 
     const written = getInstructions(mpm, 'dynamics', 'global');
     expect(written).toHaveLength(1);
-    expect(written[0].volume).toBe(0);
-    expect(written[0].curvature).toBe(0.4);
+    expect(only(written, 'dynamics instruction').volume).toBe(0);
+    expect(only(written, 'dynamics instruction').curvature).toBe(0.4);
   });
 
   test('a date the map does not hold does not merge into the next instruction', () => {
@@ -248,7 +249,9 @@ describe('style switches', () => {
       'global',
     );
 
-    const serialized = exportMPM(mpm).match(/<tempoMap>(.*?)<\/tempoMap>/s)![1];
+    const written = exportMPM(mpm).match(/<tempoMap>(.*?)<\/tempoMap>/s);
+    if (written === null) throw new Error('the export holds no <tempoMap>');
+    const serialized = at(written, 1, '<tempoMap> body');
     expect(serialized.indexOf('<style')).toBeLessThan(serialized.indexOf('<tempo '));
   });
 
@@ -266,7 +269,9 @@ describe('style switches', () => {
       'global',
     );
 
-    expect(getStyles(mpm, 'articulation', 'global')[0].defaultArticulation).toBe('legato');
+    expect(
+      at(getStyles(mpm, 'articulation', 'global'), 0, 'style switch').defaultArticulation,
+    ).toBe('legato');
   });
 
   test('ensureDefaultStyle writes one switch however often it is asked', () => {
@@ -276,7 +281,7 @@ describe('style switches', () => {
 
     const styles = getStyles(mpm, 'articulation', 'global');
     expect(styles).toHaveLength(1);
-    expect(styles[0].defaultArticulation).toBe('legato');
+    expect(only(styles, 'style switch').defaultArticulation).toBe('legato');
   });
 });
 
@@ -289,7 +294,7 @@ describe('definitions', () => {
 
     const defs = getDefinitions(mpm, 'articulationDef', 'global');
     expect(defs).toHaveLength(1);
-    expect(defs[0].getRelativeDuration()).toBe(1.05);
+    expect(only(defs, 'articulationDef').getRelativeDuration()).toBe(1.05);
     expect(exportMPM(mpm)).toContain('<articulationStyles>');
   });
 
@@ -388,10 +393,10 @@ describe('round trip', () => {
 
     const patterns = getInstructions(mpm, 'accentuationPattern', 'global');
     expect(patterns).toHaveLength(2);
-    expect(patterns[0].scale).toBe(3);
-    expect(patterns[0].loop).toBe(true);
-    expect(patterns[1].loop).toBeUndefined();
-    expect(patterns[1].accentuationPatternDefName).toBe('downbeat');
+    expect(at(patterns, 0, 'accentuationPattern').scale).toBe(3);
+    expect(at(patterns, 0, 'accentuationPattern').loop).toBe(true);
+    expect(at(patterns, 1, 'accentuationPattern').loop).toBeUndefined();
+    expect(at(patterns, 1, 'accentuationPattern').accentuationPatternDefName).toBe('downbeat');
   });
 
   test('reads the definitions the patterns refer to', () => {
@@ -406,15 +411,15 @@ describe('round trip', () => {
   test('reads the other maps and their numbers', () => {
     const mpm = parseMPM(source);
 
-    expect(getInstructions(mpm, 'dynamics', 'global')[0].volume).toBe(60);
-    expect(getInstructions(mpm, 'rubato', 'global')[0].intensity).toBe(1.4);
+    expect(at(getInstructions(mpm, 'dynamics', 'global'), 0, 'dynamics').volume).toBe(60);
+    expect(at(getInstructions(mpm, 'rubato', 'global'), 0, 'rubato').intensity).toBe(1.4);
     expect(getStyles(mpm, 'accentuationPattern', 'global')).toHaveLength(1);
   });
 
   test('a symbolic level stays the name it was written as', () => {
     const mpm = parseMPM(source.replace('volume="60"', 'volume="forte"'));
 
-    expect(getInstructions(mpm, 'dynamics', 'global')[0].volume).toBe('forte');
+    expect(at(getInstructions(mpm, 'dynamics', 'global'), 0, 'dynamics').volume).toBe('forte');
   });
 
   test('what was read can be written back', () => {
@@ -440,7 +445,9 @@ describe('the ornament draft', () => {
     map.updateOrnamentAt(map.getElementIndexOf(ornament), { scale: 0.5 });
 
     expect(ornamentDraftOf(ornament).frameStart).toBe(-100);
-    expect(getInstructions(mpm, 'ornament', 'global')[0]).not.toHaveProperty('frameStart');
+    expect(at(getInstructions(mpm, 'ornament', 'global'), 0, 'ornament')).not.toHaveProperty(
+      'frameStart',
+    );
   });
 
   test('comes off entirely when a real definition holds it', () => {
