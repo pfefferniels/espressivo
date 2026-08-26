@@ -15,6 +15,7 @@ import {
   computeMillisecondsAt,
   type TempoWithEndDate,
 } from '../../../src/fitting/transformers/tempo/tempoCalculations.js';
+import { at, only } from '../../support/at.js';
 
 /** Call the protected `transform` method for testing */
 function callTransform(transformer: ApproximateLogarithmicTempo, msm: Alignment, mpm: Mpm) {
@@ -122,8 +123,8 @@ function fitAndGetTempos(
  * at. See issue #24.
  */
 function expectClosedAt(tempos: Instruction<'tempo'>[], date: number) {
-  const closing = tempos[tempos.length - 1];
-  const fitted = tempos[tempos.length - 2];
+  const closing = at(tempos, tempos.length - 1, 'closing tempo');
+  const fitted = at(tempos, tempos.length - 2, 'fitted tempo');
   expect(closing.date).toBe(date);
   expect(closing.bpm).toBeCloseTo(bpmOf(fitted.transitionTo), 6);
   expect(closing.transitionTo).toBeUndefined();
@@ -138,8 +139,9 @@ describe('ApproximateLogarithmicTempo', () => {
     const tempos = fitAndGetTempos(onsets, 0, 4 * BEAT, 0.25);
 
     expect(tempos).toHaveLength(1);
-    expect(tempos[0].bpm).toBeCloseTo(100, 0);
-    expect(tempos[0].transitionTo).toBeUndefined();
+    const tempo = only(tempos, 'tempo');
+    expect(tempo.bpm).toBeCloseTo(100, 0);
+    expect(tempo.transitionTo).toBeUndefined();
   });
 
   test('linear accelerando 80 → 120 BPM', () => {
@@ -149,13 +151,14 @@ describe('ApproximateLogarithmicTempo', () => {
 
     expect(tempos).toHaveLength(2);
     expectClosedAt(tempos, totalTicks);
-    expect(tempos[0].bpm).toBeGreaterThan(77);
-    expect(tempos[0].bpm).toBeLessThan(83);
-    expect(tempos[0].transitionTo).toBeGreaterThan(117);
-    expect(tempos[0].transitionTo).toBeLessThan(123);
-    expect(tempos[0].meanTempoAt).toBeDefined();
-    expect(tempos[0].meanTempoAt!).toBeGreaterThan(0.4);
-    expect(tempos[0].meanTempoAt!).toBeLessThan(0.6);
+    const ramp = at(tempos, 0, 'tempo');
+    expect(ramp.bpm).toBeGreaterThan(77);
+    expect(ramp.bpm).toBeLessThan(83);
+    expect(ramp.transitionTo).toBeGreaterThan(117);
+    expect(ramp.transitionTo).toBeLessThan(123);
+    expect(ramp.meanTempoAt).toBeDefined();
+    expect(ramp.meanTempoAt!).toBeGreaterThan(0.4);
+    expect(ramp.meanTempoAt!).toBeLessThan(0.6);
   });
 
   test('linear ritardando 120 → 80 BPM', () => {
@@ -165,12 +168,13 @@ describe('ApproximateLogarithmicTempo', () => {
 
     expect(tempos).toHaveLength(2);
     expectClosedAt(tempos, totalTicks);
-    expect(tempos[0].bpm).toBeGreaterThan(117);
-    expect(tempos[0].bpm).toBeLessThan(123);
-    expect(tempos[0].transitionTo).toBeGreaterThan(77);
-    expect(tempos[0].transitionTo).toBeLessThan(83);
-    expect(tempos[0].meanTempoAt!).toBeGreaterThan(0.4);
-    expect(tempos[0].meanTempoAt!).toBeLessThan(0.6);
+    const ramp = at(tempos, 0, 'tempo');
+    expect(ramp.bpm).toBeGreaterThan(117);
+    expect(ramp.bpm).toBeLessThan(123);
+    expect(ramp.transitionTo).toBeGreaterThan(77);
+    expect(ramp.transitionTo).toBeLessThan(83);
+    expect(ramp.meanTempoAt!).toBeGreaterThan(0.4);
+    expect(ramp.meanTempoAt!).toBeLessThan(0.6);
   });
 
   test('non-linear accelerando (im = 0.3) with 8 beats', () => {
@@ -184,14 +188,15 @@ describe('ApproximateLogarithmicTempo', () => {
 
     expect(tempos).toHaveLength(2);
     expectClosedAt(tempos, totalTicks);
-    expect(tempos[0].bpm).toBeGreaterThan(75);
-    expect(tempos[0].bpm).toBeLessThan(95);
-    expect(tempos[0].transitionTo).toBeGreaterThan(105);
-    expect(tempos[0].transitionTo).toBeLessThan(125);
-    expect(tempos[0].transitionTo!).toBeGreaterThan(bpmOf(tempos[0].bpm));
-    expect(tempos[0].meanTempoAt).toBeDefined();
-    expect(tempos[0].meanTempoAt!).toBeGreaterThan(0.1);
-    expect(tempos[0].meanTempoAt!).toBeLessThan(0.9);
+    const ramp = at(tempos, 0, 'tempo');
+    expect(ramp.bpm).toBeGreaterThan(75);
+    expect(ramp.bpm).toBeLessThan(95);
+    expect(ramp.transitionTo).toBeGreaterThan(105);
+    expect(ramp.transitionTo).toBeLessThan(125);
+    expect(ramp.transitionTo!).toBeGreaterThan(bpmOf(ramp.bpm));
+    expect(ramp.meanTempoAt).toBeDefined();
+    expect(ramp.meanTempoAt!).toBeGreaterThan(0.1);
+    expect(ramp.meanTempoAt!).toBeLessThan(0.9);
   });
 
   test('tempo bow: 80 → 120 → 80 (continue chaining)', () => {
@@ -234,16 +239,18 @@ describe('ApproximateLogarithmicTempo', () => {
 
     expect(tempos).toHaveLength(3);
     expectClosedAt(tempos, totalTicks);
-    expect(tempos[0].bpm).toBeGreaterThan(76);
-    expect(tempos[0].bpm).toBeLessThan(84);
-    expect(tempos[0].transitionTo).toBeGreaterThan(116);
-    expect(tempos[0].transitionTo).toBeLessThan(124);
-    expect(tempos[1].bpm).toBeGreaterThan(116);
-    expect(tempos[1].bpm).toBeLessThan(124);
-    expect(tempos[1].transitionTo).toBeGreaterThan(76);
-    expect(tempos[1].transitionTo).toBeLessThan(84);
-    expect(tempos[0].meanTempoAt!).toBeLessThan(0.5);
-    expect(tempos[1].meanTempoAt!).toBeGreaterThan(0.5);
+    const up = at(tempos, 0, 'tempo');
+    const down = at(tempos, 1, 'tempo');
+    expect(up.bpm).toBeGreaterThan(76);
+    expect(up.bpm).toBeLessThan(84);
+    expect(up.transitionTo).toBeGreaterThan(116);
+    expect(up.transitionTo).toBeLessThan(124);
+    expect(down.bpm).toBeGreaterThan(116);
+    expect(down.bpm).toBeLessThan(124);
+    expect(down.transitionTo).toBeGreaterThan(76);
+    expect(down.transitionTo).toBeLessThan(84);
+    expect(up.meanTempoAt!).toBeLessThan(0.5);
+    expect(down.meanTempoAt!).toBeGreaterThan(0.5);
   });
 
   test('8-beat linear 60 → 120', () => {
@@ -253,10 +260,11 @@ describe('ApproximateLogarithmicTempo', () => {
 
     expect(tempos).toHaveLength(2);
     expectClosedAt(tempos, totalTicks);
-    expect(tempos[0].bpm).toBeGreaterThan(57);
-    expect(tempos[0].bpm).toBeLessThan(63);
-    expect(tempos[0].transitionTo).toBeGreaterThan(117);
-    expect(tempos[0].transitionTo).toBeLessThan(123);
+    const ramp = at(tempos, 0, 'tempo');
+    expect(ramp.bpm).toBeGreaterThan(57);
+    expect(ramp.bpm).toBeLessThan(63);
+    expect(ramp.transitionTo).toBeGreaterThan(117);
+    expect(ramp.transitionTo).toBeLessThan(123);
   });
 
   test('meanTempoAt is in valid range for transitions', () => {
@@ -264,9 +272,10 @@ describe('ApproximateLogarithmicTempo', () => {
     const onsets = generateOnsets((d) => 80 + 40 * (d / totalTicks), 4);
     const tempos = fitAndGetTempos(onsets, 0, totalTicks, 0.25);
 
-    expect(tempos[0].meanTempoAt).toBeDefined();
-    expect(tempos[0].meanTempoAt!).toBeGreaterThanOrEqual(0.02);
-    expect(tempos[0].meanTempoAt!).toBeLessThanOrEqual(0.98);
+    const ramp = at(tempos, 0, 'tempo');
+    expect(ramp.meanTempoAt).toBeDefined();
+    expect(ramp.meanTempoAt!).toBeGreaterThanOrEqual(0.02);
+    expect(ramp.meanTempoAt!).toBeLessThanOrEqual(0.98);
   });
 
   test('16-beat linear transition has better accuracy', () => {
@@ -276,10 +285,11 @@ describe('ApproximateLogarithmicTempo', () => {
 
     expect(tempos).toHaveLength(2);
     expectClosedAt(tempos, totalTicks);
-    expect(tempos[0].bpm).toBeGreaterThan(78);
-    expect(tempos[0].bpm).toBeLessThan(82);
-    expect(tempos[0].transitionTo).toBeGreaterThan(118);
-    expect(tempos[0].transitionTo).toBeLessThan(122);
+    const ramp = at(tempos, 0, 'tempo');
+    expect(ramp.bpm).toBeGreaterThan(78);
+    expect(ramp.bpm).toBeLessThan(82);
+    expect(ramp.transitionTo).toBeGreaterThan(118);
+    expect(ramp.transitionTo).toBeLessThan(122);
   });
 
   test('rit → acc valley keeps a rounded two-segment gesture (continue)', () => {
@@ -323,13 +333,15 @@ describe('ApproximateLogarithmicTempo', () => {
 
     expect(tempos).toHaveLength(3);
     expectClosedAt(tempos, totalTicks);
-    expect(tempos[0].meanTempoAt).toBeDefined();
-    expect(tempos[1].meanTempoAt).toBeDefined();
-    expect(tempos[0].meanTempoAt!).toBeLessThan(0.5);
-    expect(tempos[1].meanTempoAt!).toBeGreaterThan(0.5);
-    expect(tempos[0].meanTempoAt! + tempos[1].meanTempoAt!).toBeGreaterThan(0.85);
-    expect(tempos[0].meanTempoAt! + tempos[1].meanTempoAt!).toBeLessThan(1.15);
-    expect(Math.abs(bpmOf(tempos[0].transitionTo) - bpmOf(tempos[1].bpm))).toBeLessThan(2.5);
+    const rit = at(tempos, 0, 'tempo');
+    const acc = at(tempos, 1, 'tempo');
+    expect(rit.meanTempoAt).toBeDefined();
+    expect(acc.meanTempoAt).toBeDefined();
+    expect(rit.meanTempoAt!).toBeLessThan(0.5);
+    expect(acc.meanTempoAt!).toBeGreaterThan(0.5);
+    expect(rit.meanTempoAt! + acc.meanTempoAt!).toBeGreaterThan(0.85);
+    expect(rit.meanTempoAt! + acc.meanTempoAt!).toBeLessThan(1.15);
+    expect(Math.abs(bpmOf(rit.transitionTo) - bpmOf(acc.bpm))).toBeLessThan(2.5);
   });
 
   test('chained segments preserve inferred acc → rit direction (continue)', () => {
@@ -374,8 +386,10 @@ describe('ApproximateLogarithmicTempo', () => {
 
     expect(tempos).toHaveLength(3);
     expectClosedAt(tempos, totalTicks);
-    expect(tempos[0].transitionTo).toBeGreaterThan(bpmOf(tempos[0].bpm));
-    expect(tempos[1].transitionTo).toBeLessThan(bpmOf(tempos[1].bpm));
+    const acc = at(tempos, 0, 'tempo');
+    const rit = at(tempos, 1, 'tempo');
+    expect(acc.transitionTo).toBeGreaterThan(bpmOf(acc.bpm));
+    expect(rit.transitionTo).toBeLessThan(bpmOf(rit.bpm));
   });
 
   test('keeps existing tempos unchanged when fitting yields no segments', () => {
@@ -399,8 +413,9 @@ describe('ApproximateLogarithmicTempo', () => {
 
     const tempos = getInstructions(mpm, 'tempo', 'global');
     expect(tempos).toHaveLength(1);
-    expect(tempos[0].date).toBe(0);
-    expect(tempos[0].bpm).toBe(88);
+    const kept = only(tempos, 'tempo');
+    expect(kept.date).toBe(0);
+    expect(kept.bpm).toBe(88);
   });
 
   test('treats overlap as half-open and keeps touching end boundary instructions', () => {
@@ -499,7 +514,7 @@ describe('ApproximateLogarithmicTempo', () => {
 
     const tempos = getInstructions(mpm, 'tempo', 'global');
     expect(tempos).toHaveLength(1);
-    expect(tempos[0].bpm).toBeCloseTo(100, 0);
+    expect(only(tempos, 'tempo').bpm).toBeCloseTo(100, 0);
   });
 
   test("silentOnsets carrying another performance's timing cannot produce a negative BPM", () => {
@@ -672,10 +687,11 @@ describe('recovering a curve the renderer can draw exactly (#39)', () => {
       );
 
       expect(fitted).toHaveLength(1);
+      const span = only(fitted, 'fitted span');
       const refit = truthSpan(
-        fitted[0].bpm,
-        fitted[0].transitionTo ?? fitted[0].bpm,
-        fitted[0].meanTempoAt ?? 0.5,
+        span.bpm,
+        span.transitionTo ?? span.bpm,
+        span.meanTempoAt ?? 0.5,
         NBEATS,
       );
 
@@ -704,9 +720,10 @@ describe('recovering a curve the renderer can draw exactly (#39)', () => {
       buildMsm(onsets),
     );
 
-    expect(fitted[0].bpm).toBeCloseTo(60, 2);
-    expect(fitted[0].transitionTo!).toBeCloseTo(120, 2);
-    expect(fitted[0].meanTempoAt!).toBeCloseTo(0.7, 3);
+    const span = at(fitted, 0, 'fitted span');
+    expect(span.bpm).toBeCloseTo(60, 2);
+    expect(span.transitionTo!).toBeCloseTo(120, 2);
+    expect(span.meanTempoAt!).toBeCloseTo(0.7, 3);
   });
 
   test("the fit is a chord's median onset, not whichever note is listed first", () => {
@@ -743,9 +760,10 @@ describe('recovering a curve the renderer can draw exactly (#39)', () => {
       new Alignment(notes, { numerator: 4, denominator: 4 }),
     );
 
-    expect(fitted[0].bpm).toBeCloseTo(90, 2);
-    expect(fitted[0].transitionTo!).toBeCloseTo(45, 2);
-    expect(fitted[0].meanTempoAt!).toBeCloseTo(0.7, 3);
+    const span = at(fitted, 0, 'fitted span');
+    expect(span.bpm).toBeCloseTo(90, 2);
+    expect(span.transitionTo!).toBeCloseTo(45, 2);
+    expect(span.meanTempoAt!).toBeCloseTo(0.7, 3);
   });
 
   test('the same request twice gives the same answer', () => {
@@ -763,8 +781,10 @@ describe('recovering a curve the renderer can draw exactly (#39)', () => {
     const first = ApproximateLogarithmicTempo.preview(request, buildMsm(onsets));
     const second = ApproximateLogarithmicTempo.preview(request, buildMsm(onsets));
 
-    expect(second[0].bpm).toBe(first[0].bpm);
-    expect(second[0].transitionTo).toBe(first[0].transitionTo);
-    expect(second[0].meanTempoAt).toBe(first[0].meanTempoAt);
+    const once = at(first, 0, 'fitted span');
+    const twice = at(second, 0, 'fitted span');
+    expect(twice.bpm).toBe(once.bpm);
+    expect(twice.transitionTo).toBe(once.transitionTo);
+    expect(twice.meanTempoAt).toBe(once.meanTempoAt);
   });
 });

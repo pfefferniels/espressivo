@@ -7,6 +7,7 @@ import {
 } from '../../../src/fitting/instructions/index.js';
 import { computeTickTimes } from '../../../src/fitting/transformers/tempo/tickTimes.js';
 import { placeTempos, segmentAtMs } from '../../../src/fitting/transformers/tempo/placedTempos.js';
+import { at } from '../../support/at.js';
 
 const QUARTER = 720;
 const BOUNDARY = 2 * QUARTER;
@@ -211,11 +212,13 @@ describe('the millisecond windows are a partition', () => {
     const segments = placeTempos(score(), twoTempi(), 'global');
 
     for (let i = 0; i + 1 < segments.length; i++) {
-      expect(segments[i].startMs + segments[i].measuredMs).toBe(segments[i + 1].startMs);
+      const window = at(segments, i, 'segment');
+      expect(window.startMs + window.measuredMs).toBe(at(segments, i + 1, 'segment').startMs);
     }
     // ... and the recording, not the notation, is what decides where that is.
-    expect(segments[0].modelledMs).toBe(2000);
-    expect(segments[0].measuredMs).toBe(1800);
+    const first = at(segments, 0, 'segment');
+    expect(first.modelledMs).toBe(2000);
+    expect(first.measuredMs).toBe(1800);
   });
 
   /** With no `<tempo>` in scope there is no timeline to divide, and no position to invent. */
