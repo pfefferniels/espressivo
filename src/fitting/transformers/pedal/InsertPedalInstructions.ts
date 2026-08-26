@@ -4,6 +4,7 @@ import { Alignment } from '../../alignment.js';
 import { AbstractTransformer, type TransformationOptions } from '../Transformer.js';
 import { TranslatePhysicalTimeToTicks } from '../tempo/index.js';
 import { deriveResidual } from '../../residual.js';
+import { filterMap } from '../../../prelude/seq.js';
 
 /**
  * A pedal depth as `@position` and `@transition.to` are typed: espressivo's `Normalized`.
@@ -59,19 +60,15 @@ export class InsertPedal extends AbstractTransformer<InsertPedalOptions> {
     // taken off notes only, which `removeRubatoDistortion` records as a standing @todo.
     const residual = deriveResidual(msm, mpm, { without: ['movement'] });
 
-    const validPedals = msm.pedals.filter((pedal) => {
-      const tickDate = residual.ofPedal(pedal)?.tickDate;
-      const tickDuration = residual.ofPedal(pedal)?.tickDuration;
+    const validPedals = filterMap(msm.pedals, (pedal) => {
+      const placed = residual.ofPedal(pedal);
+      const tickDate = placed?.tickDate;
+      const tickDuration = placed?.tickDuration;
 
-      if (tickDate === undefined || tickDuration === undefined) {
-        return false;
-      }
+      if (tickDate === undefined || tickDuration === undefined) return null;
+      if (this.options.pedal && pedal['xml:id'] !== this.options.pedal) return null;
 
-      if (this.options.pedal) {
-        return pedal['xml:id'] === this.options.pedal;
-      }
-
-      return true;
+      return { pedal, tickDate, tickDuration };
     });
     // `??`, so a caller asking for a depth of `0` gets one. `||` read it as "not given" and
     // substituted a fully depressed pedal — the opposite of what was asked for (issue #46).
@@ -80,10 +77,7 @@ export class InsertPedal extends AbstractTransformer<InsertPedalOptions> {
 
     const map = requireMap(mpm, 'movement', 'global');
 
-    for (const pedal of validPedals) {
-      const tickDate = residual.ofPedal(pedal)!.tickDate!;
-      const tickDuration = residual.ofPedal(pedal)!.tickDuration!;
-
+    for (const { pedal, tickDate, tickDuration } of validPedals) {
       if (this.options.direction === 'down') {
         map.addMovement({
           id: `${pedal['xml:id']}_start`,

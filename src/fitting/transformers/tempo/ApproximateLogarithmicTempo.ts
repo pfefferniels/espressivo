@@ -704,6 +704,9 @@ function extractOnsetPairs(
   const sounding = new Map<number, number[]>();
 
   for (const n of notes) {
+    // The onset test is not dead, though the type says so: `milliseconds.date` is declared
+    // `number`, and four other sites in this tree guard the same field with `isDefined`. A note
+    // the recording never sounded would enter the median below as `NaN`.
     if (n.date >= range.from && n.date <= range.to && n['milliseconds.date'] !== undefined) {
       const at = sounding.get(n.date);
       if (at) at.push(n['milliseconds.date']);

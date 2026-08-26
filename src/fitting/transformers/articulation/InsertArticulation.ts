@@ -30,6 +30,9 @@ const setModifier: Record<ArticulationProperty, (def: ArticulationDef, value: nu
   absoluteDurationChange: (def, value) => def.setAbsoluteDurationChange(value),
 };
 
+const isArticulationProperty = (key: string): key is ArticulationProperty =>
+  Object.hasOwn(setModifier, key);
+
 /**
  * A fresh `<articulationDef>` of this name, stating exactly the modifiers it is given.
  *
@@ -49,8 +52,14 @@ export const makeArticulationDef = (
 ): ArticulationDef => {
   const def = unwrap(ArticulationDef.createArticulationDef(name));
 
-  for (const [modifier, value] of Object.entries(modifiers)) {
-    if (value !== undefined) setModifier[modifier as ArticulationProperty](def, value);
+  // The value is read back off `modifiers` rather than taken from the entry: `Object.entries`
+  // types an optional property as present, and a caller that states a modifier as `undefined` —
+  // which is how a `MeasuredArticulation` says "not measured" — would write `undefined` into the
+  // document. The walk keeps the object's own key order, which the setters serialize.
+  for (const modifier of Object.keys(modifiers)) {
+    if (!isArticulationProperty(modifier)) continue;
+    const value = modifiers[modifier];
+    if (value !== undefined) setModifier[modifier](def, value);
   }
   return def;
 };

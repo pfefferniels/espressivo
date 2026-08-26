@@ -37,12 +37,7 @@ interface DefaultGradients {
 
 const isSingleGradient = (
   gradient: SingleGradient | DefaultGradients,
-): gradient is SingleGradient => {
-  return (
-    (gradient as SingleGradient).date !== undefined &&
-    (gradient as SingleGradient).gradient !== undefined
-  );
-};
+): gradient is SingleGradient => 'date' in gradient && 'gradient' in gradient;
 
 export type InsertDynamicsGradientOptions = ScopedTransformationOptions &
   (SingleGradient | DefaultGradients) & {
@@ -165,7 +160,7 @@ export class InsertDynamicsGradient extends AbstractTransformer<InsertDynamicsGr
   };
 
   protected transform(msm: Alignment, mpm: Mpm): void {
-    const chords = msm.asChords(this.options?.scope);
+    const chords = msm.asChords(this.options.scope);
 
     if (isSingleGradient(this.options)) {
       const chord = chords.get(this.options.date);

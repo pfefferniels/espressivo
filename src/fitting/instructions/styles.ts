@@ -11,7 +11,7 @@
 import { Mpm } from '../../mpm/Mpm.js';
 import { collectionNameOfKind, type AnyStyle } from '../../mpm/elements/styles/style.js';
 import { Attribute, Element } from '../../xml/XomTypes.js';
-import { headerOf, requireMap, mapOf, scopesOf } from './scope.js';
+import { headerOf, requireElement, requireMap, mapOf, scopesOf } from './scope.js';
 import {
   DEFAULT_STYLE_NAME,
   type DefOf,
@@ -67,7 +67,7 @@ export const insertStyle = (
 ): Style => {
   const map = requireMap(mpm, instructionType, scope);
   const index = map.addStyleSwitch(style.date, style['name.ref'], style['xml:id']);
-  const element = map.getElement(index)!;
+  const element = requireElement(map, index, 'style switch');
   if (style.defaultArticulation !== undefined) {
     element.addAttribute(new Attribute('defaultArticulation', style.defaultArticulation));
   }
@@ -105,7 +105,9 @@ export const ensureDefaultStyle = (
         entry.value.getAttributeValue('name.ref') === DEFAULT_STYLE_NAME,
     )?.value;
 
-  const element = existing ?? map.getElement(map.addStyleSwitch(0, DEFAULT_STYLE_NAME, v4()))!;
+  const element =
+    existing ??
+    requireElement(map, map.addStyleSwitch(0, DEFAULT_STYLE_NAME, v4()), 'style switch');
 
   if (extras.defaultArticulation !== undefined) {
     const attribute = element.getAttribute('defaultArticulation');

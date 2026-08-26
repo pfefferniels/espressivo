@@ -17,8 +17,10 @@ import { Global } from '../../mpm/elements/Global.js';
 import type { Header } from '../../mpm/elements/Header.js';
 import { Part } from '../../mpm/elements/Part.js';
 import { Performance } from '../../mpm/elements/Performance.js';
+import type { GenericMap } from '../../mpm/elements/maps/GenericMap.js';
 import type { AnyResult, OkOf } from '../../prelude/result.js';
-import { Document } from '../../xml/XomTypes.js';
+import { MissingNodeError } from '../../xml/errors.js';
+import { Document, type Element } from '../../xml/XomTypes.js';
 import { PULSES_PER_QUARTER } from '../ppq.js';
 import { type InstructionType, mapNames, type MapFor, type Scope } from './types.js';
 
@@ -150,9 +152,43 @@ export const mapOf = <K extends InstructionType>(
   scope: Scope,
 ): MapFor<K> | null => map(mpm, type, scope, false);
 
-/** {@link mapOf}, creating the part, the `<dated>` and the map if they are not there yet. */
-export const requireMap = <K extends InstructionType>(mpm: Mpm, type: K, scope: Scope): MapFor<K> =>
-  map(mpm, type, scope, true)!;
+/**
+ * {@link mapOf}, creating the part, the `<dated>` and the map if they are not there yet.
+ *
+ * Creating one can still fail: a parsed performance whose `<global>` did not parse keeps no
+ * `Global` at all, and there is then nowhere to put a global map. A transformer has no answer
+ * to that, so it is raised rather than returned.
+ */
+export const requireMap = <K extends InstructionType>(
+  mpm: Mpm,
+  type: K,
+  scope: Scope,
+): MapFor<K> => {
+  const created = map(mpm, type, scope, true);
+  if (created === null) {
+    throw new MissingNodeError(
+      `no ${mapNames[type]} could be created in scope ${String(scope)}: the environment is unreadable`,
+    );
+  }
+  return created;
+};
+
+/**
+ * The element a map just handed back an index for.
+ *
+ * The `add*` writers this is used with insert unconditionally and answer the position they
+ * inserted at, so a miss is the map contradicting itself rather than something a caller can
+ * act on.
+ */
+export const requireElement = (map: GenericMap, index: number, what: string): Element => {
+  const element = map.getElement(index);
+  if (element === null) {
+    throw new MissingNodeError(
+      `the map answered index ${String(index)} for a ${what} it does not hold`,
+    );
+  }
+  return element;
+};
 
 /**
  * A copy of this document with the maps of these instruction types taken out.

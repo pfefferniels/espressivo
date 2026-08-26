@@ -18,6 +18,7 @@ import {
 import { v4 } from 'uuid';
 import { InsertDynamicsInstructions } from '../dynamics/index.js';
 import { PULSES_PER_WHOLE } from '../../ppq.js';
+import { filterMap } from '../../../prelude/seq.js';
 
 export interface InsertMetricalAccentuationOptions extends ScopedTransformationOptions {
   name: string;
@@ -98,14 +99,14 @@ export class InsertMetricalAccentuation extends AbstractTransformer<InsertMetric
       const date = start + Math.round(beat * PULSES_PER_WHOLE);
       if (date > end) break;
 
-      const notesAtDate = msm
-        .notesAtDate(date, this.options.scope)
-        .filter((note) => residual.of(note)?.velocity !== undefined);
-      if (notesAtDate.length === 0) continue;
+      const velocityChanges = filterMap(
+        msm.notesAtDate(date, this.options.scope),
+        (note) => residual.of(note)?.velocity ?? null,
+      );
+      if (velocityChanges.length === 0) continue;
 
       const avgVelocityChange =
-        notesAtDate.reduce((acc, note) => acc + residual.of(note)!.velocity!, 0) /
-        notesAtDate.length;
+        velocityChanges.reduce((acc, change) => acc + change, 0) / velocityChanges.length;
 
       velocities.push({
         // A score may carry no time signature, and `Alignment.build()` writes out 4/4 when it

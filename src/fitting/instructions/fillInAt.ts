@@ -1,5 +1,6 @@
 import { GenericMap } from '../../mpm/elements/maps/GenericMap.js';
 import { Element } from '../../xml/XomTypes.js';
+import { requireElement } from './scope.js';
 
 /**
  * The three calls this makes on a map, which the caller names because it knows which map it is
@@ -40,7 +41,7 @@ export const fillInAt = <O extends { date: number; noteid?: string }>(
   ops: FillIn<O>,
 ): Element => {
   const existing = findAt(map, ops.localName, options.date, options.noteid);
-  if (existing === null) return map.getElement(ops.add(options))!;
+  if (existing === null) return requireElement(map, ops.add(options), ops.localName);
 
   const index = map.getElementIndexOf(existing);
   const current = ops.read(index) as Record<string, unknown> | null;

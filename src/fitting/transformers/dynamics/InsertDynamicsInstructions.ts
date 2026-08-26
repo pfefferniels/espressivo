@@ -114,6 +114,9 @@ export class InsertDynamicsInstructions extends AbstractTransformer<InsertDynami
     const points: DynamicsPoints[] = [];
     const chords = msm.asChords(part);
     for (const [date, notes] of chords) {
+      // Not dead, though the type says so: `AlignedNote.velocity` is declared `number` and
+      // nothing in this package builds a note, so the declaration is the aligner's promise
+      // rather than a fact. A note that arrives without one reaches the mean below as `NaN`.
       const notesWithVolume = notes.filter((n) => n.velocity !== undefined);
 
       // A phantom velocity is what the caller says the curve should pass through at this

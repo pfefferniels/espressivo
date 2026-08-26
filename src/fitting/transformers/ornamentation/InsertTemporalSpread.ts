@@ -134,7 +134,7 @@ export class InsertTemporalSpread extends AbstractTransformer<InsertTemporalSpre
       // the arpeggio's duration is the time distance between first and last onset, in ms
       const duration = lastNote['milliseconds.date'] - firstNote['milliseconds.date'];
       if ('durationThreshold' in this.options) {
-        if (duration <= (this.options?.durationThreshold || 0)) continue;
+        if (duration <= (this.options.durationThreshold || 0)) continue;
       }
 
       // by default, no offset shifting is applied

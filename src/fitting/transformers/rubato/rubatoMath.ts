@@ -165,7 +165,7 @@ export const removeRubatoDistortion = (
     const onsetRubato = instructionsEffectiveAtDate(mpm, note.date, 'rubato', scope)[0];
     if (!onsetRubato) continue;
 
-    const onsetInTicks = onsetRubato ? calculateRubatoOnDate(note.date, onsetRubato) : note.date;
+    const onsetInTicks = calculateRubatoOnDate(note.date, onsetRubato);
 
     const onsetDiff = onsetInTicks - note.date;
     if (time.tickDate) {
