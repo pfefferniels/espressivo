@@ -180,10 +180,8 @@ export interface FitResult {
   /**
    * One entry per call of yours that ran, in the order they ran.
    *
-   * The chain runs one thing you did not ask for: an MPM needs a `<metadata>` and the runner
-   * writes one whether or not the chain says so. A chain that declared an `InsertMetadata` sees
-   * it here under its own id; a chain that declared none gets the element and no entry, because
-   * it is not a call anybody made.
+   * The runner always builds an `InsertMetadata`, but one with nothing to say writes nothing —
+   * so a chain that declared none produces no `<metadata>` element and no entry here.
    */
   readonly calls: readonly FitCallReport[];
   /** The {@link FitCall.id} of every call whose fitter is not registered in this build. */
