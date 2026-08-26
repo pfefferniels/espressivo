@@ -13,11 +13,12 @@ export default defineConfig({
     // discovers every checkout's copy of `tests/**` and runs one green tree plus whatever a
     // half-finished branch is doing.
     exclude: ['**/node_modules/**', '**/dist/**', '.claude/worktrees/**'],
-    // On a CI runner the default reporter's per-test traffic is enough to keep the main
-    // thread from answering a worker's `onTaskUpdate` inside its RPC timeout: the run then
-    // fails with an unhandled error *after* all 6388 tests have passed, which reads as a
-    // regression and is not one. `dot` cuts that traffic to a character per test, and the
-    // worker cap keeps the suite from oversubscribing a two-core box on top of it.
+    // On a two-core runner the suite starves the main thread long enough that it misses a
+    // worker's `onTaskUpdate` inside birpc's timeout, and the run fails with an unhandled
+    // error AFTER all 6388 tests have passed — a green suite reported as a regression. The
+    // timeout is vitest-internal and takes no config, so the lever is the contention: the
+    // worker cap is what fixes it (measured — `dot` alone, uncapped, still starves). `dot`
+    // stays because 10 000 piped lines are unreadable either way.
     ...(process.env.CI ? { reporters: ['dot' as const], maxWorkers: 2 } : {}),
     coverage: {
       // Scope: this port exists for MEI / MSM+MPM => MIDI rendering. Everything that reads
