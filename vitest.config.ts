@@ -13,6 +13,12 @@ export default defineConfig({
     // discovers every checkout's copy of `tests/**` and runs one green tree plus whatever a
     // half-finished branch is doing.
     exclude: ['**/node_modules/**', '**/dist/**', '.claude/worktrees/**'],
+    // On a CI runner the default reporter's per-test traffic is enough to keep the main
+    // thread from answering a worker's `onTaskUpdate` inside its RPC timeout: the run then
+    // fails with an unhandled error *after* all 6388 tests have passed, which reads as a
+    // regression and is not one. `dot` cuts that traffic to a character per test, and the
+    // worker cap keeps the suite from oversubscribing a two-core box on top of it.
+    ...(process.env.CI ? { reporters: ['dot' as const], maxWorkers: 2 } : {}),
     coverage: {
       // Scope: this port exists for MEI / MSM+MPM => MIDI rendering. Everything that reads
       // the MPM vocabulary through the same def and style semantics as the renderer is in
