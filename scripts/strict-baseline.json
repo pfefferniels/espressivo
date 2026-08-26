@@ -1,7 +1,7 @@
 {
   "--noUncheckedIndexedAccess": {
-    "tests/integration": 189,
-    "tests/mei": 12,
+    "tests/integration": 127,
+    "tests/mei": 10,
     "tests/midi": 45,
     "tests/mpm/elements": 71,
     "tests/mpm/elements/maps": 33,

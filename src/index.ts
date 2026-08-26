@@ -398,7 +398,16 @@ export type {
   TransitioningMovement,
   DeclaredMovement,
 } from './mpm/elements/maps/data/movement.js';
-export { resolveRubato } from './mpm/elements/maps/data/rubato.js';
+// The rubato warp, both ways. `rubatoAt` completes the set of instruction evaluators —
+// `tempoAt`, `dynamicsAt`, `positionAt` — that a caller needs in order to know what the
+// renderer will do without rendering; it was the one of the four that stayed private, and a
+// consumer that needed it had no choice but to hand-copy three lines of rendering math.
+//
+// `dateBeforeRubato` is the direction the renderer does not have, for the reason
+// `dateAtMilliseconds` above does not: rendering never asks which date was warped to here, and
+// an editing tool asks constantly. Unlike the tempo inverse it is closed form rather than a
+// search, so it is exact rather than converged.
+export { resolveRubato, rubatoAt, dateBeforeRubato } from './mpm/elements/maps/data/rubato.js';
 export type { Rubato, RubatoSpan, RubatoDeclaration } from './mpm/elements/maps/data/rubato.js';
 export {
   articulateNote,
