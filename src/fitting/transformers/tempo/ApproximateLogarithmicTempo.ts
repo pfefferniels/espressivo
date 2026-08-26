@@ -2,7 +2,6 @@ import { v4 } from 'uuid';
 import type { Tempo as ResolvedTempo } from '../../../mpm/elements/maps/data/tempo.js';
 import {
   getInstructions,
-  type Instruction,
   type InstructionOptions,
   Mpm,
   removeInstruction,
@@ -24,7 +23,16 @@ import {
 } from '../Transformer.js';
 import { clamp } from '../../utils.js';
 import { beatLengthInTicks } from '../../ppq.js';
-import { elementAt, numberAt } from '../../../prelude/seq.js';
+import {
+  elementAt,
+  findLast,
+  head,
+  isNonEmpty,
+  last,
+  numberAt,
+  pairwise,
+  withNext,
+} from '../../../prelude/seq.js';
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -217,7 +225,7 @@ export class ApproximateLogarithmicTempo extends AbstractTransformer<Approximate
     const tempos = fitSegments(segments, notes, this.options.silentOnsets);
 
     // If fitting produced no result, keep existing tempo instructions unchanged.
-    if (tempos.length === 0) {
+    if (!isNonEmpty(tempos)) {
       return;
     }
 
@@ -228,7 +236,8 @@ export class ApproximateLogarithmicTempo extends AbstractTransformer<Approximate
 
     // Track whether an instruction already exists at the chain end before removal,
     // so we can clean up spurious restoration instructions afterward.
-    const chainEnd = segments[segments.length - 1].to;
+    // `newSegment` is appended last in both branches above, so it is the chain's end.
+    const chainEnd = newSegment.to;
     const existedAtChainEnd =
       this.options.continue &&
       segments.length > 1 &&
@@ -268,7 +277,7 @@ export class ApproximateLogarithmicTempo extends AbstractTransformer<Approximate
 
     // Close the chain.  Must come last: the cleanup above looks for an instruction at
     // exactly this date and would take the closing one for a stale restoration.
-    this.closeTransition(mpm, tempos[tempos.length - 1]);
+    this.closeTransition(mpm, last(tempos));
   }
 
   /**
@@ -305,12 +314,12 @@ export class ApproximateLogarithmicTempo extends AbstractTransformer<Approximate
     if (sortedRanges.length === 0) return;
 
     // Segments are half-open [from, to): touching is valid, overlap is not.
-    for (let i = 1; i < sortedRanges.length; i++) {
-      if (sortedRanges[i].from < sortedRanges[i - 1].to) {
+    for (const [i, [previous, current]] of pairwise(sortedRanges).entries()) {
+      if (current.from < previous.to) {
         throw new Error(
-          `Tempo segments overlap at index ${i - 1}/${i}: ` +
-            `[${sortedRanges[i - 1].from}, ${sortedRanges[i - 1].to}) and ` +
-            `[${sortedRanges[i].from}, ${sortedRanges[i].to}).`,
+          `Tempo segments overlap at index ${i}/${i + 1}: ` +
+            `[${previous.from}, ${previous.to}) and ` +
+            `[${current.from}, ${current.to}).`,
         );
       }
     }
@@ -333,14 +342,15 @@ export class ApproximateLogarithmicTempo extends AbstractTransformer<Approximate
       // Existing instruction exactly at boundary already preserves continuation.
       if (existing.some((t) => t.date === boundary)) continue;
 
-      const effectiveIndex = findEffectiveTempoIndex(existing, boundary);
-      if (effectiveIndex === -1) continue;
-      const effectiveTempo = existing[effectiveIndex];
+      // `existing` is sorted by date, so the last entry at or before the boundary is the one in
+      // force there, and its successor — if any — is where its span ends.
+      const effective = findLast(withNext(existing), ([tempo]) => tempo.date <= boundary);
+      if (!effective) continue;
+      const [effectiveTempo, next] = effective;
 
       // Only restore if the effective source instruction will be removed.
       if (!isCovered(effectiveTempo.date)) continue;
 
-      const next = existing[effectiveIndex + 1];
       const tempoWithEndDate: TempoWithEndDate = {
         ...effectiveTempo,
         endDate: next ? next.date : boundary,
@@ -391,15 +401,13 @@ function reconstructChain(
   const chain: TempoSegment[] = [];
   let currentStart = from;
 
-  for (let i = allInstructions.length - 1; i >= 0; i--) {
-    const instr = allInstructions[i];
-
+  for (const [instr, next] of withNext(allInstructions).toReversed()) {
     // Stop if beatLength doesn't match
     if (instr.beatLength !== beatLength) break;
 
     // Determine the effective end of this instruction:
     // it's the next instruction's date, or `from` for the last one before `from`.
-    const effectiveEnd = i < allInstructions.length - 1 ? allInstructions[i + 1].date : from;
+    const effectiveEnd = next ? next.date : from;
 
     // Stop if not contiguous with the current chain start
     if (effectiveEnd !== currentStart) break;
@@ -414,15 +422,6 @@ function reconstructChain(
 
   return chain;
 }
-
-const findEffectiveTempoIndex = (tempos: Instruction<'tempo'>[], date: number): number => {
-  let found = -1;
-  for (let i = 0; i < tempos.length; i++) {
-    if (tempos[i].date <= date) found = i;
-    else break;
-  }
-  return found;
-};
 
 // ── Pure fitting ───────────────────────────────────────────────────
 
@@ -649,9 +648,10 @@ function normalizeChainedSegments(segments: readonly TempoSegment[]): TempoSegme
   if (segments.length === 0) return [];
 
   const result: TempoSegment[] = [];
-  for (let k = 0; k < segments.length; k++) {
-    const source = segments[k];
-    const from = k === 0 ? source.from : result[k - 1].to;
+  // each segment starts where its predecessor ended; `null` marks "no predecessor yet".
+  let previousTo: number | null = null;
+  for (const [k, source] of segments.entries()) {
+    const from = previousTo ?? source.from;
     if (k > 0 && source.from !== from) {
       console.error(
         `Tempo segment chain is not contiguous at index ${k}: expected from=${from}, got ${source.from}. ` +
@@ -668,6 +668,7 @@ function normalizeChainedSegments(segments: readonly TempoSegment[]): TempoSegme
       ...source,
       from,
     });
+    previousTo = source.to;
   }
   return result;
 }
@@ -715,19 +716,22 @@ function extractOnsetPairs(
   for (const [date, ms] of pairMap) pairs.push({ date, onsetMs: ms });
   pairs.sort((a, b) => a.date - b.date);
 
-  if (pairs.length > 0) {
-    const baseMs = pairs[0].onsetMs;
+  if (isNonEmpty(pairs)) {
+    const baseMs = head(pairs).onsetMs;
     for (const p of pairs) p.onsetMs -= baseMs;
   }
 
   return pairs;
 }
 
+/** The median of a non-empty sample. Every caller groups by onset date, so no group is empty. */
 function median(values: readonly number[]): number {
-  if (values.length === 1) return values[0];
+  const what = 'the onsets sounding at one date';
+  if (values.length === 1) return numberAt(values, 0, what);
   const sorted = values.slice().sort((a, b) => a - b);
   const mid = sorted.length >> 1;
-  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  if (sorted.length % 2 === 1) return numberAt(sorted, mid, what);
+  return (numberAt(sorted, mid - 1, what) + numberAt(sorted, mid, what)) / 2;
 }
 
 /**
@@ -742,16 +746,16 @@ function median(values: readonly number[]): number {
  */
 function computeTempoPoints(onsets: readonly OnsetPair[], beatLengthTicks: number): TempoPoint[] {
   const points: TempoPoint[] = [];
-  for (let i = 0; i < onsets.length - 1; i++) {
-    const deltaTicks = onsets[i + 1].date - onsets[i].date;
-    const deltaMs = onsets[i + 1].onsetMs - onsets[i].onsetMs;
+  for (const [from, to] of pairwise(onsets)) {
+    const deltaTicks = to.date - from.date;
+    const deltaMs = to.onsetMs - from.onsetMs;
     if (deltaTicks <= 0 || deltaMs <= 0) continue;
     const bpm = (60000 * deltaTicks) / (deltaMs * beatLengthTicks);
     if (bpm < MIN_TAU_BPM || bpm > MAX_TAU_BPM) continue;
     const weight = Math.min(1, deltaTicks / beatLengthTicks);
     // Assign to interval midpoint: the IOI BPM (harmonic mean)
     // approximates the instantaneous tempo at the midpoint.
-    points.push({ position: (onsets[i].date + onsets[i + 1].date) / 2, bpm, weight });
+    points.push({ position: (from.date + to.date) / 2, bpm, weight });
   }
   return points;
 }
@@ -760,21 +764,31 @@ function partitionData(
   chain: readonly number[],
   tempoPoints: readonly TempoPoint[],
 ): DataPoint[][] {
-  const nSeg = chain.length - 1;
-  const segData: DataPoint[][] = Array.from({ length: nSeg }, () => []);
+  interface Bucket {
+    readonly start: number;
+    readonly end: number;
+    readonly data: DataPoint[];
+  }
+  const buckets: Bucket[] = pairwise(chain).map(([start, end]) => ({ start, end, data: [] }));
+  if (!isNonEmpty(buckets)) return [];
+
   for (const p of tempoPoints) {
-    for (let k = 0; k < nSeg; k++) {
-      if (p.position >= chain[k] && p.position < chain[k + 1]) {
-        const span = chain[k + 1] - chain[k];
-        segData[k].push({ x: (p.position - chain[k]) / span, bpm: p.bpm, weight: p.weight });
+    for (const bucket of buckets) {
+      if (p.position >= bucket.start && p.position < bucket.end) {
+        bucket.data.push({
+          x: (p.position - bucket.start) / (bucket.end - bucket.start),
+          bpm: p.bpm,
+          weight: p.weight,
+        });
         break;
       }
     }
-    if (p.position === chain[chain.length - 1]) {
-      segData[nSeg - 1].push({ x: 1, bpm: p.bpm, weight: p.weight });
+    // the chain's last boundary is half-open above, so nothing claimed it in the loop.
+    if (p.position === last(buckets).end) {
+      last(buckets).data.push({ x: 1, bpm: p.bpm, weight: p.weight });
     }
   }
-  return segData;
+  return buckets.map((bucket) => bucket.data);
 }
 
 /**
@@ -805,50 +819,67 @@ function partitionOnsets(
   boundaryTimesMs: readonly number[],
   beatLengthTicks: number,
 ): SegmentOnset[][] {
-  const nSeg = chain.length - 1;
-  const result: SegmentOnset[][] = Array.from({ length: nSeg }, () => []);
-  const weights = onsetShares(onsetPairs, beatLengthTicks);
-  const lastObserved = onsetPairs[onsetPairs.length - 1].date;
+  interface Bucket {
+    readonly start: number;
+    readonly end: number;
+    readonly startMs: number;
+    readonly endMs: number;
+    readonly onsets: SegmentOnset[];
+  }
 
-  for (let i = 0; i < onsetPairs.length; i++) {
-    const onset = onsetPairs[i];
-    for (let k = 0; k < nSeg; k++) {
-      if (onset.date >= chain[k] && onset.date <= chain[k + 1]) {
-        result[k].push({
-          ticks: onset.date - chain[k],
-          elapsedMs: onset.onsetMs - boundaryTimesMs[k],
-          weight: weights[i],
+  // `boundaryTimesMs` is the caller's `chain.map(…)`, so it holds one time per chain boundary.
+  const boundaries = 'the boundary times';
+  const buckets: Bucket[] = pairwise(chain).map(([start, end], k) => ({
+    start,
+    end,
+    startMs: numberAt(boundaryTimesMs, k, boundaries),
+    endMs: numberAt(boundaryTimesMs, k + 1, boundaries),
+    onsets: [],
+  }));
+
+  const weights = onsetShares(onsetPairs, beatLengthTicks);
+  if (!isNonEmpty(onsetPairs)) return buckets.map((bucket) => bucket.onsets);
+  const lastObserved = last(onsetPairs).date;
+
+  for (const [i, onset] of onsetPairs.entries()) {
+    for (const bucket of buckets) {
+      if (onset.date >= bucket.start && onset.date <= bucket.end) {
+        bucket.onsets.push({
+          ticks: onset.date - bucket.start,
+          elapsedMs: onset.onsetMs - bucket.startMs,
+          weight: numberAt(weights, i, 'the onset shares'),
         });
         break;
       }
     }
   }
 
-  for (let k = 0; k < nSeg; k++) {
-    const endTicks = chain[k + 1] - chain[k];
-    if (chain[k + 1] > lastObserved) continue;
-    if (result[k].some((o) => o.ticks === endTicks)) continue;
-    result[k].push({
+  for (const bucket of buckets) {
+    const endTicks = bucket.end - bucket.start;
+    if (bucket.end > lastObserved) continue;
+    if (bucket.onsets.some((o) => o.ticks === endTicks)) continue;
+    bucket.onsets.push({
       ticks: endTicks,
-      elapsedMs: boundaryTimesMs[k + 1] - boundaryTimesMs[k],
+      elapsedMs: bucket.endMs - bucket.startMs,
       weight: 1,
     });
   }
 
-  return result;
+  return buckets.map((bucket) => bucket.onsets);
 }
 
 /** Each onset's share of score time — half of each neighbouring gap — capped at one beat. */
 function onsetShares(onsetPairs: readonly OnsetPair[], beatLengthTicks: number): number[] {
   const n = onsetPairs.length;
-  const shares = new Array<number>(n);
-  for (let i = 0; i < n; i++) {
-    const before = i > 0 ? onsetPairs[i].date - onsetPairs[i - 1].date : 0;
-    const after = i < n - 1 ? onsetPairs[i + 1].date - onsetPairs[i].date : 0;
+  const shares: number[] = [];
+  let before = 0;
+  for (const [i, [onset, next]] of withNext(onsetPairs).entries()) {
+    const after = next ? next.date - onset.date : 0;
     // The outermost onsets have one neighbour, so their share is that whole gap rather than
     // half of it: they are the ends of the span, not points inside it.
     const share = i === 0 ? after : i === n - 1 ? before : (before + after) / 2;
-    shares[i] = Math.min(1, share / beatLengthTicks);
+    shares.push(Math.min(1, share / beatLengthTicks));
+    before = after;
   }
   return shares;
 }
@@ -904,50 +935,54 @@ function weightedLinearFit(data: readonly DataPoint[]): {
 }
 
 function initBoundaryTempos(segments: readonly FitSegment[], nBoundaries: number): number[] {
-  const nSeg = nBoundaries - 1;
+  const what = 'the boundary tempo accumulators';
   const tau = new Array<number>(nBoundaries).fill(0);
   const counts = new Array<number>(nBoundaries).fill(0);
 
-  for (let k = 0; k < nSeg; k++) {
-    const data = segments[k].points;
+  // one segment votes for both of its boundaries; the reads stay in range because a chain of
+  // `nBoundaries` boundaries has `nBoundaries - 1` segments.
+  const vote = (boundary: number, bpm: number) => {
+    tau[boundary] = numberAt(tau, boundary, what) + bpm;
+    counts[boundary] = numberAt(counts, boundary, what) + 1;
+  };
+
+  for (const [k, segment] of segments.entries()) {
+    const data = segment.points;
     if (data.length === 0) continue;
 
     if (data.length === 1) {
       // Single point: constant tempo
-      tau[k] += data[0].bpm;
-      tau[k + 1] += data[0].bpm;
-      counts[k]++;
-      counts[k + 1]++;
+      const only = elementAt(data, 0, "a segment's data points");
+      vote(k, only.bpm);
+      vote(k + 1, only.bpm);
       continue;
     }
 
     const { intercept: a, slope: b } = weightedLinearFit(data);
 
-    tau[k] += a; // value at x = 0
-    tau[k + 1] += a + b; // value at x = 1
-    counts[k]++;
-    counts[k + 1]++;
+    vote(k, a); // value at x = 0
+    vote(k + 1, a + b); // value at x = 1
   }
 
-  for (let i = 0; i < nBoundaries; i++) {
-    tau[i] = counts[i] > 0 ? clamp(tau[i] / counts[i], MIN_TAU_BPM, MAX_TAU_BPM) : 60;
+  for (const [i, count] of counts.entries()) {
+    tau[i] = count > 0 ? clamp(numberAt(tau, i, what) / count, MIN_TAU_BPM, MAX_TAU_BPM) : 60;
   }
   return tau;
 }
 
 function interpolatePhysicalTime(onsets: readonly OnsetPair[], date: number): number {
-  if (onsets.length === 0) return 0;
-  if (date <= onsets[0].date) return onsets[0].onsetMs;
-  if (date >= onsets[onsets.length - 1].date) return onsets[onsets.length - 1].onsetMs;
-  for (let i = 0; i < onsets.length - 1; i++) {
-    if (date >= onsets[i].date && date <= onsets[i + 1].date) {
-      const span = onsets[i + 1].date - onsets[i].date;
-      if (span === 0) return onsets[i].onsetMs;
-      const frac = (date - onsets[i].date) / span;
-      return onsets[i].onsetMs + frac * (onsets[i + 1].onsetMs - onsets[i].onsetMs);
+  if (!isNonEmpty(onsets)) return 0;
+  if (date <= head(onsets).date) return head(onsets).onsetMs;
+  if (date >= last(onsets).date) return last(onsets).onsetMs;
+  for (const [before, after] of pairwise(onsets)) {
+    if (date >= before.date && date <= after.date) {
+      const span = after.date - before.date;
+      if (span === 0) return before.onsetMs;
+      const frac = (date - before.date) / span;
+      return before.onsetMs + frac * (after.onsetMs - before.onsetMs);
     }
   }
-  return onsets[onsets.length - 1].onsetMs;
+  return last(onsets).onsetMs;
 }
 
 // ── Forward model ────────────────────────────────────────────────
@@ -985,7 +1020,7 @@ function segmentElapsed(
 ): Float64Array {
   const curve = segmentCurve(tau0, tau1, im, spanTicks, beatLength);
   const out = new Float64Array(onsets.length);
-  for (let i = 0; i < onsets.length; i++) out[i] = millisecondsAt(onsets[i].ticks, curve);
+  for (const [i, onset] of onsets.entries()) out[i] = millisecondsAt(onset.ticks, curve);
   return out;
 }
 
@@ -1114,8 +1149,10 @@ function turningPairShapes(tau: readonly number[], nSeg: number): boolean[] {
 }
 
 function isTurningBoundary(tau: readonly number[], b: number): boolean {
-  const leftDelta = tau[b] - tau[b - 1];
-  const rightDelta = tau[b + 1] - tau[b];
+  // interior boundaries only: `b` runs 1 … nSeg − 1 and `tau` holds nSeg + 1 entries.
+  const what = 'the boundary tempos';
+  const leftDelta = numberAt(tau, b, what) - numberAt(tau, b - 1, what);
+  const rightDelta = numberAt(tau, b + 1, what) - numberAt(tau, b, what);
   if (leftDelta * rightDelta >= 0) return false;
   return Math.min(Math.abs(leftDelta), Math.abs(rightDelta)) >= MIN_TURN_DELTA_BPM;
 }
@@ -1138,8 +1175,8 @@ function regularizeTurningPairs(shapes: readonly number[], tau: readonly number[
   for (let b = 1; b < nSeg; b++) {
     if (!isTurningBoundary(tau, b)) continue;
 
-    const left = result[b - 1];
-    const right = result[b];
+    const left = numberAt(result, b - 1, 'the segment shapes');
+    const right = numberAt(result, b, 'the segment shapes');
 
     const det = 1 + 2 * TURNING_PAIR_COUPLING;
     let regLeft =
@@ -1205,34 +1242,24 @@ function enforceDirectionConstraints(
   if (!directions.some((d) => d !== 'auto')) return result;
 
   const boundaryWeights = buildBoundaryWeights(segments, result.length);
+  const weightAt = (boundary: number) =>
+    numberAt(boundaryWeights, boundary, 'the boundary weights');
+
+  const forwards = [...directions.entries()];
+  const backwards = forwards.toReversed();
+
   const maxPasses = Math.max(6, directions.length * 4);
   for (let pass = 0; pass < maxPasses; pass++) {
     let changed = false;
 
-    for (let k = 0; k < directions.length; k++) {
-      const direction = directions[k];
+    for (const [k, direction] of forwards) {
       changed =
-        projectDirectionPair(
-          result,
-          k,
-          k + 1,
-          direction,
-          boundaryWeights[k],
-          boundaryWeights[k + 1],
-        ) || changed;
+        projectDirectionPair(result, k, k + 1, direction, weightAt(k), weightAt(k + 1)) || changed;
     }
 
-    for (let k = directions.length - 1; k >= 0; k--) {
-      const direction = directions[k];
+    for (const [k, direction] of backwards) {
       changed =
-        projectDirectionPair(
-          result,
-          k,
-          k + 1,
-          direction,
-          boundaryWeights[k],
-          boundaryWeights[k + 1],
-        ) || changed;
+        projectDirectionPair(result, k, k + 1, direction, weightAt(k), weightAt(k + 1)) || changed;
     }
 
     if (!changed) break;
@@ -1241,13 +1268,14 @@ function enforceDirectionConstraints(
 }
 
 function buildBoundaryWeights(segments: readonly FitSegment[], nBoundaries: number): number[] {
+  const what = 'the boundary weights';
   const weights = new Array<number>(nBoundaries).fill(1e-3);
-  for (let k = 0; k < segments.length; k++) {
+  for (const [k, segment] of segments.entries()) {
     let segWeight = 0;
-    for (const d of segments[k].points) segWeight += d.weight;
+    for (const d of segment.points) segWeight += d.weight;
     const w = Math.max(1e-3, segWeight);
-    weights[k] += w;
-    weights[k + 1] += w;
+    weights[k] = numberAt(weights, k, what) + w;
+    weights[k + 1] = numberAt(weights, k + 1, what) + w;
   }
   return weights;
 }
@@ -1262,23 +1290,22 @@ function projectDirectionPair(
 ): boolean {
   if (direction === 'auto') return false;
 
-  const left = tau[leftIdx];
-  const right = tau[rightIdx];
-  const delta = right - left;
+  const what = 'the boundary tempos';
+  const delta = numberAt(tau, rightIdx, what) - numberAt(tau, leftIdx, what);
   const denom = Math.max(1e-9, wLeft + wRight);
 
   if (direction === 'acc') {
     const violation = MIN_DIRECTION_DELTA_BPM - delta;
     if (violation <= 0) return false;
-    tau[leftIdx] -= violation * (wRight / denom);
-    tau[rightIdx] += violation * (wLeft / denom);
+    tau[leftIdx] = numberAt(tau, leftIdx, what) - violation * (wRight / denom);
+    tau[rightIdx] = numberAt(tau, rightIdx, what) + violation * (wLeft / denom);
     return true;
   }
 
   const violation = delta + MIN_DIRECTION_DELTA_BPM;
   if (violation <= 0) return false;
-  tau[leftIdx] += violation * (wRight / denom);
-  tau[rightIdx] -= violation * (wLeft / denom);
+  tau[leftIdx] = numberAt(tau, leftIdx, what) + violation * (wRight / denom);
+  tau[rightIdx] = numberAt(tau, rightIdx, what) - violation * (wLeft / denom);
   return true;
 }
 
