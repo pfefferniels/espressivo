@@ -16,11 +16,6 @@ tests/integration/fixtures/
 # tests/comparison/fixtures/PROVENANCE.md.
 tests/comparison/fixtures/
 
-# Score, alignment and performance inputs the fitting suite reads, plus the digest snapshot a
-# migration is checked against. Prettier infers no parser for .mpm/.msm/.mei and errors out on
-# them, as above; the rest are binary (.mid) or byte-pinned.
-tests/fitting/fixtures/
-
 # The target-architecture ruling. Its RULEs are cited by line anchor from PARITY.md and from
 # `src/`, so a reflow would silently invalidate every one of them while leaving the build green.
 # Verified: without this entry `prettier --check ARCHITECTURE.md` reports the file as needing

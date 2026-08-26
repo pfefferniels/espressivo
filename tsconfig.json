@@ -86,11 +86,6 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
   },
-  // `src/fitting/**` is excluded from the emitting project only, and only for
-  // `noUncheckedIndexedAccess`: it costs 282 errors there and zero anywhere else in `src/`.
-  // The code is still typechecked under every other flag above, by `tsconfig.tests.json`,
-  // which includes `src/**/*` and turns that one flag off. Delete this entry — not the flag —
-  // when the count reaches zero.
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }

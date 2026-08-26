@@ -74,24 +74,7 @@ export {
   SelectionNotFoundError,
   EngineInvariantError,
   ComparisonEngineError,
-  FittingEngineError,
 } from './api/errors.js';
-// The fitting facade: the chain runs the other way, MSM ⇒ MPM. Member by member for the
-// reason the three above are.
-export { fitMpm, listFitters, validateChain } from './api/fitting.js';
-export type {
-  ChainProblem,
-  FitCall,
-  FitCallReport,
-  FitInput,
-  FitNoteSource,
-  FitOptions,
-  FitPedal,
-  FitRange,
-  FitResult,
-  FitterInfo,
-  JsonValue,
-} from './api/fitting.js';
 // The comparison facade. Member by member for the reason the two above are.
 export {
   compareMpm,

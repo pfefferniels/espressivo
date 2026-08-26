@@ -33,7 +33,6 @@ export default defineConfig({
         'src/api/**/*.ts',
         'src/comparison/**/*.ts',
         'src/expression/**/*.ts',
-        'src/fitting/**/*.ts',
         'src/mei/Mei.ts',
         'src/mei/mpmNoteIds.ts',
         'src/mei/Mei2MsmConverter.ts',
