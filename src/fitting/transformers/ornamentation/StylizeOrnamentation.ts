@@ -20,6 +20,7 @@ import { v4 } from 'uuid';
 import { dbscan, type IPoint } from '../../dbscan.js';
 import { InsertDynamicsGradient } from './InsertDynamicsGradient.js';
 import { InsertTemporalSpread } from './InsertTemporalSpread.js';
+import { elementAt, zipWith } from '../../../prelude/seq.js';
 
 export interface StylizeOrnamentationOptions extends TransformationOptions {
   /**
@@ -161,16 +162,18 @@ export class StylizeOrnamentation extends AbstractTransformer<StylizeOrnamentati
       const clusters = this.generateClusters(filteredOrnaments);
 
       // Group points by label
-      const clustersByLabel = clusters.reduce<Record<string, FittedOrnament[]>>((acc, cur, i) => {
-        const label = cur.label.toString();
-        if (!acc[label]) acc[label] = [];
-        acc[label].push(filteredOrnaments[i]);
+      const clustersByLabel = zipWith(clusters, filteredOrnaments, (cluster, ornament) => ({
+        cluster,
+        ornament,
+      })).reduce<Record<string, FittedOrnament[]>>((acc, { cluster, ornament }) => {
+        (acc[cluster.label.toString()] ??= []).push(ornament);
         return acc;
       }, {});
 
-      // Process each cluster
-      for (const label in clustersByLabel) {
-        const group = clustersByLabel[label];
+      // Process each cluster. `Object.entries` and not `for…in` only to give the bucket a type;
+      // both walk integer-like keys ascending and the rest in insertion order, and that order
+      // is the order the definitions reach the document in.
+      for (const [label, group] of Object.entries(clustersByLabel)) {
         if (label === '-1') {
           group.forEach((ornament) => this.defineAndName(mpm, scope, ornament, defined));
           continue;
@@ -178,19 +181,15 @@ export class StylizeOrnamentation extends AbstractTransformer<StylizeOrnamentati
 
         // Process subgroups
         const subClusters = this.generateSubClusters(group);
-        const subClustersByLabel = subClusters.reduce<Record<string, FittedOrnament[]>>(
-          (acc, cur, i) => {
-            const label = cur.label.toString();
-            if (!acc[label]) acc[label] = [];
-            acc[label].push(group[i]);
-            return acc;
-          },
-          {},
-        );
+        const subClustersByLabel = zipWith(subClusters, group, (cluster, ornament) => ({
+          cluster,
+          ornament,
+        })).reduce<Record<string, FittedOrnament[]>>((acc, { cluster, ornament }) => {
+          (acc[cluster.label.toString()] ??= []).push(ornament);
+          return acc;
+        }, {});
 
-        for (const subLabel in subClustersByLabel) {
-          const subgroup = subClustersByLabel[subLabel];
-
+        for (const [subLabel, subgroup] of Object.entries(subClustersByLabel)) {
           if (subLabel === '-1') {
             subgroup.forEach((ornament) => this.defineAndName(mpm, scope, ornament, defined));
           } else {
@@ -243,7 +242,7 @@ export class StylizeOrnamentation extends AbstractTransformer<StylizeOrnamentati
     // Neither the unit nor the note-off shift is a number to average. `generateClusters` keys
     // on the note-off shift with an epsilon of zero, so the group is uniform in it and the
     // first ornament speaks for all.
-    const first = ornaments[0].draft;
+    const first = elementAt(ornaments, 0, 'the ornament cluster').draft;
 
     return this.buildDef(
       name,
@@ -352,16 +351,15 @@ export class StylizeOrnamentation extends AbstractTransformer<StylizeOrnamentati
     if (ornaments.length === 0) return;
 
     const clusters = this.generateSubClusters(ornaments);
-    const byLabel = clusters.reduce<Record<string, FittedOrnament[]>>((acc, cluster, index) => {
-      const label = cluster.label.toString();
-      if (!acc[label]) acc[label] = [];
-      acc[label].push(ornaments[index]);
+    const byLabel = zipWith(clusters, ornaments, (cluster, ornament) => ({
+      cluster,
+      ornament,
+    })).reduce<Record<string, FittedOrnament[]>>((acc, { cluster, ornament }) => {
+      (acc[cluster.label.toString()] ??= []).push(ornament);
       return acc;
     }, {});
 
-    for (const label in byLabel) {
-      const group = byLabel[label];
-
+    for (const [label, group] of Object.entries(byLabel)) {
       if (label === '-1') {
         group.forEach((ornament) => this.defineAndName(mpm, scope, ornament, defined));
         continue;

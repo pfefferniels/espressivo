@@ -19,6 +19,7 @@ import { AbstractTransformer, type TransformationOptions } from '../Transformer.
 import { dbscan, type IPoint } from '../../dbscan.js';
 import { InsertArticulation, makeArticulationDef } from './InsertArticulation.js';
 import { deriveResidual, type Residual } from '../../residual.js';
+import { numberAt, zipWith } from '../../../prelude/seq.js';
 
 type Articulation = Instruction<'articulation'>;
 
@@ -191,7 +192,10 @@ export class StylizeArticulation extends AbstractTransformer<StylizeArticulation
     const points: IPoint[] = effective.map((_, index) => ({ index, value: [], label: -1 }));
     dbscan(coordinates, {
       epsilons: [this.options.relativeDurationTolerance, this.options.volumeTolerance],
-    }).forEach((point, i) => (points[placed[i]] = { ...point, index: placed[i] }));
+    }).forEach((point, i) => {
+      const index = numberAt(placed, i, 'the clustered articulations');
+      points[index] = { ...point, index };
+    });
 
     return points;
   }
@@ -252,8 +256,15 @@ export class StylizeArticulation extends AbstractTransformer<StylizeArticulation
 
       const defs = new Map<string, ArticulationDef>(
         clusters.map(([label, cluster]): [string, ArticulationDef] => {
-          const relativeDuration = cluster.reduce((acc, p) => acc + p.value[0], 0) / cluster.length;
-          const relativeVelocity = cluster.reduce((acc, p) => acc + p.value[1], 0) / cluster.length;
+          // every point in a labelled cluster came through `placed`, so it carries the two
+          // coordinates `generateClusters` measured; the unplaced ones stay at label -1 and
+          // were filtered out above.
+          const relativeDuration =
+            cluster.reduce((acc, p) => acc + numberAt(p.value, 0, 'an articulation point'), 0) /
+            cluster.length;
+          const relativeVelocity =
+            cluster.reduce((acc, p) => acc + numberAt(p.value, 1, 'an articulation point'), 0) /
+            cluster.length;
 
           return [
             label,
@@ -267,10 +278,12 @@ export class StylizeArticulation extends AbstractTransformer<StylizeArticulation
 
       for (const def of defs.values()) insertDefinition(mpm, 'articulationDef', def, scope);
 
-      const labeledArticulations = points.reduce<Record<number, Articulation[]>>((acc, p, i) => {
-        if (p.label === -1) return acc;
-        if (!acc[p.label]) acc[p.label] = [];
-        acc[p.label].push(articulations[i]);
+      const labeledArticulations = zipWith(points, articulations, (point, articulation) => ({
+        point,
+        articulation,
+      })).reduce<Record<number, Articulation[]>>((acc, { point, articulation }) => {
+        if (point.label === -1) return acc;
+        (acc[point.label] ??= []).push(articulation);
         return acc;
       }, {});
 
@@ -283,15 +296,19 @@ export class StylizeArticulation extends AbstractTransformer<StylizeArticulation
         );
       }
 
-      for (let i = 0; i < points.length; i++) {
-        if (conflictList.includes(articulations[i])) continue;
-        if (points[i].label === -1) continue;
+      for (const { point, articulation } of zipWith(
+        points,
+        articulations,
+        (point, articulation) => ({ point, articulation }),
+      )) {
+        if (conflictList.includes(articulation)) continue;
+        if (point.label === -1) continue;
 
         // What it articulates is the cluster's def from here on, so the two values it
         // states itself are removed rather than left to override it: a key carried as
         // `undefined` takes the attribute off, one left out leaves it alone.
-        map.updateArticulationAt(map.getElementIndexOf(articulations[i].element), {
-          nameRef: `def_${points[i].label}`,
+        map.updateArticulationAt(map.getElementIndexOf(articulation.element), {
+          nameRef: `def_${point.label}`,
           relativeDuration: undefined,
           relativeVelocity: undefined,
         });

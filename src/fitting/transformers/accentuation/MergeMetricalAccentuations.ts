@@ -11,6 +11,7 @@ import {
 import { Alignment } from '../../alignment.js';
 import { AbstractTransformer, type ScopedTransformationOptions } from '../Transformer.js';
 import { InsertMetricalAccentuation } from './InsertMetricalAccentuation.js';
+import { elementAt } from '../../../prelude/seq.js';
 
 interface MergeMetricalAccentuationsOptions extends ScopedTransformationOptions {
   names: string[];
@@ -85,7 +86,8 @@ export class MergeMetricalAccentuations extends AbstractTransformer<MergeMetrica
       throw new Error('Cannot merge less than two patterns');
     }
 
-    const [prototype, ...rest] = patterns;
+    const prototype = elementAt(patterns, 0, 'the patterns to merge');
+    const rest = patterns.slice(1);
     const children: MergedAccentuation[] = prototype
       .getAllAccentuations()
       .map(({ key: [beat, value, transitionFrom, transitionTo] }) => ({

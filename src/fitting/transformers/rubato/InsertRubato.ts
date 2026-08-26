@@ -11,6 +11,7 @@ import { PULSES_PER_QUARTER } from '../../ppq.js';
 import { TranslatePhysicalTimeToTicks } from '../tempo/index.js';
 import { determineIntensity } from '../ornamentation/index.js';
 import { deriveResidual, type Residual } from '../../residual.js';
+import { head, isNonEmpty, numberAt } from '../../../prelude/seq.js';
 
 // Re-exported: `calculateRubatoOnDate` has been part of the package surface since before it
 // moved, and mpm-desk's rubato desk imports it from "mpmify".
@@ -66,7 +67,7 @@ export class InsertRubato extends AbstractTransformer<InsertRubatoOptions> {
       ([date]) => date >= frame.date && date < frame.date + frame.length,
     );
 
-    if (chords.length === 0) return;
+    if (!isNonEmpty(chords)) return;
 
     // The rubato transformation can only be placed
     // after a tempo interpolation. Make sure that
@@ -86,7 +87,13 @@ export class InsertRubato extends AbstractTransformer<InsertRubatoOptions> {
     // if there are notes on the first date, we can use their
     // average tick date to determine a late start. Otherwise,
     // there is no late start.
-    const startDate = chords[0][0] === this.options.date ? meanTickDates[0] : this.options.date;
+    // one mean per chord, and the loop above returns rather than skipping, so a first chord
+    // means a first mean.
+    const [firstChordDate] = head(chords);
+    const startDate =
+      firstChordDate === this.options.date
+        ? numberAt(meanTickDates, 0, 'the chord mean tick dates')
+        : this.options.date;
     // A @lateStart of 0 is the renderer's default (espressivo `resolveRubato`), so the
     // frame that starts on time says nothing rather than saying nothing new.
     let lateStart: number | undefined = clamp((startDate - frame.date) / frame.length, 0, 0.9);

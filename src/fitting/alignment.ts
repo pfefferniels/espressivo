@@ -2,6 +2,7 @@ import type { Scope } from './instructions/index.js';
 import { Msm } from '../msm/Msm.js';
 import { isDefined } from './utils.js';
 import { PULSES_PER_QUARTER } from './ppq.js';
+import { elementAt } from '../prelude/seq.js';
 
 /**
  * When the recording sounds an event, in the two attributes MSM states a performance in:
@@ -221,7 +222,10 @@ export class Alignment {
       denominator: this.timeSignature?.denominator ?? 4,
     });
     // TODO: derive from FormalAlterations
-    msm.addSection({ date: 0, dateEnd: this.allNotes[this.allNotes.length - 1].date });
+    msm.addSection({
+      date: 0,
+      dateEnd: elementAt(this.allNotes, this.allNotes.length - 1, 'the aligned notes').date,
+    });
 
     // One `<part>` per part the notes actually use, ascending. `@number` is the part index
     // plus one and `@midi.channel` is the index itself, which is the numbering

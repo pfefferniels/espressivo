@@ -1,3 +1,5 @@
+import { elementAtOrNull, numberAt } from '../prelude/seq.js';
+
 export interface IPoint {
   value: number[];
   index: number;
@@ -45,17 +47,8 @@ export function dbscan(points: number[][], options: DBScanOptions = {}): IPoint[
     );
   }
 
-  const data: IPoint[] = [];
+  const data: IPoint[] = points.map((value, index) => ({ index, value, label: -1 }));
   let clusterId = 0;
-
-  for (let index = 0; index < points.length; index++) {
-    const point = points[index];
-    data.push({
-      index,
-      value: point,
-      label: -1,
-    });
-  }
 
   for (const point of data) {
     // Only process unlabelled points
@@ -109,8 +102,14 @@ export function dbscan(points: number[][], options: DBScanOptions = {}): IPoint[
 
 function rangeQuery(current: IPoint, data: IPoint[], epsilons: number[]) {
   return data.filter((point) =>
-    point.value.every(
-      (value, dimension) => Math.abs(value - current.value[dimension]) <= epsilons[dimension],
-    ),
+    point.value.every((value, dimension) => {
+      // a point with fewer dimensions than its neighbour is nobody's neighbour, which is the
+      // reading `<= undefined` gave it. the epsilon is in range: `epsilons.length` was checked
+      // against the widest point above.
+      const centre = elementAtOrNull(current.value, dimension);
+      return (
+        centre !== null && Math.abs(value - centre) <= numberAt(epsilons, dimension, 'the epsilons')
+      );
+    }),
   );
 }

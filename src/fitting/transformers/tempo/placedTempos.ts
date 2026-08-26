@@ -41,6 +41,7 @@ import { getInstructions, Mpm, type Scope } from '../../instructions/index.js';
 import { Alignment, type AlignedNote } from '../../alignment.js';
 import { millisecondsAt, resolveSpan, type TempoWithEndDate } from './tempoCalculations.js';
 import type { Tempo as ResolvedTempo } from '../../../mpm/elements/maps/data/tempo.js';
+import { elementAt, withNext } from '../../../prelude/seq.js';
 
 export interface PlacedTempo {
   /** The instruction, carrying the date the next one starts (or the end of the score). */
@@ -106,11 +107,11 @@ export const placeTempos = (msm: Alignment, mpm: Mpm, scope: Scope): PlacedTempo
   const segments: PlacedTempo[] = [];
   let startMs = 0;
 
-  for (let i = 0; i < tempos.length; i++) {
-    const nextDate = tempos[i + 1]?.date;
+  for (const [current, next] of withNext(tempos)) {
+    const nextDate = next?.date;
     const endDate = nextDate ?? msm.end;
 
-    const tempo: TempoWithEndDate = { ...tempos[i], endDate };
+    const tempo: TempoWithEndDate = { ...current, endDate };
     const resolved = resolveSpan(tempo);
     const modelledMs = millisecondsAt(endDate, resolved);
 
@@ -168,7 +169,8 @@ export const coversDate = (segment: PlacedTempo, date: number): boolean =>
  */
 export const segmentAtMs = (segments: PlacedTempo[], ms: number): PlacedTempo | undefined => {
   for (let i = segments.length - 1; i > 0; i--) {
-    if (ms >= segments[i].startMs) return segments[i];
+    const segment = elementAt(segments, i, 'the placed tempo segments');
+    if (ms >= segment.startMs) return segment;
   }
   return segments[0];
 };

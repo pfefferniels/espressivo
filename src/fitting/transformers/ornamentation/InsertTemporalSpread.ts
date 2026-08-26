@@ -9,6 +9,7 @@ import {
 } from '../../instructions/index.js';
 import { Alignment } from '../../alignment.js';
 import { isDefined } from '../../utils.js';
+import { elementAt, foldl, head, isNonEmpty, pairwise } from '../../../prelude/seq.js';
 import {
   AbstractTransformer,
   generateId,
@@ -25,15 +26,11 @@ export const determineIntensity = (onsets: number[]): number => {
   if (n <= 2) return 1;
 
   // The error function we want to minimize.
-  const error = (intensity: number): number => {
-    let sum = 0;
-    for (let i = 0; i < n; i++) {
-      const expected = Math.pow(i / (n - 1), intensity);
-      const diff = onsets[i] - expected;
-      sum += diff * diff;
-    }
-    return sum;
-  };
+  const error = (intensity: number): number =>
+    foldl(onsets, 0, (sum, onset, i) => {
+      const diff = onset - Math.pow(i / (n - 1), intensity);
+      return sum + diff * diff;
+    });
 
   // Search bounds. TODO: make these configurable.
   let lower = 0.1,
@@ -66,10 +63,12 @@ export const determineIntensity = (onsets: number[]): number => {
  * sorted in ascending order, 0 if it isn't sorted.
  */
 const determineSortDirection = (arr: number[]) => {
-  if (arr.length < 2) return 0;
+  const steps = pairwise(arr);
+  if (!isNonEmpty(steps)) return 0;
 
-  const direction = Math.sign(arr[1] - arr[0]);
-  return arr.slice(1).every((val, i) => Math.sign(val - arr[i]) === direction) ? direction : 0;
+  const [firstFrom, firstTo] = head(steps);
+  const direction = Math.sign(firstTo - firstFrom);
+  return steps.every(([from, to]) => Math.sign(to - from) === direction) ? direction : 0;
 };
 
 export type InsertTemporalSpreadOptions = ScopedTransformationOptions & {
@@ -120,6 +119,8 @@ export class InsertTemporalSpread extends AbstractTransformer<InsertTemporalSpre
       const sortedByOnset = arpeggioNotes.sort(
         (a, b) => a['milliseconds.date'] - b['milliseconds.date'],
       );
+      const firstNote = elementAt(sortedByOnset, 0, 'the arpeggiated chord');
+      const lastNote = elementAt(sortedByOnset, sortedByOnset.length - 1, 'the arpeggiated chord');
 
       // detecting the direction of the arpeggiated notes.
       const arpeggioDirection = determineSortDirection(
@@ -131,17 +132,13 @@ export class InsertTemporalSpread extends AbstractTransformer<InsertTemporalSpre
       else noteOrder = sortedByOnset.map((note) => `#${note['xml:id']}`).join(' ');
 
       // the arpeggio's duration is the time distance between first and last onset, in ms
-      const duration =
-        sortedByOnset[sortedByOnset.length - 1]['milliseconds.date'] -
-        sortedByOnset[0]['milliseconds.date'];
+      const duration = lastNote['milliseconds.date'] - firstNote['milliseconds.date'];
       if ('durationThreshold' in this.options) {
         if (duration <= (this.options?.durationThreshold || 0)) continue;
       }
 
       // by default, no offset shifting is applied
       let noteOffShift: NoteOffShift = NoteOffShift.False;
-      const firstNote = sortedByOnset[0];
-      const lastNote = sortedByOnset[sortedByOnset.length - 1];
 
       const sortedByOffset = sortedByOnset
         .slice()
@@ -161,18 +158,11 @@ export class InsertTemporalSpread extends AbstractTransformer<InsertTemporalSpre
       // in ms: how far a release may sit from the next onset and still count as one
       // note giving way to the next
       const monophonicTolerance = 20;
-      let isMonophonic = true;
-      for (let i = 1; i < sortedByOnset.length; i++) {
-        const prev = sortedByOnset[i - 1];
-        const curr = sortedByOnset[i];
-
-        if (
-          Math.abs(prev['milliseconds.date.end'] - curr['milliseconds.date']) > monophonicTolerance
-        ) {
-          isMonophonic = false;
-          break;
-        }
-      }
+      const isMonophonic = pairwise(sortedByOnset).every(
+        ([prev, curr]) =>
+          Math.abs(prev['milliseconds.date.end'] - curr['milliseconds.date']) <=
+          monophonicTolerance,
+      );
 
       if (isMonophonic) {
         noteOffShift = NoteOffShift.Monophonic;
@@ -189,10 +179,10 @@ export class InsertTemporalSpread extends AbstractTransformer<InsertTemporalSpre
         continue;
       } else if (placement === 'on-beat') {
         frameStart = 0;
-        newOnset = sortedByOnset[0]['milliseconds.date'];
+        newOnset = firstNote['milliseconds.date'];
       } else if (placement === 'before-beat') {
         frameStart = -frameLength;
-        newOnset = sortedByOnset[sortedByOnset.length - 1]['milliseconds.date'];
+        newOnset = lastNote['milliseconds.date'];
       } else {
         // the estimated onset is the average of all onsets
         newOnset =
@@ -200,7 +190,7 @@ export class InsertTemporalSpread extends AbstractTransformer<InsertTemporalSpre
           arpeggioNotes.length;
 
         // frame start is the distance between the first note's onset and the estimated onset
-        frameStart = sortedByOnset[0]['milliseconds.date'] - newOnset;
+        frameStart = firstNote['milliseconds.date'] - newOnset;
       }
 
       // determine the ornament's intensity

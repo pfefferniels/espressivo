@@ -12,6 +12,7 @@ import {
   generateId,
   type ScopedTransformationOptions,
 } from '../Transformer.js';
+import { elementAt } from '../../../prelude/seq.js';
 
 export interface InsertTempoOptions extends ScopedTransformationOptions {
   /** Where the tempo is stated, in ticks. */
@@ -88,7 +89,7 @@ export class InsertTempo extends AbstractTransformer<InsertTempoOptions> {
     if (!existing.some((t) => t.date === boundary)) {
       const effectiveIndex = findEffectiveTempoIndex(existing, boundary);
       if (effectiveIndex !== -1) {
-        const effectiveTempo = existing[effectiveIndex];
+        const effectiveTempo = elementAt(existing, effectiveIndex, 'the sorted tempo instructions');
         if (isCovered(effectiveTempo.date)) {
           const restore: InstructionOptions<'tempo'> = {
             id: generateId('tempo', boundary, mpm),
@@ -115,8 +116,8 @@ export class InsertTempo extends AbstractTransformer<InsertTempoOptions> {
 /** The last tempo at or before `date`, or -1 if the list starts after it. */
 function findEffectiveTempoIndex(tempos: readonly { date: number }[], date: number): number {
   let result = -1;
-  for (let i = 0; i < tempos.length; i++) {
-    if (tempos[i].date <= date) result = i;
+  for (const [i, tempo] of tempos.entries()) {
+    if (tempo.date <= date) result = i;
     else break;
   }
   return result;

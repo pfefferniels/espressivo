@@ -12,6 +12,7 @@ import {
   generateId,
   type ScopedTransformationOptions,
 } from '../Transformer.js';
+import { elementAt, numberAt } from '../../../prelude/seq.js';
 
 /**
  * The velocity ramp across an arpeggio, in the normalized units a `<dynamicsGradient>`'s
@@ -122,8 +123,8 @@ export class InsertDynamicsGradient extends AbstractTransformer<InsertDynamicsGr
 
     // The dynamics gradient is the transition
     // between first and last arpeggio note
-    const firstVel = arpeggioNotes[0].velocity;
-    const lastVel = arpeggioNotes[arpeggioNotes.length - 1].velocity;
+    const firstVel = elementAt(arpeggioNotes, 0, 'the arpeggio').velocity;
+    const lastVel = elementAt(arpeggioNotes, arpeggioNotes.length - 1, 'the arpeggio').velocity;
 
     const diffVel = lastVel - firstVel;
     if (diffVel === 0) return;
@@ -191,7 +192,7 @@ export class InsertDynamicsGradient extends AbstractTransformer<InsertDynamicsGr
     chord
       .sort((a, b) => a['milliseconds.date'] - b['milliseconds.date'])
       .forEach((note, i) => {
-        note.velocity = velocities[i];
+        note.velocity = numberAt(velocities, i, 'the sorted velocities');
       });
 
     return direction;
@@ -212,10 +213,10 @@ const directionOf = (chord: AlignedNote[]): ArpeggioDirection => {
   let loudestPos = 0;
   let quietestPos = 0;
   chord.forEach((note, index) => {
-    if (note.velocity > chord[loudestPos].velocity) {
+    if (note.velocity > elementAt(chord, loudestPos, 'the chord').velocity) {
       loudestPos = index;
     }
-    if (note.velocity < chord[quietestPos].velocity) {
+    if (note.velocity < elementAt(chord, quietestPos, 'the chord').velocity) {
       quietestPos = index;
     }
   });

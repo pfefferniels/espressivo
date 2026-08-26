@@ -8,6 +8,7 @@ import type { Normalized } from '../../../units.js';
 import { v4 } from 'uuid';
 import type { DynamicsWithEndDate } from './InsertDynamicsInstructions.js';
 import { hashSeed, type Random, seededRandom } from '../../random.js';
+import { head, isNonEmpty, last } from '../../../prelude/seq.js';
 
 export interface DynamicsPoints {
   date: number;
@@ -106,7 +107,7 @@ export const positionAtDate = (
     date,
   );
 
-const computeError = (instruction: DynamicsWithEndDate, points: DynamicsPoints[]) => {
+const computeError = (instruction: DynamicsWithEndDate, points: readonly DynamicsPoints[]) => {
   const computedInstruction = {
     ...instruction,
     // `<dynamics>` defaults both to 0.0, which is what `resolveDynamics` fills in — scoring
@@ -150,26 +151,31 @@ const generateNeighbour = (prev: DynamicsWithEndDate, random: Random) => {
 };
 
 export const approximateDynamics = (points: DynamicsPoints[]): DynamicsWithEndDate | undefined => {
-  if (points.length === 0) {
+  if (!isNonEmpty(points)) {
     console.error('approximateDynamics requires at least one point');
     return;
-  } else if (points.length === 1) {
+  }
+
+  const first = head(points);
+  const final = last(points);
+
+  if (points.length === 1) {
     return {
       id: `dynamics_${v4()}`,
-      date: points[0].date,
-      endDate: points[0].date,
-      volume: points[0].velocity,
+      date: first.date,
+      endDate: first.date,
+      volume: first.velocity,
     };
   }
 
-  const equal = points[0].velocity === points[points.length - 1].velocity;
+  const equal = first.velocity === final.velocity;
   if (points.length === 2 || equal) {
     return {
       id: `dynamics_${v4()}`,
-      date: points[0].date,
-      endDate: points[points.length - 1].date,
-      volume: points[0].velocity,
-      transitionTo: equal ? undefined : points[points.length - 1].velocity,
+      date: first.date,
+      endDate: final.date,
+      volume: first.velocity,
+      transitionTo: equal ? undefined : final.velocity,
       protraction: 0,
       curvature: 0.5,
     };
@@ -177,10 +183,10 @@ export const approximateDynamics = (points: DynamicsPoints[]): DynamicsWithEndDa
 
   const initial: DynamicsWithEndDate = {
     id: `dynamics_${v4()}`,
-    date: points[0].date,
-    endDate: points[points.length - 1].date,
-    volume: points[0].velocity,
-    transitionTo: points[points.length - 1].velocity,
+    date: first.date,
+    endDate: final.date,
+    volume: first.velocity,
+    transitionTo: final.velocity,
     protraction: 0,
     curvature: 0.5,
   };

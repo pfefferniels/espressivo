@@ -3,6 +3,7 @@ import { Mpm, requireMap, type Scope } from '../../instructions/index.js';
 import { Alignment, type AlignedNote, type ChordMap } from '../../alignment.js';
 import { isDefined } from '../../utils.js';
 import { AbstractTransformer, type TransformationOptions } from '../Transformer.js';
+import { numberAt } from '../../../prelude/seq.js';
 
 export type InsertAsynchronyOptions = TransformationOptions & {
   /**
@@ -37,7 +38,8 @@ const chordOnset = (chord: AlignedNote[] | undefined): number | undefined => {
   if (onsets.length === 0) return undefined;
 
   const middle = Math.floor(onsets.length / 2);
-  return onsets.length % 2 === 1 ? onsets[middle] : (onsets[middle - 1] + onsets[middle]) / 2;
+  const at = (index: number) => numberAt(onsets, index, 'the chord onsets');
+  return onsets.length % 2 === 1 ? at(middle) : (at(middle - 1) + at(middle)) / 2;
 };
 
 /**
