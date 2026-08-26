@@ -1,0 +1,71 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+# a release must never race itself, so this one does not cancel in progress
+concurrency:
+  group: release-${{ github.ref }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm trusted publishing, and the provenance attestation
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          # a poisoned dependency cache would run attacker code in the job holding the OIDC
+          # token. the cache is worth it in ci.yml, which holds no credentials; not here.
+          package-manager-cache: false
+
+      # trusted publishing is refused below this version, with an error that does not say so
+      - name: npm >= 11.5.1
+        run: |
+          have=$(npm --version)
+          if [ "$(printf '%s\n' 11.5.1 "$have" | sort -V | head -1)" != "11.5.1" ]; then
+            echo "runner has npm $have; upgrading"
+            npm install -g npm@^11
+          fi
+          npm --version
+
+      - run: npm ci
+
+      # a tag that disagrees with package.json publishes the wrong version under the right
+      # name, and npm has no unpublish worth the word
+      - name: the tag and package.json name the same version
+        run: |
+          tagged="${GITHUB_REF_NAME#v}"
+          declared=$(node -p "require('./package.json').version")
+          if [ "$tagged" != "$declared" ]; then
+            echo "tag $GITHUB_REF_NAME says $tagged, package.json says $declared"
+            exit 1
+          fi
+
+      - run: npm run verify
+      - run: npm publish
+
+  github-release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # the annotated tag's own message is the release body, and it only exists locally
+          # if the tag object came with the checkout
+          fetch-depth: 0
+      - name: draw the body from the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file "$RUNNER_TEMP/notes.md"

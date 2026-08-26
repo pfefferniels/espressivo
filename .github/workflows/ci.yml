@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      # both versions report, so a failure on one is not hidden by the other cancelling it
+      fail-fast: false
+      matrix:
+        # 22 is the floor `engines` declares; 24 is what a current consumer actually runs
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      # build, tests typecheck, strict + lint ratchets, format:check, vitest — the whole gate
+      - run: npm run verify
