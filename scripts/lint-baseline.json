@@ -1,4 +1,6 @@
 {
+  "src/fitting/transformers/dynamics": 1,
+  "src/fitting/transformers/tempo": 1,
   "tests/integration": 9,
   "tests/midi": 4,
   "tests/music": 2

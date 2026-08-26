@@ -1797,3 +1797,57 @@ git worktree add ../espressivo-converter mei-to-mpm-converter-final
 
 espressivo is not published to npm, so a downstream consumer that needs an MEI-derived MPM
 pins that tag or a commit, rather than a released version.
+
+---
+
+## 10. The fitting module — espressivo-only, and the one flag it does not satisfy
+
+`src/fitting/**` is outside the equivalence frame for §7's reason: **the Java reference has no such
+feature.** meico applies an MPM to a score; it does not solve for one. There is no Java output to
+be byte-identical to, so this module makes no parity claim, and nothing in it is reachable from the
+conversion or rendering paths the equivalence suites drive.
+
+It came in from `mpmify`, whole, as a move rather than a port. Its own guarantee is different in
+kind from meico-equivalence and is worth stating, because it is what the module is held to
+instead: a **structural digest** — one line per element of every round-trip case, attributes
+sorted, minted uuids canonicalised — recorded before the move and byte-identical after it, at
+every step. 314 lines. `tests/fitting/mpmDigest.test.ts` writes it; `MIGRATION_DIGEST=1` runs it.
+
+Two limits of that instrument, both measured rather than assumed:
+
+- Its chain instantiates **13 of the 20 registered transformers**. `CompressOrnamentation`,
+  `InsertAsynchrony`, `InsertMetadata`, `MakeChoice`, `MakeDefaultArticulation`, `Modify` and
+  `InsertTempo` are not in it. `tests/fitting/roundtrip/aligned.test.ts` runs the real 84-call
+  chain over 14 transformers and is what covers those.
+- The accuracy suite is **tolerance-based** (`toBeCloseTo`), and its one exact check compares two
+  runs of the same build. It therefore cannot see a drift an edit introduces — a reordered
+  floating-point accumulation passes all of it and still moves the digest. The digest is the
+  instrument; the suite measures fit quality.
+
+### `AlignedNote` promises two fields it cannot keep
+
+**Two `no-unnecessary-condition` findings are accepted in `scripts/lint-baseline.json`**, at
+`transformers/dynamics/InsertDynamicsInstructions.ts` and
+`transformers/tempo/ApproximateLogarithmicTempo.ts`. Both are the same defect, and the ratchet
+entry is the record of it rather than a licence:
+
+`AlignedNote.velocity` and `PerformedAttributes['milliseconds.date']` are declared `number`. The
+tree does not believe them, and it is right not to. **Nothing in this package ever constructs an
+`AlignedNote`** — every note arrives from an aligner espressivo does not own — so the declaration
+is a producer's promise, not a fact. Four sites already guard the same field against absence
+(`alignment.ts:144`, `InsertTemporalSpread.ts:114`, `InsertDynamicsGradient.ts:116`,
+`InsertAsynchrony.ts:22`); the rule does not flag those only because `isDefined` is a call rather
+than a comparison. `InsertAsynchrony` states the intent outright — the onsets of a chord "with the
+ones that were never performed left out".
+
+Delete either check and a note the recording never sounded reaches arithmetic: a `NaN` volume on a
+`<dynamics>`, a `NaN` median into the tempo fit.
+
+The honest repair is to let both fields admit absence. Measured, applied one at a time:
+`milliseconds.date` and `.end` cost **53** errors under `tsconfig.json` and **61** under
+`tsconfig.tests.json`; `velocity` costs **19** and **20**. Every one lands in numeric code whose
+output the digest checks byte for byte. Two cheaper-looking routes were rejected: passing the check
+through `isDefined` would also start rejecting `NaN`, a behaviour change on a checked path, and an
+accessor returning `number | undefined` is a cast wearing a function.
+
+So the finding stands, visible, until someone gives it the campaign it needs.
