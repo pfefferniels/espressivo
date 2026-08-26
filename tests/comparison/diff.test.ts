@@ -687,11 +687,11 @@ describe('the surface', () => {
         if (op.op === 'fragment' || op.op === 'consolidate')
           expect(Math.max(op.count.a, op.count.b)).toBeGreaterThan(1);
     }
-    // Non-vacuity on real data, and the size of what the vocabulary buys: this pair yields 5
-    // fragments and 1 consolidate over this window, and the script gets 88.22 JND·quarters
-    // cheaper. Over the full score window the same pairing yields 9 and 2 and saves 4675.56, so
+    // Non-vacuity on real data, and the size of what the vocabulary buys: this pair yields 2
+    // fragments and no consolidate over this window, and the script gets 88.22 JND·quarters
+    // cheaper. Over the full score window the same pairing yields 6 and 0 and saves 4471.93, so
     // the effect grows with the piece rather than being an artefact of a short window.
-    expect(moved).toBe(6);
+    expect(moved).toBe(2);
     let saved = 0;
     for (const dimension of COMPARISON_DIMENSIONS)
       saved += plain.dimensions[dimension].scriptCost - withMoves.dimensions[dimension].scriptCost;

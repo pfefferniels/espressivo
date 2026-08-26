@@ -589,8 +589,8 @@ function invertScript(script: EditScript): EditScript {
       insert: script.opCounts.delete,
       delete: script.opCounts.insert,
       // the pair swaps for the same reason the plain pair does: on a real pair the forward
-      // direction had 9 fragments and 2 consolidates, and the reverse reported 2 and 9 in the
-      // ops while unswapped counts still said 9 and 2.
+      // direction had 6 fragments and no consolidate, and the reverse reported 0 and 6 in the
+      // ops while unswapped counts still said 6 and 0.
       fragment: script.opCounts.consolidate,
       consolidate: script.opCounts.fragment,
     },

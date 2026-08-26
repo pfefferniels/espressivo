@@ -524,13 +524,14 @@ describe('the moves: fragment and consolidate', () => {
   });
 
   it('[MEASURED] chooses fragments far more often than consolidates, for a stated reason', () => {
-    // Over 200 random pairs of this family: moves win in 114, producing 120 fragments and 1
+    // Over 200 random pairs of this family: moves win in 114, producing 119 fragments and no
     // consolidate. A fragment replaces "substitute, then insert the rest", and the inserts
     // overshoot: the first of a group governs a span the later ones take back. A consolidate
     // replaces "substitute, then delete the rest", and the deletes do not overshoot, because
-    // after the substitution the value each deletion exposes is already B's. Both branches fire
-    // — the consolidate directly and, through `invertSteps`, from every fragment — but on a step
-    // reading the slack lives almost entirely on one side.
+    // after the substitution the value each deletion exposes is already B's. So on a step
+    // reading the slack lives entirely on one side: nothing here clears {@link MOVE_MARGIN} on
+    // the consolidate branch, and a consolidate reaches a script only as the inverse of a
+    // fragment, which `invertSteps` and the mirror tests in `diff.test.ts` exercise.
     const next = lcg(24680);
     let fragments = 0;
     let consolidates = 0;
@@ -545,8 +546,8 @@ describe('the moves: fragment and consolidate', () => {
       if (withMoves.scriptCost < plain.scriptCost * (1 - 1e-12)) cheaper += 1;
     }
     expect(cheaper).toBe(114);
-    expect(fragments).toBe(120);
-    expect(consolidates).toBe(1);
+    expect(fragments).toBe(119);
+    expect(consolidates).toBe(0);
   });
 
   it('never costs more than the plain script, and keeps the theorems', () => {

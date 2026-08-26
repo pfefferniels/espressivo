@@ -100,6 +100,20 @@ export type EditMove = 'substitute' | 'delete' | 'insert' | 'fragment' | 'consol
  */
 export const MAX_MOVE_SPAN = 4;
 
+/**
+ * How far below the primitive a move must land before it counts as cheaper [convention].
+ *
+ * Relative, and for the same reason {@link embedding}'s `TIE_EPSILON` is: `Math.pow` is
+ * approximated to the implementation's taste, so the rubato warp moves by an ulp between V8
+ * versions and a move that wins by that much wins on noise. It bought nothing to begin with —
+ * `telemann-grave` part 0's rubatoMap paid the identical 187.72740008694802 with the
+ * consolidate and without it — so the band removes a move rather than repricing one.
+ *
+ * `1e-9` is `embedding`'s figure, far above double rounding on these magnitudes and far below
+ * the smallest saving any fixture here shows.
+ */
+const MOVE_MARGIN = 1e-9;
+
 /** One step of the script, before a dimension dresses it as a reported `EditOp`. */
 export interface EditStep<I extends EditableInstruction> {
   readonly move: EditMove;
@@ -437,8 +451,9 @@ export function editScript<I extends EditableInstruction, S>(
         }
       }
 
-      // the two, and they rank BELOW the plain ops so a tie keeps the primitive. They can
-      // only win strictly, which is what makes the op kind a statement about the price.
+      // the two, and they rank BELOW the plain ops so a tie keeps the primitive. A move must
+      // clear {@link MOVE_MARGIN} to win, which is what makes the op kind a statement about
+      // the price rather than about the last ulp of it.
       let bestSpan = 1;
       if (moves) {
         // `fragment`: one `a[i-1]` became `b[j-k .. j)`, `k ≥ 2`.
@@ -451,7 +466,7 @@ export function editScript<I extends EditableInstruction, S>(
               editStateAt(a, b, i - 1, j - k),
               editStateAt(a, b, i, j),
             );
-          if (candidate < best) {
+          if (candidate < best - MOVE_MARGIN * Math.abs(best)) {
             best = candidate;
             bestFrom = FROM_FRAGMENT;
             bestSpan = k;
@@ -467,7 +482,7 @@ export function editScript<I extends EditableInstruction, S>(
               editStateAt(a, b, i - k, j - 1),
               editStateAt(a, b, i, j),
             );
-          if (candidate < best) {
+          if (candidate < best - MOVE_MARGIN * Math.abs(best)) {
             best = candidate;
             bestFrom = FROM_CONSOLIDATE;
             bestSpan = k;
