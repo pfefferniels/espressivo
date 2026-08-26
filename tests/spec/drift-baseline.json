@@ -1,0 +1,16 @@
+{
+  "spec": {
+    "edition": "3.0.1",
+    "commit": "c50e42231dfa4e0a49ac4458a87ea0a95bd6fb6c"
+  },
+  "accepted": {
+    "misplaced-attribute ornament/@noteid": "meico's own extension: OrnamentationMap writes (:187) and reads (:312) @noteid on <ornament> to name the principal note. MPM 3.0.1 supplies att.reference.noteid to <articulation> only and expects the principal note to appear inside @note.order instead. Dropping it would change output, so it stays until the port decides to follow 3.0.",
+    "unknown-attribute temporalSpread/@frame.start": "MPM 3.0.0 renamed @frame.start to @frame.offset. This port reads both on purpose — MpmSourceFormat 'v2' | 'v3' in styles/defs/TemporalSpread.ts — and tests/integration/fixtures-v3/v2-passthrough.mpm pins that a v2 document survives unchanged.",
+    "unknown-attribute temporalSpread/@time.unit": "MPM 3.0.0 removed @time.unit, having moved the unit into a suffix on the frame attributes. Read for v2 documents, same reason as @frame.start; tests/integration/fixtures-v3/legacy-timeunit.mpm is the case.",
+    "unknown-attribute imprecisionMap.timing/@domain": "Fixture artifact, not something this port reads or writes: the domain of an imprecision map is its local name (ImprecisionMap.ts:273), and no MPM edition has had a @domain attribute. Harmless — the reader never looks at it — and removable from the fixture.",
+    "unknown-attribute imprecisionMap.toneduration/@domain": "Same fixture artifact as imprecisionMap.timing/@domain, in the same document.",
+    "unknown-element movement": "meico's own map type. MPM 3.0.1 has no movementMap and no <movement>; meico uses one to encode continuous-controller movement (sustain pedal, in tests/integration/fixtures-pedal). Constructed in MovementMap.ts:86 and named in names.ts, so it is the port's vocabulary, not a fixture's.",
+    "unknown-element movementMap": "The container for <movement>, and the same story: meico defines it, MPM does not.",
+    "missing-required tempo/@beatLength": "One instruction in one input fixture: <tempo date=\"8640.0\" bpm=\"Adagio\"/> in tests/integration/fixtures/reference/tempo_dynamics_spans.mpm, where its three siblings all carry @beatLength. @beatLength is usage=\"req\", and a <tempo> without it is unreadable by design (maps/data/tempo.ts:25) — TempoMap.ts:122 returns null and the instruction is dropped. Java does the same, so the reference agrees and no gate notices. Likely an accident in the fixture rather than a case worth having."
+  }
+}
