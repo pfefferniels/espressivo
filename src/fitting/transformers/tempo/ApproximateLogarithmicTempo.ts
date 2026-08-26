@@ -71,6 +71,28 @@ interface DataPoint {
   weight: number;
 }
 
+/** One chain segment as the fit reads it. Fixed for the whole optimisation. */
+interface FitSegment {
+  readonly onsets: readonly SegmentOnset[];
+  readonly points: readonly DataPoint[];
+  readonly spanTicks: number;
+}
+
+/**
+ * The vectors the fit solves for: one tempo per chain boundary, one shape per segment.
+ *
+ * The solver steps write the accepted state into these buffers, and the caller reads it back out
+ * of them. {@link projectState} is the one function that returns a new state instead, because the
+ * line search has to weigh a projected candidate against the state it started from.
+ */
+interface SolverState {
+  readonly tau: number[];
+  readonly shapes: number[];
+}
+
+/** Symmetric band storage at half-bandwidth two: `band[d][i]` is the entry at `(i, i + d)`. */
+type Band = readonly [Float64Array, Float64Array, Float64Array];
+
 // ── Constants ──────────────────────────────────────────────────────
 
 const MAX_ITER = 30; // outer Gauss–Newton iterations
@@ -463,13 +485,13 @@ const findEffectiveTempoIndex = (tempos: Instruction<'tempo'>[], date: number): 
  * the direction inference. They no longer enter the fit.
  */
 function fitSegments(
-  segments: TempoSegment[],
-  notes: AlignedNote[],
-  silentOnsets: SilentOnset[],
+  requested: readonly TempoSegment[],
+  notes: readonly AlignedNote[],
+  silentOnsets: readonly SilentOnset[],
 ): TempoWithEndDate[] {
-  if (segments.length === 0) return [];
+  if (requested.length === 0) return [];
 
-  const chainSegments = normalizeChainedSegments(segments);
+  const chainSegments = normalizeChainedSegments(requested);
   if (chainSegments.length === 0) return [];
 
   const chain: number[] = [chainSegments[0].from];
@@ -504,27 +526,31 @@ function fitSegments(
   const boundaryTimesMs = chain.map((b) => interpolatePhysicalTime(onsetPairs, b));
 
   const nSeg = chainSegments.length;
-  const segData = partitionData(chain, tempoPoints);
+  const segPoints = partitionData(chain, tempoPoints);
   const segOnsets = partitionOnsets(chain, onsetPairs, boundaryTimesMs, beatLengthTicks);
-  const inferredDirections = inferSegmentDirections(segData);
-  const spanTicks = chainSegments.map((seg) => seg.to - seg.from);
+  const segments: FitSegment[] = chainSegments.map((seg, k) => ({
+    onsets: segOnsets[k],
+    points: segPoints[k],
+    spanTicks: seg.to - seg.from,
+  }));
+  const inferredDirections = inferSegmentDirections(segments);
 
   // Initialise boundary tempos via per-segment linear regression; the shapes follow from them
   // in the first step of the optimisation below.
-  const tau = initBoundaryTempos(segData, chain.length);
-  const tauInit = tau.slice();
-  const shapes: number[] = new Array(nSeg).fill(0.5);
-  enforceDirectionConstraints(tau, segData, inferredDirections);
+  const tauInit = initBoundaryTempos(segments, chain.length);
+  const seededTau = enforceDirectionConstraints(tauInit, segments, inferredDirections);
+  const seededShapes = new Array<number>(nSeg).fill(0.5);
 
-  const objective = (candidateTau: number[], candidateShapes: number[]): number => {
+  const objective = (candidate: SolverState): number => {
     let total = 0;
     for (let k = 0; k < nSeg; k++) {
+      const seg = segments[k];
       total += segmentSse(
-        segOnsets[k],
-        candidateTau[k],
-        candidateTau[k + 1],
-        candidateShapes[k],
-        spanTicks[k],
+        seg.onsets,
+        candidate.tau[k],
+        candidate.tau[k + 1],
+        candidate.shapes[k],
+        seg.spanTicks,
         beatLength,
       );
     }
@@ -553,55 +579,41 @@ function fitSegments(
   // taken.
 
   for (let k = 0; k < nSeg; k++) {
-    shapes[k] = optimizeShape(
-      segOnsets[k],
-      tau[k],
-      tau[k + 1],
-      spanTicks[k],
+    seededShapes[k] = optimizeShape(
+      segments[k],
+      seededTau[k],
+      seededTau[k + 1],
       beatLength,
       undefined,
     );
   }
-  projectState(tau, shapes, segData, inferredDirections);
+  const state = projectState(
+    { tau: seededTau, shapes: seededShapes },
+    segments,
+    inferredDirections,
+  );
 
-  let bestTau = tau.slice();
-  let bestShapes = shapes.slice();
-  let bestObjective = objective(tau, shapes);
+  let best: SolverState = { tau: state.tau.slice(), shapes: state.shapes.slice() };
+  let bestObjective = objective(state);
 
   for (let iter = 0; iter < MAX_ITER; iter++) {
     const moved = jointGaussNewtonStep(
-      segOnsets,
-      tau,
+      segments,
+      state,
       tauInit,
-      shapes,
-      spanTicks,
       beatLength,
-      segData,
       inferredDirections,
       objective,
     );
 
-    const current = objective(tau, shapes);
+    const current = objective(state);
     if (current < bestObjective) {
       bestObjective = current;
-      bestTau = tau.slice();
-      bestShapes = shapes.slice();
+      best = { tau: state.tau.slice(), shapes: state.shapes.slice() };
     }
 
     if (moved.tau < TAU_CONVERGENCE_BPM && moved.shape < SHAPE_CONVERGENCE) {
-      if (
-        !refreshShapes(
-          segOnsets,
-          tau,
-          shapes,
-          spanTicks,
-          beatLength,
-          segData,
-          inferredDirections,
-          objective,
-        )
-      )
-        break;
+      if (!refreshShapes(segments, state, beatLength, inferredDirections, objective)) break;
     }
   }
 
@@ -609,20 +621,20 @@ function fitSegments(
 
   const results: TempoWithEndDate[] = [];
   for (let k = 0; k < nSeg; k++) {
-    const hasTransition = Math.abs(bestTau[k] - bestTau[k + 1]) > 0.01;
+    const hasTransition = Math.abs(best.tau[k] - best.tau[k + 1]) > 0.01;
 
     const t: TempoWithEndDate = {
       id: `tempo_${v4()}`,
-      bpm: bestTau[k],
+      bpm: best.tau[k],
       date: chainSegments[k].from,
       endDate: chainSegments[k].to,
       beatLength,
       ...(hasTransition
         ? {
-            transitionTo: bestTau[k + 1],
+            transitionTo: best.tau[k + 1],
             // Keep the optimized segment shape, so chain-level smoothing
             // survives into the exported meanTempoAt parameter.
-            meanTempoAt: bestShapes[k],
+            meanTempoAt: best.shapes[k],
           }
         : {}),
     };
@@ -632,7 +644,7 @@ function fitSegments(
   return results;
 }
 
-function normalizeChainedSegments(segments: TempoSegment[]): TempoSegment[] {
+function normalizeChainedSegments(segments: readonly TempoSegment[]): TempoSegment[] {
   if (segments.length === 0) return [];
 
   const result: TempoSegment[] = [];
@@ -676,8 +688,8 @@ function normalizeChainedSegments(segments: TempoSegment[]): TempoSegment[] {
  */
 function extractOnsetPairs(
   range: TempoSegment,
-  notes: AlignedNote[],
-  silentOnsets: SilentOnset[],
+  notes: readonly AlignedNote[],
+  silentOnsets: readonly SilentOnset[],
 ): OnsetPair[] {
   const sounding = new Map<number, number[]>();
 
@@ -710,7 +722,7 @@ function extractOnsetPairs(
   return pairs;
 }
 
-function median(values: number[]): number {
+function median(values: readonly number[]): number {
   if (values.length === 1) return values[0];
   const sorted = values.slice().sort((a, b) => a - b);
   const mid = sorted.length >> 1;
@@ -727,7 +739,7 @@ function median(values: number[]): number {
  * already robust to one — every residual is measured from the segment's own start, so a displaced
  * onset spoils its own row and no other, where an IOI would have spoiled two.
  */
-function computeTempoPoints(onsets: OnsetPair[], beatLengthTicks: number): TempoPoint[] {
+function computeTempoPoints(onsets: readonly OnsetPair[], beatLengthTicks: number): TempoPoint[] {
   const points: TempoPoint[] = [];
   for (let i = 0; i < onsets.length - 1; i++) {
     const deltaTicks = onsets[i + 1].date - onsets[i].date;
@@ -743,7 +755,10 @@ function computeTempoPoints(onsets: OnsetPair[], beatLengthTicks: number): Tempo
   return points;
 }
 
-function partitionData(chain: number[], tempoPoints: TempoPoint[]): DataPoint[][] {
+function partitionData(
+  chain: readonly number[],
+  tempoPoints: readonly TempoPoint[],
+): DataPoint[][] {
   const nSeg = chain.length - 1;
   const segData: DataPoint[][] = Array.from({ length: nSeg }, () => []);
   for (const p of tempoPoints) {
@@ -784,9 +799,9 @@ function partitionData(chain: number[], tempoPoints: TempoPoint[]): DataPoint[][
  * is a clamp, and an anchor built on it would assert that the rest of the segment takes no time.
  */
 function partitionOnsets(
-  chain: number[],
-  onsetPairs: OnsetPair[],
-  boundaryTimesMs: number[],
+  chain: readonly number[],
+  onsetPairs: readonly OnsetPair[],
+  boundaryTimesMs: readonly number[],
   beatLengthTicks: number,
 ): SegmentOnset[][] {
   const nSeg = chain.length - 1;
@@ -823,7 +838,7 @@ function partitionOnsets(
 }
 
 /** Each onset's share of score time — half of each neighbouring gap — capped at one beat. */
-function onsetShares(onsetPairs: OnsetPair[], beatLengthTicks: number): number[] {
+function onsetShares(onsetPairs: readonly OnsetPair[], beatLengthTicks: number): number[] {
   const n = onsetPairs.length;
   const shares = new Array<number>(n);
   for (let i = 0; i < n; i++) {
@@ -849,7 +864,7 @@ function onsetShares(onsetPairs: OnsetPair[], beatLengthTicks: number): number[]
  * endpoint difference — together with its standard error, because a slope is only evidence of a
  * direction if it is larger than its own uncertainty.
  */
-function weightedLinearFit(data: DataPoint[]): {
+function weightedLinearFit(data: readonly DataPoint[]): {
   intercept: number;
   slope: number;
   slopeStdError: number;
@@ -887,13 +902,13 @@ function weightedLinearFit(data: DataPoint[]): {
   return { intercept, slope, slopeStdError: Math.sqrt(((rss / dof) * sw) / det) };
 }
 
-function initBoundaryTempos(segData: DataPoint[][], nBoundaries: number): number[] {
+function initBoundaryTempos(segments: readonly FitSegment[], nBoundaries: number): number[] {
   const nSeg = nBoundaries - 1;
-  const tau = new Array(nBoundaries).fill(0);
-  const counts = new Array(nBoundaries).fill(0);
+  const tau = new Array<number>(nBoundaries).fill(0);
+  const counts = new Array<number>(nBoundaries).fill(0);
 
   for (let k = 0; k < nSeg; k++) {
-    const data = segData[k];
+    const data = segments[k].points;
     if (data.length === 0) continue;
 
     if (data.length === 1) {
@@ -919,7 +934,7 @@ function initBoundaryTempos(segData: DataPoint[][], nBoundaries: number): number
   return tau;
 }
 
-function interpolatePhysicalTime(onsets: OnsetPair[], date: number): number {
+function interpolatePhysicalTime(onsets: readonly OnsetPair[], date: number): number {
   if (onsets.length === 0) return 0;
   if (date <= onsets[0].date) return onsets[0].onsetMs;
   if (date >= onsets[onsets.length - 1].date) return onsets[onsets.length - 1].onsetMs;
@@ -960,7 +975,7 @@ function segmentCurve(
 
 /** The elapsed time the renderer produces at each onset of a segment, in order. */
 function segmentElapsed(
-  onsets: SegmentOnset[],
+  onsets: readonly SegmentOnset[],
   tau0: number,
   tau1: number,
   im: number,
@@ -975,7 +990,7 @@ function segmentElapsed(
 
 /** One segment's contribution to the objective. */
 function segmentSse(
-  onsets: SegmentOnset[],
+  onsets: readonly SegmentOnset[],
   tau0: number,
   tau1: number,
   im: number,
@@ -1017,20 +1032,20 @@ function segmentSse(
  * @param hint  Shape from the previous alternating iteration, tried as an extra candidate.
  */
 function optimizeShape(
-  segOnsets: SegmentOnset[],
+  segment: FitSegment,
   tau0: number,
   tau1: number,
-  spanTicks: number,
   beatLength: number,
   hint: number | undefined,
 ): number {
   if (Math.abs(tau0 - tau1) < 0.01) return 0.5;
 
   // An onset at the segment's own start has zero elapsed time under every shape.
-  const effective = segOnsets.filter((o) => o.ticks > 0);
+  const effective = segment.onsets.filter((o) => o.ticks > 0);
   if (effective.length === 0) return 0.5;
 
-  const objective = (im: number) => segmentSse(effective, tau0, tau1, im, spanTicks, beatLength);
+  const objective = (im: number) =>
+    segmentSse(effective, tau0, tau1, im, segment.spanTicks, beatLength);
 
   const step = (SHAPE_MAX - SHAPE_MIN) / SHAPE_GRID;
   let bestIm = SHAPE_MIN;
@@ -1087,7 +1102,7 @@ function optimizeShape(
  * them. The data still gets its say, through {@link refreshShapes}, which re-proposes them at the
  * current tempos and keeps the proposal only if it lowers the objective.
  */
-function turningPairShapes(tau: number[], nSeg: number): boolean[] {
+function turningPairShapes(tau: readonly number[], nSeg: number): boolean[] {
   const pinned = new Array<boolean>(nSeg).fill(false);
   for (let b = 1; b < nSeg; b++) {
     if (!isTurningBoundary(tau, b)) continue;
@@ -1097,7 +1112,7 @@ function turningPairShapes(tau: number[], nSeg: number): boolean[] {
   return pinned;
 }
 
-function isTurningBoundary(tau: number[], b: number): boolean {
+function isTurningBoundary(tau: readonly number[], b: number): boolean {
   const leftDelta = tau[b] - tau[b - 1];
   const rightDelta = tau[b + 1] - tau[b];
   if (leftDelta * rightDelta >= 0) return false;
@@ -1114,15 +1129,16 @@ function isTurningBoundary(tau: number[], b: number): boolean {
  *
  * This yields an anti-symmetric pair around 0.5 and avoids cusp-like joints.
  */
-function regularizeTurningPairs(shapes: number[], tau: number[]): void {
-  const nSeg = shapes.length;
-  if (nSeg < 2) return;
+function regularizeTurningPairs(shapes: readonly number[], tau: readonly number[]): number[] {
+  const result = shapes.slice();
+  const nSeg = result.length;
+  if (nSeg < 2) return result;
 
   for (let b = 1; b < nSeg; b++) {
     if (!isTurningBoundary(tau, b)) continue;
 
-    const left = shapes[b - 1];
-    const right = shapes[b];
+    const left = result[b - 1];
+    const right = result[b];
 
     const det = 1 + 2 * TURNING_PAIR_COUPLING;
     let regLeft =
@@ -1138,9 +1154,10 @@ function regularizeTurningPairs(shapes: number[], tau: number[]): void {
     regLeft = Math.min(regLeft, 0.5 - TURNING_EPS);
     regRight = Math.max(regRight, 0.5 + TURNING_EPS);
 
-    shapes[b - 1] = regLeft;
-    shapes[b] = regRight;
+    result[b - 1] = regLeft;
+    result[b] = regRight;
   }
+  return result;
 }
 
 /**
@@ -1158,9 +1175,9 @@ function regularizeTurningPairs(shapes: number[], tau: number[]): void {
  * error is infinite and its direction stays `auto` — two points always make a perfect line, and
  * a perfect line is not evidence.
  */
-function inferSegmentDirections(segData: DataPoint[][]): TempoDirection[] {
+function inferSegmentDirections(segments: readonly FitSegment[]): TempoDirection[] {
   const directions: TempoDirection[] = [];
-  for (const data of segData) {
+  for (const { points: data } of segments) {
     if (data.length < 2) {
       directions.push('auto');
       continue;
@@ -1178,14 +1195,15 @@ function inferSegmentDirections(segData: DataPoint[][]): TempoDirection[] {
 }
 
 function enforceDirectionConstraints(
-  tau: number[],
-  segData: DataPoint[][],
-  directions: TempoDirection[],
-): void {
-  if (directions.length === 0) return;
-  if (!directions.some((d) => d !== 'auto')) return;
+  tau: readonly number[],
+  segments: readonly FitSegment[],
+  directions: readonly TempoDirection[],
+): number[] {
+  const result = tau.slice();
+  if (directions.length === 0) return result;
+  if (!directions.some((d) => d !== 'auto')) return result;
 
-  const boundaryWeights = buildBoundaryWeights(segData, tau.length);
+  const boundaryWeights = buildBoundaryWeights(segments, result.length);
   const maxPasses = Math.max(6, directions.length * 4);
   for (let pass = 0; pass < maxPasses; pass++) {
     let changed = false;
@@ -1194,7 +1212,7 @@ function enforceDirectionConstraints(
       const direction = directions[k];
       changed =
         projectDirectionPair(
-          tau,
+          result,
           k,
           k + 1,
           direction,
@@ -1207,7 +1225,7 @@ function enforceDirectionConstraints(
       const direction = directions[k];
       changed =
         projectDirectionPair(
-          tau,
+          result,
           k,
           k + 1,
           direction,
@@ -1218,13 +1236,14 @@ function enforceDirectionConstraints(
 
     if (!changed) break;
   }
+  return result;
 }
 
-function buildBoundaryWeights(segData: DataPoint[][], nBoundaries: number): number[] {
-  const weights = new Array(nBoundaries).fill(1e-3);
-  for (let k = 0; k < segData.length; k++) {
+function buildBoundaryWeights(segments: readonly FitSegment[], nBoundaries: number): number[] {
+  const weights = new Array<number>(nBoundaries).fill(1e-3);
+  for (let k = 0; k < segments.length; k++) {
     let segWeight = 0;
-    for (const d of segData[k]) segWeight += d.weight;
+    for (const d of segments[k].points) segWeight += d.weight;
     const w = Math.max(1e-3, segWeight);
     weights[k] += w;
     weights[k + 1] += w;
@@ -1269,21 +1288,19 @@ function projectDirectionPair(
  *
  * Bounds first, then the direction constraints, then the turning-pair coupling — applied once,
  * identically, to every candidate the line search tries, so what the search compares is the
- * objective on states the fit could actually return. The direction projection used to run outside
- * the solve entirely, including once more after the loop had finished, where nothing measured
- * what it cost.
+ * objective on states the fit could actually return.
  */
 function projectState(
-  tau: number[],
-  shapes: number[],
-  segData: DataPoint[][],
-  directions: TempoDirection[],
-): void {
-  for (let i = 0; i < tau.length; i++) tau[i] = clamp(tau[i], MIN_TAU_BPM, MAX_TAU_BPM);
-  for (let k = 0; k < shapes.length; k++) shapes[k] = clamp(shapes[k], SHAPE_MIN, SHAPE_MAX);
-  enforceDirectionConstraints(tau, segData, directions);
-  for (let i = 0; i < tau.length; i++) tau[i] = clamp(tau[i], MIN_TAU_BPM, MAX_TAU_BPM);
-  regularizeTurningPairs(shapes, tau);
+  state: SolverState,
+  segments: readonly FitSegment[],
+  directions: readonly TempoDirection[],
+): SolverState {
+  const bounded = state.tau.map((t) => clamp(t, MIN_TAU_BPM, MAX_TAU_BPM));
+  const shapes = state.shapes.map((s) => clamp(s, SHAPE_MIN, SHAPE_MAX));
+  const tau = enforceDirectionConstraints(bounded, segments, directions).map((t) =>
+    clamp(t, MIN_TAU_BPM, MAX_TAU_BPM),
+  );
+  return { tau, shapes: regularizeTurningPairs(shapes, tau) };
 }
 
 /**
@@ -1320,29 +1337,27 @@ function projectState(
  * @returns how far the tempos and the shapes moved — zero when no step improved the objective.
  */
 function jointGaussNewtonStep(
-  segOnsets: SegmentOnset[][],
-  tau: number[],
-  tauInit: number[],
-  shapes: number[],
-  spanTicks: number[],
+  segments: readonly FitSegment[],
+  state: SolverState,
+  tauInit: readonly number[],
   beatLength: number,
-  segData: DataPoint[][],
-  directions: TempoDirection[],
-  objective: (tau: number[], shapes: number[]) => number,
+  directions: readonly TempoDirection[],
+  objective: (candidate: SolverState) => number,
 ): { tau: number; shape: number } {
+  const { tau, shapes } = state;
   const nSeg = shapes.length;
   const m = 2 * nSeg + 1;
   const pinned = turningPairShapes(tau, nSeg);
 
-  // Symmetric band storage: band[d][i] is the entry at (i, i + d).
-  const band = [new Float64Array(m), new Float64Array(m), new Float64Array(m)];
+  const band: Band = [new Float64Array(m), new Float64Array(m), new Float64Array(m)];
   const gradient = new Float64Array(m);
 
   for (let k = 0; k < nSeg; k++) {
-    const onsets = segOnsets[k];
+    const seg = segments[k];
+    const onsets = seg.onsets;
     if (onsets.length === 0) continue;
 
-    const span = spanTicks[k];
+    const span = seg.spanTicks;
     const t0 = tau[k],
       t1 = tau[k + 1],
       im = shapes[k];
@@ -1424,9 +1439,10 @@ function jointGaussNewtonStep(
   const scaledDiagonal = Float64Array.from(band[0]);
   for (let i = 0; i < m; i++) scaledDiagonal[i] += RANK_FLOOR;
 
-  const before = objective(tau, shapes);
+  const before = objective(state);
   const candidateTau = new Array<number>(tau.length);
   const candidateShapes = new Array<number>(nSeg);
+  const candidate: SolverState = { tau: candidateTau, shapes: candidateShapes };
 
   for (let damping = GN_DAMPING_MIN; damping <= GN_DAMPING_MAX; damping *= GN_DAMPING_ESCALATION) {
     for (let i = 0; i < m; i++) band[0][i] = scaledDiagonal[i] + damping;
@@ -1437,18 +1453,18 @@ function jointGaussNewtonStep(
     for (let trial = 0, stepSize = 1; trial <= LINE_SEARCH_HALVINGS; trial++, stepSize /= 2) {
       for (let i = 0; i < tau.length; i++) candidateTau[i] = tau[i] + stepSize * delta[2 * i];
       for (let k = 0; k < nSeg; k++) candidateShapes[k] = shapes[k] + stepSize * delta[2 * k + 1];
-      projectState(candidateTau, candidateShapes, segData, directions);
+      const projected = projectState(candidate, segments, directions);
 
-      if (objective(candidateTau, candidateShapes) < before) {
+      if (objective(projected) < before) {
         let tauMoved = 0,
           shapeMoved = 0;
         for (let i = 0; i < tau.length; i++) {
-          tauMoved = Math.max(tauMoved, Math.abs(candidateTau[i] - tau[i]));
-          tau[i] = candidateTau[i];
+          tauMoved = Math.max(tauMoved, Math.abs(projected.tau[i] - tau[i]));
+          tau[i] = projected.tau[i];
         }
         for (let k = 0; k < nSeg; k++) {
-          shapeMoved = Math.max(shapeMoved, Math.abs(candidateShapes[k] - shapes[k]));
-          shapes[k] = candidateShapes[k];
+          shapeMoved = Math.max(shapeMoved, Math.abs(projected.shapes[k] - shapes[k]));
+          shapes[k] = projected.shapes[k];
         }
         return { tau: tauMoved, shape: shapeMoved };
       }
@@ -1467,41 +1483,30 @@ function jointGaussNewtonStep(
  * so, to keep the loop going — or leaves the fit exactly where it was.
  */
 function refreshShapes(
-  segOnsets: SegmentOnset[][],
-  tau: number[],
-  shapes: number[],
-  spanTicks: number[],
+  segments: readonly FitSegment[],
+  state: SolverState,
   beatLength: number,
-  segData: DataPoint[][],
-  directions: TempoDirection[],
-  objective: (tau: number[], shapes: number[]) => number,
+  directions: readonly TempoDirection[],
+  objective: (candidate: SolverState) => number,
 ): boolean {
-  const before = objective(tau, shapes);
-  const candidateTau = tau.slice();
+  const { tau, shapes } = state;
+  const before = objective(state);
   const candidateShapes = shapes.slice();
 
   for (let k = 0; k < shapes.length; k++) {
-    candidateShapes[k] = optimizeShape(
-      segOnsets[k],
-      tau[k],
-      tau[k + 1],
-      spanTicks[k],
-      beatLength,
-      shapes[k],
-    );
+    candidateShapes[k] = optimizeShape(segments[k], tau[k], tau[k + 1], beatLength, shapes[k]);
   }
-  projectState(candidateTau, candidateShapes, segData, directions);
+  const projected = projectState({ tau, shapes: candidateShapes }, segments, directions);
 
-  if (!(objective(candidateTau, candidateShapes) < before - SHAPE_REFRESH_GAIN)) return false;
+  if (!(objective(projected) < before - SHAPE_REFRESH_GAIN)) return false;
 
-  for (let i = 0; i < tau.length; i++) tau[i] = candidateTau[i];
-  for (let k = 0; k < shapes.length; k++) shapes[k] = candidateShapes[k];
+  for (let i = 0; i < tau.length; i++) tau[i] = projected.tau[i];
+  for (let k = 0; k < shapes.length; k++) shapes[k] = projected.shapes[k];
   return true;
 }
 
 /**
- * Cholesky solve of a symmetric band system with half-bandwidth two, stored as
- * `band[d][i] = A(i, i + d)`.
+ * Cholesky solve of a symmetric band system with half-bandwidth two.
  *
  * Returns `null` where the factorisation meets a non-positive pivot, which says the damped system
  * is not positive definite and the caller should damp harder — the alternative, pushing a
@@ -1509,11 +1514,11 @@ function refreshShapes(
  * nobody can use as though it were an answer. Band storage is left untouched so the retry can
  * reuse it.
  */
-function solveBanded(band: Float64Array[], rhs: Float64Array): Float64Array | null {
+function solveBanded(band: Band, rhs: Float64Array): Float64Array | null {
   const n = rhs.length;
   const p = band.length - 1;
   // R is upper triangular with RᵀR = A, in the same band storage.
-  const r = band.map(() => new Float64Array(n));
+  const r: Band = [new Float64Array(n), new Float64Array(n), new Float64Array(n)];
 
   for (let i = 0; i < n; i++) {
     for (let j = i; j <= Math.min(i + p, n - 1); j++) {
