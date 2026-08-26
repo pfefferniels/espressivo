@@ -29,6 +29,7 @@ import {
   head,
   isNonEmpty,
   last,
+  type NonEmptyArray,
   numberAt,
   pairwise,
   withNext,
@@ -492,27 +493,30 @@ function fitSegments(
   if (requested.length === 0) return [];
 
   const chainSegments = normalizeChainedSegments(requested);
-  if (chainSegments.length === 0) return [];
+  if (!isNonEmpty(chainSegments)) return [];
 
-  const chain: number[] = [chainSegments[0].from];
-  for (const seg of chainSegments) chain.push(seg.to);
+  const chain: NonEmptyArray<number> = [
+    head(chainSegments).from,
+    ...chainSegments.map((seg) => seg.to),
+  ];
 
-  const beatLength = chainSegments[0].beatLength;
+  const beatLength = head(chainSegments).beatLength;
   const beatLengthTicks = beatLengthInTicks(beatLength);
 
   const fullRange: TempoSegment = {
-    from: chain[0],
-    to: chain[chain.length - 1],
+    from: head(chain),
+    to: last(chain),
     beatLength,
   };
   const onsetPairs = extractOnsetPairs(fullRange, notes, silentOnsets);
-  if (onsetPairs.length < 2) return [];
+  // the count is the real bound; `isNonEmpty` restates it in the form the ends below read from.
+  if (onsetPairs.length < 2 || !isNonEmpty(onsetPairs)) return [];
 
   const tempoPoints = computeTempoPoints(onsetPairs, beatLengthTicks);
 
   if (tempoPoints.length < 1) {
-    const elapsed = onsetPairs[onsetPairs.length - 1].onsetMs - onsetPairs[0].onsetMs;
-    const distTicks = onsetPairs[onsetPairs.length - 1].date - onsetPairs[0].date;
+    const elapsed = last(onsetPairs).onsetMs - head(onsetPairs).onsetMs;
+    const distTicks = last(onsetPairs).date - head(onsetPairs).date;
     const bpm = (60000 * distTicks) / (elapsed * beatLengthTicks);
     return chainSegments.map((seg) => ({
       id: `tempo_${v4()}`,
@@ -528,9 +532,10 @@ function fitSegments(
   const nSeg = chainSegments.length;
   const segPoints = partitionData(chain, tempoPoints);
   const segOnsets = partitionOnsets(chain, onsetPairs, boundaryTimesMs, beatLengthTicks);
+  // both partitions are built from `pairwise(chain)`, so each holds one entry per chain segment.
   const segments: FitSegment[] = chainSegments.map((seg, k) => ({
-    onsets: segOnsets[k],
-    points: segPoints[k],
+    onsets: elementAt(segOnsets, k, 'the onsets per segment'),
+    points: elementAt(segPoints, k, 'the data points per segment'),
     spanTicks: seg.to - seg.from,
   }));
   const inferredDirections = inferSegmentDirections(segments);
@@ -541,15 +546,16 @@ function fitSegments(
   const seededTau = enforceDirectionConstraints(tauInit, segments, inferredDirections);
   const seededShapes = new Array<number>(nSeg).fill(0.5);
 
+  // a candidate carries one shape per segment and one tempo per boundary, so `k + 1` is the
+  // segment's arrival tempo and stays in range.
   const objective = (candidate: SolverState): number => {
     let total = 0;
-    for (let k = 0; k < nSeg; k++) {
-      const seg = segments[k];
+    for (const [k, seg] of segments.entries()) {
       total += segmentSse(
         seg.onsets,
-        candidate.tau[k],
-        candidate.tau[k + 1],
-        candidate.shapes[k],
+        numberAt(candidate.tau, k, 'the boundary tempos'),
+        numberAt(candidate.tau, k + 1, 'the boundary tempos'),
+        numberAt(candidate.shapes, k, 'the segment shapes'),
         seg.spanTicks,
         beatLength,
       );
@@ -578,11 +584,11 @@ function fitSegments(
   // search runs again if the joint step stalls, and only a shape that lowers the objective is
   // taken.
 
-  for (let k = 0; k < nSeg; k++) {
+  for (const [k, segment] of segments.entries()) {
     seededShapes[k] = optimizeShape(
-      segments[k],
-      seededTau[k],
-      seededTau[k + 1],
+      segment,
+      numberAt(seededTau, k, 'the boundary tempos'),
+      numberAt(seededTau, k + 1, 'the boundary tempos'),
       beatLength,
       undefined,
     );
@@ -620,21 +626,23 @@ function fitSegments(
   // ── Build results ──
 
   const results: TempoWithEndDate[] = [];
-  for (let k = 0; k < nSeg; k++) {
-    const hasTransition = Math.abs(best.tau[k] - best.tau[k + 1]) > 0.01;
+  for (const [k, segment] of chainSegments.entries()) {
+    const departure = numberAt(best.tau, k, 'the boundary tempos');
+    const arrival = numberAt(best.tau, k + 1, 'the boundary tempos');
+    const hasTransition = Math.abs(departure - arrival) > 0.01;
 
     const t: TempoWithEndDate = {
       id: `tempo_${v4()}`,
-      bpm: best.tau[k],
-      date: chainSegments[k].from,
-      endDate: chainSegments[k].to,
+      bpm: departure,
+      date: segment.from,
+      endDate: segment.to,
       beatLength,
       ...(hasTransition
         ? {
-            transitionTo: best.tau[k + 1],
+            transitionTo: arrival,
             // Keep the optimized segment shape, so chain-level smoothing
             // survives into the exported meanTempoAt parameter.
-            meanTempoAt: best.shapes[k],
+            meanTempoAt: numberAt(best.shapes, k, 'the segment shapes'),
           }
         : {}),
     };
