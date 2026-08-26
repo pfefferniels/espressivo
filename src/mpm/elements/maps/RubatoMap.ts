@@ -5,7 +5,7 @@ import type { KeyValue } from '../../../supplementary/KeyValue.js';
 import { GenericMap } from './GenericMap.js';
 import { type Result } from '../../../prelude/index.js';
 import { type MpmParseError } from '../parseError.js';
-import { resolveRubato, type Rubato, type RubatoDeclaration } from './data/rubato.js';
+import { resolveRubato, rubatoAt, type Rubato, type RubatoDeclaration } from './data/rubato.js';
 import { elementAt, mapPresent, optional } from '../../../prelude/index.js';
 import {
   patchAttribute,
@@ -202,29 +202,6 @@ export class RubatoMap extends GenericMap {
   }
 
   /**
-   * Warp one date through the rubato curve.
-   *
-   * `localDate` is the position within the current frame (the `%` is what makes the
-   * frame repeat); the power curve of exponent `intensity` remaps it into the window
-   * between `lateStart` and `earlyEnd`; and `date + d - localDate` puts the warped
-   * offset back onto the frame's absolute start. An `intensity` of 1 is the identity
-   * over the full window, above 1 delays, below 1 rushes.
-   *
-   * RENDERING MATH — evaluation order is load-bearing. In particular
-   * `Math.pow(localDate / rd.frameLength, rd.intensity)` must not become `**`, and the
-   * final `date + d - localDate` must not be regrouped: every performed onset in the
-   * output depends on the exact bits this returns.
-   */
-  private static computeRubatoTransformation(date: number, rd: Rubato): number {
-    const localDate = (date - rd.startDate) % rd.frameLength;
-    const d =
-      (Math.pow(localDate / rd.frameLength, rd.intensity) * (rd.earlyEnd - rd.lateStart) +
-        rd.lateStart) *
-      rd.frameLength;
-    return date + d - localDate;
-  }
-
-  /**
    * Warp `date.perf` (and the corresponding end dates) of every entry of `map` that
    * falls under a rubato instruction. Mutates the map in place; nothing is returned.
    *
@@ -237,6 +214,11 @@ export class RubatoMap extends GenericMap {
    * Both loops `break` rather than `continue` when they run past the end of the span or
    * past the single frame of a non-looping rubato — the entries are date-ordered, so the
    * first one out of range means all the rest are too.
+   *
+   * The warp itself is {@link rubatoAt}, which used to be a private static here. It moved to
+   * `./data/rubato.js`, beside `resolveRubato` and beside the three sibling evaluators, when a
+   * caller outside the package needed to know where a rubato puts a note without rendering one
+   * — a private copy is how the other three drifted before they were shared.
    */
   renderRubatoToMap(map: GenericMap | null): void {
     if (map === null || this.size() === 0) return;
@@ -256,9 +238,7 @@ export class RubatoMap extends GenericMap {
 
         const dateAtt = attribute('date.perf', mapEntry.value);
         if (dateAtt !== null)
-          dateAtt.setValue(
-            String(RubatoMap.computeRubatoTransformation(parseFloat(dateAtt.getValue()), rd)),
-          );
+          dateAtt.setValue(String(rubatoAt(rd, parseFloat(dateAtt.getValue()))));
 
         let dateEndAtt = attribute('date.end.perf', mapEntry.value);
         if (dateEndAtt !== null) {
@@ -281,8 +261,7 @@ export class RubatoMap extends GenericMap {
       for (const pd of pendingDurations) {
         const dateEnd = pd.key;
         if (dateEnd >= rd.endDate || (!rd.loop && dateEnd >= rd.startDate + rd.frameLength)) break;
-        if (dateEnd >= rd.startDate)
-          pd.value.setValue(String(RubatoMap.computeRubatoTransformation(dateEnd, rd)));
+        if (dateEnd >= rd.startDate) pd.value.setValue(String(rubatoAt(rd, dateEnd)));
         ++drained;
       }
       if (drained > 0) pendingDurations.splice(0, drained);
