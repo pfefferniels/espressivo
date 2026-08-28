@@ -427,6 +427,23 @@ export type {
   TransitionShape,
   TransitionSpan,
 } from './mpm/curveFit.js';
+
+// The same question asked of a `<tempo>`: which `@meanTempoAt` explains these tempi, and which
+// one makes the span last this long. Both evaluate through `resolveSpan`, so what is fitted is
+// the shape the renderer draws — a consumer doing either by hand fits a curve it believes in.
+//
+// Sample dates are ticks. `tempoAt` reads a fraction of the tick span, and a series placed on a
+// fraction of elapsed seconds describes a different curve; `dateAtMilliseconds` above is the
+// conversion for a caller holding times.
+export { fitMeanTempoAt, meanTempoAtForElapsedTime } from './mpm/tempoFit.js';
+export type {
+  FitMeanTempoOptions,
+  FittedMeanTempo,
+  MeanTempoForElapsedOptions,
+  TempoSample,
+  TempoTransitionSpan,
+  TimedTempoTransitionSpan,
+} from './mpm/tempoFit.js';
 export type { Rubato, RubatoSpan, RubatoDeclaration } from './mpm/elements/maps/data/rubato.js';
 export {
   articulateNote,

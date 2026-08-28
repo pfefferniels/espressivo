@@ -250,14 +250,6 @@ cannot disagree with the audio.
 
 The following features are new compared to stock meico.
 
-### MPM v3 ornamentation
-
-An `<ornament>` carries the notes it plays, and the renderer generates them, so a trill leaves the
-pipeline as sounding notes — each one carrying provenance back to the ornament and to the score
-note it decorates. On by default, switchable off with `PerformOptions.expandOrnaments`.
-
-→ [`docs/ornamentation.md`](docs/ornamentation.md), [PARITY.md §6](PARITY.md)
-
 ### Expression transforms (musical exaggeration)
 
 meico applies an MPM to a score; it never transforms the MPM. `exaggerateMpm` and `spotlightMpm`
@@ -325,6 +317,18 @@ which fixes both.
 Every MSM element a render pass touches gains a space-separated list of the performance
 instructions that moved it, in `@modified`. A MIDI text event before each note-on carries that
 note's `xml:id` as well, so an exported `.mid` can be traced back to the source encoding.
+
+### Fitting measurements back to instructions
+
+The renderer runs one way: instruction, value at a date, millisecond. Analysis and editing run the
+other way, and nothing here has a meico counterpart. `dateAtMilliseconds` says which tick a
+millisecond falls on — the exact inverse of `millisecondsAt`, so it inverts the curve the renderer
+draws rather than a closed form of the curve someone believed was there. `fitTransitionCurve` says
+which `@curvature` and `@protraction` explain a series of observed values, by simulated annealing
+over a surface that is not convex; the randomness is the caller's, so a seeded generator fits the
+same points the same way every time. `fitMeanTempoAt` asks the same of a `<tempo>`, and
+`meanTempoAtForElapsedTime` finds the shape that makes a span last a given time — or answers
+`null`, because what to do when no shape reaches it is a decision about the document.
 
 ## Provenance
 
