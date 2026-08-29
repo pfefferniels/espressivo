@@ -1,6 +1,6 @@
 {
   "name": "espressivo",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "MEI / MSM+MPM => expressive MIDI. An idiomatic TypeScript port of the Java meico library, proven equivalent to it.",
   "keywords": [
     "mei",
