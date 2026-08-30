@@ -111,11 +111,7 @@ same points the same way every time. `fitMeanTempoAt` asks the same of a `<tempo
 
 ## API reference
 
-Every export, generated from the source: <https://pfefferniels.github.io/espressivo/>. It covers
-the plain-data facade and the class API underneath it — `Mei`, `Msm`, `Mpm`, `Performance`, `Midi`
-and the MPM element tree — which is what you want when you need to read, build or edit an MPM
-rather than apply one. The site is rebuilt on release, so it documents the published version;
-`npm run docs` builds it locally.
+You can find the full API documentation [here](https://pfefferniels.github.io/espressivo/).
 
 ## Provenance
 
