@@ -177,6 +177,8 @@ export default tseslint.config(
       'dist/**',
       'coverage/**',
       'node_modules/**',
+      // typedoc output; its assets ship their own bundled js
+      'api-docs/**',
       // Agent worktrees are checkouts of this same repo nested inside it; linting them lints
       // another branch's work-in-progress and attributes it here.
       '.claude/worktrees/**',

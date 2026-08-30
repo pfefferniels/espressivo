@@ -50,6 +50,34 @@ jobs:
       - run: npm run verify
       - run: npm publish
 
+  # the site documents the released version, so it deploys after the publish it describes.
+  # a failure here leaves the tag published and the site one version behind, which is the
+  # right way round.
+  docs:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run docs
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: api-docs
+      - id: deploy
+        uses: actions/deploy-pages@v5
+
   github-release:
     needs: publish
     runs-on: ubuntu-latest

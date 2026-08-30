@@ -5,6 +5,7 @@
 node_modules
 dist
 coverage
+api-docs
 .DS_Store
 *.tsbuildinfo
 .claude/

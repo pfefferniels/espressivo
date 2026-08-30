@@ -27,3 +27,16 @@ jobs:
       - run: npm ci
       # build, tests typecheck, strict + lint ratchets, format:check, vitest — the whole gate
       - run: npm run verify
+
+  # the docs only build at release time, so without this a broken reference surfaces
+  # after the tag is out
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run docs

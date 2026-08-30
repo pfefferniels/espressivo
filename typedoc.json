@@ -1,0 +1,12 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/index.ts"],
+  "out": "api-docs",
+  "readme": "none",
+  "includeVersion": true,
+  "hostedBaseUrl": "https://pfefferniels.github.io/espressivo/",
+  "navigationLinks": {
+    "Guides": "https://github.com/pfefferniels/espressivo#readme",
+    "GitHub": "https://github.com/pfefferniels/espressivo"
+  }
+}

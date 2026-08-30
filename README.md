@@ -1,6 +1,6 @@
 # espressivo
 
-espressivo is a TypeScript library for creating, transforming, rendering and comparing
+espressivo is a TypeScript library for creating, fitting, transforming, rendering and comparing
 [Music Performance Markup](https://axelberndt.github.io/MPM/). The rendering pipeline is in large
 part a TypeScript-idiomatic port of the Java library [meico](https://github.com/cemfi/meico) by
 Axel Berndt and others. Apart from a few [deliberate differences](PARITY.md), the pipeline is
@@ -8,25 +8,6 @@ Axel Berndt and others. Apart from a few [deliberate differences](PARITY.md), th
 
 An MEI is converted to an MSM — what is played — and the MPM saying _how_ it is played is yours
 to supply.
-
-```mermaid
-flowchart LR
-  MEI["MEI"] --> CONVERT(["convert"])
-  CONVERT --> MSM["MSM<br/>score"]
-  MSM --> PERFORM(["perform"])
-  MPM["MPM<br/>performance<br/><i>supplied</i>"] --> PERFORM
-  PERFORM --> AUG["augmented MSM"]
-  AUG --> RENDER(["render"])
-  RENDER --> MIDI["MIDI"]
-```
-
-On top of the port it adds and changes some things compared to meico: parametric expression
-transforms (musical "exaggeration"), performance comparison, a way to encode sustain pedalling and
-other continuous movements, an `@modified` attribute that tracks which instruction took effect on
-which note, and a plain-data facade over the whole pipeline.
-[What espressivo adds to meico](#what-espressivo-adds-to-meico) summarizes each in a paragraph.
-espressivo also implements the MPM v3 ornamentation additions as well as meico's
-one-part-per-voice feature.
 
 ## Install
 
@@ -38,6 +19,19 @@ espressivo runs in Node and in the browser. Requires Node ≥ 22 on the server; 
 Chrome 122, Firefox 131 or Safari 18.4 and up.
 
 ## Quick start
+
+### Rendering
+
+```mermaid
+flowchart LR
+  MEI["MEI"] --> CONVERT(["convert"])
+  CONVERT --> MSM["MSM<br/>score"]
+  MSM --> PERFORM(["perform"])
+  MPM["MPM<br/>performance<br/><i>supplied</i>"] --> PERFORM
+  PERFORM --> AUG["augmented MSM"]
+  AUG --> RENDER(["render"])
+  RENDER --> MIDI["MIDI"]
+```
 
 Score plus performance to expressive MIDI:
 
@@ -52,201 +46,6 @@ const mpm = readFileSync('sonata.mpm', 'utf-8');
 
 writeFileSync('sonata.mid', renderExpressiveMidi({ msm: movement.msm, mpm }));
 ```
-
-`convertMeiToMsm` returns **one MSM per `mdiv`** — one per movement — so a multi-movement MEI
-gives you an array to iterate. To hear the score as written instead, with no performance applied,
-use `renderMidi({ msm })`. `renderExpressiveMidi` needs either an MPM or an MSM that has already
-been performed.
-
-### Per-note performance data
-
-If you want the performance as data rather than as a MIDI file — to train on it, to draw it, to
-feed a sampler — `performMsmToData` gives you plain objects:
-
-```ts
-import { readFileSync } from 'node:fs';
-import { convertMeiToMsm, performMsmToData } from 'espressivo';
-
-const [movement] = convertMeiToMsm(readFileSync('multi_part.mei', 'utf-8'));
-const data = performMsmToData({
-  msm: movement.msm,
-  mpm: readFileSync('multi_part.mpm', 'utf-8'),
-});
-
-for (const part of data.parts) {
-  console.log(
-    `${part.name ?? '(unnamed)'} — channel ${part.midiChannel}, ${part.notes.length} notes`,
-  );
-  for (const note of part.notes) {
-    console.log(note.id, note.pitch, note.velocity, note.milliseconds.date, note.milliseconds.end);
-  }
-}
-```
-
-For `multi_part.mei` that prints two parts — `Violin` on channel 0 with 6 notes, `Cello` on
-channel 1 with 4 — and a first note of:
-
-```json
-{
-  "id": "n1",
-  "pitch": 76,
-  "date": 0,
-  "duration": 720,
-  "velocity": 83,
-  "milliseconds": { "date": 0, "end": 570 }
-}
-```
-
-`date` and `duration` are **symbolic** MSM ticks (the score as written); `milliseconds.date` and
-`milliseconds.end` are the **performed** times. Sub-note dynamics and pedalling come back
-alongside the notes as `part.controlChanges` — a `channelVolume` stream (CC 7) and a `position`
-stream (CC 64/67) with one point per sampled value.
-
-Each note carries six more fields than are shown above — `ornamented`, `ornamentRef`,
-`ornamentSource`, `ornamentSlot`, `ornamentPass` and `ornamentAnchor` — which say whether an
-ornament produced this note and which one, and are `false`/`null` on an unornamented note. They
-are the subject of [`docs/ornamentation.md`](docs/ornamentation.md).
-
-### Choosing a performance, and the pipeline stage by stage
-
-An MPM can carry several performances. The stages are separately callable, and every document
-crosses the boundary as **XML text**, so you can store or ship any intermediate result:
-
-```ts
-import { readFileSync } from 'node:fs';
-import { convertMeiToMsm, extractPerformanceData, listPerformances, performMsm } from 'espressivo';
-
-const [movement] = convertMeiToMsm(readFileSync('sonata.mei', 'utf-8'));
-const mpm = readFileSync('sonata.mpm', 'utf-8');
-
-for (const p of listPerformances(mpm)) {
-  console.log(`${p.index}: ${p.name} @ ${p.ppq} ppq`);
-}
-
-const augmentedMsm = performMsm(
-  { msm: movement.msm, mpm },
-  {
-    performance: 'Ansermet 1954', // name or index; default is 0
-    seed: 42, // base seed for imprecision — see the caveat below
-    movementSampleMaxStep: 0.05, // denser pedalling/movement sampling
-  },
-);
-
-const data = extractPerformanceData(augmentedMsm);
-```
-
-`performMsmToData({ msm, mpm }, options)` is the same thing without the serialize/re-parse in the
-middle, and is tested to produce exactly what the two-step path produces.
-
-### Errors
-
-The facade validates its inputs and throws typed errors — it never returns `null`:
-
-```ts
-import { convertMeiToMsm, EmptyDocumentError, MeicoError, ParseError } from 'espressivo';
-
-try {
-  convertMeiToMsm('<not-mei />');
-} catch (error) {
-  if (error instanceof ParseError) console.error('not a well-formed MEI document');
-  else if (error instanceof EmptyDocumentError) console.error('nothing to convert');
-  else if (error instanceof MeicoError) console.error(error.message);
-  else throw error;
-}
-```
-
-`MeicoError` is the root of all of them; `ParseError`, `EmptyDocumentError`,
-`PerformanceNotFoundError`, `InvalidOptionError`, `SelectionNotFoundError`,
-`ComparisonEngineError`, `EngineInvariantError` and `MissingNodeError` are its subclasses.
-
-## The API
-
-Everything the facade takes and returns is **plain data**: strings, numbers, booleans, `null`,
-`Uint8Array`, and object literals of those. No class instances, no `Map`/`Set`, no getters, and no
-XML node ever crosses the boundary. Concretely, a result survives `structuredClone` and
-`postMessage` to a Web Worker, round-trips through `JSON.stringify`/`parse` (except the
-`Uint8Array` MIDI payloads), and is a fresh value on every call, so React-style `===`
-memoization works.
-
-The pipeline — the part that reproduces meico:
-
-| Function                                        | In                 | Out                                    |
-| ----------------------------------------------- | ------------------ | -------------------------------------- |
-| `convertMeiToMsm(mei, options?)`                | MEI text           | one `{ index, title, msm }` per `mdiv` |
-| `listPerformances(mpm)`                         | MPM text           | `{ index, name, ppq }[]`               |
-| `performMsm({ msm, mpm }, options?)`            | MSM + MPM text     | augmented MSM text                     |
-| `extractPerformanceData(augmentedMsm)`          | augmented MSM text | `PerformanceData`                      |
-| `performMsmToData({ msm, mpm }, options?)`      | MSM + MPM text     | `PerformanceData`                      |
-| `renderMidi({ msm }, options?)`                 | MSM text           | `Uint8Array` — the score as written    |
-| `renderExpressiveMidi({ msm, mpm? }, options?)` | MSM (+ MPM) text   | `Uint8Array` — as performed            |
-
-The additions, none of which has a meico counterpart:
-
-| Function                               | In               | Out                                                   |
-| -------------------------------------- | ---------------- | ----------------------------------------------------- |
-| `exaggerateMpm(mpm, options)`          | MPM text         | `{ mpm, report }` — the same MPM, turned up           |
-| `spotlightMpm(mpm, options)`           | MPM text         | the above `+ { spared, resolvedIds }`                 |
-| `canonicalMpm(mpm)`                    | MPM text         | MPM text — parsed and re-serialized                   |
-| `weightedFactors(s, weights)`          | scalar + weights | a factor per dimension                                |
-| `compareMpm({ a, b?, msm?, … })`       | two performances | `{ report }` — distance, dimensions, segments, scape  |
-| `diffMpm({ a, b?, msm?, … })`          | two performances | `{ report }` — ranked edit scripts and what they cost |
-| `compareMpmCorpus({ items, msm?, … })` | N performances   | `{ report }` — matrices, clusters, MDS embedding      |
-| `neutralMpm(options?)`                 | `{ ppq? }`       | MPM text — the documented empty performance           |
-
-Options for the conversion and rendering entry points, all optional:
-
-- **`ConvertOptions`** — `ppq` (tick grid floor, default 720, raised automatically if the source
-  needs a finer grid), `dontUseChannel10`, `ignoreExpansions`, `cleanup`, `sourceName` (the name
-  the class API would derive from a file path — an MEI with no `<title>` titles its movement from
-  it, so it reaches `<msm title>`).
-- **`PerformOptions`** — `performance` (name or index), `seed`, `movementSampleMaxStep`,
-  `expandOrnaments` (let the MPM's ornaments generate their notes — default true).
-- **`MidiOptions`** — `generateProgramChanges`; `renderMidi` also takes `bpm` (default 120).
-
-The transforms' and the comparison's options are documented with the features themselves, in
-[`docs/expression.md`](docs/expression.md) and [`docs/comparison.md`](docs/comparison.md).
-
-> **`seed` is not a promise of reproducible output.** Where two imprecision offsets land on the
-> same millisecond date, the interior picks which one keeps its value with a bare `Math.random()`
-> and re-rolls the rest through an unseeded generator — faithfully, from
-> `ImprecisionMap.java:845,894`. A seeded render is reproducible only while no two offsets share a
-> date, which for polyphonic input is often false. See [PARITY.md §4](PARITY.md).
-
-### The class API underneath
-
-The port's interior — `Mei`, `Msm`, `Mpm`, `Performance`, `Midi` and the whole MPM element tree —
-is exported too, and is what you want when you need to _read_, _build_ or _edit_ MPM rather than
-just apply it. It mirrors meico's Java classes closely enough that the Java documentation applies:
-
-```ts
-import { readFileSync } from 'node:fs';
-import { Mei, Mei2MsmConverter, Mpm } from 'espressivo';
-
-const mei = Mei.fromXml(readFileSync('sonata.mei', 'utf-8'));
-mei.setFile('sonata.mei');
-
-const [msm] = new Mei2MsmConverter(720, true, false, true).convert(mei); // Msm[]
-const mpm = new Mpm(readFileSync('sonata.mpm', 'utf-8'));
-
-const performance = mpm.getPerformance(0);
-if (performance === null) throw new Error('this MPM has no performance');
-
-const midi = msm.exportExpressiveMidi(performance);
-const bytes = midi?.exportMidi() ?? null;
-```
-
-**Reading an MPM for display is the other job this layer does**, and the one the facade
-deliberately does not: drawing a performance's instructions on a timeline, charting what one
-`<tempo>` does across its span, telling a user what they just clicked on. `getTempoDataOf` and
-friends resolve an instruction the way the renderer resolves it — style-relative names already
-numbers, absent attributes already defaulted, spans already closed — so a chart drawn from them
-cannot disagree with the audio.
-
-→ [`docs/reading.md`](docs/reading.md)
-
-## What espressivo adds to meico
-
-The following features are new compared to stock meico.
 
 ### Expression transforms (musical exaggeration)
 
@@ -298,24 +97,6 @@ Sapp's timescape over every position and timescale.
 
 → [`docs/comparison.md`](docs/comparison.md)
 
-### `<movementMap>`
-
-A `<movement>` encodes a continuous controller — the sustain pedal above all — as a position and a
-Bézier transition towards the next one, rather than as a binary down/up: half-pedalling, a gradual
-release, a shaped re-pedalling. The renderer samples the curve into a `positionMap`, which exports
-as CC 64 (`sustain`) or CC 67 (`soft`) events and comes back from `performMsmToData` as a
-`position` stream in `part.controlChanges`. Stock meico loses `@controller` on the way through
-and ignores `@curvature` and `@protraction` when rendering; espressivo follows the maintained fork,
-which fixes both.
-
-→ [PARITY.md §1](PARITY.md)
-
-### `@modified`
-
-Every MSM element a render pass touches gains a space-separated list of the performance
-instructions that moved it, in `@modified`. A MIDI text event before each note-on carries that
-note's `xml:id` as well, so an exported `.mid` can be traced back to the source encoding.
-
 ### Fitting measurements back to instructions
 
 The renderer runs one way: instruction, value at a date, millisecond. Analysis and editing run the
@@ -328,6 +109,14 @@ same points the same way every time. `fitMeanTempoAt` asks the same of a `<tempo
 `meanTempoAtForElapsedTime` finds the shape that makes a span last a given time — or answers
 `null`, because what to do when no shape reaches it is a decision about the document.
 
+## API reference
+
+Every export, generated from the source: <https://pfefferniels.github.io/espressivo/>. It covers
+the plain-data facade and the class API underneath it — `Mei`, `Msm`, `Mpm`, `Performance`, `Midi`
+and the MPM element tree — which is what you want when you need to read, build or edit an MPM
+rather than apply one. The site is rebuilt on release, so it documents the published version;
+`npm run docs` builds it locally.
+
 ## Provenance
 
 - **Upstream**: [cemfi/meico](https://github.com/cemfi/meico) by Axel Berndt (Paderborn
@@ -338,12 +127,6 @@ same points the same way every time. `fitMeanTempoAt` asks the same of a `<tempo
 - **Reference used for verification**: the fork
   [pfefferniels/meico](https://github.com/pfefferniels/meico). It provides the full suite of
   fixtures used to prove byte-equivalence of the generated outputs.
-
-### Scope
-
-This port covers **MEI / MSM + MPM ⇒ expressive MIDI** and nothing else. meico's MusicXML
-conversion, MIDI-to-MSM import, audio rendering and playback, chroma/pitch features and SVG output
-are deliberately absent. If you need those, use the Java library.
 
 ## Development
 
@@ -356,9 +139,8 @@ npm run test:coverage # scoped coverage (see vitest.config.ts)
 npm run lint          # eslint, type-aware
 npm run format        # prettier
 npm run build         # tsc; always preceded by a dist wipe, so no stale output can ship
+npm run docs          # typedoc; the API reference site, into api-docs/
 ```
-
-`npm run verify` does **not** run the formatter — `npx prettier --check .` is a separate step.
 
 ## License
 
