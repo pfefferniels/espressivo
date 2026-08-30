@@ -123,7 +123,8 @@ You can find the full API documentation [here](https://pfefferniels.github.io/es
 - **Reference used for verification**: the fork
   [pfefferniels/meico](https://github.com/pfefferniels/meico). It provides the full suite of
   fixtures used to prove byte-equivalence of the generated outputs.
-- **Disclosure**: all of the code base was written by agentic AI (Claude Code).
+
+**Disclosure**: all of the code base was written by agentic AI (Claude Code).
 
 ## Development
 
