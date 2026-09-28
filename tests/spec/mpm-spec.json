@@ -1,0 +1,1521 @@
+{
+  "format": "MPM",
+  "edition": "3.0.1",
+  "namespace": "http://www.cemfi.de/mpm/ns/1.0",
+  "source": {
+    "repository": "https://github.com/axelberndt/MPM.git",
+    "commit": "c50e42231dfa4e0a49ac4458a87ea0a95bd6fb6c",
+    "path": "src/mpm.odd"
+  },
+  "generatedBy": "scripts/fetch-mpm-spec.mjs",
+  "elements": {
+    "accentuation": {
+      "gloss": "accentuation",
+      "classes": [
+        "att.id",
+        "att.time.symbolic.beat",
+        "att.transition.from",
+        "att.transition.to",
+        "att.value.double"
+      ],
+      "attributes": {
+        "beat": {
+          "usage": "req",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "1.0"
+          }
+        },
+        "transition.from": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "-1.0",
+            "maxInclusive": "1.0"
+          }
+        },
+        "transition.to": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "-1.0",
+            "maxInclusive": "1.0"
+          }
+        },
+        "value": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "-1.0",
+            "maxInclusive": "1.0"
+          }
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [],
+      "empty": true
+    },
+    "accentuationPattern": {
+      "gloss": "accentuation pattern",
+      "classes": [
+        "att.id",
+        "att.loop",
+        "att.reference.name",
+        "att.scale",
+        "att.time.symbolic.date"
+      ],
+      "attributes": {
+        "date": {
+          "usage": "req",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          }
+        },
+        "loop": {
+          "usage": "opt",
+          "datatype": "boolean",
+          "default": "false"
+        },
+        "name.ref": {
+          "usage": "req",
+          "datatype": "string"
+        },
+        "scale": {
+          "usage": "req",
+          "datatype": "double"
+        },
+        "stickToMeasures": {
+          "usage": "opt",
+          "datatype": "boolean",
+          "default": "true"
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [],
+      "empty": true
+    },
+    "accentuationPatternDef": {
+      "gloss": "accentuation pattern definition",
+      "classes": ["att.id", "att.name", "att.time.symbolic.length", "model.defLike"],
+      "attributes": {
+        "length": {
+          "usage": "req",
+          "datatype": "double",
+          "facets": {
+            "minExclusive": "0.0"
+          }
+        },
+        "name": {
+          "usage": "req",
+          "datatype": "string"
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": ["accentuation"],
+      "empty": false
+    },
+    "articulation": {
+      "gloss": "articulation",
+      "classes": [
+        "att.articulationDef",
+        "att.id",
+        "att.reference.name",
+        "att.reference.noteid",
+        "att.time.symbolic.date"
+      ],
+      "attributes": {
+        "absoluteDelay": {
+          "usage": "opt",
+          "datatype": "double",
+          "default": "0.0"
+        },
+        "absoluteDelayMs": {
+          "usage": "opt",
+          "datatype": "double",
+          "default": "0.0"
+        },
+        "absoluteDuration": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          }
+        },
+        "absoluteDurationChange": {
+          "usage": "opt",
+          "datatype": "double",
+          "default": "0.0"
+        },
+        "absoluteDurationChangeMs": {
+          "usage": "opt",
+          "datatype": "double",
+          "default": "0.0"
+        },
+        "absoluteDurationMs": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          }
+        },
+        "absoluteVelocity": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          }
+        },
+        "absoluteVelocityChange": {
+          "usage": "opt",
+          "datatype": "double",
+          "default": "0.0"
+        },
+        "date": {
+          "usage": "req",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          }
+        },
+        "detuneCents": {
+          "usage": "opt",
+          "datatype": "double",
+          "default": "0.0"
+        },
+        "detuneHz": {
+          "usage": "opt",
+          "datatype": "double",
+          "default": "0.0"
+        },
+        "name.ref": {
+          "usage": "opt",
+          "datatype": null
+        },
+        "noteid": {
+          "usage": "opt",
+          "datatype": "anyURI"
+        },
+        "relativeDuration": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          },
+          "default": "1.0"
+        },
+        "relativeVelocity": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          },
+          "default": "1.0"
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [],
+      "empty": true
+    },
+    "articulationDef": {
+      "gloss": "articulation definition",
+      "classes": ["att.articulationDef", "att.id", "att.name", "model.defLike"],
+      "attributes": {
+        "absoluteDelay": {
+          "usage": "opt",
+          "datatype": "double",
+          "default": "0.0"
+        },
+        "absoluteDelayMs": {
+          "usage": "opt",
+          "datatype": "double",
+          "default": "0.0"
+        },
+        "absoluteDuration": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          }
+        },
+        "absoluteDurationChange": {
+          "usage": "opt",
+          "datatype": "double",
+          "default": "0.0"
+        },
+        "absoluteDurationChangeMs": {
+          "usage": "opt",
+          "datatype": "double",
+          "default": "0.0"
+        },
+        "absoluteDurationMs": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          }
+        },
+        "absoluteVelocity": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          }
+        },
+        "absoluteVelocityChange": {
+          "usage": "opt",
+          "datatype": "double",
+          "default": "0.0"
+        },
+        "detuneCents": {
+          "usage": "opt",
+          "datatype": "double",
+          "default": "0.0"
+        },
+        "detuneHz": {
+          "usage": "opt",
+          "datatype": "double",
+          "default": "0.0"
+        },
+        "name": {
+          "usage": "req",
+          "datatype": "string"
+        },
+        "relativeDuration": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          },
+          "default": "1.0"
+        },
+        "relativeVelocity": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          },
+          "default": "1.0"
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [],
+      "empty": true
+    },
+    "articulationMap": {
+      "gloss": "articulation map",
+      "classes": ["att.id", "model.mapLike"],
+      "attributes": {
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": ["articulation", "style"],
+      "empty": false
+    },
+    "articulationStyles": {
+      "gloss": "articulation style collection",
+      "classes": ["att.id", "model.styleCollectionLike"],
+      "attributes": {
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": ["styleDef"],
+      "empty": false
+    },
+    "asynchrony": {
+      "gloss": "asynchrony",
+      "classes": ["att.id", "att.time.physical.offset", "att.time.symbolic.date"],
+      "attributes": {
+        "date": {
+          "usage": "req",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          }
+        },
+        "milliseconds.offset": {
+          "usage": "req",
+          "datatype": "double"
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [],
+      "empty": true
+    },
+    "asynchronyMap": {
+      "gloss": "asynchrony map",
+      "classes": ["att.id", "model.mapLike"],
+      "attributes": {
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": ["asynchrony"],
+      "empty": false
+    },
+    "author": {
+      "gloss": "author",
+      "classes": ["att.id", "att.number"],
+      "attributes": {
+        "number": {
+          "usage": "opt",
+          "datatype": null
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [],
+      "empty": false
+    },
+    "comment": {
+      "gloss": "textual comment",
+      "classes": ["att.id"],
+      "attributes": {
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [],
+      "empty": false
+    },
+    "dated": {
+      "gloss": "dated information",
+      "classes": ["model.partContent"],
+      "attributes": {},
+      "children": [
+        "articulationMap",
+        "asynchronyMap",
+        "dynamicsMap",
+        "imprecisionMap",
+        "imprecisionMap.dynamics",
+        "imprecisionMap.timing",
+        "imprecisionMap.toneduration",
+        "imprecisionMap.tuning",
+        "metricalAccentuationMap",
+        "ornamentationMap",
+        "rubatoMap",
+        "tempoMap"
+      ],
+      "empty": false
+    },
+    "distribution.correlated.brownianNoise": {
+      "gloss": "Brownian noise distribution",
+      "classes": [
+        "att.distribution.limits",
+        "att.distribution.seed",
+        "att.id",
+        "att.time.physical.timingBasis",
+        "att.time.symbolic.date",
+        "model.distributionLike"
+      ],
+      "attributes": {
+        "date": {
+          "usage": "req",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          }
+        },
+        "limit.lower": {
+          "usage": "req",
+          "datatype": "double"
+        },
+        "limit.upper": {
+          "usage": "req",
+          "datatype": "double"
+        },
+        "milliseconds.timingBasis": {
+          "usage": "req",
+          "datatype": "double",
+          "facets": {
+            "minExclusive": "0.0"
+          }
+        },
+        "seed": {
+          "usage": "opt",
+          "datatype": "long"
+        },
+        "stepWidth.max": {
+          "usage": "req",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          }
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [],
+      "empty": true
+    },
+    "distribution.correlated.compensatingTriangle": {
+      "gloss": "Compensating Triangle Distribution",
+      "classes": [
+        "att.distribution.clips",
+        "att.distribution.limits",
+        "att.distribution.seed",
+        "att.id",
+        "att.time.physical.timingBasis",
+        "att.time.symbolic.date",
+        "model.distributionLike"
+      ],
+      "attributes": {
+        "clip.lower": {
+          "usage": "req",
+          "datatype": "double"
+        },
+        "clip.upper": {
+          "usage": "req",
+          "datatype": "double"
+        },
+        "date": {
+          "usage": "req",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          }
+        },
+        "degreeOfCorrelation": {
+          "usage": "req",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          }
+        },
+        "limit.lower": {
+          "usage": "req",
+          "datatype": "double"
+        },
+        "limit.upper": {
+          "usage": "req",
+          "datatype": "double"
+        },
+        "milliseconds.timingBasis": {
+          "usage": "req",
+          "datatype": "double",
+          "facets": {
+            "minExclusive": "0.0"
+          }
+        },
+        "seed": {
+          "usage": "opt",
+          "datatype": "long"
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [],
+      "empty": true
+    },
+    "distribution.gaussian": {
+      "gloss": "Gaussian distribution",
+      "classes": [
+        "att.distribution.limits",
+        "att.distribution.seed",
+        "att.id",
+        "att.time.symbolic.date",
+        "model.distributionLike"
+      ],
+      "attributes": {
+        "date": {
+          "usage": "req",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          }
+        },
+        "deviation.standard": {
+          "usage": "req",
+          "datatype": "double"
+        },
+        "limit.lower": {
+          "usage": "req",
+          "datatype": "double"
+        },
+        "limit.upper": {
+          "usage": "req",
+          "datatype": "double"
+        },
+        "seed": {
+          "usage": "opt",
+          "datatype": "long"
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [],
+      "empty": true
+    },
+    "distribution.list": {
+      "gloss": "distribution list",
+      "classes": [
+        "att.id",
+        "att.time.physical.timingBasis",
+        "att.time.symbolic.date",
+        "model.distributionLike"
+      ],
+      "attributes": {
+        "date": {
+          "usage": "req",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          }
+        },
+        "milliseconds.timingBasis": {
+          "usage": "req",
+          "datatype": "double",
+          "facets": {
+            "minExclusive": "0.0"
+          }
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": ["measurement"],
+      "empty": false
+    },
+    "distribution.triangular": {
+      "gloss": "triangular distribution",
+      "classes": [
+        "att.distribution.clips",
+        "att.distribution.limits",
+        "att.distribution.seed",
+        "att.id",
+        "att.time.symbolic.date",
+        "model.distributionLike"
+      ],
+      "attributes": {
+        "clip.lower": {
+          "usage": "req",
+          "datatype": "double"
+        },
+        "clip.upper": {
+          "usage": "req",
+          "datatype": "double"
+        },
+        "date": {
+          "usage": "req",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          }
+        },
+        "limit.lower": {
+          "usage": "req",
+          "datatype": "double"
+        },
+        "limit.upper": {
+          "usage": "req",
+          "datatype": "double"
+        },
+        "mode": {
+          "usage": "req",
+          "datatype": "double"
+        },
+        "seed": {
+          "usage": "opt",
+          "datatype": "long"
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [],
+      "empty": true
+    },
+    "distribution.uniform": {
+      "gloss": "uniform distribution",
+      "classes": [
+        "att.distribution.limits",
+        "att.distribution.seed",
+        "att.id",
+        "att.time.symbolic.date",
+        "model.distributionLike"
+      ],
+      "attributes": {
+        "date": {
+          "usage": "req",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          }
+        },
+        "limit.lower": {
+          "usage": "req",
+          "datatype": "double"
+        },
+        "limit.upper": {
+          "usage": "req",
+          "datatype": "double"
+        },
+        "seed": {
+          "usage": "opt",
+          "datatype": "long"
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [],
+      "empty": true
+    },
+    "dynamics": {
+      "gloss": "dynamics",
+      "classes": ["att.id", "att.time.symbolic.date", "att.transition.to"],
+      "attributes": {
+        "curvature": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0",
+            "maxInclusive": "1.0"
+          },
+          "default": "0.0"
+        },
+        "date": {
+          "usage": "req",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          }
+        },
+        "protraction": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "-1.0",
+            "maxInclusive": "1.0"
+          },
+          "default": "0.0"
+        },
+        "subNoteDynamics": {
+          "usage": "opt",
+          "datatype": "boolean",
+          "default": "false"
+        },
+        "transition.to": {
+          "usage": "opt",
+          "datatype": "string"
+        },
+        "volume": {
+          "usage": "req",
+          "datatype": "string"
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [],
+      "empty": true
+    },
+    "dynamicsDef": {
+      "gloss": "dynamics definition",
+      "classes": ["att.id", "att.name", "att.value.double", "model.defLike"],
+      "attributes": {
+        "name": {
+          "usage": "req",
+          "datatype": "string"
+        },
+        "value": {
+          "usage": "req",
+          "datatype": "double"
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [],
+      "empty": true
+    },
+    "dynamicsGradient": {
+      "gloss": "dynamics gradient",
+      "classes": ["att.id", "att.transition.from", "att.transition.to", "model.ornamentDefContent"],
+      "attributes": {
+        "transition.from": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "-1.0",
+            "maxInclusive": "1.0"
+          },
+          "default": "0.0"
+        },
+        "transition.to": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "-1.0",
+            "maxInclusive": "1.0"
+          },
+          "default": "0.0"
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [],
+      "empty": true
+    },
+    "dynamicsMap": {
+      "gloss": "dynamics map",
+      "classes": ["att.id", "model.mapLike"],
+      "attributes": {
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": ["dynamics", "style"],
+      "empty": false
+    },
+    "dynamicsStyles": {
+      "gloss": "dynamics style collection",
+      "classes": ["att.id", "model.styleCollectionLike"],
+      "attributes": {
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": ["styleDef"],
+      "empty": false
+    },
+    "global": {
+      "gloss": "global performance data",
+      "classes": [],
+      "attributes": {},
+      "children": ["dated", "header"],
+      "empty": false
+    },
+    "header": {
+      "gloss": "header information",
+      "classes": ["model.partContent"],
+      "attributes": {},
+      "children": [
+        "articulationStyles",
+        "dynamicsStyles",
+        "metricalAccentuationStyles",
+        "ornamentationStyles",
+        "rubatoStyles",
+        "tempoStyles"
+      ],
+      "empty": false
+    },
+    "imprecisionMap": {
+      "gloss": "imprecision map",
+      "classes": ["att.id", "model.mapLike"],
+      "attributes": {
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [
+        "distribution.correlated.brownianNoise",
+        "distribution.correlated.compensatingTriangle",
+        "distribution.gaussian",
+        "distribution.list",
+        "distribution.triangular",
+        "distribution.uniform"
+      ],
+      "empty": false
+    },
+    "imprecisionMap.dynamics": {
+      "gloss": "imprecision map dynamics",
+      "classes": ["att.id", "model.mapLike"],
+      "attributes": {
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [
+        "distribution.correlated.brownianNoise",
+        "distribution.correlated.compensatingTriangle",
+        "distribution.gaussian",
+        "distribution.list",
+        "distribution.triangular",
+        "distribution.uniform"
+      ],
+      "empty": false
+    },
+    "imprecisionMap.timing": {
+      "gloss": "imprecision map timing",
+      "classes": ["att.id", "model.mapLike"],
+      "attributes": {
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [
+        "distribution.correlated.brownianNoise",
+        "distribution.correlated.compensatingTriangle",
+        "distribution.gaussian",
+        "distribution.list",
+        "distribution.triangular",
+        "distribution.uniform"
+      ],
+      "empty": false
+    },
+    "imprecisionMap.toneduration": {
+      "gloss": "imprecision map tone duration",
+      "classes": ["att.id", "model.mapLike"],
+      "attributes": {
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [
+        "distribution.correlated.brownianNoise",
+        "distribution.correlated.compensatingTriangle",
+        "distribution.gaussian",
+        "distribution.list",
+        "distribution.triangular",
+        "distribution.uniform"
+      ],
+      "empty": false
+    },
+    "imprecisionMap.tuning": {
+      "gloss": "imprecision map tuning",
+      "classes": ["att.id", "model.mapLike"],
+      "attributes": {
+        "detuneUnit": {
+          "usage": "req",
+          "datatype": null,
+          "values": ["cents", "Hz", "Hertz"],
+          "closedValues": true
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [
+        "distribution.correlated.brownianNoise",
+        "distribution.correlated.compensatingTriangle",
+        "distribution.gaussian",
+        "distribution.list",
+        "distribution.triangular",
+        "distribution.uniform"
+      ],
+      "empty": false
+    },
+    "measurement": {
+      "gloss": "measurement",
+      "classes": ["att.id", "att.value.double"],
+      "attributes": {
+        "value": {
+          "usage": "req",
+          "datatype": "double"
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [],
+      "empty": true
+    },
+    "metadata": {
+      "gloss": "metadata",
+      "classes": [],
+      "attributes": {},
+      "children": ["author", "comment", "relatedResources"],
+      "empty": false
+    },
+    "metricalAccentuationMap": {
+      "gloss": "metrical accentuation map",
+      "classes": ["att.id", "model.mapLike"],
+      "attributes": {
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": ["accentuationPattern", "style"],
+      "empty": false
+    },
+    "metricalAccentuationStyles": {
+      "gloss": "collection of styles for metrical accentuation",
+      "classes": ["att.id", "model.styleCollectionLike"],
+      "attributes": {
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": ["styleDef"],
+      "empty": false
+    },
+    "mpm": {
+      "gloss": "MPM document",
+      "classes": [],
+      "attributes": {},
+      "children": ["metadata", "performance"],
+      "empty": false
+    },
+    "note": {
+      "gloss": "note",
+      "classes": ["att.id"],
+      "attributes": {
+        "interval.chromatic": {
+          "usage": "opt",
+          "datatype": "double",
+          "default": "0.0"
+        },
+        "interval.diatonic": {
+          "usage": "opt",
+          "datatype": "integer",
+          "default": "0"
+        },
+        "midi.pitch": {
+          "usage": "opt",
+          "datatype": "integer",
+          "facets": {
+            "minInclusive": "0"
+          }
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [],
+      "empty": true
+    },
+    "ornament": {
+      "gloss": "ornament",
+      "classes": [
+        "att.id",
+        "att.note.order",
+        "att.reference.name",
+        "att.scale",
+        "att.time.symbolic.date"
+      ],
+      "attributes": {
+        "date": {
+          "usage": "req",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          }
+        },
+        "name.ref": {
+          "usage": "req",
+          "datatype": "string"
+        },
+        "note.order": {
+          "usage": "opt",
+          "datatype": "string"
+        },
+        "repetitions": {
+          "usage": "opt",
+          "datatype": "integer",
+          "facets": {
+            "minInclusive": "0"
+          },
+          "default": "0"
+        },
+        "scale": {
+          "usage": "opt",
+          "datatype": "double",
+          "default": "0.0"
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": ["note"],
+      "empty": false
+    },
+    "ornamentationMap": {
+      "gloss": "ornamentation map",
+      "classes": ["att.id", "model.mapLike"],
+      "attributes": {
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": ["ornament", "style"],
+      "empty": false
+    },
+    "ornamentationStyles": {
+      "gloss": "collection of styles for ornamentations",
+      "classes": ["att.id", "model.styleCollectionLike"],
+      "attributes": {
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": ["styleDef"],
+      "empty": false
+    },
+    "ornamentDef": {
+      "gloss": "ornamentation definition",
+      "classes": ["att.id", "att.name", "model.defLike"],
+      "attributes": {
+        "alignment": {
+          "usage": "opt",
+          "datatype": null,
+          "values": ["at start", "at end"],
+          "closedValues": true,
+          "default": "at start"
+        },
+        "name": {
+          "usage": "req",
+          "datatype": "string"
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": ["dynamicsGradient", "temporalSpread"],
+      "empty": false
+    },
+    "part": {
+      "gloss": "part-specific performance data",
+      "classes": ["att.id", "att.midiRouting", "att.name", "att.number"],
+      "attributes": {
+        "midi.channel": {
+          "usage": "req",
+          "datatype": "nonNegativeInteger",
+          "facets": {
+            "minInclusive": "0",
+            "maxInclusive": "15"
+          }
+        },
+        "midi.port": {
+          "usage": "req",
+          "datatype": "nonNegativeInteger",
+          "facets": {
+            "minInclusive": "0",
+            "maxInclusive": "255"
+          }
+        },
+        "name": {
+          "usage": "req",
+          "datatype": "string"
+        },
+        "number": {
+          "usage": "req",
+          "datatype": "integer"
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": ["dated", "header"],
+      "empty": false
+    },
+    "performance": {
+      "gloss": "performance description",
+      "classes": ["att.id", "att.name", "att.pulsesPerQuarter"],
+      "attributes": {
+        "name": {
+          "usage": "req",
+          "datatype": "string"
+        },
+        "pulsesPerQuarter": {
+          "usage": "req",
+          "datatype": "nonNegativeInteger"
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": ["global", "part"],
+      "empty": false
+    },
+    "relatedResources": {
+      "gloss": "related resources",
+      "classes": [],
+      "attributes": {},
+      "children": ["resource"],
+      "empty": false
+    },
+    "resource": {
+      "gloss": "data reference",
+      "classes": ["att.reference.resource"],
+      "attributes": {
+        "type": {
+          "usage": "req",
+          "datatype": "token"
+        },
+        "uri": {
+          "usage": "req",
+          "datatype": "anyURI"
+        }
+      },
+      "children": [],
+      "empty": true
+    },
+    "rubato": {
+      "gloss": "rubato",
+      "classes": [
+        "att.id",
+        "att.loop",
+        "att.reference.name",
+        "att.rubatoDef",
+        "att.time.symbolic.date"
+      ],
+      "attributes": {
+        "date": {
+          "usage": "req",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          }
+        },
+        "earlyEnd": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minExclusive": "0.0",
+            "maxInclusive": "1.0"
+          },
+          "default": "1.0"
+        },
+        "frameLength": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minExclusive": "0.0"
+          }
+        },
+        "intensity": {
+          "usage": "opt",
+          "datatype": null,
+          "facets": {
+            "minExclusive": "0.0"
+          },
+          "default": "1.0"
+        },
+        "lateStart": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0",
+            "maxExclusive": "1.0"
+          },
+          "default": "0.0"
+        },
+        "loop": {
+          "usage": "opt",
+          "datatype": "boolean",
+          "default": "false"
+        },
+        "name.ref": {
+          "usage": "opt",
+          "datatype": null
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [],
+      "empty": true
+    },
+    "rubatoDef": {
+      "gloss": "rubato definition",
+      "classes": ["att.id", "att.name", "att.rubatoDef", "model.defLike"],
+      "attributes": {
+        "earlyEnd": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minExclusive": "0.0",
+            "maxInclusive": "1.0"
+          },
+          "default": "1.0"
+        },
+        "frameLength": {
+          "usage": "req",
+          "datatype": "double",
+          "facets": {
+            "minExclusive": "0.0"
+          }
+        },
+        "intensity": {
+          "usage": "opt",
+          "datatype": null,
+          "facets": {
+            "minExclusive": "0.0"
+          },
+          "default": "1.0"
+        },
+        "lateStart": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0",
+            "maxExclusive": "1.0"
+          },
+          "default": "0.0"
+        },
+        "name": {
+          "usage": "req",
+          "datatype": "string"
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [],
+      "empty": true
+    },
+    "rubatoMap": {
+      "gloss": "rubato map",
+      "classes": ["att.id", "model.mapLike"],
+      "attributes": {
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": ["rubato", "style"],
+      "empty": false
+    },
+    "rubatoStyles": {
+      "gloss": "rubato style collection",
+      "classes": ["att.id", "model.styleCollectionLike"],
+      "attributes": {
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": ["styleDef"],
+      "empty": false
+    },
+    "style": {
+      "gloss": "style switch",
+      "classes": ["att.id", "att.reference.name", "att.time.symbolic.date"],
+      "attributes": {
+        "date": {
+          "usage": "req",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          }
+        },
+        "defaultArticulation": {
+          "usage": "opt",
+          "datatype": "string"
+        },
+        "name.ref": {
+          "usage": "req",
+          "datatype": "string"
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [],
+      "empty": true
+    },
+    "styleDef": {
+      "gloss": "style definition",
+      "classes": ["att.id", "att.name"],
+      "attributes": {
+        "name": {
+          "usage": "req",
+          "datatype": "string"
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [
+        "accentuationPatternDef",
+        "articulationDef",
+        "dynamicsDef",
+        "ornamentDef",
+        "rubatoDef",
+        "tempoDef"
+      ],
+      "empty": false
+    },
+    "tempo": {
+      "gloss": "tempo",
+      "classes": ["att.id", "att.time.symbolic.date", "att.transition.to"],
+      "attributes": {
+        "beatLength": {
+          "usage": "req",
+          "datatype": "double",
+          "facets": {
+            "minExclusive": "0.0"
+          }
+        },
+        "bpm": {
+          "usage": "req",
+          "datatype": "string"
+        },
+        "date": {
+          "usage": "req",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0"
+          }
+        },
+        "meanTempoAt": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minInclusive": "0.0",
+            "maxInclusive": "1.0"
+          },
+          "default": "0.5"
+        },
+        "transition.to": {
+          "usage": "opt",
+          "datatype": "string"
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [],
+      "empty": true
+    },
+    "tempoDef": {
+      "gloss": "tempo definition",
+      "classes": ["att.id", "att.name", "att.value.double", "model.defLike"],
+      "attributes": {
+        "name": {
+          "usage": "req",
+          "datatype": "string"
+        },
+        "value": {
+          "usage": "req",
+          "datatype": "double"
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [],
+      "empty": true
+    },
+    "tempoMap": {
+      "gloss": "tempo map",
+      "classes": ["att.id", "model.mapLike"],
+      "attributes": {
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": ["style", "tempo"],
+      "empty": false
+    },
+    "temporalSpread": {
+      "gloss": "temporal spread",
+      "classes": [
+        "att.id",
+        "att.temporalSpread",
+        "att.time.frame",
+        "att.time.frameLength",
+        "model.ornamentDefContent"
+      ],
+      "attributes": {
+        "frame.offset": {
+          "usage": "opt",
+          "datatype": "string",
+          "default": "0.0ticks"
+        },
+        "frameLength": {
+          "usage": "opt",
+          "datatype": "string",
+          "default": "100%"
+        },
+        "intensity": {
+          "usage": "opt",
+          "datatype": "double",
+          "facets": {
+            "minExclusive": "0.0"
+          },
+          "default": "1.0"
+        },
+        "noteoff.shift": {
+          "usage": "opt",
+          "datatype": null,
+          "values": ["true", "false", "monophonic"],
+          "closedValues": true,
+          "default": "false"
+        },
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": [],
+      "empty": true
+    },
+    "tempoStyles": {
+      "gloss": "tempo style collection",
+      "classes": ["att.id", "model.styleCollectionLike"],
+      "attributes": {
+        "xml:id": {
+          "usage": "opt",
+          "datatype": "ID"
+        }
+      },
+      "children": ["styleDef"],
+      "empty": false
+    }
+  }
+}
