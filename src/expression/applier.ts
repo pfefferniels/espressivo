@@ -111,10 +111,12 @@ import { defContainerLabel, instructionSiteRef, siteRefOf, type SiteRef } from '
 import { findStyleDef, resolveLevel, type LevelDomain } from './styleScope.js';
 import {
   detectFrameFormat,
+  noteoffShiftRegime,
   parseTemporalText,
   resolveTemporalDomain,
   v3FrameOffsetAttribute,
   type FrameFormat,
+  type NoteoffShiftRegime,
   type TemporalSuffix,
 } from './temporalValue.js';
 import { jointTrimWindow, type ScaleSpace } from './transforms.js';
@@ -150,6 +152,17 @@ const RUBATO_NEUTRAL_EARLY_END = 1;
 
 /** the gain neutral, against which an inline `@absoluteDurationChange` counts as set. */
 const GAIN_NEUTRAL = 0;
+
+/** What an `ornamentSpread` factor does to note length, by `@noteoff.shift` regime. */
+const NOTEOFF_REGIME_DETAIL: Readonly<Record<NoteoffShiftRegime, string>> = {
+  absorb:
+    ': the note end stays and the duration absorbs the offset — the default, and the ' +
+    'shortening cliff: a frame that reaches a note’s length collapses it to zero length',
+  shift: ': the note end moves with the onset, which is the range-safe mode',
+  monophonic:
+    ': widening this frame LENGTHENS notes — the opposite sign from the default, ' +
+    'where the offset is absorbed by duration.perf, down to a zero-length note',
+};
 
 /**
  * Apply the factors to every performance of `root`, in place.
@@ -1129,16 +1142,18 @@ class PerformancePass {
 
     const shift = readAttributeValue(spread, NOTEOFF_SHIFT_ATTRIBUTE);
     if (shift !== null) {
+      const regime = noteoffShiftRegime(spread);
+      // A spelling the renderer does not recognise is read as "false"; say so, or the caller
+      // reads the note as describing what they wrote rather than what will render.
+      const unrecognised =
+        regime === 'absorb' && shift !== 'false'
+          ? ' (the renderer reads any value but "true" and "monophonic" as "false")'
+          : '';
       this.sink.note(
         'frame-noteoff-shift',
         'ornamentSpread',
         siteFor(NOTEOFF_SHIFT_ATTRIBUTE),
-        `@noteoff.shift = ${JSON.stringify(shift)}${
-          shift === 'monophonic'
-            ? ': widening this frame LENGTHENS notes — the opposite sign from the default, ' +
-              'where the offset is absorbed by duration.perf with no floor'
-            : ': the note end moves with the onset, which is the range-safe mode'
-        }`,
+        `@noteoff.shift = ${JSON.stringify(shift)}${NOTEOFF_REGIME_DETAIL[regime]}${unrecognised}`,
       );
     }
   }

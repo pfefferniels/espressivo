@@ -567,6 +567,24 @@ describe('ornamentation v3 — the TemporalValue frame', () => {
       );
     });
 
+    it('names noteoff.shift="false" as the shortening cliff, not the range-safe mode', () => {
+      const detailFor = (value: string) =>
+        firstNoteOfKind(
+          exaggerate(
+            withSpread(`frame.offset="0ticks" frameLength="44ticks" noteoff.shift="${value}"`),
+            { ornamentSpread: 2 },
+          ).performance,
+          'frame-noteoff-shift',
+        ).detail;
+
+      expect(detailFor('false')).toContain('cliff');
+      expect(detailFor('false')).not.toContain('range-safe');
+      expect(detailFor('true')).toContain('range-safe');
+      // A spelling the renderer does not recognise renders as "false", and the note says so.
+      expect(detailFor('TRUE')).toContain('cliff');
+      expect(detailFor('TRUE')).toContain('reads any value but "true" and "monophonic"');
+    });
+
     it('reads @noteoff.shift the same way in both generations', () => {
       const { performance } = exaggerate(
         withSpread('frame.offset="0ticks" frameLength="44ticks" noteoff.shift="monophonic"'),

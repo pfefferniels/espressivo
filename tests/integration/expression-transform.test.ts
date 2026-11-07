@@ -43,6 +43,7 @@ import {
   EXPRESSION_DIMENSIONS,
   canonicalMpm,
   exaggerateMpm,
+  performMsm,
   performMsmToData,
   type ExaggerationFactors,
   type ExpressionDimension,
@@ -373,6 +374,31 @@ describe('no rendered note ends before it starts', () => {
     (unit) => {
       const chord = arpeggiatedFinalChord(unit);
       const finalChord = (data: PerformanceData) => notesOf(data).filter((n) => n.date === 1440);
+
+      it('is flagged by the report’s cliff estimate wherever it collapses notes', () => {
+        // The estimate is how a caller learns a factor is past the cliff before rendering. It
+        // once read the explicit noteoff.shift="false" written here as the safe mode and
+        // answered 0 at every factor. A millisecond frame needs note lengths in milliseconds,
+        // which only a performed MSM carries; a tick frame reads them off the score.
+        const msm =
+          unit === 'milliseconds' ? performMsm({ msm: chord.msm, mpm: chord.mpm }) : chord.msm;
+        const at = (s: number) => {
+          const { mpm, report } = exaggerateMpm(chord.mpm, { factors: { ornamentSpread: s }, msm });
+          const collapsed = finalChord(performWith(chord, mpm)).filter(
+            (n) => n.milliseconds.end === n.milliseconds.date,
+          ).length;
+          return { cliffs: report.performances[0]!.estimates.ornamentSpreadCliffs, collapsed };
+        };
+
+        expect(at(2)).toEqual({ cliffs: 1, collapsed: 2 });
+        // Below the cliff nothing collapses. The estimate is a screen, not a bound: it measures
+        // the frame against the shortest note in the MSM it is given, and a performed MSM's
+        // shortest note is this arpeggio's own top note, already cut to 100 ms — so in
+        // milliseconds it errs toward flagging. A false alarm is its design; a miss was the bug.
+        const below = at(1.1);
+        expect(below.collapsed).toBe(0);
+        expect(below.cliffs).toBe(unit === 'ticks' ? 0 : 1);
+      });
 
       it('fits the chord at 1, so the case is real and not a broken fixture', () => {
         const chordNotes = finalChord(performWith(chord, chord.mpm));

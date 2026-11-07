@@ -723,6 +723,36 @@ describe('options.msm reaches the report and nothing else (the carve-out)', () =
     expect(cliffs(720)).toBe(0);
   });
 
+  it('counts an explicit noteoff.shift="false" as the cliff it is, not as the safe mode', () => {
+    // The renderer acts on the exact strings "true" and "monophonic" and reads everything else as
+    // its `False` default, where the duration absorbs the offset. This estimate once skipped any
+    // spread that CARRIED the attribute, so the spelling an arpeggio is usually written with —
+    // noteoff.shift="false" — reported 0 while the 2× render ended chord notes before they
+    // started. `tempo.msm`'s shortest note is 720 ticks; a 600-tick frame at 2 is 1200.
+    const cliffs = (noteoffShift: string | null) =>
+      soleReportOf(
+        exaggerateMpm(
+          document(
+            performance(
+              'P',
+              '',
+              '<ornamentationStyles><styleDef name="S"><ornamentDef name="arp">' +
+                '<temporalSpread frame.start="0.0" frameLength="600.0"' +
+                `${noteoffShift === null ? '' : ` noteoff.shift="${noteoffShift}"`}/>` +
+                '</ornamentDef></styleDef></ornamentationStyles>',
+            ),
+          ),
+          { factors: { ornamentSpread: 2 }, msm: reference('tempo', 'msm') },
+        ),
+      ).estimates.ornamentSpreadCliffs;
+
+    expect(cliffs(null)).toBe(1);
+    expect(cliffs('false')).toBe(1);
+    expect(cliffs('TRUE')).toBe(1); // not a value the renderer recognises: read as "false"
+    expect(cliffs('true')).toBe(0);
+    expect(cliffs('monophonic')).toBe(0);
+  });
+
   it('falls back to 720 on each side when that side declares no grid', () => {
     // Both fallbacks are 720 and every fixture declares 720 on both sides, so neither constant
     // is observable from the corpus. Each is pinned here against a counterpart that declares

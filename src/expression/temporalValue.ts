@@ -30,6 +30,7 @@ import {
   FRAME_OFFSET_ATTRIBUTE,
   FRAME_START_ATTRIBUTE,
   FRAME_TIME_UNIT_ATTRIBUTE,
+  NOTEOFF_SHIFT_ATTRIBUTE,
 } from './registry.js';
 import type { Element } from '../xml/XomTypes.js';
 
@@ -189,4 +190,33 @@ export function v3FrameOffsetAttribute(spread: Element): string | null {
   if (readAttributeValue(spread, FRAME_OFFSET_ATTRIBUTE) !== null) return FRAME_OFFSET_ATTRIBUTE;
   if (readAttributeValue(spread, FRAME_START_ATTRIBUTE) !== null) return FRAME_START_ATTRIBUTE;
   return null;
+}
+
+/**
+ * What absorbs a spread's onset offset, read the way the renderer reads `@noteoff.shift`.
+ *
+ * - `absorb` — the note end stays and the duration takes the offset, down to zero length. The
+ *   default, and the ornament-spread cliff.
+ * - `shift` — the end moves with the onset, so the duration is kept: the range-safe mode.
+ * - `monophonic` — each chord is cut to end where the next begins, so a wider frame
+ *   LENGTHENS notes.
+ *
+ * A replication of `TemporalSpread`'s switch, which matches the exact strings `"true"` and
+ * `"monophonic"` and leaves everything else at its `False` default. So `"false"` is `absorb`
+ * like an absent attribute — and so is any spelling the renderer does not recognise, `"TRUE"`
+ * included. Reading presence as safety, as this module once did, reported the explicit
+ * `noteoff.shift="false"` an arpeggio is usually written with as the safe mode.
+ */
+export type NoteoffShiftRegime = 'absorb' | 'shift' | 'monophonic';
+
+export function noteoffShiftRegime(spread: Element): NoteoffShiftRegime {
+  switch (readAttributeValue(spread, NOTEOFF_SHIFT_ATTRIBUTE)) {
+    case 'true':
+      return 'shift';
+    case 'monophonic':
+      return 'monophonic';
+    case null: // absent: the renderer's `False` default
+    default: // "false", and every spelling the renderer does not recognise
+      return 'absorb';
+  }
 }

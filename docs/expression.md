@@ -39,7 +39,11 @@ The first field of each is **required**:
   `'gesture'` scales each transition pair around its own mean and leaves constants alone),
   `center`, `velocityRange` (default `{ min: 1, max: 127 }` — the floor is 1 because velocity 0 is
   a note-off), `minRubatoWindow`, and `msm`, which fills in the report's estimates and reaches
-  nothing else.
+  nothing else. The estimates are where a factor's "cliffs" show up: ornament frames,
+  tone-duration widths and millisecond articulation offsets wide enough to collapse a note to
+  zero length, so it renders silent. An arpeggio wider than its chord is the common one. Pass a
+  performed MSM (`performMsm` on the untransformed pair) to get the millisecond ones; a raw score
+  answers `null` for those.
 - **`SpotlightOptions`** — `ids` and `attenuation` (both required), plus `performance`. There is no
   `scope`: spotlight is always `'gesture'`, because under `'global'` damping a background level
   pulls it _toward_ the centre and re-levels quiet material louder.

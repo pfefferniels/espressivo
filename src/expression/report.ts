@@ -187,9 +187,15 @@ export interface MsmDependentEstimates {
   readonly unreachableLevels: number | null;
   /** sites at risk of the pass-two millisecond commit guard discarding the note. */
   readonly articulationCommitCliffs: number | null;
-  /** spreads at risk of driving `duration.perf` negative. */
+  /**
+   * spreads at risk of shifting a note's onset to or past its end, where the renderer
+   * collapses it to zero length.
+   */
   readonly ornamentSpreadCliffs: number | null;
-  /** toneduration offsets at risk of putting a note's end before its start. */
+  /**
+   * toneduration offsets at risk of reaching a note's length, where the renderer collapses it
+   * to zero length.
+   */
   readonly imprecisionDurationCliffs: number | null;
   /**
    * true whenever `accentuation`'s velocity coefficient was computed from the

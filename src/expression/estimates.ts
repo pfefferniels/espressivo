@@ -38,7 +38,6 @@ import { readAttributeValue } from './attributes.js';
 import {
   FRAME_LENGTH_ATTRIBUTE,
   FRAME_START_ATTRIBUTE,
-  NOTEOFF_SHIFT_ATTRIBUTE,
   ORNAMENT_DEF_ELEMENT,
   ORNAMENT_STYLE_COLLECTION,
   TEMPORAL_SPREAD_ELEMENT,
@@ -62,6 +61,7 @@ import {
   detectFrameFormat,
   parseTemporalText,
   resolveTemporalDomain,
+  noteoffShiftRegime,
   v3FrameOffsetAttribute,
   type TemporalDomain,
 } from './temporalValue.js';
@@ -279,12 +279,14 @@ function articulationSites(performance: PerformanceView): readonly Element[] {
 // ---------------------------------------------------------------------------
 
 /**
- * `<temporalSpread>` sites whose frame can drive a note's `duration.perf` negative.
+ * `<temporalSpread>` sites whose frame can shift a note's onset to or past its end.
  *
- * The cliff is conditional on `@noteoff.shift`: absent, the whole offset is absorbed by the
- * duration with no floor; `"true"` moves the note end with the onset,
- * the safe mode; `"monophonic"` makes a wider frame *lengthen* notes, the opposite sign. Only
- * the absent case is a shortening cliff, so only it is counted.
+ * The cliff is conditional on `@noteoff.shift` ({@link noteoffShiftRegime}): absent or
+ * `"false"`, the whole offset is absorbed by the duration, which the renderer floors at zero — a
+ * frame wider than a note collapses it to zero length, and it renders silent (PARITY.md §1);
+ * `"true"` moves the note end with the onset, the safe mode; `"monophonic"` makes a wider frame
+ * *lengthen* notes, the opposite sign. Only the absorbing case is a shortening cliff, so only it
+ * is counted — and `"false"` is that case, not an exemption from it.
  *
  * Each bound of the frame is compared in its OWN domain, which in MPM v3 may differ
  * between the two (`frame.offset="-22.0ms" frameLength="80%"` is legal). A note's
@@ -308,7 +310,7 @@ function ornamentSpreadCliffs(
 
   const tally = new RiskTally();
   for (const spread of temporalSpreads(performance)) {
-    if (readAttributeValue(spread, NOTEOFF_SHIFT_ATTRIBUTE) !== null) continue;
+    if (noteoffShiftRegime(spread) !== 'absorb') continue;
     const bounds = frameBounds(spread);
     if (bounds.length === 0) continue;
 
@@ -391,11 +393,12 @@ function scaleOrNull(value: number | null, factor: number): number | null {
 // ---------------------------------------------------------------------------
 
 /**
- * Toneduration distributions whose offsets can put a note's end before its start.
+ * Toneduration distributions whose offsets can reach a note's length.
  *
- * The domain applies its offset to `@milliseconds.date.end` and to nothing else
- * (ImprecisionMap.ts:587-597), so the guard is reached when the widest value a distribution
- * can draw reaches a note's rendered length — and the same code path skips any note carrying
+ * The domain applies its offset to `@milliseconds.date.end` and to nothing else, and floors the
+ * result at the note's start (`ImprecisionMap.keepEndsAfterStarts`), so the guard is reached —
+ * and the note collapses to zero length — when the widest value a distribution can draw
+ * reaches a note's rendered length. The same code path skips any note carrying
  * no `@milliseconds.date.end`, which is the second reason a raw score cannot answer this.
  *
  * The magnitude is the largest of the distribution's atomic group, which is exactly the

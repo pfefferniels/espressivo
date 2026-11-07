@@ -639,7 +639,12 @@ const IMPRECISION_GROUPS: readonly (readonly [string, readonly string[], string]
 ];
 
 const IMPRECISION_DOMAINS: readonly (readonly [ExpressionDimension, string, string])[] = [
-  ['imprecisionTiming', IMPRECISION_MAP_TIMING, 'milliseconds; the render floors the result at 0'],
+  [
+    'imprecisionTiming',
+    IMPRECISION_MAP_TIMING,
+    'milliseconds; the render floors the result at 0, and holds a note whose start and end ' +
+      'offsets would cross at zero length',
+  ],
   [
     'imprecisionDynamics',
     IMPRECISION_MAP_DYNAMICS,
@@ -649,8 +654,8 @@ const IMPRECISION_DOMAINS: readonly (readonly [ExpressionDimension, string, stri
   [
     'imprecisionDuration',
     IMPRECISION_MAP_TONEDURATION,
-    'milliseconds of note length, with NO floor at all: a scaled negative offset can push a ' +
-      "note's end before its start and the MIDI writer emits it anyway",
+    'milliseconds of note length, floored at zero: a scaled negative offset longer than the ' +
+      'note collapses it to zero length, which renders silent — the cliff the estimates count',
   ],
 ];
 

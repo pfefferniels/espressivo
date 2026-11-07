@@ -126,7 +126,8 @@ function readNote(note: Element): MsmNote {
  * measured against.
  *
  * Zero-length and unparseable notes are excluded: a grace note written `duration="0"` is
- * inverted by *every* positive offset, so counting it would make every site "at risk" and the
+ * already at the floor every cliff collapses a note to, and reached by *every* positive offset,
+ * so counting it would make every site "at risk" and the
  * estimate would carry no information. Null when the score has no positive-duration note.
  */
 export function shortestNoteInTicks(facts: MsmFacts): number | null {
