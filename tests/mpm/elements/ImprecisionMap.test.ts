@@ -751,6 +751,84 @@ describe('ImprecisionMap', () => {
       };
     };
 
+    /**
+     * A note this pass moves never ends before it starts.
+     *
+     * Tone-duration imprecision moves only the end, and timing imprecision draws a note's start
+     * and end offsets from different points of the series, so on a short enough note either
+     * domain can put the end first. Java writes that as it falls, and the MIDI export then
+     * emits the note-off ahead of the note-on. Seeded and with `shakePolyphonicPart` off, so
+     * nothing here reaches `Math.random()`; onsets sit far from 0 so the timing domain's floor
+     * at 0 plays no part.
+     */
+    describe('a moved note never ends before it starts', () => {
+      function shortNotes(count: number, lengthMs: number): GenericMap {
+        const target = okValue(GenericMap.createGenericMap('score'));
+        for (let i = 0; i < count; i++) {
+          const e = new Element('note', Mpm.MPM_NAMESPACE);
+          const ms = 10000 + i * 1000;
+          e.addAttribute(new Attribute('date', String(i * 720)));
+          e.addAttribute(new Attribute('milliseconds.date', String(ms)));
+          e.addAttribute(new Attribute('milliseconds.date.end', String(ms + lengthMs)));
+          target.addElement(e);
+        }
+        return target;
+      }
+
+      const msOf = (e: Element, name: string): number => parseFloat(e.getAttributeValue(name)!);
+
+      it('tone duration: a shortening longer than the note stops at the onset', () => {
+        const map = ImprecisionMap.createImprecisionMap('toneduration');
+        map.addDistributionUniform(0, -500, -400, 1);
+        const target = shortNotes(5, 100);
+
+        map.renderImprecisionToMap(target, false);
+
+        for (const { value: note } of target.getAllElements()) {
+          expect(msOf(note, 'milliseconds.date.end')).toBe(msOf(note, 'milliseconds.date'));
+        }
+      });
+
+      it('tone duration: a note long enough to absorb the shortening takes all of it', () => {
+        // The control: the floor is a floor, not a re-timing.
+        const map = ImprecisionMap.createImprecisionMap('toneduration');
+        map.addDistributionUniform(0, -500, -400, 1);
+        const target = shortNotes(5, 2000);
+
+        map.renderImprecisionToMap(target, false);
+
+        for (const { value: note } of target.getAllElements()) {
+          const length = msOf(note, 'milliseconds.date.end') - msOf(note, 'milliseconds.date');
+          expect(length).toBeGreaterThanOrEqual(1500);
+          expect(length).toBeLessThanOrEqual(1600);
+        }
+      });
+
+      it('timing: independently drawn start and end offsets do not invert a short note', () => {
+        const map = ImprecisionMap.createImprecisionMap('timing');
+        const index = map.addDistributionUniform(0, -500, 500, 1);
+        // The series is indexed by `milliseconds / timingBasis`, and a uniform distribution's
+        // derived basis is its whole width — 1000 ms here — so a 10 ms note would read its
+        // start and end from the same cell and could never invert. A basis shorter than the
+        // note puts them in different cells, which is what an inverting render looks like.
+        map.getElement(index)!.addAttribute(new Attribute('milliseconds.timingBasis', '5'));
+        const target = shortNotes(40, 10);
+
+        map.renderImprecisionToMap(target, false);
+
+        const lengths = target
+          .getAllElements()
+          .map(
+            ({ value: note }) =>
+              msOf(note, 'milliseconds.date.end') - msOf(note, 'milliseconds.date'),
+          );
+        for (const length of lengths) expect(length).toBeGreaterThanOrEqual(0);
+        // Anti-vacuity: offsets ±500 ms apart on 10 ms notes invert about half of them, and
+        // only the floor writes an exact zero. Without one, this test proves nothing.
+        expect(lengths.filter((length) => length === 0).length).toBeGreaterThan(0);
+      });
+    });
+
     it('an unrecognised distribution.* replaces the correlated handover partner', () => {
       expect(handoverProbe('unknown')).toThrow(/not a usable index/);
     });

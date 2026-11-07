@@ -158,6 +158,13 @@ export class AsynchronyMap extends GenericMap {
    * on the very first note must not produce a negative timestamp. A shifted end is
    * floored at `startDateMs + 1`, guaranteeing every note keeps a duration of at least
    * one millisecond, since zero-length notes vanish from the MIDI output.
+   *
+   * `startDateMs` is the note's start as it now stands, wherever that was decided. A note that
+   * ends under a later asynchrony than the one it starts under has its start shifted on one
+   * pass and its end on a later one, and on that later pass the start is read back from the
+   * note. Java leaves it at its initial 0 there, so the floor degrades to "after 1 ms" and an
+   * offset that drops across the note — `+50` then `-30` on a note shorter than 80 ms — ends it
+   * before it starts (PARITY.md §1, "An asynchrony change inside a note no longer inverts it").
    */
   renderAsynchronyToMap(map: GenericMap | null): void {
     if (map === null || this.size() === 0) return;
@@ -180,12 +187,16 @@ export class AsynchronyMap extends GenericMap {
       for (const mapEntry of mapEntries) {
         if (mapEntry.key >= asynEndDate) break;
         let startDateMs = 0.0;
-        if (mapEntry.key >= asynStartDate) {
-          const att = attribute('milliseconds.date', mapEntry.value);
-          if (att !== null) {
-            startDateMs = Math.max(0.0, parseFloat(att.getValue()) + offset);
-            att.setValue(String(startDateMs));
+        const startAtt = attribute('milliseconds.date', mapEntry.value);
+        if (startAtt !== null) {
+          if (mapEntry.key >= asynStartDate) {
+            startDateMs = Math.max(0.0, parseFloat(startAtt.getValue()) + offset);
+            startAtt.setValue(String(startDateMs));
             addToListAttribute(mapEntry.value, 'modified', xmlId);
+          } else {
+            // Not this asynchrony's start to shift: an earlier pass already did, or the note
+            // starts before the first asynchrony and keeps the tempo map's timestamp.
+            startDateMs = parseFloat(startAtt.getValue());
           }
         }
         const dur = attribute('duration', mapEntry.value);

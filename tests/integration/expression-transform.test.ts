@@ -305,6 +305,129 @@ describe('the transform changes attribute values and nothing else', () => {
 });
 
 // ---------------------------------------------------------------------------
+// no rendered note ends before it starts
+// ---------------------------------------------------------------------------
+
+/**
+ * Notes that render ending before they start for a reason the transform does not own, by pair.
+ * Both are the tempo map's, both are Java's too, and both wait for the Java fork, because
+ * fixing either retimes notes the reference renders (PARITY.md §3, "Two tempo-map timing rules
+ * that can end a note before it starts"). Each is pinned below, so a fix has to come through here.
+ *
+ * - `tempo_dynamics_spans` carries a `<tempo date="8640.0" bpm="Adagio"/>` with no
+ *   `@beatLength`. The renderer skips it, but it still ends the transition before it, so notes
+ *   in the gap are timed by the 100 bpm no-tempo formula counted from 0 and the next tempo's
+ *   start is extrapolated three spans past the transition's end. The baseline is already wrong —
+ *   the reference meico renders n14, a 4 s whole note, as 10.5 s. At `tempo: 2` the
+ *   extrapolation crosses zero bpm (n14); at 0.25, n11's start is real and its end, in the gap,
+ *   is not.
+ * - `trill-repetitions` (grafted). A note is assigned to a tempo span by its symbolic date and
+ *   timed by its performed one, so q — at the boundary, and delayed past it — has its start
+ *   extrapolated under the slow tempo and its end timed under the fast one. At 6 the contrast
+ *   is 43.5 against 496 bpm.
+ */
+const KNOWN_INVERSIONS: Readonly<Record<string, readonly string[]>> = {
+  tempo_dynamics_spans: ['n11', 'n14'],
+  'trill-repetitions': ['q'],
+};
+
+const invertedIds = (data: PerformanceData): readonly (string | null)[] =>
+  notesOf(data)
+    .filter((note) => note.milliseconds.end < note.milliseconds.date)
+    .map((note) => note.id);
+
+/** A four-note final chord under a v2 arpeggio whose note-offs stay with the chord. */
+function arpeggiatedFinalChord(timeUnit: 'milliseconds' | 'ticks'): Pair {
+  const note = (id: string, date: number, pitch: number, duration: number) =>
+    `<note xml:id="${id}" date="${date}" midi.pitch="${pitch}" pitchname="x" accidentals="0.0" ` +
+    `octave="3.0" duration="${duration}"/>`;
+  const finalChord = [48, 55, 60, 64].map((pitch, i) => note(`c${i}`, 1440, pitch, 720)).join('');
+  const msm = (`<msm title="t" pulsesPerQuarter="720"><global><header/><dated/></global>` +
+    `<part name="Piano" number="1" midi.channel="0" midi.port="0"><header/><dated><score>` +
+    `${note('n1', 0, 60, 720)}${note('n2', 720, 62, 720)}${finalChord}` +
+    `</score></dated></part></msm>`) as XmlText;
+  const unit = timeUnit === 'milliseconds' ? ' time.unit="milliseconds"' : '';
+  const frameLength = timeUnit === 'milliseconds' ? 400 : 600;
+  const header =
+    `<ornamentationStyles><styleDef name="s"><ornamentDef name="arp">` +
+    `<temporalSpread frame.start="0.0" frameLength="${frameLength}"${unit} ` +
+    `noteoff.shift="false"/></ornamentDef></styleDef></ornamentationStyles>`;
+  const mpm = document(
+    `<tempoMap><tempo date="0.0" bpm="120" beatLength="0.25"/></tempoMap>` +
+      `<ornamentationMap><style date="0.0" name.ref="s"/>` +
+      `<ornament date="1440.0" name.ref="arp"/></ornamentationMap>`,
+    header,
+  );
+  return { name: `arpeggiated final chord (${timeUnit})`, msm, mpm, symbolicallyMoving: [] };
+}
+
+describe('no rendered note ends before it starts', () => {
+  /**
+   * The bug report this block answers: "at the 2× level, three notes in the final chord end
+   * before they start". An arpeggio that fits its chord at 1 does not at 2, and Java lets the
+   * late chord notes start after the chord has ended. Both frame domains, because they are
+   * folded by different passes on either side of the tempo map.
+   */
+  describe.each(['milliseconds', 'ticks'] as const)(
+    'an arpeggio wider than its chord, in %s',
+    (unit) => {
+      const chord = arpeggiatedFinalChord(unit);
+      const finalChord = (data: PerformanceData) => notesOf(data).filter((n) => n.date === 1440);
+
+      it('fits the chord at 1, so the case is real and not a broken fixture', () => {
+        const chordNotes = finalChord(performWith(chord, chord.mpm));
+        for (const n of chordNotes) expect(n.milliseconds.end).toBeGreaterThan(n.milliseconds.date);
+      });
+
+      it('at ornamentSpread 2, the late notes start where they now start and end there too', () => {
+        const { mpm } = exaggerate(chord.mpm, { ornamentSpread: 2 });
+        const chordNotes = finalChord(performWith(chord, mpm));
+        expect(chordNotes).toHaveLength(4);
+        for (const n of chordNotes)
+          expect(n.milliseconds.end).toBeGreaterThanOrEqual(n.milliseconds.date);
+        // Anti-vacuity: the frame is now wider than the chord, so the floor did fire.
+        expect(chordNotes.filter((n) => n.milliseconds.end === n.milliseconds.date).length).toBe(2);
+        // And the arpeggio itself is untouched: the onsets still climb.
+        const onsets = chordNotes.map((n) => n.milliseconds.date);
+        expect(onsets).toEqual([...onsets].sort((a, b) => a - b));
+      });
+    },
+  );
+
+  it.each(PAIRS)('$name, at every factor', (p) => {
+    const known = KNOWN_INVERSIONS[p.name] ?? [];
+    for (const { label, factors } of FACTOR_RECORDS) {
+      const inverted = invertedIds(performWith(p, exaggerate(p.mpm, factors).mpm));
+      for (const id of inverted) expect(known, `${label}: ${String(id)}`).toContain(id);
+    }
+  });
+
+  it('pins the performed-date inversion: q is timed by two tempi', () => {
+    const trill = PAIRS.find((p) => p.name === 'trill-repetitions')!;
+    const atSix = notesOf(performWith(trill, exaggerate(trill.mpm, uniformFactors(6)).mpm)).find(
+      (n) => n.id === 'q',
+    )!;
+    expect(atSix.date).toBe(1440); // symbolically on the boundary
+    expect(atSix.milliseconds.date).toBeCloseTo(3444.594950788851, 6);
+    expect(atSix.milliseconds.end).toBeCloseTo(3058.0821017154244, 6);
+  });
+
+  it('pins the skipped-tempo inversion: the gap is timed from zero at 100 bpm', () => {
+    const spans = PAIRS.find((p) => p.name === 'tempo_dynamics_spans')!;
+    const baseline = notesOf(performWith(spans, spans.mpm)).find((n) => n.id === 'n14')!;
+    const doubled = notesOf(performWith(spans, exaggerate(spans.mpm, { tempo: 2 }).mpm)).find(
+      (n) => n.id === 'n14',
+    )!;
+    // Already wrong at 1: a whole note at Adagio = 60 is 4000 ms, not 10507.
+    expect(baseline.milliseconds.date).toBeCloseTo(9600, 6);
+    expect(baseline.milliseconds.end).toBeCloseTo(20106.723952789864, 6);
+    // And at 2 the extrapolated tempo crosses zero.
+    expect(doubled.milliseconds.date).toBeCloseTo(9600, 6);
+    expect(doubled.milliseconds.end).toBeLessThan(doubled.milliseconds.date);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // the render-level half
 // ---------------------------------------------------------------------------
 

@@ -811,6 +811,98 @@ The comparison module transliterates this scan and moved with it — `inheritedP
 `src/comparison/pedalCurve.ts` now slices from 0, and `tests/comparison/pedal.test.ts` pins the
 renderer's own `<position>` events at the inheriting date against it.
 
+### Three render passes that could end a note before it starts
+
+Reported from outside: rendering an `exaggerateMpm` output at a factor of 2, "three notes in the
+final chord end before they start". A note whose `milliseconds.date.end` precedes its
+`milliseconds.date` is not a short note but a broken one — the MIDI export writes its note-off
+**ahead of** its note-on, so the note-on hangs until the next note-off on that pitch. Sweeping
+every fixture pair through `exaggerateMpm` at 2 found it on three, and the cause in each is a
+render pass that moves one end of a note independently of the other with no floor, or with a
+floor that misfires. The transform only widens what the pass is handed; each is reachable from a
+hand-written MPM, and none is reached by any reference fixture.
+
+Each pass now refuses to leave a note it moved ending before it starts. The three entries below
+share their evidence, given once after the third. The fourth and fifth causes the sweep found are
+the tempo map's and are not fixed here, because fixing them moves reference bytes — see §3, "Two
+tempo-map timing rules that can end a note before it starts".
+
+#### An asynchrony change inside a note no longer inverts it
+
+|                           |                                                                           |
+| ------------------------- | ------------------------------------------------------------------------- |
+| Item                      | fixed 2026-11-07                                                          |
+| Java                      | `AsynchronyMap.renderAsynchronyToMap`, the `milliseconds.date.end` clamp  |
+| TypeScript                | `src/mpm/elements/maps/AsynchronyMap.ts`, `renderAsynchronyToMap`         |
+| Guard tests               | `tests/mpm/elements/AsynchronyMap.test.ts`, the three span-boundary tests |
+| Reachable from a fixture? | No — the corrected floor fires on no reference note (evidence below)      |
+
+The pass floors a shifted end at `startDateMs + 1`, and its own comment says why: so that every
+note keeps at least a millisecond. But a note that starts under one `<asynchrony>` and ends under
+the next is handled on two passes — its start shifted on the first, its end on the second — and
+on the second `startDateMs` is still its initialiser, `0.0`. The floor degrades to "after 1 ms",
+and an offset that drops across a note shorter than the drop ends it before it starts.
+`exaggerateMpm` reached it on `all_maps` at `{ rubato: 2, asynchrony: 2 }`: rubato squeezes n4
+to ~40 ms right across a +50 → −30 ms step.
+
+The floor now reads the note's start as it stands — shifted on the earlier pass, or, for a note
+starting before the first asynchrony, as the tempo map left it. The `+1` itself is Java's and is
+kept; only what it is added to changed.
+
+#### An onset shift no longer carries a note past its own end
+
+|                           |                                                                                                                                                        |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Item                      | fixed 2026-11-07                                                                                                                                       |
+| Java                      | `OrnamentationMap`, the tick-domain fold and `renderMillisecondsModifiersToMap`                                                                        |
+| TypeScript                | `OrnamentationMap.renderAllNonmillisecondsModifiersToMap`; both copies of `renderMillisecondsModifiersToMap` (`OrnamentationMap.ts`, `Performance.ts`) |
+| Guard tests               | `tests/mpm/elements/OrnamentationMap.test.ts`; `tests/integration/expression-transform.test.ts`, "an arpeggio wider than its chord"                    |
+| Reachable from a fixture? | No — every reference arpeggio fits inside its chord                                                                                                    |
+
+A v2 `<temporalSpread>` without `noteoff.shift` holds the note-offs where they are and lets each
+note's duration absorb its onset shift. Java lets it absorb more than the note has: an arpeggio
+wider than its chord starts its late notes after the chord has ended — `duration.perf` goes
+negative in the tick domain, `milliseconds.date` passes `milliseconds.date.end` in the
+millisecond one. This is the reported case: a four-note final chord whose arpeggio fits at 1
+inverts two notes at `ornamentSpread: 2`, so a five-note chord inverts three.
+
+Where the shift would carry the onset past the end, the end now stops at the new onset. The note
+is zero-length rather than inverted, which is the shape a zero-duration score note already
+renders to (`composite_advanced_augmented.msm`'s n19), and the arpeggio's onsets are untouched.
+The millisecond floor fires only on a note this pass shifted, so a note that arrives already
+inverted — from a cause in §3 — is left as it came. The two millisecond copies stay
+character-identical, which their parity test enforces.
+
+#### Imprecision no longer ends a note before it starts
+
+|                           |                                                                                           |
+| ------------------------- | ----------------------------------------------------------------------------------------- |
+| Item                      | fixed 2026-11-07                                                                          |
+| Java                      | `ImprecisionMap.renderImprecisionToMap`, timing and tone-duration domains                 |
+| TypeScript                | `src/mpm/elements/maps/ImprecisionMap.ts`, `keepEndsAfterStarts`                          |
+| Guard tests               | `tests/mpm/elements/ImprecisionMap.test.ts`, "a moved note never ends before it starts"   |
+| Reachable from a fixture? | Only by chance — the fixtures that reach it are unseeded, and so never byte-compared (§4) |
+
+Tone-duration imprecision moves only a note's end; timing imprecision draws its start and end
+offsets from different points of the series. Either can put the end first on a short enough note,
+and Java writes it as it falls. The `telemann-grave` "Fast" performance — `toneduration` −30..0 ms,
+timing ±80 ms — rendered an inverted note in 79 of 900 renders at `exaggerateMpm` factor 2 before
+this, and in 0 of 900 after. After the offsets land, every note the pass moved that now ends
+before it starts is set to end where it starts. The random series is drawn in full before the
+floor runs, so it consumes nothing from it and changes no other draw.
+
+**Evidence for all three — zero moved bytes.** `npm run gate` is green. A pipeline probe on clean
+builds of this change and of its parent — every MSM+MPM pair under `tests/` through every
+performance to augmented MSM, raw MIDI and expressive MIDI, and every MEI fixture to MSM, 156
+outputs with UUIDs canonicalised — moves **none** of the 138 deterministic outputs. The other 18
+differ between two runs of the _parent_ build too: every one is an unseeded imprecision render
+(§4). None of the 29 reference augmented MSMs contains a note that ends before it starts, which is
+why no floor reaches one. Reverting any one of the four edited methods reds its guard tests.
+
+**The Java fork is not patched.** Under the carve-out a zero-byte fix does not need it, but the
+port is now ahead of its reference on inputs no fixture contains; the three changes are small
+enough to mirror there whenever the fork is next regenerated.
+
 ## 2. Frozen divergences
 
 Known, journaled, and deliberately **not** repaired. Two are reachable on input a caller can
@@ -1107,6 +1199,39 @@ deliberate divergence from the Java fork, predating #14 — MPM v3's `ornament.r
 **The lesson worth keeping.** The byte gate compares against a fork, and a fork can be wrong. Where
 a divergence sits on a feature the fork _added_, "Java does X" is not an argument — it is the thing
 to check.
+
+### Two tempo-map timing rules that can end a note before it starts
+
+`src/mpm/elements/maps/TempoMap.ts`, `renderTempoToMap` and `getTempoDataOf`. **Unlike the rest of
+this section, this one is queued for repair.** It is here, not in §1, because repairing it retimes
+notes the reference renders, which the carve-out allows only with the Java fork patched and its
+ground truth regenerated in the same step. Found by the same `exaggerateMpm` sweep as §1's "Three
+render passes that could end a note before it starts"; both are pinned in
+`tests/integration/expression-transform.test.ts` ("no rendered note ends before it starts"), so a
+fix has to update the pins on purpose.
+
+1. **A tempo the renderer skips still ends the span before it.** `getTempoDataOf` returns null
+   for a `<tempo>` with no `@beatLength`, and the render loop skips it — but the preceding
+   instruction's `endDate` is `nextDateOfType(i, 'tempo')`, which counts it. Notes between it and
+   the next usable tempo then fall to `mapEntry.key <= td.startDate` and are timed by the no-tempo
+   formula — 100 bpm, **counted from tick 0** — and the next tempo's start is extrapolated from
+   the transition before the gap, past that transition's end. `tempo_dynamics_spans.mpm`, which
+   meico's own MEI exporter wrote, carries exactly such a `<tempo date="8640.0" bpm="Adagio"/>`,
+   and the reference `tempo_dynamics_spans_augmented.msm` records the result: n11–n13 at 100 bpm,
+   n14 — a whole note at Adagio = 60, so 4000 ms — lasting 10 507 ms. Exaggeration only moves the
+   wrong numbers past each other: at `tempo: 2` the extrapolated transition crosses zero bpm and
+   n14 ends 5.5 s before it starts; at every dimension 0.25, n11's start is real and its end, in
+   the gap, is not.
+2. **A note is assigned to a tempo span by its symbolic date and timed by its performed one.**
+   The loop breaks on `mapEntry.key > td.endDate` but computes from `date.perf`. A note whose
+   symbolic date is at or before a tempo boundary and whose performed date has been displaced past
+   it — an articulation delay, an ornament shift, rubato — has its start extrapolated under the
+   earlier tempo, while its pending end is resolved under the later one. With enough tempo
+   contrast the start passes the end: the grafted `trill-repetitions` fixture at every dimension 6
+   puts q at 3444.6 → 3058.1 ms, its start under 43.5 bpm and its end under 496.
+
+Neither is a §1 floor's to clamp: in both, the timeline itself is wrong, and a zero-length note
+would hide that rather than fix it.
 
 ---
 

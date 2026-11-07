@@ -1118,7 +1118,10 @@ export class Performance extends AbstractXmlSubtree {
    *    with the value `"true"`, so its mere presence is the signal: the end date shifts by
    *    the same offset as the start, leaving the sounding duration unchanged. The end is
    *    re-read from the attribute here rather than recomputed.
-   * 4. Neither modifier present: `milliseconds.date.end` is left exactly as it was.
+   * 4. Neither modifier present: `milliseconds.date.end` is left exactly as it was — unless
+   *    the onset was shifted past it, in which case the end is set to the new onset, so the
+   *    note is zero-length rather than ending before it starts. That floor is this port's,
+   *    not Java's, and moves no reference byte (PARITY.md §1).
    */
   private static renderMillisecondsModifiersToMap(
     map: GenericMap | null,
@@ -1178,6 +1181,15 @@ export class Performance extends AbstractXmlSubtree {
                 parseFloat(millisecondsDateEndAtt.getValue()) + ornamentMillisecondsDateOffset,
               ),
             );
+        } else if (
+          ornamentMillisecondsDateOffset !== 0.0 &&
+          millisecondsDateEndAtt !== null &&
+          parseFloat(millisecondsDateEndAtt.getValue()) < parseFloat(millisecondsDateAtt.getValue())
+        ) {
+          // The duration absorbs the shift, but no more of it than the note has: an onset
+          // shifted past the end takes the end along to where it now starts. Java has no such
+          // floor (PARITY.md §1, "An onset shift no longer carries a note past its own end").
+          millisecondsDateEndAtt.setValue(millisecondsDateAtt.getValue());
         }
       }
     }

@@ -879,6 +879,41 @@ describe('OrnamentationMap', () => {
       expect(num(n, 'duration.perf')).toBeCloseTo(1440.0); // the duration stays
     });
 
+    /**
+     * An arpeggio wider than its chord. With the note-off held, the duration absorbs the onset
+     * shift — and Java lets it absorb more than the note has, so `duration.perf` goes negative,
+     * `date.end.perf` stays behind the new onset, and the tempo map renders a note that ends
+     * before it starts. `exaggerateMpm` reaches this with `ornamentSpread: 2` on a final chord.
+     * The floor stops the end at the new onset: zero length, never negative.
+     */
+    it('should not carry an onset past the end when the note off does not shift', () => {
+      const n = makeNote('n1', 0, 60, {
+        'ornament.date.offset': '600',
+        'date.perf': '0',
+        'duration.perf': '400',
+        'date.end.perf': '400',
+      });
+      modifierOnlyMap().renderOrnamentationToMap(makeScore([n]));
+
+      expect(num(n, 'date.perf')).toBeCloseTo(600.0);
+      expect(num(n, 'duration.perf')).toBe(0); // not -200
+      expect(num(n, 'date.end.perf')).toBeCloseTo(600.0); // not left behind at 400
+    });
+
+    it('should floor duration.perf on a note that has no date.end.perf yet', () => {
+      // No rubato ran, so the tempo map will derive the end from date.perf + duration.perf.
+      const n = makeNote('n1', 0, 60, {
+        'ornament.date.offset': '600',
+        'date.perf': '0',
+        'duration.perf': '400',
+      });
+      modifierOnlyMap().renderOrnamentationToMap(makeScore([n]));
+
+      expect(num(n, 'date.perf')).toBeCloseTo(600.0);
+      expect(num(n, 'duration.perf')).toBe(0);
+      expect(n.getAttribute('date.end.perf')).toBeNull();
+    });
+
     it('should survive a note-off shift on a note without date.end.perf', () => {
       const n = makeNote('n1', 0, 60, {
         'ornament.date.offset': '22',
@@ -1001,6 +1036,32 @@ describe('OrnamentationMap', () => {
 
       expect(num(n, 'milliseconds.date')).toBeCloseTo(2030.0);
       expect(num(n, 'milliseconds.date.end')).toBeCloseTo(3000.0); // unaltered
+    });
+
+    it('should not carry milliseconds.date past the end when the note off does not shift', () => {
+      // The millisecond twin of the tick-domain floor: an arpeggio frame wider than the chord.
+      const n = makeNote('n1', 0, 60, {
+        'milliseconds.date': '2000',
+        'milliseconds.date.end': '2400',
+        'ornament.milliseconds.date.offset': '600',
+      });
+      OrnamentationMap.renderMillisecondsModifiersToMap(makeScore([n]), ornMap());
+
+      expect(num(n, 'milliseconds.date')).toBeCloseTo(2600.0);
+      expect(num(n, 'milliseconds.date.end')).toBeCloseTo(2600.0); // not left behind at 2400
+    });
+
+    it('should leave a note it did not shift exactly as it arrived', () => {
+      // The floor belongs to this pass's own shift. A note that reaches it already ending
+      // before it starts was put there by something else, and is not this pass's to repair.
+      const n = makeNote('n1', 0, 60, {
+        'milliseconds.date': '2000',
+        'milliseconds.date.end': '1500',
+      });
+      OrnamentationMap.renderMillisecondsModifiersToMap(makeScore([n]), ornMap());
+
+      expect(num(n, 'milliseconds.date')).toBeCloseTo(2000.0);
+      expect(num(n, 'milliseconds.date.end')).toBeCloseTo(1500.0);
     });
   });
 

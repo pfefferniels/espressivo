@@ -677,6 +677,10 @@ export class OrnamentationMap extends GenericMap {
    * regroup `datePerf + ornamentDateOffset + parseFloat(...)`, do not hoist the repeated
    * `parseFloat` calls: each one re-reads an attribute that may have been rewritten, and
    * that is deliberate.
+   *
+   * One deliberate addition, which moves no reference byte: where the duration absorbs the
+   * shift, it is floored so the note ends no earlier than it now starts. It fires only on a note
+   * Java would render ending before it starts — an arpeggio wider than its chord.
    */
   private renderAllNonmillisecondsModifiersToMap(map: GenericMap): void {
     for (const e of map.getAllElementsOfType('note')) {
@@ -720,10 +724,21 @@ export class OrnamentationMap extends GenericMap {
                   String(parseFloat(dateEndPerfAtt.getValue()) + ornamentDateOffset),
                 );
             } else {
+              // The duration absorbs the shift, but no more of it than the note has: an onset
+              // shifted past the end takes the end along to where it now starts. Java has no
+              // such floor and lets the note end before it starts (PARITY.md §1, "An onset shift
+              // no longer carries a note past its own end").
               if (durationPerfAtt !== null)
                 durationPerfAtt.setValue(
-                  String(parseFloat(durationPerfAtt.getValue()) - ornamentDateOffset),
+                  String(
+                    Math.max(0.0, parseFloat(durationPerfAtt.getValue()) - ornamentDateOffset),
+                  ),
                 );
+              if (
+                dateEndPerfAtt !== null &&
+                parseFloat(dateEndPerfAtt.getValue()) < datePerf + ornamentDateOffset
+              )
+                dateEndPerfAtt.setValue(datePerfAtt.getValue());
             }
           }
         }
@@ -753,7 +768,8 @@ export class OrnamentationMap extends GenericMap {
    * when no offset marker is present, so the same expression serves both cases. With no
    * absolute duration, `ornament.noteoff.shift` again decides: present (meaning true) shifts
    * the end and preserves the duration; absent leaves the end alone so the duration absorbs
-   * the shift.
+   * the shift — unless the onset was shifted past the end, in which case the end is set to the
+   * new onset. That floor is this port's, not Java's, and moves no reference byte (PARITY.md §1).
    *
    * FROZEN — mirrors OrnamentationMap.java:477-509 statement for statement. Every addition's
    * operand order is load-bearing. Do not refactor, do not extract the repeated
@@ -827,6 +843,15 @@ export class OrnamentationMap extends GenericMap {
                 parseFloat(millisecondsDateEndAtt.getValue()) + ornamentMillisecondsDateOffset,
               ),
             );
+        } else if (
+          ornamentMillisecondsDateOffset !== 0.0 &&
+          millisecondsDateEndAtt !== null &&
+          parseFloat(millisecondsDateEndAtt.getValue()) < parseFloat(millisecondsDateAtt.getValue())
+        ) {
+          // The duration absorbs the shift, but no more of it than the note has: an onset
+          // shifted past the end takes the end along to where it now starts. Java has no such
+          // floor (PARITY.md §1, "An onset shift no longer carries a note past its own end").
+          millisecondsDateEndAtt.setValue(millisecondsDateAtt.getValue());
         }
       }
     }

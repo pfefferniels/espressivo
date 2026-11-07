@@ -264,6 +264,56 @@ describe('AsynchronyMap', () => {
       expect(getMsEnd(map, 0)).toBeCloseTo(1, 5); // clamped to startDateMs + 1
     });
 
+    /**
+     * A note that starts under one asynchrony and ends under the next has its start shifted on
+     * the first pass and its end on the second. Java's floor on the second pass is `0 + 1`,
+     * because the start it compares against was shifted on the first and never read back, so an
+     * offset that drops across a short note ended it before it started: start 100 → 150, end
+     * 140 → 110. The floor is the note's real start now, and the promise the method's comment
+     * makes — every note keeps at least one millisecond — holds across a span boundary too.
+     *
+     * This is what `exaggerateMpm` exposed on `all_maps` at `{ rubato: 2, asynchrony: 2 }`:
+     * rubato squeezed n4 to ~40 ms right across a +50 → −30 ms step.
+     */
+    it('an offset that drops across a note does not end it before it starts', () => {
+      const asyncMap = AsynchronyMap.createAsynchronyMap();
+      asyncMap.addAsynchrony(0, 50);
+      asyncMap.addAsynchrony(480, -30);
+
+      // Starts at tick 240, under +50; ends at tick 720, under -30.
+      const map = createTestMap([{ date: 240, msDate: 100, duration: 480, msEnd: 140 }]);
+      asyncMap.renderAsynchronyToMap(map);
+
+      expect(getMsDate(map, 0)).toBeCloseTo(150, 5);
+      expect(getMsEnd(map, 0)).toBeCloseTo(151, 5); // floored at the shifted start + 1, not at 1
+    });
+
+    it('a note ending under a later asynchrony still takes that offset when it fits', () => {
+      // The control for the case above: the floor is a floor, not a re-timing. A note long
+      // enough to absorb the step ends exactly where Java ends it.
+      const asyncMap = AsynchronyMap.createAsynchronyMap();
+      asyncMap.addAsynchrony(0, 50);
+      asyncMap.addAsynchrony(480, -30);
+
+      const map = createTestMap([{ date: 240, msDate: 100, duration: 480, msEnd: 400 }]);
+      asyncMap.renderAsynchronyToMap(map);
+
+      expect(getMsDate(map, 0)).toBeCloseTo(150, 5);
+      expect(getMsEnd(map, 0)).toBeCloseTo(370, 5);
+    });
+
+    it('a note starting before the first asynchrony is floored at its own, unshifted start', () => {
+      const asyncMap = AsynchronyMap.createAsynchronyMap();
+      asyncMap.addAsynchrony(480, -80);
+
+      // Starts at tick 240 (no asynchrony yet), ends at tick 720 under -80.
+      const map = createTestMap([{ date: 240, msDate: 100, duration: 480, msEnd: 150 }]);
+      asyncMap.renderAsynchronyToMap(map);
+
+      expect(getMsDate(map, 0)).toBeCloseTo(100, 5);
+      expect(getMsEnd(map, 0)).toBeCloseTo(101, 5);
+    });
+
     it('zero offset does not change values', () => {
       const asyncMap = AsynchronyMap.createAsynchronyMap();
       asyncMap.addAsynchrony(0, 0);

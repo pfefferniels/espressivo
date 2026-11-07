@@ -689,6 +689,39 @@ export class ImprecisionMap extends GenericMap {
     }
 
     ImprecisionMap.addOffsetsToAttributes(offsets, domain);
+    if (domain === ImprecisionMap.TIMING || domain === ImprecisionMap.TONEDURATION)
+      ImprecisionMap.keepEndsAfterStarts(offsets);
+  }
+
+  /**
+   * Set the end of every note this pass moved, where it now precedes the start, to the start.
+   *
+   * Timing imprecision draws a note's start and end offsets from different points of the
+   * series, and tone-duration imprecision moves the end alone, so on a short enough note either
+   * can put the end before the start. Java has no floor here, and a note ending before it
+   * starts reaches the MIDI export as a note-off ahead of its own note-on — a note that hangs
+   * until the next note-off on its pitch. Zero length is the least this can write that is not
+   * that, and the same shape a zero-duration score note already renders to (PARITY.md §1,
+   * "Imprecision no longer ends a note before it starts").
+   *
+   * Runs after the offsets land, so it sees the final values, not a half-moved note; and reads
+   * each note through the attributes the pass moved, so a note this pass never touched is left
+   * exactly as it arrived. A note reached twice, once through each end, is clamped once and then
+   * found consistent. The random series is drawn in full before this runs, so it consumes
+   * nothing from it.
+   */
+  private static keepEndsAfterStarts(offsets: Map<number, KeyValue<number, Attribute>[]>): void {
+    for (const [, entries] of offsets) {
+      for (const { value } of entries) {
+        const element = value.getParent();
+        if (element === null) continue;
+        const start = attribute('milliseconds.date', element);
+        const end = attribute('milliseconds.date.end', element);
+        if (start === null || end === null) continue;
+        if (parseFloat(end.getValue()) < parseFloat(start.getValue()))
+          end.setValue(start.getValue());
+      }
+    }
   }
 
   private static addToOffsetsMap(
