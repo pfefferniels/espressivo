@@ -811,6 +811,63 @@ The comparison module transliterates this scan and moved with it — `inheritedP
 `src/comparison/pedalCurve.ts` now slices from 0, and `tests/comparison/pedal.test.ts` pins the
 renderer's own `<position>` events at the inheriting date against it.
 
+### A doubled note is struck once
+
+|                           |                                                                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Item                      | fixed 2026-11-09, on the maintainer's request                                                                      |
+| Java                      | `OrnamentationMap.java`, the v2 chord sequence: one single-note chord per note                                     |
+| TypeScript                | `src/mpm/elements/maps/unisons.ts`, called from `OrnamentationMap.apply`                                           |
+| Guard tests               | `tests/mpm/elements/OrnamentationMap.test.ts`, "unisons share a slot"; `tests/mpm/elements/maps/unisons.test.ts`   |
+| Reachable from a fixture? | No — no fixture has two notes of one pitch at the date of a v2 ornament, and no v2 `note.order` names a note twice |
+
+A score writes a note shared by two voices, two layers or two parts as two `<note>`s of one
+pitch at one date; an instrument plays it as one key. A v2 ornament put each of them in a
+**slot of its own** — its chord sequence is `Element[][]`, one chord per slot, but the reference
+fills it with one-note chords — so a `<temporalSpread>` gave the two notes two onsets and a
+`<dynamicsGradient>` two velocities, and the key was struck twice. For `ascending pitch` and
+`descending pitch` the order of the two was not even the ornament's: the pitch sort ties, and
+the tie is broken by part and document order. An explicit id list did the same when it named
+both notes, and when it named only one, moved that one and left the other at the written
+onset.
+
+**Fixed**, by making the slots keys rather than notes. Notes of one pitch at one date share a
+slot, in both branches: the date-pooled chords are grouped before the pitch sort, and an id
+list's named note brings every unison partner in the maps the ornament reaches into its own
+slot, whether the list names it or not — a note named again stays where it was first placed.
+Grouping keys on the date as well as the pitch, because the pool at a date is not always at
+it: `getAllElementsAt` lends the pool a silent part's next note (as Java does), and that note
+keeps a slot of its own. A note without a readable `midi.pitch` or `date` is in unison with
+nothing.
+
+Since the spread is spaced over the slots, a chord with a unison is now spaced over one slot
+fewer, which moves its other notes too. That is the point — the frame is spread over the keys
+that sound — but it means the fix is not confined to the doubled notes. Measured on the
+Welte-Mignon reconstruction of _Träumerei_ (`welte225.org/mpm/`), which has 18 such pairs, 12
+of them under an arpeggio: before, those 12 were struck twice, 5.6 to 147.4 ms apart and up to
+4.8 velocity units apart; after, every pair shares its onset and velocity, and of the other
+440 notes two move, by 12.1 and 13.5 ms, both in the five-note chord at tick 90720. The other
+eleven are three-note chords of two keys, which take the two ends of the frame either way.
+
+**Evidence — zero moved bytes.** The change regroups only where two notes share a key; every
+other note keeps the one-note slot the reference gives it, so the chord sequences, and every
+attribute written from them, are as before. Measured rather than argued: an instrumented build
+counted the merged slots over every MSM + MPM pair under `tests/` (all reference fixtures, the
+v3 and comparison fixtures included) and every MEI fixture performed with its reference MPM —
+**zero**, against 12 per render of the _Träumerei_. A byte probe over the same documents, clean
+builds of the commit before and after, differs only in the _Träumerei_ and in the twelve
+documents that two runs of the _same_ build also differ in (§4's imprecision outputs and the
+v3 fixtures' generated ids). The full suite passes unchanged. The Java fork is not patched: no
+reference fixture reaches the case, so no ground truth needs regenerating, and the fork is
+behind here in one more respect, as it already is for MPM v3.
+
+The comparison module needs no counterpart. It prices an ornament's resolved effect, not its
+slots, and `OrnamentAtom.poolBound` is an upper bound on the slots that a list of length L
+yields — which a unison can only lower.
+
+MPM v3 note-generating ornaments are not touched: a figure is built on one principal note, and
+a unison partner of that note goes on sounding under the figure, as before.
+
 ## 2. Frozen divergences
 
 Known, journaled, and deliberately **not** repaired. Two are reachable on input a caller can

@@ -21,6 +21,7 @@ import {
   noteOwners,
   prepareOrnament,
 } from './ornamentInstantiation.js';
+import { listedUnisonChords, unisonChords } from './unisons.js';
 import { patchAttribute, readId, readNumber, readString } from '../../../xml/attributes.js';
 import type { OrnamentNote } from './data/OrnamentNote.js';
 import type { PreparedOrnament } from './ornamentInstantiation.js';
@@ -487,7 +488,11 @@ export class OrnamentationMap extends GenericMap {
    *
    * The target notes are chosen in one of two ways: an explicit ID list in `note.order` names
    * them and fixes their order, or every note at the ornament's date is collected and sorted
-   * by pitch, ascending or descending per `note.order`.
+   * by pitch, ascending or descending per `note.order`. Either way the slots of the sequence are
+   * KEYS rather than notes: notes of one pitch at one date are one key, struck once, and share a
+   * slot — a deliberate fix of the reference, which gives each its own slot and so strikes a
+   * doubled note twice (`unisons.ts`, PARITY.md §1). An id list's named note also brings the
+   * unison partners it does not name into its slot.
    *
    * The `for (const chord of applyOrnament(...))` loop below is dead on this path — for a v2
    * ornament it always returns an empty list. See {@link applyOrnament}; it is a
@@ -610,29 +615,32 @@ export class OrnamentationMap extends GenericMap {
             break;
           default: {
             if (noteOrder === null || noteOrder.length === 0) continue;
-            chordSequence = [];
             noteOrderAscending = 0;
+            const named: Element[] = [];
             for (const ref of noteOrder) {
               const note = notes.get(ref);
               if (note !== undefined) {
-                chordSequence.push([note]);
+                named.push(note);
               }
             }
+            // One slot per key, not per note: a unison is struck once (`unisons.ts`).
+            chordSequence = listedUnisonChords(named, maps);
             break;
           }
         }
       }
       if (chordSequence === null) {
-        chordSequence = [];
+        const notesAtDate: Element[] = [];
         for (const map of maps) {
-          const notesAtDate = map.getAllElementsAt(od.date);
-          for (const note of notesAtDate) {
+          for (const note of map.getAllElementsAt(od.date)) {
             if (note.value.getLocalName() === 'note') {
-              chordSequence.push([note.value]);
+              notesAtDate.push(note.value);
             }
           }
         }
-        if (chordSequence.length === 0) continue;
+        if (notesAtDate.length === 0) continue;
+        // One slot per key, not per note: a unison is struck once (`unisons.ts`).
+        chordSequence = unisonChords(notesAtDate);
 
         const finalNoteOrderAscending = noteOrderAscending;
         chordSequence.sort((n1, n2) => {

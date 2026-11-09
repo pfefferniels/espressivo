@@ -1070,6 +1070,146 @@ describe('OrnamentationMap', () => {
     });
   });
 
+  // PARITY.md §1, "A doubled note is struck once": notes of one pitch at one date are one key and
+  // share a slot. The reference gives each its own slot, which these tests fail against.
+  describe('unisons share a slot', () => {
+    /** a global arpeggio at date 0 over `parts`, scale 2, in the given note.order */
+    function spreadGlobally(parts: Element[], noteOrder: string[] | null = null): void {
+      const map = OrnamentationMap.createOrnamentationMap();
+      map.setHeaders(makeHeader([arpeggioDef()]), null);
+      map.addStyleSwitch(0, 'orn style');
+      map.addOrnamentV2(0, 'arpeggio', 2.0, noteOrder);
+      OrnamentationMap.renderGlobalOrnamentationToParts(parts, map);
+    }
+
+    it('strikes a note doubled across two parts once, and spreads the keys, not the notes', () => {
+      const a1 = makePerformedNote('a1', 0, 60);
+      const a2 = makePerformedNote('a2', 0, 67);
+      const b1 = makePerformedNote('b1', 0, 60);
+      const b2 = makePerformedNote('b2', 0, 64);
+
+      spreadGlobally([makePart([a1, a2]), makePart([b1, b2])]);
+
+      // three keys (60, 64, 67) over the frame, as if the 60 were written once
+      for (const n of [a1, b1]) {
+        expect(num(n, 'ornament.date.offset')).toBeCloseTo(-22.0);
+        expect(num(n, 'ornament.dynamics')).toBeCloseTo(-2.0);
+      }
+      expect(num(b2, 'ornament.date.offset')).toBeCloseTo(0.0);
+      expect(num(a2, 'ornament.date.offset')).toBeCloseTo(22.0);
+      expect(num(a2, 'ornament.dynamics')).toBeCloseTo(2.0);
+    });
+
+    it('strikes a note doubled within one part (two layers) once', () => {
+      const low = makePerformedNote('low', 0, 41, 720);
+      const held = makePerformedNote('held', 0, 41, 3600);
+      const high = makePerformedNote('high', 0, 65);
+      const score = makeScore([low, held, high]);
+
+      const map = OrnamentationMap.createOrnamentationMap();
+      map.setHeaders(null, makeHeader([arpeggioDef()]));
+      map.addStyleSwitch(0, 'orn style');
+      map.addOrnamentV2(0, 'arpeggio', 2.0);
+      map.renderOrnamentationToMap(score);
+
+      expect(num(low, 'date.perf')).toBeCloseTo(-22.0);
+      expect(num(held, 'date.perf')).toBeCloseTo(-22.0);
+      expect(num(high, 'date.perf')).toBeCloseTo(22.0);
+      expect(num(low, 'velocity')).toBeCloseTo(num(held, 'velocity'));
+      // the shared onset leaves each note its own end
+      expect(num(low, 'date.end.perf')).toBeCloseTo(720.0);
+      expect(num(held, 'date.end.perf')).toBeCloseTo(3600.0);
+    });
+
+    it('keeps the unison together in a descending arpeggio', () => {
+      const a1 = makePerformedNote('a1', 0, 72);
+      const b1 = makePerformedNote('b1', 0, 72);
+      const b2 = makePerformedNote('b2', 0, 60);
+
+      spreadGlobally([makePart([a1]), makePart([b1, b2])], ['descending pitch']);
+
+      expect(num(a1, 'ornament.date.offset')).toBeCloseTo(-22.0);
+      expect(num(b1, 'ornament.date.offset')).toBeCloseTo(-22.0);
+      expect(num(b2, 'ornament.date.offset')).toBeCloseTo(22.0);
+    });
+
+    it('puts two listed notes of one key in the slot of the first', () => {
+      const a = makePerformedNote('a', 0, 60);
+      const b = makePerformedNote('b', 0, 64);
+      const c = makePerformedNote('c', 0, 60);
+      const d = makePerformedNote('d', 0, 67);
+
+      spreadGlobally([makePart([a, b]), makePart([c, d])], ['b', 'a', 'd', 'c']);
+
+      expect(num(b, 'ornament.date.offset')).toBeCloseTo(-22.0);
+      expect(num(a, 'ornament.date.offset')).toBeCloseTo(0.0);
+      expect(num(c, 'ornament.date.offset')).toBeCloseTo(0.0);
+      expect(num(d, 'ornament.date.offset')).toBeCloseTo(22.0);
+      // written once each, not once per mention
+      expect(c.getAttributeValue('ornament.dynamics')).toBe(
+        a.getAttributeValue('ornament.dynamics'),
+      );
+    });
+
+    it('brings the unison partner an id list leaves out into the named note’s slot', () => {
+      const a = makePerformedNote('a', 0, 60);
+      const b = makePerformedNote('b', 0, 64);
+      const c = makePerformedNote('c', 0, 60);
+
+      spreadGlobally([makePart([a, b]), makePart([c])], ['b', 'a']);
+
+      expect(num(b, 'ornament.date.offset')).toBeCloseTo(-22.0);
+      expect(num(a, 'ornament.date.offset')).toBeCloseTo(22.0);
+      expect(num(c, 'ornament.date.offset')).toBeCloseTo(22.0);
+      expect(num(c, 'ornament.dynamics')).toBeCloseTo(2.0);
+    });
+
+    it('does not join notes of one pitch at different dates', () => {
+      // an id list may reach across dates; the two 60s are two strokes of the key
+      const a = makePerformedNote('a', 0, 60);
+      const b = makePerformedNote('b', 960, 60);
+      const c = makePerformedNote('c', 0, 64);
+
+      spreadGlobally([makePart([a, b, c])], ['a', 'c', 'b']);
+
+      expect(num(a, 'ornament.date.offset')).toBeCloseTo(-22.0);
+      expect(num(c, 'ornament.date.offset')).toBeCloseTo(0.0);
+      expect(num(b, 'ornament.date.offset')).toBeCloseTo(22.0);
+    });
+
+    it('keeps a later note a silent part lends the pool apart from a unison at the date', () => {
+      // `getAllElementsAt` answers a date a part does not carry with its next entry, so part B
+      // contributes its 60 at 960 to the pool at 0. It is a key of its own, as in the reference.
+      const a1 = makePerformedNote('a1', 0, 60);
+      const a2 = makePerformedNote('a2', 0, 64);
+      const b1 = makePerformedNote('b1', 960, 60);
+
+      spreadGlobally([makePart([a1, a2]), makePart([b1])]);
+
+      const offset = (n: Element): number => num(n, 'ornament.date.offset');
+      expect(offset(a1)).not.toBeCloseTo(offset(b1));
+      expect([a1, b1, a2].map(offset).toSorted((x, y) => x - y)).toEqual([-22, 0, 22]);
+    });
+
+    it('leaves a note with no readable pitch a slot of its own', () => {
+      const a = makePerformedNote('a', 0, 60);
+      const b = makePerformedNote('b', 0, 64);
+      const c = makePerformedNote('c', 0, 60);
+      const odd = makeNote('odd', 0, 0, { 'date.perf': '0', 'duration.perf': '1440' });
+      odd.getAttribute('midi.pitch')!.setValue('');
+      const odd2 = makeNote('odd2', 0, 0, { 'date.perf': '0', 'duration.perf': '1440' });
+      odd2.getAttribute('midi.pitch')!.setValue('');
+
+      spreadGlobally([makePart([a, b, c, odd, odd2])], ['a', 'odd', 'b', 'odd2', 'c']);
+
+      // keys: a+c, odd, b, odd2 — four slots, the two unreadable notes not merged with each other
+      expect(num(a, 'ornament.date.offset')).toBeCloseTo(-22.0);
+      expect(num(c, 'ornament.date.offset')).toBeCloseTo(-22.0);
+      expect(num(odd, 'ornament.date.offset')).not.toBeCloseTo(num(odd2, 'ornament.date.offset'));
+      expect(num(odd2, 'ornament.date.offset')).toBeCloseTo(22.0);
+    });
+  });
+
   describe('unresolvable ornaments', () => {
     it('should not touch the notes when no header is available', () => {
       const n = makePerformedNote('n1', 0, 60);

@@ -28,9 +28,11 @@
  *
  * The pool is the notes at the ornament's own date, or the notes an explicit `@note.order` id
  * list names — measured, an id list reaches notes at OTHER dates and orders the ramp by the
- * list, while the note sharing the ornament's date is left alone unless the list names it. A
- * single-note pool performs `transition.to` (`DynamicsGradient.ts:47-49`'s `else if`), measured
- * at 120 from a −20 → +20 gradient on velocity 100.
+ * list, while the note sharing the ornament's date is left alone unless the list names it (or
+ * a note in unison with it: notes of one pitch at one date share one slot of the pool,
+ * PARITY.md §1, "A doubled note is struck once"). A single-slot pool performs `transition.to`
+ * (`DynamicsGradient.ts:47-49`'s `else if`), measured at 120 from a −20 → +20 gradient on
+ * velocity 100.
  *
  * {@link OrnamentAtom.poolBound} is therefore an UPPER BOUND and not a size: an id naming no
  * note contributes nothing (measured), so a list of length L gives a performed pool of size ≤ L.
