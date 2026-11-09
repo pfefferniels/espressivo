@@ -1,8 +1,23 @@
 name: release
 
+# Two ways in, the same release either way: npm, the docs, the GitHub release.
+#
+# - Push a tag `v<version>` on the release commit (or create it in GitHub's release form). An
+#   annotated tag's message becomes the release notes; a release made in the form keeps its own.
+# - Run this workflow on main with the version (the Actions tab, or the API, which is what a
+#   Claude Code session in the cloud can reach: it may not push tags). The release commit's
+#   message, its trailers left out, becomes the tag's message and so the release notes. The tag
+#   is made only once the publish has succeeded.
+
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'the version package.json on main names, e.g. 0.11.2'
+        required: true
+        type: string
 
 # a release must never race itself, so this one does not cancel in progress
 concurrency:
@@ -14,6 +29,8 @@ jobs:
     permissions:
       contents: read
       id-token: write # npm trusted publishing, and the provenance attestation
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -34,21 +51,75 @@ jobs:
           fi
           npm --version
 
-      - run: npm ci
-
       # a tag that disagrees with package.json publishes the wrong version under the right
-      # name, and npm has no unpublish worth the word
+      # name, and npm has no unpublish worth the word. a dispatched release has no tag yet: it
+      # names the version instead, runs from main only, and must not name one tagged already.
       - name: the tag and package.json name the same version
+        id: version
+        env:
+          REQUESTED: ${{ inputs.version }}
         run: |
-          tagged="${GITHUB_REF_NAME#v}"
           declared=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            if [ "$GITHUB_REF" != refs/heads/main ]; then
+              echo "a release is run from main, not from $GITHUB_REF"
+              exit 1
+            fi
+            tagged="${REQUESTED#v}"
+            if git ls-remote --exit-code --tags origin "refs/tags/v$tagged" >/dev/null; then
+              echo "v$tagged is tagged already"
+              exit 1
+            fi
+          else
+            tagged="${GITHUB_REF_NAME#v}"
+          fi
           if [ "$tagged" != "$declared" ]; then
-            echo "tag $GITHUB_REF_NAME says $tagged, package.json says $declared"
+            echo "the release says $tagged, package.json says $declared"
             exit 1
           fi
+          echo "tag=v$tagged" >> "$GITHUB_OUTPUT"
 
+      - run: npm ci
       - run: npm run verify
       - run: npm publish
+
+  # a dispatched release is tagged here, on the commit that was verified and published. a job of
+  # its own because it is the one that may write to the repository, and it installs and runs
+  # nothing of the package's. a tag pushed with this job's token starts no second release.
+  tag:
+    needs: publish
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: tag the release commit, its message the release notes
+        env:
+          TAG: ${{ needs.publish.outputs.tag }}
+        run: |
+          # the subject names the release as the tags before it do; the body is the commit's,
+          # without the trailer block (Co-Authored-By and the like) at its end
+          {
+            echo "espressivo ${TAG#v}"
+            git log -1 --format=%b "$GITHUB_SHA" | awk '
+              { line[NR] = $0 }
+              END {
+                end = NR
+                while (end > 0 && line[end] == "") end--
+                n = end
+                while (n > 0 && line[n] ~ /^[A-Za-z0-9-]+: /) n--
+                if (n < end && (n == 0 || line[n] == "")) end = n
+                while (end > 0 && line[end] == "") end--
+                if (end > 0) print ""
+                for (i = 1; i <= end; i++) print line[i]
+              }'
+          } > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+          git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            tag -a "$TAG" -F "$RUNNER_TEMP/notes.md" "$GITHUB_SHA"
+          git push origin "refs/tags/$TAG"
 
   # the site documents the released version, so it deploys after the publish it describes.
   # a failure here leaves the tag published and the site one version behind, which is the
@@ -62,7 +133,9 @@ jobs:
     uses: ./.github/workflows/docs.yml
 
   github-release:
-    needs: publish
+    needs: [publish, tag]
+    # after the tag job when there is one; a pushed tag skips it, which must not skip this
+    if: ${{ !cancelled() && needs.publish.result == 'success' && needs.tag.result != 'failure' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -75,8 +148,14 @@ jobs:
       - name: draw the body from the tag
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.publish.outputs.tag }}
         run: |
-          git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
-          gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
+          # a tag made in GitHub's release form comes with its release, notes and all
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "the release $TAG exists already; it is left as it is"
+            exit 0
+          fi
+          git tag -l --format='%(contents)' "$TAG" > "$RUNNER_TEMP/notes.md"
+          gh release create "$TAG" \
+            --title "$TAG" \
             --notes-file "$RUNNER_TEMP/notes.md"
