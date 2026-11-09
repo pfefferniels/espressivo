@@ -12,7 +12,8 @@ truth regenerated in the same step, so the port is never silently ahead of its r
 Everything below is therefore one of five things — a bug fixed under that carve-out (§1), a
 difference deliberately left in place (§2, §3), a behaviour that reads as a bug and is not
 (§5), a feature measured against a Java baseline the reference fork predates (§8), or a piece
-of the reference deliberately **not** ported (§9). Nothing is undocumented, and this file is
+of the reference deliberately **not** ported (§9). §10 is a record the converter now keeps of
+what it skips — grace notes — and moves no byte of what it converts. Nothing is undocumented, and this file is
 the audit trail for [README.md](README.md#equivalence-with-java-meico)'s equivalence claim.
 
 **One divergence is large enough to change what the claim covers.** §9 removes the MEI → MPM
@@ -1854,3 +1855,56 @@ git worktree add ../espressivo-converter mei-to-mpm-converter-final
 
 A downstream consumer that needs an MEI-derived MPM pins that tag or a commit; the released
 versions on npm do not carry the half.
+
+---
+
+## 10. Grace notes: recorded, not converted
+
+The reference skips a grace `chord` whole (`Mei2MsmMpmConverter.java:243`) and a `graceGrp`
+whole, by having no case for it, and the port does the same: MSM has no place for a note
+that takes no time, and a performance is not derived from the score (§9). What changed is that the
+port now **keeps a record of what it skipped**. `Mei2MsmConverter.getGraceGroups()` and the
+facade's `MovementDocuments.graces` report, per movement, one entry per `graceGrp` or grace
+`chord`: each note's pitch and spelling, the MSM note the group leads to, its date, and whether
+the group's last note is tied into it. That is what an MPM v3 `<ornament>` needs to play the
+group — a note pool and a `@noteid` — and it is a fact about the score, not a performance, so it
+does not reopen §9.
+
+**No byte of the MSM moves, and that is measured.** The `graceGrp` handler converts nothing and
+returns `'done'`, the same traversal as before for everything below it. Two writes had to be kept
+out of the reading:
+
+- **Pitch computation writes into the MSM once.** A note that consults the key, in a part whose
+  own key signature is older than a global one, copies the global one into the part's
+  `keySignatureMap`. A grace note can be the first or the only note to consult it, and the
+  reference never reads the grace note. `computePitch` therefore takes a `readOnly` flag, which
+  skips that copy and the `oct` write-back onto the MEI element; the converter's own calls never
+  pass it. _Pinned:_ `tests/mei/graceNotes.test.ts`, "not even the key signature it consults" —
+  red with the guard removed, green with it.
+- **A grace note's `accid` is not put on the bar's list.** Every walked `accid` enters the list
+  that later notes of the same pitch and octave consult. The reference never walks the grace
+  note's, so its sharp does not reach the F later in the bar, and the port's must not either; the
+  attributes are copied onto the grace note itself and nowhere else. _Pinned:_ "takes its own
+  accid child, and does not carry it on to the bar".
+
+Every score in the new suite is also converted with its grace groups deleted, and the two MSMs
+compared byte for byte with generated ids masked; the gate (`npm run gate`) and the byte probes
+are unchanged. On the WM 225 transcription the record holds eight groups — four of them tied into
+their principal, the left hand's B♭–F before an F it holds — and the MSM is the one published
+beside it.
+
+**What is not reported.** A bare `note` with `@grace` outside a `graceGrp` is not skipped: the
+reference's guard for it is commented out (`Mei2MsmMpmConverter.java:421`), so it reaches the MSM
+as a note of `duration="0"` at the date of the note it leads to (`computeDuration` answers 0 for a
+grace, `:3884`), in the port as in the reference. cemfi/meico master has since re-enabled the
+guard; that is an upstream change the fork predates, like §8's. The note is in the MSM and
+addressable by its `xml:id` there, so the record does not repeat it.
+
+**Decided here, because MEI does not say.** The principal is the next `note` or `chord` of the
+group's layer — looking through beams and tuplets, past other grace notes, into the same staff and
+layer of the next measure when the group ends its bar — or the previous one under
+`@attach="pre"`; a rest or space first means none. In a chord it is the member the group is tied
+into, else the one nearest in pitch to the group's last note, the higher of two as near. Grace
+chords outside a `graceGrp` that lead to the same note merge into one group. The date is the
+principal's, written back onto its MEI element by `processNote`; with no principal it is the
+converter's clock at the group.

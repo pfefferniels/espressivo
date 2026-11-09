@@ -7,7 +7,8 @@ Axel Berndt and others. Apart from a few [deliberate differences](PARITY.md), th
 [verified](docs/equivalence.md) against meico byte for byte.
 
 An MEI is converted to an MSM — what is played — and the MPM saying _how_ it is played is yours
-to supply.
+to supply. Grace notes, which take no time and so have no place in an MSM, come back beside it as
+`graces`, ready to be played as MPM v3 ornaments ([`docs/ornamentation.md`](docs/ornamentation.md#grace-notes)).
 
 ## Install
 

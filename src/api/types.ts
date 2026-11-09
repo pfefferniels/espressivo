@@ -85,6 +85,58 @@ export interface MovementDocuments {
   /** The MSM's title — the work title plus the mdiv's `n` and `label`. */
   readonly title: string;
   readonly msm: XmlText;
+  /**
+   * The grace notes the MSM leaves out, one entry per `graceGrp` or grace `chord`, in document
+   * order. MSM has no place for a note that takes no time, so the conversion skips them as the
+   * Java reference does; an MPM v3 `<ornament>` can play them, with these as its note pool and
+   * {@link GraceGroup.principal} as its `@noteid`. Empty for a score that writes none.
+   */
+  readonly graces: readonly GraceGroup[];
+}
+
+/** One grace note of a {@link GraceGroup}. */
+export interface GraceNote {
+  /** The MEI `xml:id`, or null when the note has none. */
+  readonly id: string | null;
+  /** Computed as the converter computes every note's: key, earlier accidentals, transposition. */
+  readonly pitch: Midi7Bit;
+  /** The spelling, as an MSM note carries it. */
+  readonly pitchname: string;
+  readonly accidentals: number;
+  readonly octave: number;
+  /** The position of the note's event in its group, from 0; a grace chord's notes share one. */
+  readonly slot: number;
+}
+
+/** A group of grace notes and the score note it decorates. */
+export interface GraceGroup {
+  /** The `xml:id` of the `graceGrp` or the grace `chord`, or null. */
+  readonly id: string | null;
+  /** The `number` of the MSM part it is in. */
+  readonly part: number;
+  /**
+   * The date of {@link principal}, or where the conversion had got to at the group when there
+   * is none.
+   */
+  readonly date: Ticks;
+  /**
+   * The `xml:id` of the MSM note the group decorates: the next note in its layer, across a
+   * barline if need be, or the previous one under `@attach="pre"`. In a chord, the member the
+   * group is tied into, else the one nearest in pitch to its last note. Null when a rest comes
+   * first, when there is no such note, or when that note has no `xml:id` in the MSM.
+   */
+  readonly principal: string | null;
+  /**
+   * Whether the group's last note is tied into {@link principal}. The principal is then struck
+   * as that grace note and held — the score does not strike it again on its own date.
+   */
+  readonly tiedToPrincipal: boolean;
+  /** `@grace` — `acc`, `unacc`, `unknown` — of the group or of its first note, or null. */
+  readonly kind: string | null;
+  /** `@attach` of the `graceGrp`, or null. */
+  readonly attach: string | null;
+  /** In document order, which is playing order. */
+  readonly notes: readonly GraceNote[];
 }
 
 export interface PerformanceInfo {

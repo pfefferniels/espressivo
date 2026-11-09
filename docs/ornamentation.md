@@ -48,6 +48,56 @@ and repetition groups in `note.order`, `repetitions`, `alignment="at end"`, fram
 milliseconds or percent of the note's duration, all three `noteoff.shift` modes, and dynamics
 gradients across the figure.
 
+## Grace notes
+
+A grace note takes no time from the bar, and MSM has no place for a note without a duration, so
+`convertMeiToMsm` leaves every `graceGrp` and grace `chord` out of the MSM — as meico does, byte
+for byte. It does not forget them: each movement carries a `graces` list saying what was left out
+and where it belongs, which is exactly what a v3 ornament needs to put it back.
+
+```ts
+const [movement] = convertMeiToMsm(mei);
+movement.graces[0];
+// {
+//   id: 'pxnvdff', part: 2, date: 4320,
+//   principal: 'nanro74',        // the MSM note the group leads to: its @noteid
+//   tiedToPrincipal: true,       // the last grace note is tied into it
+//   kind: null, attach: null,
+//   notes: [
+//     { id: 'n1or9mhw', pitch: 46, pitchname: 'b', accidentals: -1, octave: 1, slot: 0 },
+//     { id: 'nw7mgns',  pitch: 53, pitchname: 'f', accidentals: 0,  octave: 2, slot: 1 },
+//   ],
+// }
+```
+
+The pitches are the converter's own — key signature, the bar's earlier accidentals,
+transposition — and reading them changes nothing in the MSM ([PARITY.md §10](../PARITY.md)).
+
+Played, a group is one `<ornament>` on its principal, its notes the pool, the principal last in
+the order. When the last grace note is tied into the principal, the principal _is_ that grace
+note, struck early and held, so it takes the last grace note's place rather than following it:
+
+```xml
+<!-- B♭ then F, the F tied into the principal: two strikes, the second one held -->
+<ornament xml:id="grace_nanro74" date="4320" name.ref="grace" noteid="#nanro74"
+          note.order="#n1or9mhw #nanro74" scale="0">
+  <note xml:id="n1or9mhw" midi.pitch="46"/>
+</ornament>
+
+<!-- untied: the grace, then the principal on its beat -->
+<ornament xml:id="grace_nc05e7t" date="22320" name.ref="grace" noteid="#nc05e7t"
+          note.order="#n15rsjn #nc05e7t" scale="0">
+  <note xml:id="n15rsjn" midi.pitch="72"/>
+</ornament>
+```
+
+The `<ornamentDef>` says when: a negative `frame.offset` puts the figure before the beat, and the
+last slot — the principal — lands at the frame's end, so `frame.offset="-180ms"` with
+`frameLength="180ms"` plays the grace 180 ms early and the principal on time.
+`noteoff.shift="monophonic"` lets each grace note give way to the next. Generated notes carry the
+provenance below, and `ornamentSource` is the MEI grace note's `xml:id` when the pool note is
+named after it, as above.
+
 ## Turning it off
 
 One switch, defaulting to on:

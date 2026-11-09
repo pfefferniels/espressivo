@@ -127,6 +127,8 @@ export type {
   XmlText,
   ConvertOptions,
   MovementDocuments,
+  GraceGroup,
+  GraceNote,
   PerformanceInfo,
   PerformOptions,
   MidiOptions,

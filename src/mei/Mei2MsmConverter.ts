@@ -27,6 +27,15 @@ import { Msm } from '../msm/Msm.js';
 import { v4 as uuidv4 } from 'uuid';
 import { firstPresent, foldl, head, isNonEmpty, mapPresent, orDefault } from '../prelude/index.js';
 import { elementAt, findLast, removeAt } from '../prelude/seq.js';
+import {
+  adoptAccidentals,
+  graceSlots,
+  noteIdsOf,
+  resolveGraceGroups,
+  type GraceGroup,
+  type PendingGraceGroup,
+  type PendingGraceNote,
+} from './graceNotes.js';
 
 /**
  * The circle of fifths as `[midi.pitch, pitchname]` pairs, sharpwards and flatwards — the
@@ -336,6 +345,13 @@ export class Mei2MsmConverter {
   protected allNotesAndChords = new Map<string, Element>();
 
   protected movements: Msm[] = [];
+  /**
+   * The grace notes each movement leaves out, parallel to {@link movements}: see
+   * {@link getGraceGroups}. Filled after each movement's walk, from {@link pendingGraces}.
+   */
+  protected graceGroups: GraceGroup[][] = [];
+  /** the grace groups of the movement being walked, before their principals can be known */
+  protected pendingGraces: PendingGraceGroup[] = [];
 
   /** the MEI being converted, set by {@link convertMei} before anything below it runs */
   private requireMei(): Mei {
@@ -364,6 +380,19 @@ export class Mei2MsmConverter {
    */
   convert(mei: Mei): Msm[] {
     return this.convertMei(mei);
+  }
+
+  /**
+   * The grace notes the last {@link convert} left out of each MSM it returned, in the same
+   * order: one list per movement, one entry per `graceGrp` or grace `chord`.
+   *
+   * MSM has no place for a note that takes no time, so the conversion skips these as the Java
+   * reference does; this is the record of what it skipped, for a caller that wants to perform
+   * them — as an MPM v3 ornament, whose note pool and `@noteid` this answers. Reading them
+   * changes no byte of the MSM. See `src/mei/graceNotes.ts`.
+   */
+  getGraceGroups(): readonly (readonly GraceGroup[])[] {
+    return this.graceGroups;
   }
 
   /** the whole conversion, step by step; see the class comment for the outline */
@@ -436,11 +465,11 @@ export class Mei2MsmConverter {
   /**
    * The element dispatch: MEI element name → what {@link convertElement} does with it.
    *
-   * The {@link Traversal} each handler returns splits the 118 known elements four ways:
+   * The {@link Traversal} each handler returns splits the 119 known elements four ways:
    * - {@link IGNORE} (53) — no effect on the sounding result: `clef`, `barline`, `annot`, …;
    * - {@link DESCEND} (17) — structural wrappers with no meaning of their own, whose children
    *   are the music: `score`, `staffGrp`, `beam`, `parts`, …;
-   * - handler then `'done'` (36) — the handler took over the descent itself, so nothing below
+   * - handler then `'done'` (37) — the handler took over the descent itself, so nothing below
    *   the element is visited by *this* loop: `processMeasure`, `processLayer`, `processNote`, …;
    * - handler then `'descend'` (10) — the handler annotates the element but still wants its
    *   children walked: `processKeySig`, `processScoreDef`, `processOctave`, …. `staffDef` is
@@ -451,8 +480,8 @@ export class Mei2MsmConverter {
    * through the generic path, so moving an element between the groups silently changes what
    * gets converted; in that sense the table is frozen against the Java reference.
    *
-   * Two entries carry a condition rather than a fixed traversal: `chord` skips grace chords
-   * entirely (`grace` attribute present), and `tuplet` descends only when
+   * Two entries carry a condition rather than a fixed traversal: `chord` converts nothing of a
+   * grace chord (`grace` attribute present), and `tuplet` descends only when
    * {@link processTuplet} reports it could not handle the tuplet itself. `bTrem`/`fTrem` are
    * routed to {@link processChord} because MEI models them as chord-like containers.
    *
@@ -470,7 +499,7 @@ export class Mei2MsmConverter {
    * fail the `undefined` test and be invoked — throwing, where an unknown element must be
    * skipped. `getLocalName()` strips namespaces, so that is reachable from foreign-namespace or
    * malformed content. `Object.create(null)` makes the lookup miss for every name that is not
-   * one of the 118 own keys. The `satisfies` is load-bearing too: without it `Object.assign`
+   * one of the 119 own keys. The `satisfies` is load-bearing too: without it `Object.assign`
    * drops the contextual typing and all 96 arrow parameters become implicit `any`.
    */
   private static readonly ELEMENT_HANDLERS: Readonly<Record<string, ElementHandler | undefined>> =
@@ -508,7 +537,10 @@ export class Mei2MsmConverter {
         return 'done';
       },
       chord: (c, e, ctx) => {
-        if (e.getAttribute('grace') !== null) return 'done';
+        if (e.getAttribute('grace') !== null) {
+          c.recordGraces(e, ctx);
+          return 'done';
+        }
         c.processChord(e, ctx);
         return 'done';
       },
@@ -543,6 +575,12 @@ export class Mei2MsmConverter {
       },
       gap: IGNORE,
       gliss: IGNORE,
+      // Converts nothing, as the reference converts nothing of it: the grace notes are only
+      // recorded, for `getGraceGroups`. A grace chord outside a `graceGrp` is recorded by `chord`.
+      graceGrp: (c, e, ctx) => {
+        c.recordGraces(e, ctx);
+        return 'done';
+      },
       grpSym: IGNORE,
       hairpin: IGNORE,
       halfmRpt: (c, e, ctx) => {
@@ -775,6 +813,9 @@ export class Mei2MsmConverter {
 
     const msm = Msm.createMsm(titleString, movementId, this.ppq);
     this.movements.push(msm);
+    // pushed with the movement, so the two lists stay parallel whichever way this method returns
+    const graces: GraceGroup[] = [];
+    this.graceGroups.push(graces);
 
     this.reset();
     this.indexNotesAndChords(mdiv);
@@ -840,6 +881,11 @@ export class Mei2MsmConverter {
     // a movement begins with nothing else open
     const inMovement: WalkContext = { ...NOTHING_OPEN, movement };
     this.convertElement(mdiv, inMovement);
+
+    // Only now: which note a group leads to is decided from the `date` and `pnum` the walk writes
+    // onto the MEI notes, and from the `@tie` it writes when it meets a `<tie>` — after the staves
+    // of its measure, so after the group.
+    graces.push(...resolveGraceGroups(this.pendingGraces, mdiv, noteIdsOf(msmRoot)));
   }
 
   /**
@@ -1977,6 +2023,51 @@ export class Mei2MsmConverter {
   }
 
   /**
+   * Record the grace notes of a `graceGrp`, or of a grace `chord` outside one, for
+   * {@link getGraceGroups} — and convert nothing: the MSM is what it is without them.
+   *
+   * Each note's pitch is {@link computePitch}'s, read-only. Its own `accid` children are copied
+   * onto it, as {@link processAccid} copies them for every note it walks, but without entering
+   * the bar's accidentals: the notes after it are played as the reference plays them, which is
+   * as if the grace note had not been there.
+   */
+  private recordGraces(container: Element, ctx: WalkContext): void {
+    if (ctx.part === null) return;
+
+    const notes: PendingGraceNote[] = [];
+    let slot = 0;
+    for (const events of graceSlots(container)) {
+      let pitched = false;
+      for (const note of events) {
+        adoptAccidentals(note);
+        const pitchdata: string[] = [];
+        const pitch = this.computePitch(note, pitchdata, ctx, true);
+        if (pitch === -1) continue;
+        pitched = true;
+        const what = "computePitch's [pitchname, accidental, octave]";
+        notes.push({
+          element: note,
+          id: attribute('id', note)?.getValue() ?? null,
+          pitch,
+          pitchname: elementAt(pitchdata, 0, what),
+          accidentals: parseFloat(elementAt(pitchdata, 1, what)),
+          octave: parseFloat(elementAt(pitchdata, 2, what)),
+          slot,
+        });
+      }
+      if (pitched) ++slot;
+    }
+    if (notes.length === 0) return;
+
+    this.pendingGraces.push({
+      element: container,
+      part: parseInt(requireAttributeValue('number', ctx.part), 10),
+      clock: this.getMidiTime(ctx),
+      notes,
+    });
+  }
+
+  /**
    * Handle a `tuplet` that carries its own `dur`, i.e. one that states its total length
    * rather than leaving it to be derived from its contents.
    *
@@ -2579,6 +2670,7 @@ export class Mei2MsmConverter {
    */
   protected reset(): void {
     this.endingCounter = 0;
+    this.pendingGraces = [];
     this.accid = [];
     this.endids = [];
     this.tstamp2s = [];
@@ -3111,9 +3203,17 @@ export class Mei2MsmConverter {
    * `addTransposition` merely `continue`s. Both shapes are Java's.
    *
    * @param pitchdata out-parameter, appended to: `[pitchname, accidental, octave]`
+   * @param readOnly compute the pitch and nothing else: the `oct` fallback is not written back
+   *   onto the MEI element, and a newer global key signature is not copied into the part's map.
+   *   For a note the MSM does not get — a grace note — whose reading must not change the MSM.
    * @return the MIDI pitch, or -1 if `ofThis` carries no pitch name
    */
-  protected computePitch(ofThis: Element, pitchdata: string[], ctx: WalkContext): number {
+  protected computePitch(
+    ofThis: Element,
+    pitchdata: string[],
+    ctx: WalkContext,
+    readOnly = false,
+  ): number {
     let pname: string;
     let accid = '';
     const layerId = Mei.getLayerId(Mei.getLayer(ofThis));
@@ -3158,7 +3258,7 @@ export class Mei2MsmConverter {
             }
           }
         }
-        ofThis.addAttribute(new Attribute('oct', String(oct)));
+        if (!readOnly) ofThis.addAttribute(new Attribute('oct', String(oct)));
       }
     }
 
@@ -3231,6 +3331,7 @@ export class Mei2MsmConverter {
           ) {
             keySig = keySigGlobal;
             if (
+              !readOnly &&
               keySigMapLocal !== null &&
               keySigGlobal !== null &&
               keySigMapLocal.getChildCount() > 0

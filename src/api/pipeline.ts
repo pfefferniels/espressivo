@@ -19,6 +19,7 @@
 import { EventMaker } from '../midi/EventMaker.js';
 import { Mei } from '../mei/Mei.js';
 import { Mei2MsmConverter } from '../mei/Mei2MsmConverter.js';
+import type { GraceGroup as ConvertedGraceGroup } from '../mei/graceNotes.js';
 import { Msm } from '../msm/Msm.js';
 import { Mpm } from '../mpm/Mpm.js';
 import type { Performance } from '../mpm/elements/Performance.js';
@@ -46,6 +47,7 @@ import type {
   ControlChangePoint,
   ControlChangeStream,
   ConvertOptions,
+  GraceGroup,
   MidiOptions,
   MovementDocuments,
   PerformanceData,
@@ -101,6 +103,27 @@ function parseMpm(mpm: XmlText): Mpm {
 }
 
 /** RULE F2a: the declaration-free serialization, which is what the fixtures are compared as. */
+/** A converted grace group as plain, branded facade data (RULE F1, U3). */
+function toGraceGroup(group: ConvertedGraceGroup): GraceGroup {
+  return {
+    id: group.id,
+    part: group.part,
+    date: group.date as Ticks,
+    principal: group.principal,
+    tiedToPrincipal: group.tiedToPrincipal,
+    kind: group.kind,
+    attach: group.attach,
+    notes: group.notes.map((note) => ({
+      id: note.id,
+      pitch: note.pitch as Midi7Bit,
+      pitchname: note.pitchname,
+      accidentals: note.accidentals,
+      octave: note.octave,
+      slot: note.slot,
+    })),
+  };
+}
+
 function serialize(doc: XmlBase, kind: DocumentKind): XmlText {
   const root = doc.getRootElement();
   if (root === null) throw new EmptyDocumentError(`${kind}: nothing to serialize`);
@@ -450,12 +473,14 @@ export function convertMeiToMsm(
   // `<title>` titles its movement from it, so it reaches `<msm title>` and is output-visible.
   if (options?.sourceName !== undefined) document.setFile(options.sourceName);
 
-  const msms = new Mei2MsmConverter(
+  const converter = new Mei2MsmConverter(
     options?.ppq ?? 720,
     options?.dontUseChannel10 ?? true,
     options?.ignoreExpansions ?? false,
     options?.cleanup ?? true,
-  ).convert(document);
+  );
+  const msms = converter.convert(document);
+  const graces = converter.getGraceGroups();
 
   if (msms.length === 0)
     throw new EmptyDocumentError('MEI: no convertible movement (mdiv) in this document');
@@ -464,6 +489,7 @@ export function convertMeiToMsm(
     index,
     title: msm.getTitle(),
     msm: serialize(msm, 'MSM'),
+    graces: (graces[index] ?? []).map(toGraceGroup),
   }));
 }
 
