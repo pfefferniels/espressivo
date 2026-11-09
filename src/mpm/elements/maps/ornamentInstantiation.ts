@@ -50,7 +50,7 @@ import type { TemporalValue } from '../styles/defs/TemporalValue.js';
  * The renderer clones the principal (`Element.copy()`) and strips these, so that everything
  * the pipeline has already decided about that note carries over. Of the eleven attributes an
  * MSM note carries at this point in the pipeline, `modified` and `velocity` are the two that
- * survive.
+ * survive — and `ornament.dynamics`, where a v2 ornament has shaded the principal (below).
  *
  * Why each of the others goes:
  * - `id` (i.e. `xml:id`) — every generated note draws its own; the principal's is then
@@ -63,6 +63,15 @@ import type { TemporalValue } from '../styles/defs/TemporalValue.js';
  *   already-augmented MSM a second time cannot smuggle stale times in.
  * - `ornament.*` — markers a *previous* ornament left on the principal. Inheriting them would
  *   apply that ornament's offset a second time, to a note it never named.
+ *
+ * One `ornament.*` marker is kept: `ornament.dynamics`, the velocity a v2 ornament's dynamics
+ * gradient gave the principal. It says how loud the principal is *within its chord*, and a
+ * figure that replaces the principal is played at that loudness, as the principal would have
+ * been — a grace before the top note of a rolled crescendo is as loud as that top note. It is an
+ * amount, not a position, so there is nothing to apply twice: each generated note carries it once,
+ * the removed principal not at all, and a v3 gradient of the ornament's own adds to it as a v2
+ * gradient adds to what it finds. The timing markers stay stripped: the figure's own frame places
+ * it, measured from the principal's date.
  *
  * `ornament.carved` cannot fire within one render — only {@link markCarved} writes it, and
  * {@link createChords} has copied the principal by then. It is listed for the case a test
@@ -83,7 +92,6 @@ const NOT_INHERITED: readonly string[] = [
   'octave',
   'milliseconds.date',
   'milliseconds.date.end',
-  'ornament.dynamics',
   'ornament.date.offset',
   'ornament.duration',
   'ornament.noteoff.shift',

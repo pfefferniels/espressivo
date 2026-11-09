@@ -839,6 +839,37 @@ describe('MPM v3 ornament instantiation', () => {
       expect(notes.map((note) => note.dynamics)).toEqual([-2, 0, 2]);
       expect(notes.map((note) => note.velocity)).toEqual([98, 100, 102]);
     });
+
+    it('keeps the shading a v2 ornament gave the principal, once per generated note', () => {
+      // A two-note roll with a gradient −1 → +1 at scale 4: constFac = (4 * (1 − (−1))) / (2 − 1)
+      // = 8, fromVelocity = −1 * 4 = −4 ⇒ A −4, P +4. A grace on P replaces it: both notes of
+      // the figure are as loud as P in its chord, 104, and P's own copy is gone. Stripping the
+      // marker, as the timing markers are stripped, played the figure at 100 — louder than the
+      // roll it is part of whenever the gradient shades the principal down.
+      const score = makeScore([makeNote('A', 0, 60), makeNote('P', 0, 64)]);
+      const map = makeMap([
+        makeDef('roll', { gradient: [-1, 1], noSpread: true }),
+        makeDef('grace', {
+          frameOffset: { value: -360, domain: 'ticks' },
+          frameLength: { value: 360, domain: 'ticks' },
+        }),
+      ]);
+      map.addOrnamentV3({ date: 0, nameRef: 'roll', scale: 4, noteOrder: '#A #P' });
+      map.addOrnamentV3({
+        date: 0,
+        nameRef: 'grace',
+        noteid: '#P',
+        noteOrder: '#g #P',
+        notes: [new OrnamentNote('g', chromatic(2))],
+      });
+      map.renderOrnamentationToMap(score);
+      const notes = notesOf(score);
+      expect(notes.map((note) => [note.pitch, note.source, note.dynamics, note.velocity])).toEqual([
+        [60, null, -4, 96],
+        [66, 'g', 4, 104],
+        [64, 'P', 4, 104],
+      ]);
+    });
   });
 
   describe('principal resolution (D7)', () => {
