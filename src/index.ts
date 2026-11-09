@@ -273,6 +273,8 @@ export {
 export { MovementMap, type AddMovementOptions } from './mpm/elements/maps/MovementMap.js';
 export { RubatoMap, type AddRubatoOptions } from './mpm/elements/maps/RubatoMap.js';
 export { OrnamentationMap, type AddOrnamentOptions } from './mpm/elements/maps/OrnamentationMap.js';
+// The note pool `AddOrnamentOptions.notes` is typed in: without these a caller could not build one.
+export { OrnamentNote, type OrnamentPitchSpec } from './mpm/elements/maps/data/OrnamentNote.js';
 export {
   MetricalAccentuationMap,
   type AddAccentuationPatternOptions,

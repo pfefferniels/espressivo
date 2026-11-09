@@ -91,6 +91,10 @@ note, struck early and held, so it takes the last grace note's place rather than
 </ornament>
 ```
 
+Written in code, the pool is `OrnamentNote`s handed to `OrnamentationMap.addOrnamentV3` as
+`notes`, with `noteid` and `noteOrder` beside them —
+`new OrnamentNote(note.id, { kind: 'midi', value: note.pitch })` for each grace note.
+
 The `<ornamentDef>` says when: a negative `frame.offset` puts the figure before the beat, and the
 last slot — the principal — lands at the frame's end, so `frame.offset="-180ms"` with
 `frameLength="180ms"` plays the grace 180 ms early and the principal on time.

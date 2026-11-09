@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { convertMeiToMsm, performMsmToData, type GraceGroup } from '../../src/index.js';
+import {
+  convertMeiToMsm,
+  OrnamentNote,
+  performMsmToData,
+  type GraceGroup,
+} from '../../src/index.js';
 import { Mei } from '../../src/mei/Mei.js';
 import { Mei2MsmConverter } from '../../src/mei/Mei2MsmConverter.js';
 
@@ -381,6 +386,24 @@ describe('played back as MPM v3 ornaments', () => {
     expect(played.filter((note) => note.pitch === 72)).toEqual([
       { id: expect.any(String) as string, pitch: 72, on: 850, off: 1000, source: 'g3' },
       { id: 'p2', pitch: 72, on: 1000, off: 2000, source: 'p2' },
+    ]);
+  });
+});
+
+describe('the pool is writable through the public API', () => {
+  it('exports the OrnamentNote that AddOrnamentOptions.notes is typed in', () => {
+    const [group] = graces(
+      score(`
+      <measure n="1"><staff n="1"><layer n="1">
+        <graceGrp xml:id="gg"><note xml:id="g" dur="8" pname="b" oct="3" accid.ges="f"/></graceGrp>
+        <note xml:id="p" dur="1" pname="c" oct="4"/>
+      </layer></staff></measure>`),
+    );
+    const pool = (group?.notes ?? []).map(
+      (note) => new OrnamentNote(note.id ?? '', { kind: 'midi', value: note.pitch }),
+    );
+    expect(pool.map((note) => note.generateXML().toXML())).toEqual([
+      '<note xmlns="http://www.cemfi.de/mpm/ns/1.0" xml:id="g" midi.pitch="58" />',
     ]);
   });
 });
