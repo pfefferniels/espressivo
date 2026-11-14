@@ -720,6 +720,30 @@ describe('OrnamentDef', () => {
       expect(def.getXml()!.getChildElements('temporalSpread').size()).toBe(1);
     });
 
+    it('writes a v3 frame with its units, and reads both generations back as one frame', () => {
+      const def = okValue(OrnamentDef.createOrnamentDef('arp'));
+      def.setTemporalSpreadFrame(
+        { value: -250, domain: 'milliseconds' },
+        { value: 50, domain: 'relative' },
+        0.5,
+        NoteOffShift.True,
+      );
+      const xml = def.getXml()!.getChildElements('temporalSpread').get(0);
+      expect(xml.getAttributeValue('frame.offset')).toBe('-250ms');
+      expect(xml.getAttributeValue('frameLength')).toBe('50%');
+      expect(xml.getAttributeValue('time.unit')).toBeNull();
+      expect(def.getTemporalSpread()!.getFrame()).toEqual({
+        offset: { value: -250, domain: 'milliseconds' },
+        length: { value: 50, domain: 'relative' },
+      });
+
+      def.setTemporalSpreadValues(-22.0, 44.0, FrameDomain.Milliseconds, 1.0, NoteOffShift.False);
+      expect(def.getTemporalSpread()!.getFrame()).toEqual({
+        offset: { value: -22, domain: 'milliseconds' },
+        length: { value: 44, domain: 'milliseconds' },
+      });
+    });
+
     it('should clamp a negative frame length', () => {
       const def = okValue(OrnamentDef.createOrnamentDef('arp'));
       def.setTemporalSpreadValues(0.0, -5.0, FrameDomain.Ticks, 1.0, NoteOffShift.False);
