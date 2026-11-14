@@ -14,6 +14,7 @@ import {
   parseOrnamentAlignment,
 } from './TemporalSpread.js';
 import type { MpmSourceFormat, OrnamentAlignment } from './TemporalSpread.js';
+import type { TemporalValue } from './TemporalValue.js';
 
 /**
  * An `ornamentDef`: an ornament name ("arpeggio", "trill", …) plus the transformers that
@@ -147,6 +148,24 @@ export class OrnamentDef extends AbstractXmlSubtree {
     ts.frameStart = frameStart;
     ts.setFrameLength(frameLength);
     ts.frameDomain = frameDomain;
+    ts.intensity = intensity;
+    ts.noteOffShift = noteOffShift;
+    this.setTemporalSpread(ts);
+  }
+
+  /**
+   * The MPM v3 form of {@link setTemporalSpreadValues}: each frame value carries its own unit,
+   * and the spread is written as `frame.offset` and `frameLength` with suffixes.
+   */
+  setTemporalSpreadFrame(
+    offset: TemporalValue,
+    length: TemporalValue,
+    intensity: number,
+    noteOffShift: NoteOffShift,
+  ): void {
+    const ts = new TemporalSpread();
+    ts.setFrameOffset(offset);
+    ts.setFrameLengthValue(length);
     ts.intensity = intensity;
     ts.noteOffShift = noteOffShift;
     this.setTemporalSpread(ts);

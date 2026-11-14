@@ -342,6 +342,20 @@ export class TemporalSpread {
     return this.frameLengthValue;
   }
 
+  /**
+   * The frame as two values with their units, whichever generation the spread was read in or
+   * built with. A v2 spread's `time.unit` becomes the unit of both.
+   */
+  getFrame(): { readonly offset: TemporalValue; readonly length: TemporalValue } {
+    if (this.frameOffset !== null && this.frameLengthValue !== null)
+      return { offset: this.frameOffset, length: this.frameLengthValue };
+    const domain = this.frameDomain === FrameDomain.Milliseconds ? 'milliseconds' : 'ticks';
+    return {
+      offset: { value: this.frameStart, domain },
+      length: { value: this.frameLength, domain },
+    };
+  }
+
   /** Set the v3 `frame.offset`; this makes the spread v3-sourced and so v3-serializing. */
   setFrameOffset(offset: TemporalValue): void {
     this.frameOffset = offset;

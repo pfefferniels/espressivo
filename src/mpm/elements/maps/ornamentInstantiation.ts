@@ -430,12 +430,8 @@ function frameValues(od: Ornament): FrameValues {
       alignment,
     };
 
-  const v3Offset = spread.getFrameOffset();
-  const v3Length = spread.getFrameLengthValue();
-  const v2Domain = spread.frameDomain === FrameDomain.Milliseconds ? 'milliseconds' : 'ticks';
   return {
-    offset: v3Offset ?? { value: spread.frameStart, domain: v2Domain },
-    length: v3Length ?? { value: spread.getFrameLength(), domain: v2Domain },
+    ...spread.getFrame(),
     intensity: spread.intensity,
     noteOffShift: spread.noteOffShift,
     alignment,
