@@ -203,7 +203,7 @@ describe('absence has a NEUTRAL, measured', () => {
   });
 });
 
-describe('the frame: four cells, one of them dead', () => {
+describe('the frame, read in its own generation whatever the ornament’s shape', () => {
   const v2 =
     '<ornamentDef name="g"><temporalSpread frame.start="-22.0" frameLength="44.0"/></ornamentDef>';
   const v3 =
@@ -212,20 +212,23 @@ describe('the frame: four cells, one of them dead', () => {
     '<ornamentDef name="g"><temporalSpread frame.start="-22ticks" frameLength="44"/></ornamentDef>';
   const none = '<ornamentDef name="g"/>';
 
-  it('a v2 frame spreads and a v3 frame with the SAME numbers spreads nothing', () => {
+  it('a v3 frame spreads exactly as its v2 twin does', () => {
     expect(chordOnsets(v2, `${STYLE0}${ORN()}`)).toEqual([-22, 0, 22]);
-    expect(chordOnsets(v3, `${STYLE0}${ORN()}`)).toEqual([0, 0, 0]);
+    expect(chordOnsets(v3, `${STYLE0}${ORN()}`)).toEqual([-22, 0, 22]);
   });
 
-  it('a unit suffix on @frame.start alone is enough to make it v3, and inert', () => {
-    expect(chordOnsets(suffixOnly, `${STYLE0}${ORN()}`)).toEqual([0, 0, 0]);
+  it('a unit suffix on @frame.start alone makes it v3, the bare length read in ticks', () => {
+    expect(chordOnsets(suffixOnly, `${STYLE0}${ORN()}`)).toEqual([-22, 0, 22]);
   });
 
-  it('so a v3 frame on a v2-shaped ornament compares equal to NO frame', () => {
-    expect(distance(atomsOf(v3, `${STYLE0}${ORN()}`), atomsOf(none, `${STYLE0}${ORN()}`))).toBe(0);
+  it('so a v3 frame compares equal to its v2 twin, and not to no frame', () => {
+    expect(distance(atomsOf(v3, `${STYLE0}${ORN()}`), atomsOf(v2, `${STYLE0}${ORN()}`))).toBe(0);
     expect(
-      distance(atomsOf(suffixOnly, `${STYLE0}${ORN()}`), atomsOf(none, `${STYLE0}${ORN()}`)),
+      distance(atomsOf(suffixOnly, `${STYLE0}${ORN()}`), atomsOf(v2, `${STYLE0}${ORN()}`)),
     ).toBe(0);
+    expect(
+      distance(atomsOf(v3, `${STYLE0}${ORN()}`), atomsOf(none, `${STYLE0}${ORN()}`)),
+    ).toBeGreaterThan(0);
   });
 
   it('and a v2 frame does NOT compare equal to no frame', () => {
@@ -260,14 +263,15 @@ describe('the frame: four cells, one of them dead', () => {
   });
 });
 
-describe('the v3 SHAPE gate (@repetitions / @noteid)', () => {
+describe('the v3 SHAPE gate (@repetitions)', () => {
   it('a present @repetitions deletes the whole ornament', () => {
     expect(chordVelocities(GRAD, `${STYLE0}${ORN()}`)).toEqual([80, 100, 120]);
     expect(chordVelocities(GRAD, `${STYLE0}${ORN(' repetitions="0"')}`)).toEqual([100, 100, 100]);
   });
 
-  it('and @noteid does the same', () => {
-    expect(chordVelocities(GRAD, `${STYLE0}${ORN(' noteid="#n1"')}`)).toEqual([100, 100, 100]);
+  it('while @noteid only names the principal and keeps the ornament on the chord', () => {
+    expect(chordVelocities(GRAD, `${STYLE0}${ORN(' noteid="#n1"')}`)).toEqual([80, 100, 120]);
+    expect(atomsOf(GRAD, `${STYLE0}${ORN(' noteid="#n1"')}`).atoms).toHaveLength(1);
   });
 
   it('so the reader emits no atom for it, and says why', () => {

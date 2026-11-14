@@ -32,15 +32,15 @@ export interface RenderOptions {
    * Whether MPM v3 ornaments generate their notes. Defaults to
    * {@link DEFAULT_EXPAND_ORNAMENTS}.
    *
-   * Set to `false` and every ornament that uses a v3 feature (`isV3Ornament`'s gate: a note
-   * pool, a `noteid`, `repetitions`, or the grouping syntax in `note.order`) is skipped whole:
-   * no note is created, no `ornament.*` provenance attribute is written, and not even the
+   * Set to `false` and every ornament that generates notes (`generatesNotes`'s gate: a note
+   * pool, `repetitions`, or the grouping syntax in `note.order`) is skipped whole: no note is
+   * created, no `ornament.*` provenance attribute is written, and not even the
    * `note.order.perf` echo lands on the `<ornament>` element.
    *
-   * It does not reach MPM v2 ornaments, which generate nothing to begin with — they write
-   * modifier markers onto notes that already exist. A v3 ornament suppressed by this flag is
-   * not re-routed through the v2 path either: v2 would spread notes the v3 ornament never
-   * claimed.
+   * It does not reach ornaments over score notes, v2 or v3, which generate nothing to begin
+   * with: they write modifier markers onto notes that already exist. An ornament suppressed by
+   * this flag is not re-routed through that path either: it would spread notes the ornament
+   * never claimed.
    */
   readonly expandOrnaments?: boolean;
 }

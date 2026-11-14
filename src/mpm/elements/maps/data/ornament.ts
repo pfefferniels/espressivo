@@ -173,8 +173,11 @@ export function principalNoteId(ornament: Ornament): string | null {
 }
 
 /**
- * Apply a v2 ornament's transformers to `chordSequence`, and return the chords the caller must
- * add to the map — always none, on this path.
+ * Apply the transformers of an ornament over score notes to `chordSequence`, and return the
+ * chords the caller must add to the map — always none, on this path.
+ *
+ * `spacing` is the def's temporal spread with its frame resolved (`chordSpacing`), or null
+ * when the def has none.
  *
  * The dynamics gradient runs before the temporal spread, and both mutate the note elements in
  * place: they write `ornament.*` attributes that later passes fold into the real performance
@@ -190,20 +193,20 @@ export function principalNoteId(ornament: Ornament): string | null {
  * shallow, so the inner arrays and the Element objects are shared with the caller, and the
  * transformers mutate exactly those.
  */
-export function applyOrnament(ornament: Ornament, chordSequence: Element[][]): Element[][] {
+export function applyOrnament(
+  ornament: Ornament,
+  chordSequence: Element[][],
+  spacing: ((chords: Element[][]) => void) | null,
+): Element[][] {
   const chordsToAdd: Element[][] = [];
   if (ornament.ornamentDef === null) return chordsToAdd;
 
   const tempChordSequence: Element[][] = [...chordSequence];
 
-  // Java calls each getter twice — `if (getX() != null) getX().apply(...)`. Both are plain
-  // field reads (`OrnamentDef.ts:116-118` and `:156-158`), so binding the result once is the
-  // same two values in the same order.
   const gradient = ornament.ornamentDef.getDynamicsGradient();
   if (gradient !== null) gradient.apply(tempChordSequence, ornament.scale);
 
-  const spread = ornament.ornamentDef.getTemporalSpread();
-  if (spread !== null) spread.apply(tempChordSequence);
+  if (spacing !== null) spacing(tempChordSequence);
 
   return chordsToAdd;
 }

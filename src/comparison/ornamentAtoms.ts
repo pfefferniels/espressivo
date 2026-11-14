@@ -43,32 +43,18 @@
  *
  * ## An `<ornament>` is v2- or v3-SHAPED, and the shape decides which engine runs
  *
- * `isV3Ornament` fires on a `<note>` pool, on `@noteid`, on the mere PRESENCE of `@repetitions`
- * (any value, the schema default `0` included), or on the v3 `note.order` grammar `[ … ]` /
- * `|: … :|`. A v3-shaped ornament leaves the v2 transformer path entirely for
+ * `generatesNotes` fires on a `<note>` pool, on the mere PRESENCE of `@repetitions` (any value,
+ * the schema default `0` included), or on the v3 `note.order` grammar `[ … ]` / `|: … :|`.
+ * `@noteid` alone does not fire it. A v3-shaped ornament leaves the v2 transformer path entirely for
  * `ornamentInstantiation`, and one with no `@note.order` at all is SKIPPED — measured, adding
  * `repetitions="0"` takes an ornament from 80/100/120 to 100/100/100. So the shape is carried on
  * the atom, and a skipped ornament yields no atom at all.
  *
- * ## The frame: four cells, one of them dead
+ * ## The frame is read in the generation the spread is written in, whatever the shape
  *
- * `TemporalSpread` has two incompatible readings and `apply` reads only the v2 fields, so a
- * v3-sourced spread on a v2-shaped ornament leaves them at their `0.0` initialisers and spreads
- * nothing — the renderer says so itself ("a v3 temporalSpread carries no v2 frame, so it will
- * spread nothing"). Measured through the pipeline:
- *
- * | ornament shape | spread source | performed frame                                     |
- * | -------------- | ------------- | --------------------------------------------------- |
- * | v2             | v2            | the v2 numbers — date.perf −22/0/22 for −22.0/44.0   |
- * | v2             | v3            | NONE — date.perf 0/0/0 for the same numbers          |
- * | v3             | v2            | the v2 numbers, honoured (slots at 0/90/180/270/360) |
- * | v3             | v3            | the v3 values, `%` resolved against the principal    |
- *
- * The dead cell is modelled as the NEUTRAL frame rather than as a special value, because that is
- * what it performs: a spread of `frame.start=0 frameLength=0` and an absent `<temporalSpread>`
- * were measured to perform identically. The three-unit-case paragraph therefore
- * describes v3-SHAPED ornaments; on a v2-shaped one a `%` frame is no unit question at all,
- * because nothing is performed.
+ * A v3 spread on a v2-shaped ornament is resolved against its principal and run through the v2
+ * engine, so it performs what its v2 twin performs. The shape decides which engine runs; the
+ * spread's own source decides how its frame is read.
  *
  * ## An unresolvable value is `⊥`, not a skip, where the renderer POISONS
  *
@@ -117,7 +103,7 @@ import { resolutionAt, type OrderedMapView } from './document.js';
 /** `@scale`'s default of 0.0 — and the reason half an unscaled ornament is inert. */
 export const DEFAULT_ORNAMENT_SCALE = 0;
 
-/** Which engine the renderer runs this ornament through (`isV3Ornament`). */
+/** Which engine the renderer runs this ornament through (`generatesNotes`). */
 export type OrnamentShape = 'v2' | 'v3';
 
 /** The three v3 time domains, and the two a v2 frame can be in. */
@@ -184,7 +170,6 @@ export interface OrnamentAtomNote {
     | 'scale-zero'
     | 'scale-unusable'
     | 'frame-unusable'
-    | 'frame-inert-v3'
     | 'repetitions-unusable'
     | 'v3-shape-skipped'
     | 'v3-shape'
@@ -229,9 +214,9 @@ export function parseFrameValue(
 
 /**
  * v3 iff `@frame.offset` is present, or either frame attribute carries a unit suffix —
- * `TemporalSpread.detectSourceFormat`. The suffix half is easy to miss and decisive:
- * `frame.start="-22ticks" frameLength="44"` is a v3 element and spreads nothing on a v2-shaped
- * ornament, while `frame.start="-22"` with the same length spreads in full.
+ * `TemporalSpread.detectSourceFormat`. The suffix half is easy to miss and decisive: in
+ * `frame.start="-22ticks" frameLength="44"` the whole element is v3, so an absent attribute
+ * takes the v3 default rather than the v2 one.
  */
 export function spreadSourceFormat(spread: Element): OrnamentShape {
   if (readAttributeValue(spread, 'frame.offset') !== null) return 'v3';
@@ -280,7 +265,7 @@ function classifyNoteOrder(
 }
 
 /**
- * `isV3Ornament`'s gate, minus the one clause this layer cannot reach.
+ * `generatesNotes`'s gate, minus the one clause this layer cannot reach.
  *
  * The renderer tests `od.notes.length > 0` on the PARSED pool, and `OrnamentNote.fromXml` drops
  * a `<note>` it cannot use, so a pool of only-unusable notes does not fire the gate there while
@@ -289,7 +274,6 @@ function classifyNoteOrder(
  */
 function shapeOf(element: Element, noteOrderKind: NoteOrderKind | null): OrnamentShape {
   if (element.getChildElements('note').size() > 0) return 'v3';
-  if (readAttributeValue(element, 'noteid') !== null) return 'v3';
   if (readAttributeValue(element, 'repetitions') !== null) return 'v3';
   return noteOrderKind === 'v3-grammar' ? 'v3' : 'v2';
 }
@@ -310,14 +294,12 @@ function gradientOf(def: Element, scale: number | null): Valued<PerformedGradien
   return valued({ from: from * scale, to: to * scale });
 }
 
-/** Read a def's `<temporalSpread>` into the frame the renderer performs for THIS shape. */
-function spreadOf(def: Element, shape: OrnamentShape): Valued<PerformedSpread> | null {
+/** Read a def's `<temporalSpread>` into the frame the renderer performs. */
+function spreadOf(def: Element): Valued<PerformedSpread> | null {
   const element = elementAtOrNull(def.getChildElements('temporalSpread').toArray(), 0);
   if (element === null) return null;
 
   const source = spreadSourceFormat(element);
-  // The dead cell: a v3 frame on a v2-shaped ornament performs exactly the neutral frame.
-  if (source === 'v3' && shape === 'v2') return valued({ ...NEUTRAL_SPREAD, source: 'v3' });
 
   const intensity = finiteOr(element, 'intensity', 1);
   if (intensity === null) return bottom('renderer-error');
@@ -498,7 +480,7 @@ export function readOrnamentAtoms(
         kind: 'v3-shape-skipped',
         dateTicks,
         detail:
-          'a <note> pool, @noteid or a PRESENT @repetitions takes the ornament onto the v3 ' +
+          'a <note> pool or a PRESENT @repetitions takes the ornament onto the v3 ' +
           'engine, which skips it outright when it has no @note.order. Measured: adding ' +
           'repetitions="0" — the schema default — takes this ornament from 80/100/120 to ' +
           '100/100/100. Nothing is performed, so no atom is emitted.',
@@ -535,7 +517,7 @@ export function readOrnamentAtoms(
     // Both are pinned against the renderer.
     const single = order?.poolBound === 1;
     const gradient = collapseGradient(gradientOf(def, scale), single);
-    const spread = collapseSpread(spreadOf(def, shape), single);
+    const spread = collapseSpread(spreadOf(def), single);
 
     if (gradient !== null && scale === 0)
       notes.push({
@@ -555,22 +537,6 @@ export function readOrnamentAtoms(
           'date.perf NaN — measured. The condition again, so the frame reads ⊥. A v3 frame ' +
           'value cannot reach this: its reader logs and applies the v3 default.',
       });
-    if (
-      spread !== null &&
-      spread.kind === 'value' &&
-      spread.value.source === 'v3' &&
-      shape === 'v2'
-    )
-      notes.push({
-        kind: 'frame-inert-v3',
-        dateTicks,
-        detail:
-          'the def’s <temporalSpread> is v3-sourced (@frame.offset, or a unit suffix on either ' +
-          'frame attribute) while the ornament is v2-shaped, so TemporalSpread.apply reads the ' +
-          'v2 fields at their 0.0 initialisers and SPREADS NOTHING — the renderer logs this ' +
-          'itself. Compared as the neutral frame, which is what it performs.',
-      });
-
     const repetitionsText = readAttributeValue(element, 'repetitions');
     let repetitions = 0;
     if (repetitionsText !== null) {

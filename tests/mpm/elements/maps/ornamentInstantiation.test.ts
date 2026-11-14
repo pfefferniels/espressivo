@@ -10,7 +10,8 @@ import {
 } from '../../../../src/mpm/elements/maps/data/ornament.js';
 import { OrnamentNote } from '../../../../src/mpm/elements/maps/data/OrnamentNote.js';
 import {
-  isV3Ornament,
+  chordSpacing,
+  generatesNotes,
   readKeyFifths,
 } from '../../../../src/mpm/elements/maps/ornamentInstantiation.js';
 import { Element, Attribute } from '../../../../src/xml/XomTypes.js';
@@ -1480,7 +1481,7 @@ describe('MPM v3 ornament instantiation', () => {
     );
   });
 
-  describe('the v3 gate (D6)', () => {
+  describe('the note-generation gate (D6)', () => {
     const dataWith = (fields: Partial<Ornament> = {}, xml = new Element('ornament')) => ({
       data: orn(fields),
       xml,
@@ -1488,32 +1489,32 @@ describe('MPM v3 ornament instantiation', () => {
 
     it('fires on a note pool', () => {
       const { data, xml } = dataWith({ notes: [new OrnamentNote('n1', chromatic(1))] });
-      expect(isV3Ornament(xml, data)).toBe(true);
+      expect(generatesNotes(xml, data)).toBe(true);
     });
 
-    it('fires on noteid', () => {
-      const { data, xml } = dataWith({ noteid: '#p' });
-      expect(isV3Ornament(xml, data)).toBe(true);
+    it('does not fire on noteid alone: an arpeggio may name its principal', () => {
+      const { data, xml } = dataWith({ noteid: '#p', noteOrderText: '#p #q' });
+      expect(generatesNotes(xml, data)).toBe(false);
     });
 
     it('fires on a repetitions attribute, even when it is the default 0', () => {
       const xml = new Element('ornament');
       xml.addAttribute(new Attribute('repetitions', '0'));
       const { data } = dataWith({}, xml);
-      expect(isV3Ornament(xml, data)).toBe(true);
+      expect(generatesNotes(xml, data)).toBe(true);
     });
 
     it('fires on the grouping and repeat tokens of note.order', () => {
       for (const order of ['|: #a :|', '[ #a #b ]', '#a :|: #b', '#a | #b']) {
         const { data, xml } = dataWith({ noteOrderText: order });
-        expect(isV3Ornament(xml, data)).toBe(true);
+        expect(generatesNotes(xml, data)).toBe(true);
       }
     });
 
     it('does not fire on any v2 note.order', () => {
       for (const order of ['#a #b #c', 'ascending pitch', 'descending pitch', '#a']) {
         const { data, xml } = dataWith({ noteOrderText: order });
-        expect(isV3Ornament(xml, data)).toBe(false);
+        expect(generatesNotes(xml, data)).toBe(false);
       }
     });
 
@@ -1534,6 +1535,70 @@ describe('MPM v3 ornament instantiation', () => {
       expect(notes.every((note) => note.getAttributeValue('ornament.generated') === null)).toBe(
         true,
       );
+    });
+  });
+
+  describe('a v3 frame over score notes', () => {
+    const ticks = (value: number): TemporalValue => ({ value, domain: 'ticks' });
+    const ms = (value: number): TemporalValue => ({ value, domain: 'milliseconds' });
+
+    /** A triad at 0: `a` 720 ticks long, `b` 1440, `c` 360. */
+    const triad = () =>
+      makeScore([makeNote('a', 0, 60, 720), makeNote('b', 0, 64, 1440), makeNote('c', 0, 67, 360)]);
+
+    const render = (def: OrnamentDef, ornament: { noteOrder: string; noteid?: string }) => {
+      const score = triad();
+      const map = makeMap([def]);
+      map.addOrnamentV3({ date: 0, nameRef: def.getName(), ...ornament });
+      map.renderOrnamentationToMap(score);
+      return (name: string) =>
+        score.getAllElementsOfType('note').map((entry) => entry.value.getAttributeValue(name));
+    };
+
+    it('spreads a keyword order as its v2 twin does', () => {
+      // −22 + (i / 2) · 44 for i = 0, 1, 2
+      const marker = render(makeDef('arp', { frameOffset: ticks(-22), frameLength: ticks(44) }), {
+        noteOrder: 'descending pitch',
+      });
+      expect(marker('ornament.date.offset')).toEqual(['22', '0', '-22']);
+    });
+
+    it('measures % against the first note of the order when there is no noteid', () => {
+      // `c` comes first, 360 ticks: 50% is 180, so 0 / 90 / 180
+      const marker = render(makeDef('arp', { frameLength: { value: 50, domain: 'relative' } }), {
+        noteOrder: '#c #a #b',
+      });
+      expect(marker('ornament.date.offset')).toEqual(['90', '180', '0']);
+    });
+
+    it('measures % against the noteid note', () => {
+      // `b` is the principal, 1440 ticks: 50% is 720, so 0 / 360 / 720
+      const marker = render(makeDef('arp', { frameLength: { value: 50, domain: 'relative' } }), {
+        noteOrder: '#c #a #b',
+        noteid: '#b',
+      });
+      expect(marker('ornament.date.offset')).toEqual(['360', '720', '0']);
+    });
+
+    it('anchors an end-aligned tick frame at the principal end', () => {
+      // `a` is the principal, 720 ticks; a 120-tick frame ends there: 600 / 660 / 720
+      const def = makeDef('arp', { frameLength: ticks(120), alignment: 'at end' });
+      const marker = render(def, { noteOrder: 'ascending pitch' });
+      expect(marker('ornament.date.offset')).toEqual(['600', '660', '720']);
+    });
+
+    it('writes a millisecond frame as the v2 millisecond markers', () => {
+      const def = makeDef('arp', { frameOffset: ms(-30), frameLength: ms(60) });
+      const marker = render(def, { noteOrder: 'ascending pitch' });
+      expect(marker('ornament.milliseconds.date.offset')).toEqual(['-30', '0', '30']);
+      expect(marker('ornament.date.offset')).toEqual([null, null, null]);
+    });
+
+    it('measures an end-aligned millisecond frame from the end', () => {
+      // the frame closes at the end: −60 / −30 / 0 from it
+      const def = makeDef('arp', { frameLength: ms(60), alignment: 'at end' });
+      const marker = render(def, { noteOrder: 'ascending pitch' });
+      expect(marker('ornament.milliseconds.fromend.offset')).toEqual(['-60', '-30', '0']);
     });
   });
 
@@ -1838,7 +1903,7 @@ describe('MPM v3 ornament instantiation', () => {
     it('still returns nothing on the v2 path, and still writes the v2 marker', () => {
       const data = orn({ ornamentDef: makeDef('fig', { v2FrameStart: -22, v2FrameLength: 44 }) });
       const one = new Element('note');
-      expect(applyOrnament(data, [[one]])).toEqual([]);
+      expect(applyOrnament(data, [[one]], chordSpacing(data, one))).toEqual([]);
       // a single chord goes to the *end* of the frame, −22 + 44 = 22: v2's out-of-loop
       // placement of the last chord, which for n = 1 is the only one
       expect(one.getAttributeValue('ornament.date.offset')).toBe('22');

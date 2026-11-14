@@ -16,8 +16,10 @@ import {
   type Ornament,
 } from './data/ornament.js';
 import {
+  chordPrincipal,
+  chordSpacing,
+  generatesNotes,
   instantiateOrnaments,
-  isV3Ornament,
   noteOwners,
   prepareOrnament,
 } from './ornamentInstantiation.js';
@@ -498,15 +500,18 @@ export class OrnamentationMap extends GenericMap {
    * ornament it always returns an empty list. See {@link applyOrnament}; it is a
    * contract for note-generating ornaments, and MPM v3 is what fills it.
    *
-   * The v3 branch: an ornament that uses anything v2 cannot express (`isV3Ornament` is the
-   * gate — a note pool, `noteid`, `repetitions`, or the `note.order` grouping syntax) is
-   * *prepared* here and *instantiated* after the walk, so generated notes appear in
+   * An ornament over score notes takes the v2 path whatever generation its def is written in:
+   * `chordSpacing` resolves a v3 frame against the principal (its `noteid`, otherwise the first
+   * note of the sequence) and hands the v2 engine plain numbers.
+   *
+   * The v3 branch: an ornament that generates notes (`generatesNotes` is the gate — a note
+   * pool, `repetitions`, or the `note.order` grouping syntax) is *prepared* here and *instantiated* after the walk, so generated notes appear in
    * the map only once the walk is over and a later v2 ornament's "every note at this date"
    * still collects what it always collected. See `ornamentInstantiation.ts` for why the
    * deferral is required rather than tidy.
    *
    * `expandOrnaments` is read here, once per call, and is the only thing the option does: with
-   * it off, an ornament that passes the v3 gate is dropped on the spot instead of being
+   * it off, an ornament that generates notes is dropped on the spot instead of being
    * prepared. The read sits inside this method because the default belongs to `src/mpm/`
    * (ARCHITECTURE.md §2.4).
    */
@@ -588,7 +593,7 @@ export class OrnamentationMap extends GenericMap {
 
       // MPM v3: an ornament that generates notes leaves the v2 path here. It is
       // only read now — its notes are created after the walk, see this method's comment.
-      if (isV3Ornament(ornamentXml, od)) {
+      if (generatesNotes(ornamentXml, od)) {
         // `expandOrnaments: false` stops here, before `prepareOrnament` — which reads the
         // ornament but also writes `note.order.perf` back onto it. Skipping the whole
         // call is what makes "not expanded" mean the document is left as it was found.
@@ -598,10 +603,6 @@ export class OrnamentationMap extends GenericMap {
         if (one !== null) prepared.push(one);
         continue;
       }
-      if (ornamentDef.getSourceFormat() === 'v3')
-        console.error(
-          `Warning: the ornament at date ${od.date} names an MPM v3 ornamentDef but uses no v3 feature itself, so it is rendered as a v2 ornament — and a v3 temporalSpread carries no v2 frame, so it will spread nothing. Give the ornament a note pool, a noteid or a v3 note.order.`,
-        );
 
       let noteOrderAscending = 1; // 1 = ascending pitch, -1 = descending pitch, 0 = ID sequence
       let chordSequence: Element[][] | null = null;
@@ -654,7 +655,8 @@ export class OrnamentationMap extends GenericMap {
       // the reference's choice, kept. Reaching here at all means `chordSequence` was not
       // empty, and every way of filling it reads from `maps`, so there is one.
       const primary = elementAt(maps, 0, 'ornamentation target');
-      for (const chord of applyOrnament(od, chordSequence)) {
+      const spacing = chordSpacing(od, chordPrincipal(od, notes, chordSequence));
+      for (const chord of applyOrnament(od, chordSequence, spacing)) {
         for (const note of chord) {
           primary.addElement(note);
         }

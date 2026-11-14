@@ -39,8 +39,8 @@ import type { TemporalValue } from '../styles/defs/TemporalValue.js';
  * markers the millisecond pass already consumes — plus, for `alignment="at end"`, one further
  * marker of the same family (see {@link applyMillisecondSpacing}).
  *
- * Nothing here touches an ornament without a v3 feature ({@link isV3Ornament} is the gate),
- * nothing throws (RULE E1: every rejection logs its reason and returns), and nothing outside
+ * Nothing here generates notes for an ornament that names none to generate
+ * ({@link generatesNotes} is the gate; {@link chordSpacing} serves the others), nothing throws (RULE E1: every rejection logs its reason and returns), and nothing outside
  * the MSM clone `Performance.perform` opened is mutated (mutation boundary 3).
  */
 
@@ -173,20 +173,23 @@ export interface PreparedOrnament {
 }
 
 /**
- * The byte gate: does this `<ornament>` use anything MPM v2 cannot express?
+ * The byte gate: does this `<ornament>` generate notes, rather than spread the ones the score
+ * already has?
  *
- * Each of the four markers is impossible in a v2 document: a v2 `<ornament>` is always empty,
- * and `noteid`, `repetitions` and the `note.order` grouping syntax all arrived with v3.
- * `repetitions` is tested on the *attribute*, not on the parsed value, because
- * `repetitions="0"` is as much a v3 marker as `repetitions="3"`.
+ * Each of the three markers is impossible in a v2 document: a v2 `<ornament>` is always empty,
+ * and `repetitions` and the `note.order` grouping syntax arrived with v3. `repetitions` is
+ * tested on the *attribute*, not on the parsed value, because `repetitions="0"` is as much a
+ * v3 marker as `repetitions="3"`.
+ *
+ * `noteid` is no marker. It names the principal, and an arpeggio over score notes stays an
+ * arpeggio when it says which note that is, as the guidelines' own arpeggio example does.
  *
  * The `note.order` test is a character probe rather than a parse: `[`, `]` and `|` are the
  * only characters the v3 grammar adds and none can occur in a v2 value, so the v3 parser
  * stays off the v2 path entirely.
  */
-export function isV3Ornament(xml: Element, od: Ornament): boolean {
+export function generatesNotes(xml: Element, od: Ornament): boolean {
   if (od.notes.length > 0) return true;
-  if (od.noteid !== null) return true;
   if (attribute('repetitions', xml) !== null) return true;
   return od.noteOrderText !== null && /[[\]|]/.test(od.noteOrderText);
 }
@@ -222,9 +225,7 @@ export function prepareOrnament(
   }
   const order = parseNoteOrder(od.noteOrderText);
   if (order === null || order.kind !== 'list') {
-    // A pitch keyword keeps its full v2 behaviour, so this is unreachable from
-    // `OrnamentationMap.apply` — `isV3Ornament`'s character probe rejects both keywords. It
-    // stands for callers that build an Ornament in code.
+    // a pitch keyword names score notes only; a pool or repetitions has nothing to order
     console.error(
       `Warning: ${label} combines MPM v3 features with the v2 note.order keyword "${od.noteOrderText}"; the ornament is skipped.`,
     );
@@ -506,6 +507,74 @@ function resolveFrame(
     noteOffShift: values.noteOffShift,
     alignment,
   };
+}
+
+/**
+ * The principal of an ornament over score notes: the note its `noteid` names, otherwise the
+ * first note it spreads.
+ */
+export function chordPrincipal(
+  od: Ornament,
+  notes: ReadonlyMap<string, Element>,
+  chords: readonly (readonly Element[])[],
+): Element | null {
+  const first = chords[0]?.[0] ?? null;
+  const noteid = principalNoteId(od);
+  if (noteid === null) return first;
+  const named = notes.get(noteid);
+  if (named !== undefined) return named;
+  console.error(
+    `Warning: ${describeOrnament(od.xmlId, od.date)} names a principal note "${od.noteid ?? ''}" that this score does not have; the first note it spreads stands in.`,
+  );
+  return first;
+}
+
+/**
+ * How an ornament over score notes spreads its chords, or null when there is nothing to spread.
+ *
+ * A v2 spread runs as it always has. A v3 frame is resolved against `principal` first, since
+ * `%` and `alignment` need one, and then drives the same engine, so a v3 arpeggio writes
+ * exactly the markers its v2 twin writes. An end-aligned millisecond frame is measured from
+ * each note's own end, which is the principal's end when the chord's notes end together.
+ */
+export function chordSpacing(
+  od: Ornament,
+  principal: Element | null,
+): ((chords: Element[][]) => void) | null {
+  const def = od.ornamentDef;
+  const spread = def?.getTemporalSpread() ?? null;
+  if (def === null || spread === null) return null;
+  if (spread.getSourceFormat() === 'v2' && def.getAlignment() === 'at start')
+    return (chords) => spread.apply(chords);
+
+  const geometry = readGeometry(principal, od.date);
+  const label = describeOrnament(od.xmlId, od.date);
+  const frame = resolveFrame(frameValues(od), geometry, principal !== null, label);
+  if (frame === null) return null;
+
+  const atEnd = frame.alignment === 'at end';
+  if (frame.domain === 'milliseconds') {
+    const start = atEnd ? frame.offset - frame.length : frame.offset;
+    return (chords) => applyMillisecondSpacing(chords, start, frame.length, frame, atEnd);
+  }
+  const start = atEnd ? geometry.duration - frame.length + frame.offset : frame.offset;
+  return (chords) => engineSpread(start, frame.length, FrameDomain.Ticks, frame).apply(chords);
+}
+
+/** The v2 spread engine, set up with a resolved frame. */
+function engineSpread(
+  start: number,
+  length: number,
+  domain: FrameDomain,
+  frame: FrameSpec,
+): TemporalSpread {
+  const spread = new TemporalSpread();
+  spread.frameStart = start;
+  spread.setFrameLength(length);
+  spread.frameDomain = domain;
+  spread.intensity = frame.intensity;
+  spread.noteOffShift = frame.noteOffShift;
+  return spread;
 }
 
 /**
@@ -830,13 +899,7 @@ function applyMillisecondSpacing(
   fromEnd: boolean,
 ): void {
   if (!fromEnd) {
-    const spread = new TemporalSpread();
-    spread.frameStart = start;
-    spread.setFrameLength(length);
-    spread.frameDomain = FrameDomain.Milliseconds;
-    spread.intensity = frame.intensity;
-    spread.noteOffShift = frame.noteOffShift;
-    spread.apply(chords);
+    engineSpread(start, length, FrameDomain.Milliseconds, frame).apply(chords);
     return;
   }
 

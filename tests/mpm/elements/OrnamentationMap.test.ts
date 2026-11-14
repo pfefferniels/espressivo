@@ -17,6 +17,7 @@ import {
 } from '../../../src/mpm/elements/maps/data/ornament.js';
 import { OrnamentNote } from '../../../src/mpm/elements/maps/data/OrnamentNote.js';
 import { GenericMap } from '../../../src/mpm/elements/maps/GenericMap.js';
+import { chordSpacing } from '../../../src/mpm/elements/maps/ornamentInstantiation.js';
 import { Element, Attribute, Builder } from '../../../src/xml/XomTypes.js';
 import { Mpm } from '../../../src/mpm/Mpm.js';
 import { Header } from '../../../src/mpm/elements/Header.js';
@@ -1299,11 +1300,14 @@ describe('OrnamentationMap', () => {
   });
 
   describe('applyOrnament', () => {
+    const apply = (od: Ornament, chords: Element[][]) =>
+      applyOrnament(od, chords, chordSpacing(od, chords[0]?.[0] ?? null));
+
     it('should return an empty list and change nothing without an ornamentDef', () => {
       const od = orn();
       const n = makeNote('n1', 0, 60);
 
-      expect(applyOrnament(od, [[n]])).toEqual([]);
+      expect(apply(od, [[n]])).toEqual([]);
       expect(n.getAttribute('ornament.dynamics')).toBeNull();
       expect(n.getAttribute('ornament.date.offset')).toBeNull();
     });
@@ -1314,7 +1318,7 @@ describe('OrnamentationMap', () => {
       const n1 = makeNote('n1', 0, 60),
         n2 = makeNote('n2', 0, 64),
         n3 = makeNote('n3', 0, 67);
-      expect(applyOrnament(od, [[n1], [n2], [n3]])).toEqual([]);
+      expect(apply(od, [[n1], [n2], [n3]])).toEqual([]);
 
       expect(num(n1, 'ornament.dynamics')).toBeCloseTo(-2.0);
       expect(num(n1, 'ornament.date.offset')).toBeCloseTo(-22.0);
@@ -1330,7 +1334,7 @@ describe('OrnamentationMap', () => {
 
       const n1 = makeNote('n1', 0, 60),
         n2 = makeNote('n2', 0, 64);
-      applyOrnament(od, [[n1], [n2]]);
+      apply(od, [[n1], [n2]]);
 
       expect(num(n1, 'ornament.dynamics')).toBeCloseTo(-3.0);
       expect(n1.getAttribute('ornament.date.offset')).toBeNull();
@@ -1344,7 +1348,7 @@ describe('OrnamentationMap', () => {
 
       const n1 = makeNote('n1', 0, 60),
         n2 = makeNote('n2', 0, 64);
-      applyOrnament(od, [[n1], [n2]]);
+      apply(od, [[n1], [n2]]);
 
       expect(num(n1, 'ornament.date.offset')).toBeCloseTo(-10.0);
       expect(num(n2, 'ornament.date.offset')).toBeCloseTo(10.0);
@@ -1355,7 +1359,7 @@ describe('OrnamentationMap', () => {
       const od = orn({ ornamentDef: okValue(OrnamentDef.createOrnamentDef('plain')) });
 
       const n = makeNote('n1', 0, 60);
-      expect(applyOrnament(od, [[n]])).toEqual([]);
+      expect(apply(od, [[n]])).toEqual([]);
       expect(n.getAttributeCount()).toBe(3); // xml:id, date, midi.pitch
     });
   });
