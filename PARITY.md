@@ -1364,6 +1364,18 @@ pinned by tests. They are divergences from an unreviewed pull request, not from 
 
 ### 6.3 Semantics the specification does not fix, decided here
 
+- **An ornament over score notes is spread in place, in whichever generation its def is
+  written.** Only a note pool, `repetitions` or the `note.order` grouping syntax makes an
+  ornament generate notes (`generatesNotes`). A `noteid` alone does not: it names the principal,
+  as in the guidelines' own arpeggio (`<ornament noteid="#n96" … note.order="#n96 #n97 #n98"/>`).
+  Such an ornament runs through the v2 engine, and a v3 `temporalSpread` is first resolved
+  against its principal, the `noteid` note or else the first note of the sequence: `%` against
+  that note's tick duration, `at end` from its end. Both `note.order` keywords keep working. An
+  end-aligned millisecond frame is measured from each note's own end, which is the principal's
+  end when the chord's notes end together. `tests/integration/ornamentation-v3-chords.test.ts`
+  renders two chords with a v2 frame and with the same numbers as a v3 frame, with and without
+  `noteid`, over both units, both keywords, two id lists and all three `noteoff.shift` values:
+  every performed note is identical, and all eight cases fail on the tree before this rule.
 - **An end-aligned MILLISECOND frame drops its principal's head, deliberately.** A tick or `%`
   frame aligned `at end` shortens the principal and leaves it sounding up to where the figure
   starts. A millisecond frame cannot: it is anchored at a millisecond end that does not exist

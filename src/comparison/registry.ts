@@ -1571,7 +1571,7 @@ const ORNAMENT_ROWS: readonly ComparisonRegistryRow[] = [
       rule:
         'the repeat group plays `repetitions + 1` times (D9), and `-1` is meico’s documented ' +
         '"fill the frame" extension. Its PRESENCE is separately load-bearing and is NOT this ' +
-        'row: `isV3Ornament` fires on the attribute existing at all, whatever it says, which ' +
+        'row: `generatesNotes` fires on the attribute existing at all, whatever it says, which ' +
         'moves the whole ornament onto the v3 engine — and that engine SKIPS an ornament with ' +
         'no @note.order. Executed: adding repetitions="0", the schema default, takes an ' +
         'ornament from 80/100/120 to 100/100/100. The reader models the gate as a shape, so ' +
